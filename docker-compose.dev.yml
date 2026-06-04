@@ -35,6 +35,11 @@ services:
     # 2. ./.env file, if present, which is overridden by
     # 3. The environment values here.
     environment:
+      # The bind-mounted /src often has a UID that doesn't match the in-container
+      # user, which trips git's "dubious ownership" check and makes `go build`
+      # fail with "error obtaining VCS status: exit status 128". Disable VCS
+      # stamping for the dev binary so air can build without git access.
+      GOFLAGS: "-buildvcs=false"
       IMS_HOSTNAME: "0.0.0.0"
       IMS_PORT: "8080"
       IMS_DB_HOST_NAME: "ims-db"
@@ -47,7 +52,10 @@ services:
       IMS_DMS_PASSWORD: "${IMS_DMS_PASSWORD:-clubhousepassword}"
     ports:
       # Override IMS_HOST_PORT to set the port mapping on the host.
-      - "127.0.0.1:${IMS_HOST_PORT:-8080}:8080"
+      - "${IMS_HOST_PORT:-8090}:8080"
+    networks:
+      - default
+      - maybloom-proxy
     depends_on:
       ims-db:
         condition: service_healthy
@@ -93,3 +101,7 @@ services:
       interval: 1s
       timeout: 5s
       retries: 10
+
+networks:
+  maybloom-proxy:
+    external: true

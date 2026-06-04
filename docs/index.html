@@ -1,0 +1,1479 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Ranger IMS — Architecture & Data Model</title>
+<style>
+  :root {
+    --bg: #fafaf7;
+    --fg: #1f2328;
+    --muted: #57606a;
+    --line: #d0d7de;
+    --accent: #6f42c1;
+    --accent-soft: #efeaff;
+    --code-bg: #f4f1ec;
+    --warn: #b46a00;
+    --good: #1a7f37;
+  }
+  * { box-sizing: border-box; min-width: 0; }
+  html, body { margin: 0; padding: 0; overflow-x: hidden; }
+  html { -webkit-text-size-adjust: 100%; }
+  body {
+    font: 14px/1.55 -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
+    color: var(--fg);
+    background: var(--bg);
+    display: grid;
+    grid-template-columns: 240px 1fr;
+    min-height: 100vh;
+  }
+  nav.side {
+    position: sticky;
+    top: 0;
+    align-self: start;
+    height: 100vh;
+    overflow-y: auto;
+    border-right: 1px solid var(--line);
+    padding: 20px 16px;
+    background: white;
+  }
+  nav.side h1 {
+    font-size: 15px;
+    margin: 0 0 4px;
+    letter-spacing: -0.01em;
+  }
+  nav.side .sub {
+    color: var(--muted);
+    font-size: 11px;
+    margin: 0 0 18px;
+  }
+  nav.side a {
+    display: block;
+    padding: 6px 8px;
+    margin: 1px 0;
+    color: var(--fg);
+    text-decoration: none;
+    border-radius: 6px;
+    font-size: 13px;
+  }
+  nav.side a:hover { background: var(--accent-soft); color: var(--accent); }
+  nav.side a.active { background: var(--accent-soft); color: var(--accent); font-weight: 600; }
+  nav.side .group {
+    text-transform: uppercase;
+    font-size: 10px;
+    letter-spacing: 0.06em;
+    color: var(--muted);
+    margin: 16px 8px 4px;
+  }
+  main {
+    max-width: 1100px;
+    padding: 32px 48px 80px;
+  }
+  section { margin-bottom: 56px; scroll-margin-top: 24px; }
+  section > h2 {
+    font-size: 22px;
+    margin: 0 0 4px;
+    letter-spacing: -0.01em;
+  }
+  section > .lede {
+    color: var(--muted);
+    margin: 0 0 18px;
+  }
+  h3 { font-size: 15px; margin: 22px 0 8px; }
+  p { margin: 8px 0; }
+  code, pre {
+    font-family: "SF Mono", Menlo, Consolas, monospace;
+    font-size: 12.5px;
+  }
+  code { background: var(--code-bg); padding: 1px 5px; border-radius: 4px; }
+  pre {
+    background: var(--code-bg);
+    padding: 12px 14px;
+    border-radius: 8px;
+    overflow-x: auto;
+    border: 1px solid var(--line);
+    margin: 8px 0;
+  }
+  pre code { background: transparent; padding: 0; }
+  table {
+    width: 100%;
+    border-collapse: collapse;
+    margin: 8px 0 16px;
+    font-size: 13px;
+  }
+  th, td {
+    text-align: left;
+    padding: 7px 10px;
+    border-bottom: 1px solid var(--line);
+    vertical-align: top;
+  }
+  th { font-weight: 600; color: var(--muted); font-size: 12px; }
+  .toggle-bar {
+    display: inline-flex;
+    border: 1px solid var(--line);
+    border-radius: 8px;
+    overflow: hidden;
+    margin: 8px 0 16px;
+    background: white;
+  }
+  .toggle-bar button {
+    border: 0;
+    background: white;
+    padding: 8px 16px;
+    font: inherit;
+    color: var(--fg);
+    cursor: pointer;
+    border-right: 1px solid var(--line);
+  }
+  .toggle-bar button:last-child { border-right: 0; }
+  .toggle-bar button.active {
+    background: var(--accent);
+    color: white;
+    font-weight: 600;
+  }
+  .panel { display: none; }
+  .panel.active { display: block; }
+  .mermaid-wrap {
+    position: relative;
+    margin: 8px 0;
+  }
+  .brc-frame {
+    background: white;
+    border: 1px solid var(--line);
+    border-radius: 8px;
+    padding: 16px;
+    margin: 8px 0;
+    text-align: center;
+  }
+  .brc-grid {
+    max-width: 100%;
+    height: auto;
+    display: inline-block;
+  }
+  .mermaid {
+    background: white;
+    padding: 18px;
+    border: 1px solid var(--line);
+    border-radius: 8px;
+    margin: 0;
+    overflow: auto;
+    max-height: 80vh;
+  }
+  .mermaid svg { display: block; }
+  .mermaid-toolbar {
+    position: absolute;
+    top: 8px;
+    right: 8px;
+    display: flex;
+    align-items: center;
+    gap: 2px;
+    background: white;
+    border: 1px solid var(--line);
+    border-radius: 6px;
+    padding: 2px 4px;
+    z-index: 2;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.06);
+    font-size: 12px;
+  }
+  .mermaid-toolbar button {
+    border: 0;
+    background: transparent;
+    color: var(--fg);
+    cursor: pointer;
+    width: 24px;
+    height: 24px;
+    border-radius: 4px;
+    font-size: 14px;
+    font-weight: 600;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 0;
+    font-family: inherit;
+  }
+  .mermaid-toolbar button:hover { background: var(--accent-soft); color: var(--accent); }
+  .mermaid-toolbar button:active { background: var(--accent); color: white; }
+  .mermaid-toolbar .zoom-label {
+    min-width: 40px;
+    text-align: center;
+    color: var(--muted);
+    font-variant-numeric: tabular-nums;
+    user-select: none;
+  }
+  .badge {
+    display: inline-block;
+    padding: 1px 7px;
+    border-radius: 999px;
+    font-size: 11px;
+    font-weight: 600;
+    background: var(--accent-soft);
+    color: var(--accent);
+    vertical-align: middle;
+    margin-left: 6px;
+  }
+  .badge.gray { background: #eaecef; color: var(--muted); }
+  .badge.good { background: #ddf5e2; color: var(--good); }
+  .badge.warn { background: #fff1d6; color: var(--warn); }
+  .callout {
+    background: var(--accent-soft);
+    border-left: 3px solid var(--accent);
+    border-radius: 6px;
+    padding: 12px 14px;
+    margin: 12px 0;
+    font-size: 13px;
+  }
+  .callout.warn { background: #fff7e6; border-left-color: var(--warn); }
+  .callout strong { color: var(--accent); }
+  .callout.warn strong { color: var(--warn); }
+  .cols { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin: 12px 0; }
+  .cols > div { background: white; border: 1px solid var(--line); border-radius: 8px; padding: 14px; }
+  .cols h4 { margin: 0 0 6px; font-size: 13px; }
+  .cols p { margin: 0; font-size: 12.5px; color: var(--muted); }
+  .feature-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+    gap: 10px;
+    margin: 14px 0 22px;
+  }
+  .feature {
+    background: white;
+    border: 1px solid var(--line);
+    border-radius: 8px;
+    padding: 12px 14px;
+  }
+  .feature h4 {
+    margin: 0 0 4px;
+    font-size: 13px;
+    color: var(--accent);
+  }
+  .feature p {
+    margin: 0;
+    font-size: 12.5px;
+    color: var(--fg);
+    line-height: 1.5;
+  }
+  dl.qa { margin: 12px 0; }
+  dl.qa dt { font-weight: 600; margin-top: 14px; }
+  dl.qa dd { margin: 4px 0 0 0; color: var(--muted); font-size: 13px; line-height: 1.55; }
+  .audience-divider { margin: 44px 0 24px; }
+  .audience-divider hr {
+    margin: 0;
+    border: 0;
+    border-top: 2px dashed var(--accent);
+  }
+  .audience-divider p {
+    text-align: center;
+    margin: 14px auto 0;
+    max-width: 620px;
+    color: var(--muted);
+    font-size: 13px;
+  }
+  .small { font-size: 12px; color: var(--muted); }
+  .field-search {
+    width: 100%;
+    padding: 7px 10px;
+    border: 1px solid var(--line);
+    border-radius: 6px;
+    font: inherit;
+    margin-bottom: 8px;
+  }
+  hr { border: 0; border-top: 1px solid var(--line); margin: 32px 0; }
+  /* Hamburger toggle + slide-in nav for mobile */
+  .nav-toggle {
+    display: none;
+    position: fixed;
+    top: 12px;
+    right: 12px;
+    z-index: 100;
+    width: 44px;
+    height: 44px;
+    background: white;
+    border: 1px solid var(--line);
+    border-radius: 8px;
+    cursor: pointer;
+    color: var(--fg);
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
+    padding: 0;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 4px;
+  }
+  .nav-toggle:hover { color: var(--accent); border-color: var(--accent); }
+  .nav-toggle .bar {
+    display: block;
+    width: 18px;
+    height: 2px;
+    background: currentColor;
+    border-radius: 2px;
+    transition: transform 0.2s, opacity 0.2s;
+  }
+  body.nav-open .nav-toggle .bar:nth-child(1) { transform: translateY(6px) rotate(45deg); }
+  body.nav-open .nav-toggle .bar:nth-child(2) { opacity: 0; }
+  body.nav-open .nav-toggle .bar:nth-child(3) { transform: translateY(-6px) rotate(-45deg); }
+  .nav-backdrop {
+    display: none;
+    position: fixed;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.35);
+    z-index: 98;
+  }
+  body.nav-open .nav-backdrop { display: block; }
+
+  @media (max-width: 900px) {
+    body { grid-template-columns: 1fr; }
+    .nav-toggle { display: flex; }
+    nav.side {
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 280px;
+      max-width: 82vw;
+      height: 100vh;
+      z-index: 99;
+      transform: translateX(-100%);
+      transition: transform 0.22s ease-out;
+      box-shadow: 2px 0 16px rgba(0, 0, 0, 0.1);
+      border-right: 1px solid var(--line);
+    }
+    body.nav-open nav.side { transform: translateX(0); }
+    main { padding: 64px 18px 48px; max-width: 100%; }
+    section { margin-bottom: 40px; }
+    section > h2 { font-size: 20px; }
+    h3 { font-size: 14px; }
+    .feature-grid { gap: 8px; }
+    /* Long code in table cells (paths, env vars) should wrap on narrow screens */
+    table { font-size: 12.5px; }
+    th, td { padding: 6px 8px; }
+    td code, th code { word-break: break-word; white-space: normal; }
+    /* The workflow 3-column grid (and any other .cols) collapses to one column */
+    .cols { grid-template-columns: 1fr !important; }
+    /* Tap targets in mermaid toolbar — bump a bit for fingers */
+    .mermaid-toolbar button { width: 30px; height: 30px; }
+    .mermaid-toolbar .zoom-label { min-width: 44px; }
+    /* Keep the mermaid scroll area from getting too tall on phones */
+    .mermaid { max-height: 70vh; padding: 12px; }
+    .brc-frame { padding: 10px; }
+  }
+  @media (max-width: 500px) {
+    main { padding: 60px 14px 36px; }
+    body { font-size: 13.5px; }
+    section > h2 { font-size: 18px; }
+    nav.side h1 { font-size: 14px; }
+    nav.side { padding: 16px 12px; }
+    /* On phones, drop the auto-fit grid and just stack — guarantees no 240px floor */
+    .feature-grid { grid-template-columns: 1fr; }
+    .feature h4 { font-size: 12.5px; }
+    .feature p { font-size: 12px; }
+    pre { font-size: 11.5px; padding: 10px; }
+  }
+  /* Hardening against accidental horizontal overflow from long content */
+  pre, code { max-width: 100%; }
+</style>
+</head>
+<body>
+
+<button type="button" class="nav-toggle" aria-label="Toggle navigation" aria-expanded="false">
+  <span class="bar"></span><span class="bar"></span><span class="bar"></span>
+</button>
+<div class="nav-backdrop" aria-hidden="true"></div>
+
+<nav class="side">
+  <h1>Ranger IMS</h1>
+  <p class="sub">Architecture &amp; data model · for the demo at <code>ranger-demo.maybloom.tech</code></p>
+
+  <div class="group">For Rangers</div>
+  <a href="#intro">What IMS does</a>
+
+  <div class="group">Engineering reference</div>
+  <a href="#deps">External systems</a>
+
+  <div class="group">Domain</div>
+  <a href="#workflow">Workflow</a>
+  <a href="#incident-states">Incident lifecycle</a>
+
+  <div class="group">Architecture</div>
+  <a href="#arch">System diagram</a>
+  <a href="#request-flow">Request flow</a>
+
+  <div class="group">Data model</div>
+  <a href="#data-ims">IMS database</a>
+  <a href="#data-location">Location grid</a>
+  <a href="#data-clubhouse">Clubhouse database</a>
+  <a href="#data-bridge">Cross-system links</a>
+
+  <div class="group">Auth &amp; permissions</div>
+  <a href="#auth">Login flow</a>
+  <a href="#authz">Authorization model</a>
+
+  <div class="group">Reference</div>
+  <a href="#api">API endpoints</a>
+
+  <div class="group">Operations</div>
+  <a href="#devprod">Dev vs prod</a>
+  <a href="#cheatsheet">Cheat sheet</a>
+</nav>
+
+<main>
+
+<section id="intro">
+  <h2>What IMS does</h2>
+
+  <p>The Incident Management System is the tool Rangers use during the event to keep track of what's happening on-playa. When a Ranger calls something in on the radio, Dispatch logs it as an <strong>incident</strong> in IMS, assigns Rangers to respond, updates its status as the situation evolves, and closes it out when resolved. The same system handles <strong>field reports</strong> (write-ups of things Rangers saw or did) and <strong>visits</strong> (the structured intake when a guest comes to Sanctuary).</p>
+
+  <h3>What you can do in it</h3>
+  <div class="feature-grid">
+    <div class="feature">
+      <h4>Log incidents in real time</h4>
+      <p>Create an incident from a radio call: priority, what happened, where on the grid, summary. Move it through the dispatch lifecycle (<em>new</em> → <em>dispatched</em> → <em>on scene</em> → <em>closed</em>) as the response unfolds.</p>
+    </div>
+    <div class="feature">
+      <h4>Write field reports</h4>
+      <p>Document things you saw or did that didn't need an immediate response, or that you want on the record. Field reports can stand alone or attach to an incident.</p>
+    </div>
+    <div class="feature">
+      <h4>Run Sanctuary visits</h4>
+      <p>Track guest interactions at the Ranger shelter: arrival, what resources Rangers provided (rest, clothes, food, water), and departure. Each visit is a structured intake, not freeform notes.</p>
+    </div>
+    <div class="feature">
+      <h4>Pinpoint on the BRC grid</h4>
+      <p>Locations use the way Rangers actually navigate: concentric street (Esplanade, Alfa, Bravo…) crossed with clock position (e.g. 9:30). Optional name and details round it out — "Camp Questionmark, near the main stage".</p>
+    </div>
+    <div class="feature">
+      <h4>Tag who responded</h4>
+      <p>Attach Ranger callsigns to incidents and visits, with an optional role description. Useful for after-action review and for the audit log.</p>
+    </div>
+    <div class="feature">
+      <h4>Add photos &amp; files</h4>
+      <p>Any incident, field report, or visit can carry attachments — photos of a scene, scans of paperwork, whatever's relevant.</p>
+    </div>
+    <div class="feature">
+      <h4>See updates live</h4>
+      <p>When someone in HQ creates or updates an incident, every other connected IMS screen reflects it within seconds — no page refresh. That's how Dispatch keeps a shared view of the night.</p>
+    </div>
+    <div class="feature">
+      <h4>Search history</h4>
+      <p>Browse and filter all incidents for the current event, or pull up past events. Find your historical involvement by callsign for shift handoffs or end-of-event review.</p>
+    </div>
+    <div class="feature">
+      <h4>Print clean</h4>
+      <p>Pages have a dedicated print mode that hides buttons and form widgets, leaving just readable content. Useful for shift handoff packets or as off-grid backup.</p>
+    </div>
+  </div>
+
+  <h3>How it knows who you are</h3>
+  <p>You log in with the same email and password as Clubhouse — there's no separate IMS account. On login IMS reaches into Clubhouse and reads:</p>
+  <ul>
+    <li>Your <strong>callsign</strong> — used everywhere in IMS</li>
+    <li>Your Ranger <strong>positions</strong> (Dispatcher, Driver, etc.) — these can grant per-event permissions</li>
+    <li>Your <strong>team</strong> memberships — same idea</li>
+    <li>Whether you're currently <strong>on duty</strong> (you have an open timesheet entry in Clubhouse)</li>
+    <li>Whether you're <strong>on-site</strong> at the event</li>
+  </ul>
+  <p>This means changes you make in Clubhouse propagate. Get a new position approved there, you'll see the matching IMS permissions on your next login. Change your callsign, IMS picks it up the next time its in-memory directory cache refreshes (every five minutes by default).</p>
+
+  <h3>Who can see what</h3>
+  <p>Permissions are configured per event by IMS admins. Each event (e.g. "2026") carries its own access rules. Rules can target:</p>
+  <ul>
+    <li>A specific Ranger by callsign</li>
+    <li>Everyone with a given <strong>position</strong> in Clubhouse — e.g. "anyone with the Dispatcher position can write incidents"</li>
+    <li>Everyone on a given <strong>team</strong></li>
+    <li>Anyone currently <strong>on duty</strong> in a specific position</li>
+    <li>Everyone authenticated (the wildcard <code>*</code>) — common for read access</li>
+  </ul>
+  <p>Each rule grants one mode: <em>read</em>, <em>write</em>, <em>report</em> (write own field reports only), or <em>write_visits</em>. Rules can also be scoped to apply only while a Ranger is on-playa.</p>
+
+  <h3>Where the data lives</h3>
+  <p>Everything is stored in databases operated by the Rangers' tech volunteers — not shared with BMORG, vendors, or external analytics. Incidents, field reports, and visits live there; attachments live in either a Ranger-owned object store or local disk depending on the deployment. An <strong>audit log</strong> records every authenticated change for the historical record of how the event was managed.</p>
+
+  <div class="callout">
+    <strong>One-line mental model</strong> (helpful for engineers too): IMS owns events, incidents, places, streets, visits, field reports, and the audit log in its own database. It treats <em>people</em> as a read-only feed from a separate system called <em>Clubhouse</em>. Almost every design decision in the rest of this doc flows from that split.
+  </div>
+
+  <div class="audience-divider">
+    <hr>
+    <p><strong>End of the Ranger-facing overview.</strong> Everything below is engineering reference — architecture diagrams, schema, API endpoints, deployment notes. Rangers can stop reading here. The technical sections live in the same page because the same mental model applies; they just go deeper.</p>
+    <hr>
+  </div>
+</section>
+
+<section id="deps">
+  <h2>External dependencies</h2>
+  <p class="lede">What IMS needs at runtime, and what is optional.</p>
+  <table>
+    <thead><tr><th>System</th><th>Required?</th><th>Purpose</th><th>How it's reached</th></tr></thead>
+    <tbody>
+      <tr><td>IMS database (MariaDB)</td><td>yes</td><td>Stores everything IMS owns: incidents, field reports, events, etc.</td><td>Direct MySQL protocol from the Go app</td></tr>
+      <tr><td>Clubhouse database (MariaDB)</td><td>yes</td><td>Read-only personnel directory — users, positions, teams, on-duty state</td><td>Direct MySQL protocol from the Go app <span class="badge gray">read-only</span></td></tr>
+      <tr><td>S3 (or local disk)</td><td>optional</td><td>Stores attachment blobs (metadata stays in IMS DB)</td><td>AWS SDK v2 / filesystem</td></tr>
+      <tr><td>JWT secret</td><td>yes</td><td>Signs/verifies access &amp; refresh tokens</td><td><code>IMS_JWT_SECRET</code> env var — regenerated each startup if unset</td></tr>
+    </tbody>
+  </table>
+  <p>That is the entire runtime dependency surface. There is no SSO/OAuth provider, no mail service, no LDAP, no Slack/Discord, no payment system, no maps API. JWT signing is self-contained.</p>
+</section>
+
+<section id="workflow">
+  <h2>Domain workflow</h2>
+  <p class="lede">When does a Ranger create an Incident vs. a Field Report vs. a Visit?</p>
+  <p>IMS has three top-level objects that look similar in the schema — each has its own table, each has report entries, each can have Rangers attached. They serve different roles:</p>
+
+  <div class="cols" style="grid-template-columns: 1fr 1fr 1fr;">
+    <div>
+      <h4>Incident</h4>
+      <p>Something happened that needs response. Tracked through a state machine, has a priority, can have Rangers dispatched to it.</p>
+    </div>
+    <div>
+      <h4>Field Report</h4>
+      <p>A Ranger writes up something they saw or did. May or may not be attached to an incident. Async record-keeping.</p>
+    </div>
+    <div>
+      <h4>Visit</h4>
+      <p>A guest interaction at Sanctuary (Rangers' guest shelter): arrival, resources provided, departure. Can attach to an incident if it grew out of one.</p>
+    </div>
+  </div>
+
+  <div class="mermaid">
+flowchart LR
+  trigger([Ranger encounters<br/>a situation]) --> needsResp{Needs<br/>response<br/>now?}
+  needsResp -- yes --> inc[Create Incident<br/>state=new]
+  needsResp -- no --> writeup{Worth<br/>documenting?}
+  writeup -- yes --> fr[Create Field Report]
+  writeup -- no --> done([No record])
+  fr -. optionally attach .-> inc
+
+  guest([Guest arrives<br/>at Sanctuary]) --> visit[Create Visit]
+  visit -. optionally attach .-> inc
+
+  classDef act fill:#efeaff,stroke:#6f42c1
+  class inc,fr,visit act
+  </div>
+
+  <p class="small">Attachment is via nullable FKs: <code>FIELD_REPORT.INCIDENT_NUMBER</code> and <code>VISIT.INCIDENT_NUMBER</code> both point at <code>INCIDENT</code>. Multiple field reports or visits can attach to the same incident, but each report/visit attaches to at most one.</p>
+</section>
+
+<section id="incident-states">
+  <h2>Incident lifecycle</h2>
+  <p class="lede">The five states an Incident can be in, and the transitions you'll see in practice.</p>
+  <p><code>INCIDENT.STATE</code> is an enum: <code>new</code>, <code>on_hold</code>, <code>dispatched</code>, <code>on_scene</code>, <code>closed</code>. The schema enforces enum membership but <em>not</em> transition rules — the API will let you write to any state from any other. The diagram below shows the conventional flow:</p>
+
+  <div class="mermaid">
+stateDiagram-v2
+  [*] --> new : Ranger reports
+  new --> dispatched : Rangers assigned
+  new --> on_hold : Defer
+  new --> closed : False alarm / resolved on intake
+  dispatched --> on_scene : Rangers arrive
+  dispatched --> on_hold : Resources reassigned
+  dispatched --> closed : Resolved en route
+  on_scene --> closed : Situation resolved
+  on_scene --> on_hold : Pause &amp; reassess
+  on_hold --> new : Re-triage
+  on_hold --> dispatched : Resume
+  closed --> [*]
+  </div>
+
+  <h3>Priority</h3>
+  <p><code>INCIDENT.PRIORITY</code> is a <code>tinyint</code> with five conventional values. The schema doesn't enforce them — these are operator convention:</p>
+  <table>
+    <thead><tr><th>Value</th><th>Meaning</th><th>Typical use</th></tr></thead>
+    <tbody>
+      <tr><td><code>1</code></td><td>Highest</td><td>Life-safety, structure fire, missing child, unresponsive person</td></tr>
+      <tr><td><code>2</code></td><td>High</td><td>Medical, assault, vehicle accident, propane leak</td></tr>
+      <tr><td><code>3</code></td><td>Normal</td><td>Default for most reports — disputes, lost person, sound complaint</td></tr>
+      <tr><td><code>4</code></td><td>Low</td><td>Noise after quiet hours, minor MOOP, illegal vending</td></tr>
+      <tr><td><code>5</code></td><td>Lowest</td><td>Lost &amp; found, deferred follow-ups</td></tr>
+    </tbody>
+  </table>
+  <p class="small">The seed data exercises all five values across the example 2026 incidents.</p>
+</section>
+
+<section id="arch">
+  <h2>System architecture</h2>
+  <p class="lede">Same Go binary, different neighbors in dev vs prod.</p>
+  <div class="toggle-bar" data-toggle="arch-mode">
+    <button data-target="arch-prod" class="active">Production</button>
+    <button data-target="arch-dev">Dev (this demo)</button>
+  </div>
+
+  <div id="arch-prod" class="panel active">
+    <p>In production, IMS is a small service in a much larger Burning Man infrastructure footprint. The Clubhouse side is its own full app (PHP/Laravel API + JS frontend + DB), maintained by a different team. IMS only reads from Clubhouse's database.</p>
+    <div class="mermaid">
+graph LR
+  user[Ranger / Dispatcher<br/>browser]
+  cdn[Caddy or LB<br/>TLS + routing]
+  ims[Ranger IMS<br/>Go binary]
+  imsdb[(IMS DB<br/>MariaDB)]
+  s3[(S3<br/>attachments)]
+  chapi[Clubhouse API<br/>PHP / Laravel]
+  chweb[Clubhouse Web<br/>JS frontend]
+  chdb[(Clubhouse DB<br/>MariaDB)]
+  ranger((Personnel<br/>admins))
+
+  user -- HTTPS --> cdn
+  cdn --> ims
+  ims --> imsdb
+  ims -. optional .-> s3
+  ims -. read-only<br/>MySQL .-> chdb
+  ranger -- manages people --> chweb
+  chweb --> chapi
+  chapi --> chdb
+  user -. password reset link .-> chweb
+
+  classDef ext fill:#fff1d6,stroke:#b46a00,color:#000
+  classDef ims fill:#efeaff,stroke:#6f42c1,color:#000
+  class chapi,chweb,chdb,ranger ext
+  class ims,imsdb ims
+    </div>
+    <p class="small">Purple boxes are IMS-owned. Yellow boxes are external systems IMS doesn't control. The dashed edge to Clubhouse DB is the only runtime dependency between the two worlds.</p>
+  </div>
+
+  <div id="arch-dev" class="panel">
+    <p>In dev (the setup you're running now), the entire Clubhouse stack is replaced by a single MariaDB container seeded from <code>directory/fakeclubhousedb/seed.sql</code>. The IMS app doesn't know the difference — same schema, same MySQL protocol, just fewer rows.</p>
+    <div class="mermaid">
+graph LR
+  user[Your browser]
+  caddy[Caddy<br/>maybloom infra stack]
+  ims[ranger-ims-go<br/>air live-reload]
+  imsdb[(ranger-ims-db<br/>MariaDB container<br/>seeded)]
+  chdb[(ranger-clubhouse-db<br/>MariaDB container<br/>fake seed)]
+  local[(./ims-attachments<br/>local dir)]
+  src[(./src bind mount<br/>Go source)]
+
+  user -- HTTPS<br/>ranger-demo.maybloom.tech --> caddy
+  caddy -- maybloom-proxy<br/>docker net --> ims
+  ims -- ranger-ims-go_default --> imsdb
+  ims -- ranger-ims-go_default --> chdb
+  ims -. attachments .-> local
+  src -.-> ims
+
+  classDef ims fill:#efeaff,stroke:#6f42c1,color:#000
+  classDef dev fill:#ddf5e2,stroke:#1a7f37,color:#000
+  class ims ims
+  class imsdb,chdb,local,src dev
+    </div>
+    <p class="small">Green boxes are dev-only stand-ins. Two docker networks are involved: <code>ranger-ims-go_default</code> (so the app can reach both DB containers) and <code>maybloom-proxy</code> (so Caddy can reach the app).</p>
+  </div>
+</section>
+
+<section id="request-flow">
+  <h2>Request flow</h2>
+  <p class="lede">From the public domain to a rendered page.</p>
+  <div class="mermaid">
+sequenceDiagram
+  autonumber
+  participant U as Browser
+  participant C as Caddy
+  participant I as ranger-ims-go
+  participant DB as IMS DB
+  participant CH as Clubhouse DB
+
+  U->>C: GET https://ranger-demo.maybloom.tech/
+  C-->>U: 302 Location: /ims/app
+  U->>C: GET /ims/app
+  C->>I: HTTP /ims/app  (over docker net)
+  Note over I: middleware stack:<br/>panic-recover · log · auth · size-limit
+  I->>I: read JWT cookie, validate signature
+  I->>DB: load EVENT_ACCESS for current event
+  I->>CH: refresh user cache (if stale)
+  I->>DB: load incidents, places, ...
+  I->>I: render templ template
+  I-->>C: 200 HTML
+  C-->>U: 200 HTML  (gzip/zstd)
+  </div>
+  <p>Caddy handles only routing &amp; TLS — no business logic. All authentication and authorization happen inside the Go app. The Clubhouse DB is touched only when the in-process user cache is stale (default TTL = 5 min, set via <code>IMS_DIRECTORY_IN_MEMORY_CACHE_TTL</code>).</p>
+  <h3>Caddy route table</h3>
+  <table>
+    <thead><tr><th>Request path</th><th>What Caddy does</th></tr></thead>
+    <tbody>
+      <tr><td><code>/</code></td><td>302 redirect to <code>/ims/app</code> <span class="badge gray">site root only</span></td></tr>
+      <tr><td><code>/ims/app/*</code></td><td>Reverse-proxy to <code>ranger-ims-go:8080</code> (HTML pages)</td></tr>
+      <tr><td><code>/ims/api/*</code></td><td>Reverse-proxy to <code>ranger-ims-go:8080</code> (JSON API)</td></tr>
+      <tr><td><code>/ims/static/*</code></td><td>Reverse-proxy (served from embedded FS inside the Go binary)</td></tr>
+      <tr><td><code>/ims/auth/*</code></td><td>Reverse-proxy (login &amp; logout)</td></tr>
+    </tbody>
+  </table>
+</section>
+
+<section id="data-ims">
+  <h2>IMS database</h2>
+  <p class="lede">Everything IMS owns. Schema lives at <code>store/schema/current.sql</code>; sqlc generates Go bindings into <code>store/imsdb/</code>.</p>
+
+  <h3>Entity-relationship diagram</h3>
+  <div class="mermaid">
+erDiagram
+  EVENT ||--o{ EVENT_ACCESS : "grants access via"
+  EVENT ||--o{ INCIDENT : "contains"
+  EVENT ||--o{ FIELD_REPORT : "contains"
+  EVENT ||--o{ VISIT : "contains"
+  EVENT ||--o{ PLACE : "contains"
+  EVENT ||--o{ CONCENTRIC_STREET : "defines"
+  EVENT ||--o{ EVENT : "child of group"
+
+  INCIDENT ||--o{ INCIDENT__RANGER : "attached rangers"
+  INCIDENT ||--o{ INCIDENT__INCIDENT_TYPE : "tagged with"
+  INCIDENT ||--o{ INCIDENT__REPORT_ENTRY : "has entries"
+  INCIDENT ||--o{ INCIDENT__LINKED_INCIDENT : "links to"
+  INCIDENT_TYPE ||--o{ INCIDENT__INCIDENT_TYPE : ""
+
+  FIELD_REPORT ||--o{ FIELD_REPORT__REPORT_ENTRY : "has entries"
+  FIELD_REPORT }o--|| INCIDENT : "optionally attaches to"
+
+  VISIT ||--o{ VISIT__REPORT_ENTRY : "has entries"
+  VISIT ||--o{ VISIT__RANGER : "attached rangers"
+  VISIT }o--|| INCIDENT : "optionally attaches to"
+
+  INCIDENT__REPORT_ENTRY }o--|| REPORT_ENTRY : ""
+  FIELD_REPORT__REPORT_ENTRY }o--|| REPORT_ENTRY : ""
+  VISIT__REPORT_ENTRY }o--|| REPORT_ENTRY : ""
+
+  EVENT {
+    int ID PK
+    varchar NAME
+    bool IS_GROUP
+    int PARENT_GROUP FK
+  }
+  INCIDENT {
+    int EVENT FK
+    int NUMBER PK
+    double CREATED
+    tinyint PRIORITY
+    enum STATE "new on_hold dispatched on_scene closed"
+    double STARTED
+    double CLOSED
+    varchar SUMMARY
+    varchar LOCATION_NAME
+    varchar LOCATION_CONCENTRIC FK
+    tinyint LOCATION_RADIAL_HOUR
+    tinyint LOCATION_RADIAL_MINUTE
+  }
+  EVENT_ACCESS {
+    int ID PK
+    int EVENT FK
+    varchar EXPRESSION "person:/position:/team:/onduty:/*"
+    enum MODE "read write report write_visits"
+    enum VALIDITY "always onsite"
+    double EXPIRES
+  }
+  INCIDENT__RANGER {
+    int EVENT FK
+    int INCIDENT_NUMBER FK
+    varchar RANGER_HANDLE "from Clubhouse"
+    varchar ROLE
+  }
+  FIELD_REPORT {
+    int EVENT FK
+    int NUMBER PK
+    double CREATED
+    varchar SUMMARY
+    int INCIDENT_NUMBER FK
+  }
+  VISIT {
+    int EVENT FK
+    int NUMBER PK
+    double CREATED
+    int INCIDENT_NUMBER FK
+    varchar GUEST_PREFERRED_NAME
+    varchar GUEST_LEGAL_NAME
+    double ARRIVAL_TIME
+    double DEPARTURE_TIME
+  }
+  REPORT_ENTRY {
+    int ID PK
+    varchar AUTHOR "Clubhouse handle"
+    text TEXT
+    double CREATED
+    bool GENERATED
+    bool STRICKEN
+    varchar ATTACHED_FILE
+  }
+  PLACE {
+    int EVENT FK
+    int NUMBER PK
+    enum TYPE "camp art other mv"
+    varchar NAME
+    varchar LOCATION_STRING
+    json EXTERNAL_DATA
+  }
+  CONCENTRIC_STREET {
+    int EVENT FK
+    varchar ID PK
+    varchar NAME
+  }
+  INCIDENT_TYPE {
+    int ID PK
+    varchar NAME
+    varchar DESCRIPTION
+  }
+  ACTION_LOG {
+    bigint ID PK
+    double CREATED_AT
+    varchar ACTION_TYPE
+    varchar METHOD
+    varchar PATH
+    bigint USER_ID
+    varchar USER_NAME
+    bigint POSITION_ID
+    smallint HTTP_STATUS
+    bigint DURATION_MICROS
+  }
+  </div>
+
+  <h3>Table reference</h3>
+  <input type="text" class="field-search" data-target="ims-table" placeholder="Filter tables (type to search)…" />
+  <table id="ims-table">
+    <thead><tr><th>Table</th><th>Purpose</th></tr></thead>
+    <tbody>
+      <tr><td><code>EVENT</code></td><td>An incident-tracking scope, e.g. "2026" or the umbrella group "TestBRC". Events can nest (PARENT_GROUP self-reference) so access rules cascade.</td></tr>
+      <tr><td><code>EVENT_ACCESS</code></td><td>Per-event authorization rules. Each row grants a MODE (read/write/report/write_visits) to whoever matches its EXPRESSION (a callsign, position, team, on-duty position, or <code>*</code>).</td></tr>
+      <tr><td><code>INCIDENT</code></td><td>The core unit of work — a thing that happened. Composite PK <code>(EVENT, NUMBER)</code>. Carries state, priority, location, summary.</td></tr>
+      <tr><td><code>INCIDENT__RANGER</code></td><td>Many-to-many between incidents and ranger callsigns. RANGER_HANDLE is a string from Clubhouse, not an FK.</td></tr>
+      <tr><td><code>INCIDENT__INCIDENT_TYPE</code></td><td>Tags an incident with one or more types.</td></tr>
+      <tr><td><code>INCIDENT__LINKED_INCIDENT</code></td><td>Symmetric many-to-many for cross-referencing related incidents.</td></tr>
+      <tr><td><code>INCIDENT__REPORT_ENTRY</code></td><td>Join row attaching a free-text entry to an incident.</td></tr>
+      <tr><td><code>INCIDENT_TYPE</code></td><td>Catalog of incident categories (medical, MOOP, lost&amp;found, etc.). Managed via the admin UI.</td></tr>
+      <tr><td><code>FIELD_REPORT</code></td><td>A standalone narrative report. Can optionally be attached to an incident.</td></tr>
+      <tr><td><code>FIELD_REPORT__REPORT_ENTRY</code></td><td>Free-text entries on a field report.</td></tr>
+      <tr><td><code>VISIT</code></td><td>A Ranger-shelter style guest interaction — arrival, resources provided, departure, etc.</td></tr>
+      <tr><td><code>VISIT__RANGER</code></td><td>Rangers attached to a visit.</td></tr>
+      <tr><td><code>VISIT__REPORT_ENTRY</code></td><td>Free-text entries on a visit.</td></tr>
+      <tr><td><code>REPORT_ENTRY</code></td><td>The free-text + optional attachment unit. Reused across incidents, field reports, and visits — one row per write.</td></tr>
+      <tr><td><code>PLACE</code></td><td>Named locations within the event (camps, art, MVs, etc.). Recently renamed from "destinations".</td></tr>
+      <tr><td><code>CONCENTRIC_STREET</code></td><td>Per-event radial street names (Esplanade, Alfa, Bravo…). Used as a structured part of incident location.</td></tr>
+      <tr><td><code>ACTION_LOG</code></td><td>Append-only audit log of every authenticated API request: who, what, when, status, duration.</td></tr>
+      <tr><td><code>SCHEMA_INFO</code></td><td>One row holding the current schema version, used by the migration runner.</td></tr>
+    </tbody>
+  </table>
+</section>
+
+<section id="data-location">
+  <h2>Location grid</h2>
+  <p class="lede">How the <code>LOCATION_*</code> columns on <code>INCIDENT</code> encode a point in Black Rock City.</p>
+  <p>BRC is a partial-circle city. The Man is at the center; the streets fan out from him in a 2/3 horseshoe, with the open mouth pointing north toward the Temple and deep playa. Locations are encoded with three columns that together form a polar coordinate:</p>
+  <table>
+    <thead><tr><th>Column</th><th>Meaning</th><th>Example</th></tr></thead>
+    <tbody>
+      <tr><td><code>LOCATION_CONCENTRIC</code></td><td>Reference into <code>CONCENTRIC_STREET.ID</code> — the lettered ring (Esplanade, Alfa, Bravo, …)</td><td><code>"2"</code> (= Bravo, per the seed)</td></tr>
+      <tr><td><code>LOCATION_RADIAL_HOUR</code></td><td>Clock hour, 2 through 10</td><td><code>9</code></td></tr>
+      <tr><td><code>LOCATION_RADIAL_MINUTE</code></td><td>Clock minute (0, 15, 30, 45)</td><td><code>30</code></td></tr>
+      <tr><td><code>LOCATION_NAME</code></td><td>Optional human-readable name</td><td><code>"Camp Questionmark"</code></td></tr>
+      <tr><td><code>LOCATION_ADDRESS</code></td><td>Optional free-form address</td><td>—</td></tr>
+      <tr><td><code>LOCATION_DESCRIPTION</code></td><td>Optional further detail</td><td><code>"Near the main stage area"</code></td></tr>
+    </tbody>
+  </table>
+
+  <div class="brc-frame">
+    <svg class="brc-grid" viewBox="0 0 460 400" width="100%" preserveAspectRatio="xMidYMid meet" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Black Rock City street grid">
+      <defs>
+        <style>
+          .arc { fill: none; stroke: #6f42c1; stroke-width: 2; }
+          .spoke { stroke: #c0c4ca; stroke-width: 1; stroke-dasharray: 4 3; }
+          .street-label { font-size: 11px; fill: #6f42c1; font-weight: 600; font-family: -apple-system, BlinkMacSystemFont, sans-serif; }
+          .spoke-label { font-size: 10px; fill: #57606a; font-family: -apple-system, BlinkMacSystemFont, sans-serif; }
+          .man-dot { fill: #6f42c1; }
+          .man-label, .opening-label, .callout, .callout-sub { font-family: -apple-system, BlinkMacSystemFont, sans-serif; }
+          .man-label { font-size: 11px; fill: #1f2328; font-weight: 600; }
+          .opening-label { font-size: 11px; fill: #57606a; font-style: italic; }
+          .point { fill: #d97757; stroke: white; stroke-width: 2; }
+          .callout { font-size: 11px; fill: #1f2328; font-weight: 600; }
+          .callout-sub { font-size: 10px; fill: #57606a; }
+          .leader { stroke: #d97757; stroke-width: 1; fill: none; }
+        </style>
+      </defs>
+
+      <!-- City opening (top): label pointing to deep playa / Temple -->
+      <text class="opening-label" x="230" y="22" text-anchor="middle">↑ open playa &amp; Temple</text>
+
+      <!-- Radial spokes from center to past Charlie -->
+      <line class="spoke" x1="230" y1="180" x2="403.2" y2="80" />
+      <text class="spoke-label" x="409" y="78" text-anchor="start">2:00</text>
+      <line class="spoke" x1="230" y1="180" x2="403.2" y2="280" />
+      <text class="spoke-label" x="409" y="285" text-anchor="start">4:00</text>
+      <line class="spoke" x1="230" y1="180" x2="230" y2="378" />
+      <text class="spoke-label" x="234" y="394" text-anchor="start">6:00</text>
+      <line class="spoke" x1="230" y1="180" x2="56.8" y2="280" />
+      <text class="spoke-label" x="51" y="285" text-anchor="end">8:00</text>
+      <line class="spoke" x1="230" y1="180" x2="56.8" y2="80" />
+      <text class="spoke-label" x="51" y="78" text-anchor="end">10:00</text>
+
+      <!-- Concentric arcs (2:00 through 10:00 the long way, opening to the top/north) -->
+      <!-- Esplanade R=60: 2:00 endpt (281.96,150), 10:00 endpt (178.04,150) -->
+      <path class="arc" d="M 281.96 150 A 60 60 0 1 1 178.04 150" />
+      <text class="street-label" x="230" y="252" text-anchor="middle">Esplanade</text>
+
+      <!-- Alfa R=100: 2:00 (316.6,130), 10:00 (143.4,130) -->
+      <path class="arc" d="M 316.6 130 A 100 100 0 1 1 143.4 130" />
+      <text class="street-label" x="230" y="292" text-anchor="middle">Alfa</text>
+
+      <!-- Bravo R=140: 2:00 (351.24,110), 10:00 (108.76,110) -->
+      <path class="arc" d="M 351.24 110 A 140 140 0 1 1 108.76 110" />
+      <text class="street-label" x="230" y="332" text-anchor="middle">Bravo</text>
+
+      <!-- Charlie R=180: 2:00 (385.88,90), 10:00 (74.12,90) -->
+      <path class="arc" d="M 385.88 90 A 180 180 0 1 1 74.12 90" />
+      <text class="street-label" x="230" y="372" text-anchor="middle">Charlie</text>
+
+      <!-- The Man at center -->
+      <circle class="man-dot" cx="230" cy="180" r="5" />
+      <text class="man-label" x="230" y="172" text-anchor="middle">the Man</text>
+
+      <!-- Example point: Bravo &amp; 9:30
+           9:30 = angle 285° from top. sin(285°)=-0.966, cos(285°)=0.259.
+           At Bravo (R=140): (230 + 140*-0.966, 180 - 140*0.259) = (94.78, 143.74) -->
+      <line class="leader" x1="94.78" y1="143.74" x2="50" y2="120" />
+      <circle class="point" cx="94.78" cy="143.74" r="5" />
+      <text class="callout" x="48" y="116" text-anchor="end">Camp Questionmark</text>
+      <text class="callout-sub" x="48" y="130" text-anchor="end">Bravo &amp; 9:30</text>
+    </svg>
+  </div>
+
+  <h3>What the seeded incident would look like in JSON</h3>
+  <pre>{
+  "event": 1,
+  "number": 3,
+  "summary": "Lost participant near sound camps",
+  "location": {
+    "name": "Camp Questionmark",
+    "concentric": "2",
+    "radial_hour": 9,
+    "radial_minute": 30,
+    "description": "Near the main stage area"
+  },
+  ...
+}</pre>
+  <p class="small">The string <code>"2"</code> is the <code>CONCENTRIC_STREET.ID</code> for Bravo in event 2026. Each event has its own concentric-street naming (the schema lets the 2026 event use Alfa/Bravo/… while a different event uses Arcade/Ballyhoo/…), which is why <code>LOCATION_CONCENTRIC</code> is an FK against <code>(EVENT, ID)</code> not a global ID.</p>
+</section>
+
+<section id="data-clubhouse">
+  <h2>Clubhouse database</h2>
+  <p class="lede">External system, read-only from IMS's perspective. Schema lives at <code>directory/schema/current.sql</code>; IMS only reads a tiny subset of the full Clubhouse model.</p>
+
+  <h3>What IMS actually queries</h3>
+  <div class="mermaid">
+erDiagram
+  person ||--o{ person_position : "has"
+  position ||--o{ person_position : ""
+  person ||--o{ person_team : "is on"
+  team ||--o{ person_team : ""
+  person ||--o{ timesheet : "signs in"
+  position ||--o{ timesheet : ""
+
+  person {
+    bigint id PK
+    varchar callsign UK "= login handle"
+    varchar email UK "= login credential"
+    enum status "active inactive auditor prospective alpha..."
+    bool on_site
+    varchar password "argon2id hash"
+  }
+  position {
+    bigint id PK
+    varchar title "Driver Dancer ..."
+    bool all_rangers "filtered out if true"
+  }
+  team {
+    bigint id PK
+    varchar title
+    bool active "filtered: active only"
+  }
+  person_position {
+    bigint person_id FK
+    bigint position_id FK
+  }
+  person_team {
+    bigint person_id FK
+    bigint team_id FK
+  }
+  timesheet {
+    bigint id PK
+    bigint person_id FK
+    bigint position_id FK
+    datetime on_duty
+    datetime off_duty "null = currently on duty"
+  }
+  </div>
+
+  <div class="callout">
+    <strong>Less than 10% of Clubhouse's surface is used.</strong> The real <code>person</code> table has ~70 columns (addresses, phone, SMS verification, T-shirt sizes, emergency contacts, behavioral agreements, BPGUID, SFUID, …). IMS reads just <code>id, callsign, email, status, on_site, password</code> — and even <code>status</code> is filtered to a small whitelist.
+  </div>
+
+  <h3>Status whitelist (who can log in)</h3>
+  <p>IMS only loads persons whose Clubhouse <code>status</code> is one of:</p>
+  <pre>active &middot; inactive &middot; inactive extension &middot; auditor &middot; prospective &middot; alpha</pre>
+  <p>Excluded statuses (cannot log in, cannot be attached to incidents): <code>bonked</code>, <code>echelon</code>, <code>deceased</code>, <code>dismissed</code>, <code>past prospective</code>, <code>resigned</code>, <code>retired</code>, <code>suspended</code>, <code>uberbonked</code>.</p>
+
+  <h3>On-duty detection</h3>
+  <p>"On duty" means: a <code>timesheet</code> row exists for the person with <code>off_duty IS NULL</code> and <code>on_duty</code> within the last 60 days. The current on-duty position is one input into the <code>onduty:</code> matcher in event access rules.</p>
+</section>
+
+<section id="data-bridge">
+  <h2>Cross-system links</h2>
+  <p class="lede">How IMS rows reference Clubhouse rows even though the databases never see each other.</p>
+  <div class="mermaid">
+graph LR
+  subgraph ims [IMS DB]
+    inc[INCIDENT__RANGER<br/>RANGER_HANDLE]
+    re[REPORT_ENTRY<br/>AUTHOR]
+    al[ACTION_LOG<br/>USER_NAME<br/>POSITION_NAME]
+    ea[EVENT_ACCESS<br/>EXPRESSION 'person:Hardware']
+    vr[VISIT__RANGER<br/>RANGER_HANDLE]
+  end
+  subgraph ch [Clubhouse DB]
+    p[person.callsign]
+    pos[position.title]
+    t[team.title]
+  end
+  inc -.string match.-> p
+  re -.string match.-> p
+  al -.string match.-> p
+  ea -.string match.-> p
+  ea -.string match.-> pos
+  ea -.string match.-> t
+  vr -.string match.-> p
+
+  classDef ims fill:#efeaff,stroke:#6f42c1
+  classDef ch fill:#fff1d6,stroke:#b46a00
+  class inc,re,al,ea,vr ims
+  class p,pos,t ch
+  </div>
+  <p>All cross-references are <strong>string-by-name</strong>, not foreign keys. The IMS schema notes this explicitly — see <code>INCIDENT__RANGER</code>:</p>
+  <pre>-- FIXME: RANGER_HANDLE is an external non-primary key.
+-- Primary key is DMS Person ID.</pre>
+  <p>Practical implication: if someone changes their callsign in Clubhouse, references in old IMS rows do not auto-update. They keep pointing at the old name string. That's acceptable for an audit-log style system where you want to know what was true at the time of the entry.</p>
+</section>
+
+<section id="auth">
+  <h2>Login flow</h2>
+  <p class="lede">How an HTTP session becomes a known user.</p>
+  <div class="mermaid">
+sequenceDiagram
+  autonumber
+  participant U as Browser
+  participant W as IMS web<br/>(/ims/auth)
+  participant US as UserStore<br/>(in-proc cache)
+  participant CH as Clubhouse DB
+  participant K as JWT signer
+
+  U->>W: POST /ims/api/auth { email, password }
+  W->>US: lookup user by email
+  alt cache stale
+    US->>CH: SELECT id, callsign, email, status, on_site, password FROM person …
+    US->>CH: SELECT positions, teams, timesheet …
+    CH-->>US: rows
+    US-->>US: rebuild cache (TTL = 5 min default)
+  end
+  US-->>W: User { handle, email, status, on_site, password-hash, positions, teams, on-duty }
+  W->>W: argon2id verify(submitted, stored hash)
+  alt verified
+    W->>K: mint access + refresh tokens<br/>(carry handle, positions, teams, on-site, on-duty)
+    K-->>W: signed JWTs
+    W-->>U: 200 + Set-Cookie
+  else mismatch
+    W-->>U: 401
+  end
+  </div>
+  <p>Three things to note about this flow:</p>
+  <ul>
+    <li><strong>Login uses email, not callsign.</strong> The callsign is used everywhere else, but the login form expects an email address.</li>
+    <li><strong>Password hashes are stored on the Clubhouse side</strong> using argon2id with shared parameters (<code>lib/argon2id.ClubhouseParams</code>). IMS never writes them.</li>
+    <li><strong>Tokens snapshot Clubhouse state at login.</strong> Positions, team membership, on-duty status, and on-site flag are baked into the JWT claims. They don't re-query Clubhouse on every request. Refreshing the token also refreshes those claims.</li>
+  </ul>
+</section>
+
+<section id="authz">
+  <h2>Authorization model</h2>
+  <p class="lede">Who can do what, decided per request.</p>
+  <p>Authorization is layered. Global roles are coarse-grained and come from config. Event-level roles are fine-grained and come from rows in <code>EVENT_ACCESS</code>.</p>
+
+  <h3>Global roles</h3>
+  <table>
+    <thead><tr><th>Role</th><th>Granted by</th><th>Gets</th></tr></thead>
+    <tbody>
+      <tr><td><code>AnyAuthenticatedUser</code></td><td>Successful login</td><td>List events · read incident types · read personnel · read streets</td></tr>
+      <tr><td><code>Administrator</code></td><td>Callsign appears in <code>IMS_ADMINS</code> env var</td><td>Administer events · streets · incident types · places · debugging</td></tr>
+    </tbody>
+  </table>
+
+  <h3>Event-level roles (from EVENT_ACCESS.MODE)</h3>
+  <table>
+    <thead><tr><th>Role</th><th>Mode value</th><th>Can do</th></tr></thead>
+    <tbody>
+      <tr><td><code>EventReader</code></td><td><code>read</code></td><td>Read incidents and all field reports for the event</td></tr>
+      <tr><td><code>EventWriter</code></td><td><code>write</code></td><td>Full read/write on incidents and field reports</td></tr>
+      <tr><td><code>EventReporter</code></td><td><code>report</code></td><td>Write own field reports only (no incident access)</td></tr>
+      <tr><td><code>EventVisitWriter</code></td><td><code>write_visits</code></td><td>Read/write visits only</td></tr>
+    </tbody>
+  </table>
+
+  <h3>How a user matches an access rule</h3>
+  <p>For each <code>EVENT_ACCESS</code> row of a given event, IMS checks whether the user matches the <code>EXPRESSION</code>. The matchers are mutually exclusive prefixes:</p>
+  <table>
+    <thead><tr><th>Expression</th><th>Matches if…</th></tr></thead>
+    <tbody>
+      <tr><td><code>*</code></td><td>Always (any authenticated user)</td></tr>
+      <tr><td><code>person:Hardware</code></td><td>User's callsign equals <code>Hardware</code> (case-sensitive)</td></tr>
+      <tr><td><code>position:Dispatcher</code></td><td>User has the <code>Dispatcher</code> position in Clubhouse</td></tr>
+      <tr><td><code>team:Driving Team</code></td><td>User is a member of that team</td></tr>
+      <tr><td><code>onduty:Dispatcher</code></td><td>User is currently signed in as Dispatcher (open timesheet row)</td></tr>
+    </tbody>
+  </table>
+  <p>Additionally, <code>VALIDITY = 'onsite'</code> rules only apply when <code>person.on_site = true</code> at login time. <code>EXPIRES</code> can render a rule inert past a timestamp.</p>
+
+  <div class="mermaid">
+flowchart TD
+  start([Request arrives]) --> authn{JWT valid?}
+  authn -- no --> deny[401]
+  authn -- yes --> claims[Extract claims:<br/>handle, positions, teams,<br/>onsite, onDutyPosition]
+  claims --> needsEvent{Event-scoped<br/>endpoint?}
+  needsEvent -- no --> globals[Compute global perms]
+  needsEvent -- yes --> load[Load EVENT_ACCESS<br/>for event + parent group]
+  load --> matchExpr[For each row,<br/>check EXPRESSION + VALIDITY]
+  matchExpr --> aggregate[OR perms together]
+  aggregate --> globals
+  globals --> adminCheck{handle in<br/>IMS_ADMINS?}
+  adminCheck -- yes --> orAdmin[+ Administrator perms]
+  adminCheck -- no --> check
+  orAdmin --> check{Required<br/>perm satisfied?}
+  check -- yes --> ok[Handle request]
+  check -- no --> forbidden[403]
+  </div>
+
+  <div class="callout warn">
+    <strong>For your demo:</strong> all <code>EVENT_ACCESS</code> rows in <code>store/fakeimsdb/seed.sql</code> use <code>EXPRESSION = '*'</code>, so every logged-in user gets the same event permissions. Differentiation is purely "Miguel and ShadowDancer are admins (in <code>IMS_ADMINS</code>); TeamMember is not". To showcase the matcher system, rewrite those access rows with scoped expressions like <code>person:Miguel</code>, <code>position:Dancer</code>, etc.
+  </div>
+</section>
+
+<section id="api">
+  <h2>API endpoints</h2>
+  <p class="lede">The full JSON API surface, grouped by resource. Source of truth: <code>api/mux.go</code>.</p>
+  <p>All endpoints live under <code>/ims/api/</code> and require a valid JWT (in cookie or <code>Authorization: Bearer</code>) except the login POST. Event-scoped endpoints additionally require the matching permission per <a href="#authz">the authorization model</a>.</p>
+
+  <input type="text" class="field-search" data-target="api-table" placeholder="Filter endpoints (path, resource, or method)…" />
+  <table id="api-table">
+    <thead><tr><th>Method</th><th>Path</th><th>Purpose</th></tr></thead>
+    <tbody>
+      <tr><td colspan="3" class="small" style="background: var(--accent-soft); font-weight: 600;">Authentication</td></tr>
+      <tr><td><code>POST</code></td><td><code>/ims/api/auth</code></td><td>Log in with email + password; returns access &amp; refresh tokens</td></tr>
+      <tr><td><code>GET</code></td><td><code>/ims/api/auth</code></td><td>Check current session / fetch claims</td></tr>
+      <tr><td><code>POST</code></td><td><code>/ims/api/auth/refresh</code></td><td>Exchange refresh token for a new access token (snapshot Clubhouse state again)</td></tr>
+
+      <tr><td colspan="3" class="small" style="background: var(--accent-soft); font-weight: 600;">Directory (read-only personnel feed)</td></tr>
+      <tr><td><code>GET</code></td><td><code>/ims/api/personnel</code></td><td>List of users IMS can see, with positions/teams/on-duty/on-site state</td></tr>
+
+      <tr><td colspan="3" class="small" style="background: var(--accent-soft); font-weight: 600;">Events &amp; per-event access</td></tr>
+      <tr><td><code>GET</code></td><td><code>/ims/api/events</code></td><td>List events (filtered to those the user has any access to)</td></tr>
+      <tr><td><code>POST</code></td><td><code>/ims/api/events</code></td><td>Create or update an event <span class="badge gray">admin</span></td></tr>
+      <tr><td><code>GET</code></td><td><code>/ims/api/access</code></td><td>List <code>EVENT_ACCESS</code> rules</td></tr>
+      <tr><td><code>POST</code></td><td><code>/ims/api/access</code></td><td>Replace access rules for an event <span class="badge gray">admin</span></td></tr>
+
+      <tr><td colspan="3" class="small" style="background: var(--accent-soft); font-weight: 600;">Catalog (global)</td></tr>
+      <tr><td><code>GET</code></td><td><code>/ims/api/incident_types</code></td><td>List incident-type catalog</td></tr>
+      <tr><td><code>POST</code></td><td><code>/ims/api/incident_types</code></td><td>Create / hide / update incident types <span class="badge gray">admin</span></td></tr>
+      <tr><td><code>GET</code></td><td><code>/ims/api/streets</code></td><td>Concentric streets, grouped by event</td></tr>
+      <tr><td><code>POST</code></td><td><code>/ims/api/streets</code></td><td>Update concentric streets for an event <span class="badge gray">admin</span></td></tr>
+
+      <tr><td colspan="3" class="small" style="background: var(--accent-soft); font-weight: 600;">Places (per-event)</td></tr>
+      <tr><td><code>GET</code></td><td><code>/ims/api/events/{eventName}/places</code></td><td>List places (camps, art, MVs, etc.) for the event</td></tr>
+      <tr><td><code>POST</code></td><td><code>/ims/api/events/{eventName}/places</code></td><td>Create / replace places <span class="badge gray">admin</span></td></tr>
+
+      <tr><td colspan="3" class="small" style="background: var(--accent-soft); font-weight: 600;">Incidents</td></tr>
+      <tr><td><code>GET</code></td><td><code>/ims/api/events/{eventName}/incidents</code></td><td>List incidents for the event <span class="badge gray">EventReader</span></td></tr>
+      <tr><td><code>POST</code></td><td><code>/ims/api/events/{eventName}/incidents</code></td><td>Create incident <span class="badge gray">EventWriter</span></td></tr>
+      <tr><td><code>GET</code></td><td><code>/ims/api/events/{eventName}/incidents/{number}</code></td><td>Fetch a single incident with its entries</td></tr>
+      <tr><td><code>POST</code></td><td><code>/ims/api/events/{eventName}/incidents/{number}</code></td><td>Update incident fields (state, priority, location, summary, …)</td></tr>
+      <tr><td><code>POST</code></td><td><code>/ims/api/events/{eventName}/incidents/{number}/rangers/{ranger}</code></td><td>Attach a Ranger callsign to the incident</td></tr>
+      <tr><td><code>DELETE</code></td><td><code>/ims/api/events/{eventName}/incidents/{number}/rangers/{ranger}</code></td><td>Remove a Ranger from the incident</td></tr>
+      <tr><td><code>POST</code></td><td><code>/ims/api/events/{eventName}/incidents/{number}/report_entries/{id}</code></td><td>Add or strike a report entry on the incident</td></tr>
+      <tr><td><code>POST</code></td><td><code>/ims/api/events/{eventName}/incidents/{number}/attachments</code></td><td>Upload an attachment for the incident</td></tr>
+      <tr><td><code>GET</code></td><td><code>/ims/api/events/{eventName}/incidents/{number}/attachments/{n}</code></td><td>Download an attachment</td></tr>
+
+      <tr><td colspan="3" class="small" style="background: var(--accent-soft); font-weight: 600;">Field reports</td></tr>
+      <tr><td><code>GET</code></td><td><code>/ims/api/events/{eventName}/field_reports</code></td><td>List field reports (filtered by EventReader vs EventReporter)</td></tr>
+      <tr><td><code>POST</code></td><td><code>/ims/api/events/{eventName}/field_reports</code></td><td>Create a field report</td></tr>
+      <tr><td><code>GET</code></td><td><code>/ims/api/events/{eventName}/field_reports/{n}</code></td><td>Fetch a field report</td></tr>
+      <tr><td><code>POST</code></td><td><code>/ims/api/events/{eventName}/field_reports/{n}</code></td><td>Update; can also attach to an incident</td></tr>
+      <tr><td><code>POST</code></td><td><code>/ims/api/events/{eventName}/field_reports/{n}/report_entries/{id}</code></td><td>Add or strike an entry on the report</td></tr>
+      <tr><td><code>POST</code></td><td><code>/ims/api/events/{eventName}/field_reports/{n}/attachments</code></td><td>Upload an attachment</td></tr>
+      <tr><td><code>GET</code></td><td><code>/ims/api/events/{eventName}/field_reports/{n}/attachments/{a}</code></td><td>Download an attachment</td></tr>
+
+      <tr><td colspan="3" class="small" style="background: var(--accent-soft); font-weight: 600;">Visits</td></tr>
+      <tr><td><code>GET</code></td><td><code>/ims/api/events/{eventName}/visits</code></td><td>List visits <span class="badge gray">EventVisitWriter / EventReader</span></td></tr>
+      <tr><td><code>POST</code></td><td><code>/ims/api/events/{eventName}/visits</code></td><td>Create a visit</td></tr>
+      <tr><td><code>GET</code></td><td><code>/ims/api/events/{eventName}/visits/{n}</code></td><td>Fetch a visit</td></tr>
+      <tr><td><code>POST</code></td><td><code>/ims/api/events/{eventName}/visits/{n}</code></td><td>Update visit fields (arrival, departure, resources, attach to incident, …)</td></tr>
+      <tr><td><code>POST</code></td><td><code>/ims/api/events/{eventName}/visits/{n}/rangers/{ranger}</code></td><td>Attach a Ranger to a visit</td></tr>
+      <tr><td><code>DELETE</code></td><td><code>/ims/api/events/{eventName}/visits/{n}/rangers/{ranger}</code></td><td>Detach a Ranger from a visit</td></tr>
+      <tr><td><code>POST</code></td><td><code>/ims/api/events/{eventName}/visits/{n}/report_entries/{id}</code></td><td>Add or strike an entry on the visit</td></tr>
+      <tr><td><code>POST</code></td><td><code>/ims/api/events/{eventName}/visits/{n}/attachments</code></td><td>Upload an attachment</td></tr>
+      <tr><td><code>GET</code></td><td><code>/ims/api/events/{eventName}/visits/{n}/attachments/{a}</code></td><td>Download an attachment</td></tr>
+
+      <tr><td colspan="3" class="small" style="background: var(--accent-soft); font-weight: 600;">Live updates &amp; ops</td></tr>
+      <tr><td><code>GET</code></td><td><code>/ims/api/eventsource</code></td><td>Server-Sent Events stream for live updates (push new/changed incidents to dispatcher screens)</td></tr>
+      <tr><td><code>GET</code></td><td><code>/ims/api/actionlogs</code></td><td>Audit log of authenticated requests <span class="badge gray">admin</span></td></tr>
+      <tr><td><code>GET</code></td><td><code>/ims/api/debug/buildinfo</code></td><td>Build SHA, Go version, etc. <span class="badge gray">admin</span></td></tr>
+      <tr><td><code>GET</code></td><td><code>/ims/api/debug/runtimemetrics</code></td><td>Go runtime metrics (memory, goroutines, GC) <span class="badge gray">admin</span></td></tr>
+      <tr><td><code>POST</code></td><td><code>/ims/api/debug/gc</code></td><td>Force a garbage collection <span class="badge gray">admin</span></td></tr>
+    </tbody>
+  </table>
+
+  <p class="small">Permission badges are illustrative — the source-of-truth check happens inside each handler via <code>lib/authz</code>. For event-scoped endpoints, "EventReader" / "EventWriter" / "EventReporter" / "EventVisitWriter" correspond to the modes in <code>EVENT_ACCESS.MODE</code>. Endpoints marked <span class="badge gray">admin</span> require the user's callsign to be in <code>IMS_ADMINS</code>.</p>
+</section>
+
+<section id="devprod">
+  <h2>Dev vs production</h2>
+  <p class="lede">A side-by-side of the parts that change.</p>
+  <table>
+    <thead><tr><th>Aspect</th><th>Dev (this demo)</th><th>Production</th></tr></thead>
+    <tbody>
+      <tr><td>Build &amp; reload</td><td><code>air</code> live-reload from bind-mounted source</td><td>Pre-built static binary in a slim image</td></tr>
+      <tr><td>Deployment shape</td><td><code>docker-compose.dev.yml</code> with three services</td><td>One IMS instance + shared MariaDB + real Clubhouse stack</td></tr>
+      <tr><td>Clubhouse directory</td><td>MariaDB container seeded from <code>directory/fakeclubhousedb/seed.sql</code></td><td>Live Clubhouse DB managed by a separate Rails/Laravel app</td></tr>
+      <tr><td>Personnel lifecycle</td><td>Edit SQL or re-seed (no UI)</td><td>Managed in the real Clubhouse (signup, training, callsign approval, status changes)</td></tr>
+      <tr><td>Password resets</td><td>None — edit <code>password</code> column directly</td><td>Clubhouse-side; IMS login page links out for reset</td></tr>
+      <tr><td>Admins</td><td><code>IMS_ADMINS=Miguel,ShadowDancer</code> in <code>.env</code></td><td>Same mechanism, real callsigns</td></tr>
+      <tr><td>Attachments</td><td>Local filesystem (<code>./ims-attachments</code>)</td><td>S3 bucket, signed URLs</td></tr>
+      <tr><td>JWT secret</td><td>Random hex in <code>.env</code> (or regenerated each restart)</td><td>Long-lived secret in secrets manager</td></tr>
+      <tr><td>TLS</td><td>Caddy auto-cert via Let's Encrypt</td><td>Same pattern in our setup; ranger-side may differ in production</td></tr>
+      <tr><td>Deployment env name</td><td><code>IMS_DEPLOYMENT=dev</code> (default)</td><td><code>staging</code> · <code>training</code> · <code>production</code> (each triggers stricter config validation)</td></tr>
+    </tbody>
+  </table>
+  <p>The IMS Go binary itself is identical across these. All differences are configuration or what's plugged into its DB-shaped slots.</p>
+</section>
+
+<section id="cheatsheet">
+  <h2>Cheat sheet</h2>
+  <p class="lede">Quick references you'll actually look up later.</p>
+
+  <h3>This demo's user accounts</h3>
+  <table>
+    <thead><tr><th>Callsign</th><th>Email (login)</th><th>Password</th><th>Admin?</th><th>Affiliation</th></tr></thead>
+    <tbody>
+      <tr><td><code>Miguel</code></td><td>miguel@example.com</td><td><code>Miguel</code></td><td>yes</td><td>—</td></tr>
+      <tr><td><code>ShadowDancer</code></td><td>shadowdancer@example.com</td><td><code>ShadowDancer</code></td><td>yes</td><td>position: Dancer (on-duty)</td></tr>
+      <tr><td><code>TeamMember</code></td><td>teammember@example.com</td><td><code>TeamMember</code></td><td>no</td><td>team: Driving Team</td></tr>
+    </tbody>
+  </table>
+
+  <h3>Key environment variables</h3>
+  <table>
+    <thead><tr><th>Name</th><th>Effect</th></tr></thead>
+    <tbody>
+      <tr><td><code>IMS_HOSTNAME</code> / <code>IMS_PORT</code></td><td>Bind address inside the container (set in compose)</td></tr>
+      <tr><td><code>IMS_DEPLOYMENT</code></td><td><code>dev</code> · <code>training</code> · <code>staging</code> · <code>production</code> — non-dev enforces real DBs</td></tr>
+      <tr><td><code>IMS_DIRECTORY</code></td><td><code>clubhousedb</code> (default) or <code>noop</code></td></tr>
+      <tr><td><code>IMS_DB_*</code></td><td>IMS database connection (host, port, user, password, database)</td></tr>
+      <tr><td><code>IMS_DMS_*</code></td><td>Clubhouse database connection — note the historic "DMS" prefix</td></tr>
+      <tr><td><code>IMS_ADMINS</code></td><td>Comma-separated list of callsigns that get Administrator role</td></tr>
+      <tr><td><code>IMS_JWT_SECRET</code></td><td>Hex string used to sign JWTs. Unset = regenerated at startup (login lost on restart)</td></tr>
+      <tr><td><code>IMS_ATTACHMENTS_STORE</code></td><td><code>local</code> · <code>s3</code> · empty (none)</td></tr>
+      <tr><td><code>IMS_TOKEN_LIFETIME</code></td><td>Refresh token lifetime in seconds (default 7 days)</td></tr>
+    </tbody>
+  </table>
+
+  <h3>Useful URL paths under <code>ranger-demo.maybloom.tech</code></h3>
+  <table>
+    <thead><tr><th>Path</th><th>What it does</th></tr></thead>
+    <tbody>
+      <tr><td><code>/</code></td><td>Redirects to <code>/ims/app</code></td></tr>
+      <tr><td><code>/ims/app</code></td><td>Main app entry — list of events</td></tr>
+      <tr><td><code>/ims/app/events/2026/incidents</code></td><td>Incident dashboard for an event</td></tr>
+      <tr><td><code>/ims/app/admin</code></td><td>Admin landing</td></tr>
+      <tr><td><code>/ims/app/admin/events</code></td><td>Event &amp; access rule management</td></tr>
+      <tr><td><code>/ims/app/admin/streets</code></td><td>Concentric street management per event</td></tr>
+      <tr><td><code>/ims/app/admin/types</code></td><td>Incident type catalog</td></tr>
+      <tr><td><code>/ims/app/admin/places</code></td><td>Places (camps, art, etc.)</td></tr>
+      <tr><td><code>/ims/app/admin/actionlogs</code></td><td>Audit trail viewer</td></tr>
+      <tr><td><code>/ims/app/admin/debug</code></td><td>Debug / diagnostic info</td></tr>
+      <tr><td><code>/ims/auth/login</code></td><td>Login form</td></tr>
+      <tr><td><code>/ims/auth/logout</code></td><td>Logout</td></tr>
+      <tr><td><code>/ims/api/*</code></td><td>JSON API surface</td></tr>
+    </tbody>
+  </table>
+
+  <h3>Common dev tasks</h3>
+  <table>
+    <thead><tr><th>Task</th><th>Command</th></tr></thead>
+    <tbody>
+      <tr><td>Bring stack up</td><td><code>docker compose -f docker-compose.dev.yml up -d</code></td></tr>
+      <tr><td>Tail logs</td><td><code>docker logs -f ranger-ims-go</code></td></tr>
+      <tr><td>Reseed Clubhouse DB</td><td>Stop stack · <code>rm -rf .docker/mysql/data-clubhouse</code> · up</td></tr>
+      <tr><td>Hash a password</td><td><code>docker run --rm -v $PWD:/src -w /src --entrypoint sh ims-go-air -c 'go run . hash_password --password XYZ'</code></td></tr>
+      <tr><td>Open a SQL shell in IMS DB</td><td><code>docker exec -it ranger-ims-db mariadb -uims -pims ims</code></td></tr>
+      <tr><td>Open a SQL shell in Clubhouse DB</td><td><code>docker exec -it ranger-clubhouse-db mariadb -uclubhouseuser -pclubhousepassword rangers</code></td></tr>
+      <tr><td>Reload Caddy after Caddyfile edit</td><td><code>docker compose up -d --force-recreate --no-deps caddy</code> <span class="badge warn">recreate</span></td></tr>
+    </tbody>
+  </table>
+  <p class="small">Note on the last row: Caddy's bind-mounted Caddyfile binds a specific inode at container creation. Atomic file editors (vim, IDE save) change the inode, so the container keeps reading the old file. Recreating the container re-resolves the mount.</p>
+</section>
+
+</main>
+
+<script src="https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.min.js"></script>
+<script>
+  mermaid.initialize({
+    startOnLoad: false, // we render manually so hidden panels can render on demand
+    theme: 'default',
+    themeVariables: {
+      primaryColor: '#efeaff',
+      primaryBorderColor: '#6f42c1',
+      primaryTextColor: '#1f2328',
+      lineColor: '#57606a',
+      fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif',
+      fontSize: '13px'
+    },
+    er: { layoutDirection: 'TB' },
+    flowchart: { useMaxWidth: true, htmlLabels: true, curve: 'basis' },
+    sequence: { useMaxWidth: true, mirrorActors: false, actorMargin: 60 }
+  });
+
+  // Capture original mermaid source + wrap each diagram so we can attach a toolbar.
+  // Must run before mermaid touches the elements.
+  document.querySelectorAll('.mermaid').forEach(el => {
+    el.dataset.source = el.textContent.trim();
+    const wrap = document.createElement('div');
+    wrap.className = 'mermaid-wrap';
+    el.parentNode.insertBefore(wrap, el);
+    wrap.appendChild(el);
+  });
+
+  function addZoomToolbar(diagramEl) {
+    const wrap = diagramEl.closest('.mermaid-wrap');
+    const svg = diagramEl.querySelector('svg');
+    if (!wrap || !svg) return;
+    if (wrap.querySelector('.mermaid-toolbar')) return;
+
+    const vb = svg.viewBox && svg.viewBox.baseVal;
+    const iw = (vb && vb.width) || parseFloat(svg.getAttribute('width')) || 800;
+    const ih = (vb && vb.height) || parseFloat(svg.getAttribute('height')) || 400;
+    // Capture mermaid's initial fit-to-container width BEFORE we override styles.
+    // 100% means "this fit width", so zooming is relative to a sensible baseline.
+    const fitW = svg.clientWidth || iw;
+    const fitH = (fitW / iw) * ih;
+    let scale = 1;
+
+    const toolbar = document.createElement('div');
+    toolbar.className = 'mermaid-toolbar';
+    toolbar.innerHTML =
+      '<button type="button" data-act="out" title="Zoom out" aria-label="Zoom out">−</button>' +
+      '<span class="zoom-label">100%</span>' +
+      '<button type="button" data-act="in" title="Zoom in" aria-label="Zoom in">+</button>' +
+      '<button type="button" data-act="reset" title="Reset to fit" aria-label="Reset to fit">↺</button>';
+    wrap.appendChild(toolbar);
+    const label = toolbar.querySelector('.zoom-label');
+
+    function apply() {
+      svg.style.width = (fitW * scale) + 'px';
+      svg.style.height = (fitH * scale) + 'px';
+      svg.style.maxWidth = 'none';
+      label.textContent = Math.round(scale * 100) + '%';
+    }
+
+    toolbar.addEventListener('click', e => {
+      const btn = e.target.closest('button[data-act]');
+      if (!btn) return;
+      const act = btn.dataset.act;
+      if (act === 'in') scale = Math.min(scale * 1.25, 4);
+      else if (act === 'out') scale = Math.max(scale / 1.25, 0.4);
+      else if (act === 'reset') scale = 1;
+      apply();
+    });
+
+    apply();
+  }
+
+  async function renderDiagrams(container) {
+    container = container || document;
+    const pending = Array.from(container.querySelectorAll('.mermaid:not([data-rendered])'))
+      .filter(el => {
+        // Skip if inside an inactive panel — we'll render on toggle.
+        const panel = el.closest('.panel');
+        return !panel || panel.classList.contains('active');
+      });
+    if (pending.length === 0) return;
+    // Reset source in case mermaid touched the element.
+    for (const el of pending) {
+      el.textContent = el.dataset.source;
+      el.removeAttribute('data-processed');
+    }
+    try {
+      await mermaid.run({ nodes: pending });
+    } catch (e) {
+      console.error('mermaid render error', e);
+    }
+    pending.forEach(el => {
+      el.setAttribute('data-rendered', 'true');
+      addZoomToolbar(el);
+    });
+  }
+
+  // Initial render: visible diagrams only.
+  renderDiagrams();
+
+  // Architecture mode toggle (prod/dev)
+  document.querySelectorAll('.toggle-bar').forEach(bar => {
+    bar.addEventListener('click', e => {
+      const btn = e.target.closest('button[data-target]');
+      if (!btn) return;
+      bar.querySelectorAll('button').forEach(b => b.classList.remove('active'));
+      btn.classList.add('active');
+      const targetId = btn.dataset.target;
+      const target = document.getElementById(targetId);
+      if (!target) return;
+      target.parentElement.querySelectorAll(':scope > .panel').forEach(p => p.classList.remove('active'));
+      target.classList.add('active');
+      // Render diagrams in the newly visible panel, if any are still pending.
+      renderDiagrams(target);
+    });
+  });
+
+  // Sidebar active-on-scroll
+  const sections = document.querySelectorAll('section[id]');
+  const navLinks = document.querySelectorAll('nav.side a');
+  function updateActive() {
+    let current = '';
+    sections.forEach(s => {
+      const rect = s.getBoundingClientRect();
+      if (rect.top <= 120) current = s.id;
+    });
+    navLinks.forEach(a => a.classList.toggle('active', a.getAttribute('href') === '#' + current));
+  }
+  window.addEventListener('scroll', updateActive, { passive: true });
+  updateActive();
+
+  // Mobile nav toggle (hamburger drawer)
+  const navToggle = document.querySelector('.nav-toggle');
+  const navBackdrop = document.querySelector('.nav-backdrop');
+  function setNavOpen(open) {
+    document.body.classList.toggle('nav-open', open);
+    if (navToggle) navToggle.setAttribute('aria-expanded', String(open));
+  }
+  if (navToggle) {
+    navToggle.addEventListener('click', () => {
+      setNavOpen(!document.body.classList.contains('nav-open'));
+    });
+  }
+  if (navBackdrop) navBackdrop.addEventListener('click', () => setNavOpen(false));
+  // Tap a nav link → close the drawer (mobile UX)
+  document.querySelectorAll('nav.side a').forEach(a => {
+    a.addEventListener('click', () => setNavOpen(false));
+  });
+  // Escape key also closes
+  document.addEventListener('keydown', e => {
+    if (e.key === 'Escape') setNavOpen(false);
+  });
+
+  // Table filter for the IMS table reference
+  document.querySelectorAll('input.field-search').forEach(input => {
+    const tableId = input.dataset.target;
+    const table = document.getElementById(tableId);
+    if (!table) return;
+    input.addEventListener('input', () => {
+      const q = input.value.trim().toLowerCase();
+      table.querySelectorAll('tbody tr').forEach(row => {
+        row.style.display = !q || row.textContent.toLowerCase().includes(q) ? '' : 'none';
+      });
+    });
+  });
+</script>
+
+</body>
+</html>

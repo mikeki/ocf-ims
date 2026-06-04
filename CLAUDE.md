@@ -162,6 +162,8 @@ Key configuration concepts:
 - **DB store types**: `MariaDB` (persistent storage) or `noop` (no-op for testing only)
 - **Attachments stores**: `local` (filesystem) or `s3` (AWS S3)
 
+To add demo/test users to the fake directory, use the `add-demo-user` repo skill at `.claude/skills/add-demo-user/SKILL.md` — it covers password hashing, the seed file edit, applying inserts to a live `clubhouse-db` container, and the 5-min user-cache TTL.
+
 ### API Structure
 
 The API (`api/` package) uses a custom middleware adapter pattern:

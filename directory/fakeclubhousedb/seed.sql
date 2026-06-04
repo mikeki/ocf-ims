@@ -9,14 +9,13 @@ alter table `person`
 ;
 
 insert into `person`
-(`id`,  `callsign`, `email`,                `password`,                     `status`,   `on_site`)
+(`id`,  `callsign`,         `email`,                              `password`,                     `status`,   `on_site`)
 values
--- All of these users just have passwords equal to their case-sensitive callsigns
-(600,   "Hardware", "hardware@example.com", "$argon2id$v=19$m=8192,t=4,p=1$pGcXPQ1tP2Lz54c+R+8jgg$FZryn3Gttrxi7GoZXxyG/rGl/xNjOEjjDGeboEGMph8", "active",   true),
-(601,   "Loosy",    "loosy@example.com",    "$argon2id$v=19$m=8192,t=4,p=1$qGMBHtiPMl0MtCQncHhNdA$f1LbS0MIcIYjfiisvxAyEJC21lGVMBB11Yr9ctLP7aI", "active",   true),
-(602,   "Doggy",    "doggy@example.com",    "$argon2id$v=19$m=8192,t=4,p=1$L1EBUN9twap4arU4qurBdA$ML6fWDryXTmbyiAfzIQMFUoHYbJoOhwh58Oq3ffxeWA", "active",   true),
-(603,   "Runner",   "runner@example.com",   "$argon2id$v=19$m=8192,t=4,p=1$YY+aGB2MTKrnHFEQqdfdNg$Q9yByHhJ1GpOW+fUWePv+u76wE9fCGXSONkawTiyJEs", "active",   true),
-(604,   "TheMan",   "theman@example.com",   "$argon2id$v=19$m=8192,t=4,p=1$5zituz25m5nT7J2MgGAwfQ$EtaP17cnQCVOaVx3Ns8TZPPN1s3zY7bLvKW4QlwSR9Y", "active",   true)
+-- Demo accounts. Each user's password equals their (case-sensitive) callsign.
+-- Miguel is the admin (matched against IMS_ADMINS in the env).
+(600,   "Miguel",           "miguel@example.com",                 "$argon2id$v=19$m=8192,t=4,p=1$tL68tr5BXPSUKD+2m4fx5A$h+JZLy1t+Ch1NnM+xro0REQrSAfq7Egtc/RgfOfzWYo", "active",   true),
+(601,   "ShadowDancer",     "shadowdancer@example.com",           "$argon2id$v=19$m=8192,t=4,p=1$pZevNxeYuILQUIzHBHmEcQ$1tUEWKGlpmEHakHQXoz3UYQ5EyL01qHmlVfBfuq5oj0", "active",   true),
+(602,   "TeamMember",       "teammember@example.com",             "$argon2id$v=19$m=8192,t=4,p=1$aeRknlIpDHICmM6mD7DyUA$nGvCg3AIwmWAiT1M2HBqlScDS0cEHEIoE93w71DzqlI", "active",   true)
 ;
 
 insert into `position`
@@ -29,8 +28,7 @@ values
 insert into `person_position`
 (`person_id`, `position_id`)
 values
-(600, 701),
-(600, 702)
+(601, 702)
 ;
 
 insert into `team`
@@ -42,11 +40,11 @@ values
 insert into `person_team`
 (`person_id`, `team_id`)
 values
-(600, 800)
+(602, 800)
 ;
 
 insert into `timesheet`
 (`person_id`, `position_id`, `on_duty`, `off_duty`)
 values
-(600, 702, now(), null)
+(601, 702, now(), null)
 ;
