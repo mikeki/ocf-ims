@@ -426,26 +426,6 @@ func AddToMux(
 		),
 	)
 
-	mux.Handle("GET /ims/api/streets",
-		Adapt(
-			GetStreets{db, userStore, cfg.Core.Admins, cfg.Core.CacheControlShort},
-			RecoverFromPanic(),
-			RequireAuthN(jwter),
-			LogRequest(false, actionLogger, userStore),
-			LimitRequestBytes(cfg.Core.MaxRequestBytes),
-		),
-	)
-
-	mux.Handle("POST /ims/api/streets",
-		Adapt(
-			EditStreets{db, userStore, cfg.Core.Admins},
-			RecoverFromPanic(),
-			RequireAuthN(jwter),
-			LogRequest(true, actionLogger, userStore),
-			LimitRequestBytes(cfg.Core.MaxRequestBytes),
-		),
-	)
-
 	mux.Handle("GET /ims/api/incident_types",
 		Adapt(
 			GetIncidentTypes{db, userStore, cfg.Core.Admins, cfg.Core.CacheControlShort},

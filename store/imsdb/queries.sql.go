@@ -321,55 +321,6 @@ func (q *Queries) ClearEventAccessForMode(ctx context.Context, db DBTX, arg Clea
 	return err
 }
 
-const concentricStreets = `-- name: ConcentricStreets :many
-select cs.event, cs.id, cs.name
-from CONCENTRIC_STREET cs
-where cs.EVENT = ?
-`
-
-type ConcentricStreetsRow struct {
-	ConcentricStreet ConcentricStreet
-}
-
-func (q *Queries) ConcentricStreets(ctx context.Context, db DBTX, event int32) ([]ConcentricStreetsRow, error) {
-	rows, err := db.QueryContext(ctx, concentricStreets, event)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	var items []ConcentricStreetsRow
-	for rows.Next() {
-		var i ConcentricStreetsRow
-		if err := rows.Scan(&i.ConcentricStreet.Event, &i.ConcentricStreet.ID, &i.ConcentricStreet.Name); err != nil {
-			return nil, err
-		}
-		items = append(items, i)
-	}
-	if err := rows.Close(); err != nil {
-		return nil, err
-	}
-	if err := rows.Err(); err != nil {
-		return nil, err
-	}
-	return items, nil
-}
-
-const createConcentricStreet = `-- name: CreateConcentricStreet :exec
-insert into CONCENTRIC_STREET (EVENT, ID, NAME)
-values (?, ?, ?)
-`
-
-type CreateConcentricStreetParams struct {
-	Event int32
-	ID    string
-	Name  string
-}
-
-func (q *Queries) CreateConcentricStreet(ctx context.Context, db DBTX, arg CreateConcentricStreetParams) error {
-	_, err := db.ExecContext(ctx, createConcentricStreet, arg.Event, arg.ID, arg.Name)
-	return err
-}
-
 const createEvent = `-- name: CreateEvent :execlastid
 insert into EVENT (NAME, IS_GROUP, PARENT_GROUP) values (?, ?, ?)
 `

@@ -206,11 +206,6 @@ where
     and ire.INCIDENT_NUMBER = ?
 ;
 
--- name: ConcentricStreets :many
-select sqlc.embed(cs)
-from CONCENTRIC_STREET cs
-where cs.EVENT = ?;
-
 -- name: IncidentTypes :many
 select sqlc.embed(it)
 from INCIDENT_TYPE it;
@@ -423,10 +418,6 @@ set HIDDEN = ?,
     NAME = ?,
     DESCRIPTION = ?
 where ID = ?;
-
--- name: CreateConcentricStreet :exec
-insert into CONCENTRIC_STREET (EVENT, ID, NAME)
-values (?, ?, ?);
 
 -- name: AddActionLog :execlastid
 insert into ACTION_LOG

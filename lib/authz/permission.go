@@ -89,18 +89,16 @@ const (
 
 	GlobalListEvents GlobalPermissionMask = 1 << iota
 	GlobalReadIncidentTypes
-	GlobalReadStreets
 	GlobalReadPersonnel
 	GlobalAdministrateEvents
-	GlobalAdministrateStreets
 	GlobalAdministrateIncidentTypes
 	GlobalAdministratePlaces
 	GlobalAdministrateDebugging
 )
 
 var RolesToGlobalPerms = map[Role]GlobalPermissionMask{
-	AnyAuthenticatedUser: GlobalListEvents | GlobalReadIncidentTypes | GlobalReadPersonnel | GlobalReadStreets,
-	Administrator:        GlobalAdministrateEvents | GlobalAdministrateStreets | GlobalAdministrateIncidentTypes | GlobalAdministratePlaces | GlobalAdministrateDebugging,
+	AnyAuthenticatedUser: GlobalListEvents | GlobalReadIncidentTypes | GlobalReadPersonnel,
+	Administrator:        GlobalAdministrateEvents | GlobalAdministrateIncidentTypes | GlobalAdministratePlaces | GlobalAdministrateDebugging,
 }
 
 var RolesToEventPerms = map[Role]EventPermissionMask{
