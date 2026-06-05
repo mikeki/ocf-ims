@@ -1,7 +1,8 @@
 # Phase 2 — Terminology (Burning Man → OCF)
 
-> **Status:** Draft — core decisions captured; per-term wording and the
-> Ranger→role split still need OCF stakeholder sign-off. &nbsp;·&nbsp;
+> **Status:** Draft — core decisions captured, including the **Ranger → first-class
+> Person/People** data-model direction; remaining per-term wording (Event, small
+> terms) still needs OCF stakeholder sign-off. &nbsp;·&nbsp;
 > **Parent:** [00-master-plan.md](00-master-plan.md) &nbsp;·&nbsp;
 > **Last updated:** 2026-06-05 &nbsp;·&nbsp; **Prereq:** Phase 1 ✅ (`master` @ `5eb3c57`)
 
@@ -18,6 +19,9 @@ conversion.
 |---|---|---|
 | **Rename depth** | **Deep** — rename through every layer: DB columns/tables (+ migrations), sqlc queries, Go types, JSON field names, URL paths, *and* UI strings. | Cleaner long-term; avoids a permanent split between user-facing words and internal identifiers. We accept the larger surface area and the API-contract break (see risks). |
 | **"Field Report" → "Report"** | Rename the entity to **Report**. | Avoids the confusing "Incident Report"/"Incident" collision. "Report" reads cleanly at OCF. (Exact UI noun still open to OCF tweak.) |
+| **Personnel entity: "Ranger" → "Person / People"** | The people in the system become a **first-class local `Person`/`People` entity**, owned by OCF IMS — *not* a string reference into an external Clubhouse directory. | OCF doesn't use Clubhouse, so the external-directory dependency goes away regardless. The JSON layer **already** calls them `Person` (`json/personnel.go:19`); only the store (`Ranger`) and UI lag. "People" also makes the involvement list read naturally as **"people involved."** A *Person* is an identity; "can log in" is an attribute (credentials + a role grant), so not every Person must be a login account. |
+| **Identifier: "callsign"/"handle" → "nickname"** | Humans are shown/searched by a unique, changeable **`nickname`**. References between rows (involvement, authorship) key on a stable **`person_id`**, not the nickname string. | OCF-friendly wording, and it **fixes an existing `FIXME`** — `current.sql:90` notes `RANGER_HANDLE` is wrongly used as a foreign key ("Primary key is DMS Person ID"). Local People let us key on `person_id` and let a nickname change without breaking incident history. |
+| **Incident-attachment "ROLE" free-text → "involvement"** | Rename the free-text `INCIDENT__RANGER.ROLE` / `VISIT__RANGER.ROLE` field (how a person was involved) to **`involvement`**. | Reserves the word **"role" exclusively for Phase-4 permissions** (Coordinator / Management). Today the same word means two unrelated things — a foot-gun we remove now. |
 
 > ⚠️ **Deadline tension (read this).** A deep rename is ~75–100 files, needs
 > schema migrations, regenerates sqlc/templ/tsgo, **breaks the JSON/HTTP API
@@ -26,6 +30,14 @@ conversion.
 > deep rename is the chosen direction; to keep it shippable we **slice it into
 > independent, per-entity vertical PRs** (below), each green on its own, so the
 > beta can cut over at any completed slice rather than waiting for the whole phase.
+>
+> **The Person/People slice (2b) is now bigger than a rename** — it introduces a
+> local identity table to replace the Clubhouse directory. That's real data-model
+> work, not just words. Two mitigations keep it deadline-safe: (1) it's an
+> independent slice, so the rest of Phase 2 (Report, branding, small terms) ships
+> regardless of its timing; (2) the *history* enhancement is explicitly pushed to
+> Phase 3. If 2b can't land before the event, the beta can still run terminology +
+> a minimal People table and defer the richer identity work.
 
 ## Surface-area analysis (measured 2026-06-05, source only, generated excluded)
 
@@ -34,7 +46,7 @@ conversion.
 | `Incident` | 1888 | **kept** — OCF keeps incidents | none (no rename) |
 | `Event` | 2093 | partition key — `EVENT` table, `event_id` on every entity, all URLs | **KEEP structural; UI relabel only** (see below) |
 | `Visit` | 1058 | visit/sanctuary subsystem | rename if OCF wording differs (TBD) |
-| `Ranger` | 767 | `RANGER_HANDLE` cols, `INCIDENT__RANGER`/`VISIT__RANGER`, many Go types, personnel/role concept | **two distinct meanings — see below** |
+| `Ranger` | 767 | `RANGER_HANDLE` cols, `INCIDENT__RANGER`/`VISIT__RANGER`, many Go types, personnel concept | **→ first-class `Person`/`People` + `nickname`/`person_id` — see below** |
 | `FieldReport` / `field_report` / `FIELD_REPORT` | 698 | `FIELD_REPORT` + `FIELD_REPORT__REPORT_ENTRY` tables, JSON `field_reports`, `/field_reports` URLs, `FieldReport*` Go types | **first slice — "Report"** |
 | `Camp` | 435 | `PLACE.TYPE='camp'`, `VISIT.GUEST_CAMP_*` columns | rename (TBD term) |
 | `ReportEntry` / `REPORT_ENTRY` | 450 | log-line table (a *different* concept) | unchanged — **collision note below** |
@@ -49,7 +61,10 @@ conversion.
 | Ranger / BRC term | OCF term | Status |
 |---|---|---|
 | Field Report | **Report** | ✅ decided (UI noun tweakable) |
-| Ranger | **role split** — see below | ⚠️ needs OCF stakeholders |
+| Ranger (the person) | **Person / People** (first-class local entity) | ✅ decided — see below |
+| Ranger handle / callsign | **nickname** (+ stable `person_id` for FKs) | ✅ decided — see below |
+| Attached-Ranger "role" (free text) | **involvement** | ✅ decided — see below |
+| "Rangers" attached to an incident (list) | **People Involved** | ✅ decided |
 | Event | **Event** (kept structural; UI may show "Fair") | ⚠️ recommend keep — see below |
 | Black Rock City | **Oregon Country Fair** | mostly UI/config/branding |
 | Patrol | Path Rove / Gate / Radio Handle | ⚠️ confirm OCF term |
@@ -59,16 +74,65 @@ conversion.
 | Citizen Contact | — | dropped (not in code) |
 | Intervention | — | dropped (not in code) |
 
-### ⚠️ "Ranger" has two meanings — don't conflate them
-In the **data model**, `RANGER_HANDLE` / `IncidentRanger` / `VisitRanger` mean
-*"the person attached to this incident/visit"* — a personnel reference, not the BRC
-"Ranger" role. So this term splits two ways:
-- **As a data-model noun** ("the person assigned") → a neutral term like
-  **Responder**, **Staff**, or **Personnel**. This is what the schema/types rename to.
-- **As an org role** (who can do what) → the OCF volunteer structure
-  (Basic Reporter / Crew Lead / Coordinator / Management). That's **Phase 4**
-  ([roles & permissions](00-master-plan.md)), not here — Phase 2 only renames the
-  *word*, not the permission model.
+### "Ranger" → first-class **Person / People** (decided)
+The word "Ranger" in this codebase is overloaded. Untangling it surfaced **three
+distinct person-references**, all currently stored as a bare callsign string
+pointing at the external Clubhouse directory:
+
+| # | Where (today) | Meaning | Cardinality |
+|---|---|---|---|
+| 1 | `REPORT_ENTRY.AUTHOR` | **Who wrote this log line** — the author/reporter | one per entry |
+| 2 | `INCIDENT__RANGER` / `VISIT__RANGER` (`RANGER_HANDLE` + free-text `ROLE`) | **People *involved/attached*** to the incident, and *how* | many per incident |
+| 3 | `directory.User` (logged-in handle, gated by event access modes) | **The authenticated user** acting in the system | the session |
+
+The app's own "what's new" text confirms #2 is an *involvement* list, not a
+reporter/responder slot: *"Ranger 'roles' can be set on Incidents, indicating how
+each Ranger was involved"* (`web/template/root.templ:40`). The free-text `ROLE`
+box (UI: *"Short description of role"*, max 50 chars) is where "responder",
+"transport", "witness", etc. are typed.
+
+**Decision:** unify all three onto a single first-class local **`Person`** entity
+(identified by **`nickname`**, keyed by **`person_id`**), owned by OCF IMS:
+- #1 `REPORT_ENTRY.AUTHOR` → a `person_id` reference (the **author**).
+- #2 the attachment becomes **"People Involved"**, and its free-text `ROLE` is
+  renamed **`involvement`** (see foot-gun note below).
+- #3 the logged-in **user** is just a `Person` that *has credentials and a role
+  grant* — login-ability is an attribute, not a separate entity.
+
+This is why the rename **can't stay purely cosmetic**: dropping Clubhouse forces a
+real identity model. Replacing the external directory with a local `Person` table
+is the natural home for it, and it resolves the standing `current.sql:90` `FIXME`
+(handle-as-foreign-key → `person_id`).
+
+> **Scope flag.** The *terminology + structural* rename (Ranger→Person/People,
+> handle→nickname, `ROLE`→`involvement`, `person_id` FKs, local People table) is
+> Phase 2. The **permission model** built on top (Basic Reporter / Coordinator /
+> Management, and where each `Person`'s role grant lives) stays **Phase 4**
+> ([roles & permissions](00-master-plan.md)). Phase 2 establishes the entity and
+> the words; Phase 4 decides who-can-do-what. The directory-replacement question
+> (how People get *created/sourced* without Clubhouse) is shared with Phase 4 —
+> tracked there.
+
+### ⚠️ "involvement" vs "role" — a foot-gun we close now
+The People-Involved list already has a free-text field literally meaning "role"
+(*how* someone was involved). Phase 4 introduces **"roles"** as *permissions*
+(Coordinator / Management). Same word, two unrelated meanings. We rename the
+involvement field to **`involvement`** now and reserve **"role"** exclusively for
+the permission model, so the two never collide in schema, API, or UI.
+
+### 💡 Future: involvement *history* (noted, likely Phase 3 — not Phase 2)
+OCF wants to track how a person's involvement in an incident **changes over time**
+(e.g. "responder" early, "transport" later). Two paths:
+- **Baseline that already exists:** the **action log** (`store/actionlog/`) records
+  all authenticated mutations, so *generic* "who changed involvement when" is
+  partly recoverable today.
+- **Structured (new model):** effective-dated involvement rows — a queryable
+  history of (person, involvement, time-range) per incident. This is a **new
+  domain-model concept**, not a rename, so it belongs in **Phase 3**
+  ([domain model](00-master-plan.md)) and also feeds **Phase 5** metrics
+  (who responded, response times). Phase 2 keeps involvement as a single mutable
+  value (just renamed) so the rename stays shippable; the history table is a
+  follow-on design item.
 
 ### ⚠️ Recommend KEEP "Event" as the structural term
 `Event` is the system's partition key — `event_id` is on every incident, report,
@@ -123,7 +187,7 @@ Sliced so each lands green and the beta can adopt completed slices incrementally
 | PR | Scope | Notes |
 |---|---|---|
 | **2a** | **Field Report → Report** (all layers) | First & largest single entity; exercises the full template. ~migration + sqlc + api + json + urls + ui + tests. |
-| **2b** | **Ranger → [Responder/Staff]** (data-model noun) | Pending the neutral-noun decision. Touches `RANGER_HANDLE`, `INCIDENT__RANGER`, `VISIT__RANGER`, many types. |
+| **2b** | **Ranger → Person/People** (first-class local entity) | Largest slice. Local `Person` table (replaces Clubhouse dependency); `RANGER_HANDLE` → `person_id` FK + `nickname`; `INCIDENT__RANGER`/`VISIT__RANGER` → "People Involved" with `ROLE`→`involvement`; `REPORT_ENTRY.AUTHOR` → `person_id`; `Ranger*` Go types → `Person*`; UI "Rangers" → "People Involved". May warrant its own sub-PRs (entity+table, then the FK migrations). Coordinates with Phase 4 on how People are sourced/created. |
 | **2c** | **Black Rock City → Oregon Country Fair** + branding strings | Mostly UI/config; low risk. |
 | **2d** | **Small terms** — Patrol, HQ, Participant, Camp | Bundle the low-count items; confirm OCF wording first. |
 | **(2e)** | **Event → Fair UI relabel** *(only if OCF wants it)* | Display-layer only; do **not** rename `event_id`/`EVENT`. |
@@ -142,19 +206,29 @@ purely internal to the web UI, the break is contained. **Confirm before PR 2a.**
 
 ## Open questions for OCF stakeholders
 
-1. **Field Report → "Report"** — confirm the user-facing noun (or pick another
-   distinct word: Observation, Note, Log).
-2. **Ranger** — (a) the neutral data-model noun (Responder / Staff / Personnel?),
-   and (b) the org-role wording (deferred to Phase 4).
-3. **Event** — keep as-is, or relabel to "Fair" in the UI only?
+1. ~~**Field Report → "Report"**~~ — ✅ **decided: Report** (UI noun still tweakable).
+2. ~~**Ranger → identity model**~~ — ✅ **decided: first-class `Person`/`People`,
+   identified by `nickname`, keyed by `person_id`.** Remaining sub-questions:
+   - **People sourcing** — without Clubhouse, how are People *created* (self-signup,
+     admin-entered, imported roster)? → shared with **Phase 4**.
+   - **Org-role wording** (Basic Reporter / Coordinator / Management) → **Phase 4**.
+   - **Involvement history** — structured effective-dated history vs. rely on the
+     action log? → **Phase 3** design item.
+3. **Event** — keep as the structural partition key, or relabel to "Fair" in the UI
+   only? *Sub-question that decides this:* does OCF run **multiple** "events"
+   (e.g. the Fair vs. work-weekends/years), or is it effectively one annual Fair?
 4. **Per-term wording** — Patrol, Ranger HQ, Participant, Camp → confirm exact OCF
    terms (drafts above are guesses).
 5. **External API consumers?** — anyone besides the first-party web UI calling the
-   JSON API? Sets whether the contract break needs a compatibility window.
+   JSON API? Sets whether the contract break needs a compatibility window. (For a
+   fresh OCF beta with no Clubhouse, likely "web UI only" — confirm.)
 
 ## Exit criteria
 
-- [ ] Per-term wording + Ranger split confirmed with OCF stakeholders.
+- [x] Personnel identity model decided — Ranger → first-class `Person`/`People`
+      (`nickname` + `person_id`), `ROLE` → `involvement`.
+- [ ] Remaining per-term wording (Event, Patrol, HQ, Participant, Camp) confirmed
+      with OCF stakeholders.
 - [ ] External-API-consumer question answered (compat window if needed).
 - [ ] Each entity rename shipped as a green, independently-reviewable PR.
 - [ ] No BRC-specific terminology remains in user-facing surfaces; build + unit +
