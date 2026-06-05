@@ -1,7 +1,18 @@
 # Phase 1 — Preparation & Clean-up Pass
 
-> **Status:** Ready to execute &nbsp;·&nbsp; **Parent:** [00-master-plan.md](00-master-plan.md)
+> **Status:** ✅ Done &nbsp;·&nbsp; **Parent:** [00-master-plan.md](00-master-plan.md)
 > &nbsp;·&nbsp; **Last updated:** 2026-06-05
+>
+> **Shipped 2026-06-05** as five reviewable PRs against `master`, all merged:
+> - **#1** Concentric Streets removal (`11-remove-concentric-streets.md`) — commit `032e92b`
+> - **#2** dead argon2id presets (A1–A3) — `ca95fb7`
+> - **#3** `NonCryptoHash64` (A4) — `0bbc0b3`
+> - **#4** empty stub tests (A5–A6) — `98750cf`
+> - **#5** comment noise (B3–B5) + migration-policy doc (B6) — `5eb3c57`
+>
+> Merged baseline = `master` @ `5eb3c57`. Full build (codegen + compile),
+> `go test ./...`, and the Docker integration suites
+> (`store/integration` + `api/integration`) are green.
 
 ## Objective
 
@@ -103,9 +114,10 @@ track it separately from the small A-items above.
 
 ## Tasks
 
-- [ ] **Task 0 — Remove Concentric Streets** per
-      [11-remove-concentric-streets.md](11-remove-concentric-streets.md) (the big one).
-- [ ] **Task 1 — Re-run the audit.** Before editing, re-grep to confirm nothing
+- [x] **Task 0 — Remove Concentric Streets** per
+      [11-remove-concentric-streets.md](11-remove-concentric-streets.md) (the big one). — **PR #1.**
+- [x] **Task 1 — Re-run the audit.** Re-grep confirmed the work list was still
+      accurate; no new hits. Before editing, re-grep to confirm nothing
       changed since this plan was written:
       ```bash
       grep -rniE 'deprecated|fixme|xxx|legacy|obsolete|do not use|no longer' \
@@ -114,31 +126,30 @@ track it separately from the small A-items above.
       grep -rn 'FirstRecommendedParams\|SecondRecommendedParams\|PHPDefaultParams\|NonCryptoHash64' --include='*.go' .
       ```
       Reconcile any new hits with the lists above.
-- [ ] **Task 2 — Remove dead code (A1–A6).** Delete the items and their
-      tests. After each deletion, `go build ./...` to catch surprises.
-- [ ] **Task 3 — Tidy comment noise (B3–B5).** Delete the dead commented
-      blocks (the intent is now captured in this plan). Get a quick thumbs-up on
-      B4 (S3 validation) from whoever relaxed it.
-- [ ] **Task 4 — Document the migration policy.** Add a short note (here or in
-      `CLAUDE.md`) that migrations are append-only history and old ones are
-      intentionally retained. Closes out B6.
-- [ ] **Task 5 — Triage remaining TODOs.** For B1/B2 (and any TODO found in
-      Task 1 not covered here), either fix-now-if-trivial or leave the TODO in
-      place with a back-reference to this plan / a future phase. The goal is that
-      every remaining TODO is *intentional*, not forgotten.
-- [ ] **Task 6 — Green check.** Run the full gate:
-      ```bash
-      go run bin/build/build.go      # regenerates sqlc/templ/tsgo + compiles
-      go test ./...                  # unit tests
-      npx eslint                     # JS/TS lint
-      go tool golangci-lint run      # if available; else per .golangci.yml
-      ```
-      Integration tests (`go test ./store/integration ./api/integration`) require
-      Docker — run if available.
-- [ ] **Task 7 — Commit & tag the baseline.** One focused commit (or a few:
-      "remove dead argon2id params", "remove empty stub tests", "drop dead
-      comment blocks"). Tag the result as the clean pre-OCF baseline so Phase 2
-      starts from a known-good point.
+- [x] **Task 2 — Remove dead code (A1–A6).** A1–A3 (argon2id presets) in PR #2,
+      A4 (`NonCryptoHash64`) in PR #3, A5–A6 (stub tests) in PR #4. **Dev-only
+      auth helpers were triaged and *kept* by design** — `NewSaltedArgon2idDevOnly`
+      is an intentional test helper, and `DevelopmentParams`/`ClubhouseParams`
+      are both in use (see the KEEP table, section C).
+- [x] **Task 3 — Tidy comment noise (B3–B5).** All three commented blocks
+      removed in PR #5. B4 (S3 validation): owner decided **2026-06-05 to keep the
+      deletion** — the active code already requires only AWSRegion+Bucket
+      (IAM-role friendly); S3 integration is revisited later.
+- [x] **Task 4 — Document the migration policy.** Added to `CLAUDE.md`
+      (Database Migrations section) in PR #5: migrations are append-only history,
+      old ones intentionally retained, frozen fixtures left as-is. Closes B6.
+- [x] **Task 5 — Triage remaining TODOs.** B1 (action-framework refactor in
+      `api/fieldreport.go`) and B2 (RESTful `EditEvent` in `api/event.go`) are
+      **intentionally deferred** — left in place as tracked future work, not dead
+      code (see the DEFER table, section B). No forgotten TODOs remain.
+- [x] **Task 6 — Green check.** `go run bin/build/build.go`, `go test ./...`,
+      and the Docker integration suites (`store/integration` + `api/integration`)
+      all green. **Caveat:** `npx eslint` is currently non-functional repo-wide
+      (no `eslint.config.js`); TypeScript is validated by the `tsgo` build step
+      instead. `golangci-lint` not run in this pass.
+- [x] **Task 7 — Commit the baseline.** Shipped as five focused PRs (#1–#5),
+      now merged. Baseline = `master` @ `5eb3c57` (not git-tagged; the merge
+      commits serve as the known-good Phase 2 starting point).
 
 ## Execution notes
 
@@ -151,9 +162,10 @@ track it separately from the small A-items above.
 
 ## Exit criteria
 
-- [ ] All A-items removed; repo compiles.
-- [ ] Comment-noise B3–B5 deleted (or explicitly kept with a reason).
-- [ ] Every remaining TODO/FIXME is intentional and accounted for.
-- [ ] Build + unit tests + lint green; integration tests green where Docker is
-      available.
-- [ ] Clean baseline committed and tagged. → proceed to **Phase 2** (`20-terminology.md`).
+- [x] All A-items removed; repo compiles.
+- [x] Comment-noise B3–B5 deleted (B4 explicitly kept-deleted with owner sign-off).
+- [x] Every remaining TODO/FIXME is intentional and accounted for (B1/B2 deferred).
+- [x] Build + unit tests green; integration tests green (Docker available).
+      Lint: `eslint` non-functional repo-wide (tracked separately); `tsgo` validates TS.
+- [x] Clean baseline committed (merged PRs #1–#5; `master` @ `5eb3c57`).
+      → proceed to **Phase 2** (`20-terminology.md`).
