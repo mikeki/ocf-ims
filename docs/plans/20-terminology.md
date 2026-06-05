@@ -134,6 +134,57 @@ OCF wants to track how a person's involvement in an incident **changes over time
   value (just renamed) so the rename stays shippable; the history table is a
   follow-on design item.
 
+### 🏗️ Fair org structure — crews, titles, crew leaders (NEW model → Phase 4, own design doc)
+> **Not Phase 2.** Captured here because it's entangled with the People entity and
+> the "how are People created without Clubhouse" question. This is new domain model
+> and almost certainly warrants its own design doc under Phase 4.
+
+**What OCF wants (user, 2026-06-05):** People have **titles** and **roles**; some
+People **manage crews**; crews can **nest** (crews within crews, each with its own
+**crew leader**); and **crew leaders can invite new People** into the system.
+
+**What exists today — the same shape, but flat and external.** IMS already grants
+event access via `EVENT_ACCESS.EXPRESSION` strings matched against a person's
+Clubhouse attributes (`lib/authz/permission.go:211`):
+
+| Expression | Matches | OCF analogue |
+|---|---|---|
+| `position:<title>` | anyone holding that Clubhouse **position** | a **title / role** |
+| `team:<title>` | anyone on that Clubhouse **team** | a **crew** |
+| `onduty:<title>` | anyone currently on-duty in that position | on-shift grant |
+| `person:<handle>` | one specific person | one person |
+
+So "title" (position) and "crew" (team) are *already* permission primitives — but
+**sourced read-only from Clubhouse and completely flat.** The gaps vs. OCF's vision:
+
+- **No nesting.** Clubhouse `team` has no `parent_team_id`; crews can't contain crews.
+- **No crew-leader concept.** `person_team` is plain membership — no "X leads crew Y".
+- **No in-IMS invites / ownership.** Membership and identity are managed in
+  Clubhouse; IMS only reads them. With Clubhouse gone, IMS must **own** crews,
+  titles, and membership locally — which is exactly where the **first-class People
+  table** (decided above) becomes the foundation: People + crews + titles + leader
+  edges + invites all become local, editable data.
+
+This connects three threads: the **People entity** (Phase 2, decided), **People
+sourcing / invites** (Phase 4), and the **permission model** (Phase 4). A crew
+leader inviting a person is *both* an onboarding flow *and* a permission grant.
+
+**Open design questions (for the Phase 4 design doc):**
+1. **"Title" vs "role" vs "crew" — distinct concepts?** Likely: *crew* = a group
+   (nestable), *title* = a descriptive position label, *role* = a permission tier
+   (Basic Reporter / Coordinator / Management). Confirm the vocabulary so we don't
+   re-collide "role".
+2. **Crew leader = a permission, not a new entity?** Probably a `Person`↔`crew`
+   membership edge flagged `is_leader` (or a per-crew role), granting leader-scoped
+   permissions over that crew and its sub-crews.
+3. **What can a crew leader do?** Invite People, manage their crew's membership,
+   create sub-crews, assign involvement…? Defines the permission bits.
+4. **Invite mechanics.** Email invite → invitee self-registers (sets their own
+   nickname/credentials), or leader creates the `Person` record directly? Scoped to
+   the leader's crew? This *is* the "how People are created without Clubhouse" answer.
+5. **Do permissions inherit down the crew tree?** Does leading a parent crew grant
+   authority over sub-crews and their members?
+
 ### ⚠️ Recommend KEEP "Event" as the structural term
 `Event` is the system's partition key — `event_id` is on every incident, report,
 visit, access rule, and URL (2093 source lines). Deep-renaming it (e.g. to "Fair")
