@@ -1,0 +1,30 @@
+# Plans
+
+This folder holds the design and implementation plans for the ongoing work to
+convert Ranger IMS into an **OCF (Oregon Country Fair)**–specific incident
+management system.
+
+## How this folder works
+
+- **`00-master-plan.md`** is the top-level roadmap. Start there. It describes the
+  overall direction, the phases, and links out to the detailed per-phase plans.
+- Each phase (or significant sub-effort) gets its own numbered plan file as work
+  begins, e.g. `01-cleanup-pass.md`, `10-terminology.md`, etc.
+- Numbering convention:
+  - `00–09` — meta / master / cross-cutting
+  - `10–19` — Phase 1: Preparation & clean-up
+  - `20–29` — Phase 2: Terminology
+  - `30–39` — Phase 3: Domain model (categories, outcomes, locations)
+  - `40–49` — Phase 4: Roles & permissions
+  - `50–59` — Phase 5: Dashboards & metrics
+  - (room to grow)
+- Plans are living documents. Mark sections as `Status: TODO / In progress /
+  Done` and check off tasks as they land. Reference concrete files and PRs.
+
+## Status
+
+| Plan | Phase | Status |
+|------|-------|--------|
+| [00-master-plan.md](00-master-plan.md) | Master roadmap | Draft |
+| [10-cleanup-pass.md](10-cleanup-pass.md) | Phase 1 — Preparation & clean-up | Ready to execute |
+| [11-remove-concentric-streets.md](11-remove-concentric-streets.md) | Phase 1 — Remove Concentric Streets | Ready to execute |
