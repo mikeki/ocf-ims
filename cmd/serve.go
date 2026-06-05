@@ -215,13 +215,6 @@ func tuneMemoryLimit(cgroupMemStatFile string) {
 func configureLogger(imsCfg *conf.IMSConfig) {
 	var logLevel slog.Level
 	must(logLevel.UnmarshalText([]byte(imsCfg.Core.LogLevel)))
-	// TODO: maybe bring back pretty logging for local use only
-	// logger := slog.New(
-	//	log.NewHandler(
-	//		&slog.HandlerOptions{Level: logLevel},
-	//	),
-	//)
-	// slog.SetDefault(logger)
 	slog.SetLogLoggerLevel(logLevel)
 }
 

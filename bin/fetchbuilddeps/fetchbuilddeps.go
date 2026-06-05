@@ -119,26 +119,6 @@ func main() {
 			"https://cdn.jsdelivr.net/npm/flatpickr@"+flatpickrVersion+"/dist/flatpickr.min.js",
 			"sha384-5JqMv4L/Xa0hfvtF06qboNdhvuYXUku9ZrhZh3bSk8VXF0A/RuSLHpLsSV9Zqhl6",
 		))
-		// g.Go(existOrFetch(groupCtx, flatpickrDir,
-		//	"globals.d.ts",
-		//	"https://cdn.jsdelivr.net/npm/flatpickr@"+flatpickrVersion+"/dist/types/globals.d.ts",
-		//	"sha384-TA24HjVnPU8dxXoGvs7n1PyoQFFF/ppuH52u2iMLnWbfGeoOSxGZRAOF3uEr6cOE",
-		// ))
-		// g.Go(existOrFetch(groupCtx, flatpickrDir,
-		//	"instance.d.ts",
-		//	"https://cdn.jsdelivr.net/npm/flatpickr@"+flatpickrVersion+"/dist/types/instance.d.ts",
-		//	"sha384-dLko9/zDaIIaqzd0pjE6fh1kcR1N5+5H2otCGvOJYgLP6g0hdNwjnaZJSWzMFLVT",
-		// ))
-		// g.Go(existOrFetch(groupCtx, flatpickrDir,
-		//	"locale.d.ts",
-		//	"https://cdn.jsdelivr.net/npm/flatpickr@"+flatpickrVersion+"/dist/types/locale.d.ts",
-		//	"sha384-jhXhYDt7UlyY46rKLm9W7Lua+EZAIX/p1aGWTFrxiUATcsK3y9kr+jaZAdWeVrTJ",
-		// ))
-		// g.Go(existOrFetch(groupCtx, flatpickrDir,
-		//	"options.d.ts",
-		//	"https://cdn.jsdelivr.net/npm/flatpickr@"+flatpickrVersion+"/dist/types/options.d.ts",
-		//	"sha384-OTMArpvPXF1868803gfjh2/UTzeTM6LkCPybyzqE9rgL570U8MjHEn/cGPcUKxO9",
-		// ))
 	}
 
 	err = g.Wait()
