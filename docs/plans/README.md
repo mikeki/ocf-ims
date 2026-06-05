@@ -26,5 +26,7 @@ management system.
 | Plan | Phase | Status |
 |------|-------|--------|
 | [00-master-plan.md](00-master-plan.md) | Master roadmap | Draft |
+| [05-platform-stack.md](05-platform-stack.md) | Foundation — proto-first polyglot monorepo | Decisions locked |
+| [06-go-workspace-restructure.md](06-go-workspace-restructure.md) | Platform — move Go into `go/ims` + `go.work` | Deferred (after beta) |
 | [10-cleanup-pass.md](10-cleanup-pass.md) | Phase 1 — Preparation & clean-up | Ready to execute |
 | [11-remove-concentric-streets.md](11-remove-concentric-streets.md) | Phase 1 — Remove Concentric Streets | Ready to execute |

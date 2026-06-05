@@ -16,6 +16,51 @@ This is a fork-and-adapt effort, not a rewrite. We keep the solid foundations �
 the layered Go architecture, sqlc/templ/tsgo code generation, event-scoped
 authorization, action logging, JWT auth — and reshape the domain on top of them.
 
+### Two parallel tracks
+
+This effort has two tracks that proceed together:
+
+1. **Domain track (this document)** — convert the IMS *domain* to OCF:
+   terminology, incident categories, outcomes, locations, roles, dashboards
+   (Phases 1–5 below).
+2. **Platform track** ([`05-platform-stack.md`](05-platform-stack.md)) — evolve
+   the *architecture* into a proto-first, Connect-RPC, `pnpm` polyglot monorepo
+   with an Expo (iOS/Android/web) interface, **keeping the Go backend**. Proto
+   becomes the typed API contract; the new interface is built on top of it.
+
+They interact: notably, the Expo interface may eventually **replace the
+server-rendered `templ` web UI**, which affects how much domain-track UI work we
+invest in `templ`/`web/typescript` vs. the new interface. See
+[`05-platform-stack.md` §6](05-platform-stack.md).
+
+## Sequencing under the event deadline
+
+> **Hard constraint:** the OCF event is **~4 weeks out (early July 2026)**. The
+> beta runs on the **existing Go + `templ` web UI** — the proto/Expo platform
+> interface will not be production-ready in time.
+
+**Decision (2026-06-05): OCF beta first, on the existing service. Restructure
+later.** We keep the build/deploy pipeline frozen through the event and spend the
+scarce pre-event time on beta value, not plumbing.
+
+Order of work:
+
+1. **Phase 1 clean-up** ([`10-cleanup-pass.md`](10-cleanup-pass.md), incl.
+   [`11-remove-concentric-streets.md`](11-remove-concentric-streets.md)) — small;
+   concentric-streets removal directly unblocks OCF locations.
+2. **OCF beta domain work on the existing UI** — the deadline deliverable:
+   terminology (Phase 2, kept lightweight in `templ`/`web/typescript`), incident
+   categories (Phase 3a), locations (Phase 3c), roles (Phase 4). Outcomes (3b) and
+   dashboards (5) only if time allows.
+3. **Go workspace restructure** ([`06-go-workspace-restructure.md`](06-go-workspace-restructure.md))
+   — **deferred to after the event.** Mechanical and behavior-preserving; doing it
+   later re-touches a more-diverged tree but is still straightforward.
+4. **Platform track P0→P4** (proto + Connect + Expo interface) — **after the
+   event**. Replaces the `templ` web UI later, not for this beta.
+
+Rule of thumb for the next 4 weeks: **anything that doesn't make the beta better
+or safer waits** — including the restructure and the whole platform track.
+
 ## 2. Guiding principles
 
 1. **Stable slate first.** Before changing behavior, remove deprecated and dead
