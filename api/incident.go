@@ -267,12 +267,9 @@ func incidentToJSON(storedRow imsdb.IncidentRow, incidentRangers []imsdb.Inciden
 		Priority:     storedRow.Incident.Priority,
 		Summary:      conv.SqlToString(storedRow.Incident.Summary),
 		Location: imsjson.Location{
-			Name:         conv.SqlToString(storedRow.Incident.LocationName),
-			Address:      conv.SqlToString(storedRow.Incident.LocationAddress),
-			Concentric:   conv.SqlToString(storedRow.Incident.LocationConcentric),
-			RadialHour:   conv.FormatSqlInt16(storedRow.Incident.LocationRadialHour),
-			RadialMinute: conv.FormatSqlInt16(storedRow.Incident.LocationRadialMinute),
-			Description:  conv.SqlToString(storedRow.Incident.LocationDescription),
+			Name:        conv.SqlToString(storedRow.Incident.LocationName),
+			Address:     conv.SqlToString(storedRow.Incident.LocationAddress),
+			Description: conv.SqlToString(storedRow.Incident.LocationDescription),
 		},
 		IncidentTypeIDs: &incidentTypeIDs,
 		FieldReports:    &fieldReportNumbers,
@@ -491,19 +488,16 @@ func updateIncident(ctx context.Context, imsDBQ *store.DBQ, es *EventSourcerer, 
 	defer rollback(txn)
 
 	update := imsdb.UpdateIncidentParams{
-		Event:                storedIncident.Event,
-		Number:               storedIncident.Number,
-		Priority:             storedIncident.Priority,
-		State:                storedIncident.State,
-		Started:              storedIncident.Started,
-		Closed:               storedIncident.Closed,
-		Summary:              storedIncident.Summary,
-		LocationName:         storedIncident.LocationName,
-		LocationAddress:      storedIncident.LocationAddress,
-		LocationConcentric:   storedIncident.LocationConcentric,
-		LocationRadialHour:   storedIncident.LocationRadialHour,
-		LocationRadialMinute: storedIncident.LocationRadialMinute,
-		LocationDescription:  storedIncident.LocationDescription,
+		Event:               storedIncident.Event,
+		Number:              storedIncident.Number,
+		Priority:            storedIncident.Priority,
+		State:               storedIncident.State,
+		Started:             storedIncident.Started,
+		Closed:              storedIncident.Closed,
+		Summary:             storedIncident.Summary,
+		LocationName:        storedIncident.LocationName,
+		LocationAddress:     storedIncident.LocationAddress,
+		LocationDescription: storedIncident.LocationDescription,
 	}
 
 	var logs []string
@@ -536,26 +530,6 @@ func updateIncident(ctx context.Context, imsDBQ *store.DBQ, es *EventSourcerer, 
 	if newIncident.Location.Address != nil {
 		update.LocationAddress = conv.StringToSql(newIncident.Location.Address, 0)
 		logs = append(logs, fmt.Sprintf("Changed location address: %v", update.LocationAddress.String))
-	}
-	if newIncident.Location.Concentric != nil {
-		update.LocationConcentric = conv.StringToSql(newIncident.Location.Concentric, 0)
-		logs = append(logs, fmt.Sprintf("Changed location concentric: %v", update.LocationConcentric.String))
-	}
-	if newIncident.Location.RadialHour != nil {
-		update.LocationRadialHour = conv.ParseSqlInt16(newIncident.Location.RadialHour)
-		newValString := "(empty)"
-		if update.LocationRadialHour.Valid {
-			newValString = strconv.Itoa(int(update.LocationRadialHour.Int16))
-		}
-		logs = append(logs, fmt.Sprintf("Changed location radial hour: %v", newValString))
-	}
-	if newIncident.Location.RadialMinute != nil {
-		update.LocationRadialMinute = conv.ParseSqlInt16(newIncident.Location.RadialMinute)
-		newValString := "(empty)"
-		if update.LocationRadialMinute.Valid {
-			newValString = strconv.Itoa(int(update.LocationRadialMinute.Int16))
-		}
-		logs = append(logs, fmt.Sprintf("Changed location radial minute: %v", newValString))
 	}
 	if newIncident.Location.Description != nil {
 		update.LocationDescription = conv.StringToSql(newIncident.Location.Description, 0)

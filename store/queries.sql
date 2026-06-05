@@ -83,9 +83,6 @@ update INCIDENT set
     SUMMARY = ?,
     LOCATION_NAME = ?,
     LOCATION_ADDRESS = ?,
-    LOCATION_CONCENTRIC = ?,
-    LOCATION_RADIAL_HOUR = ?,
-    LOCATION_RADIAL_MINUTE = ?,
     LOCATION_DESCRIPTION = ?
 where
     EVENT = ?
@@ -205,11 +202,6 @@ where
     ire.EVENT = ?
     and ire.INCIDENT_NUMBER = ?
 ;
-
--- name: ConcentricStreets :many
-select sqlc.embed(cs)
-from CONCENTRIC_STREET cs
-where cs.EVENT = ?;
 
 -- name: IncidentTypes :many
 select sqlc.embed(it)
@@ -423,10 +415,6 @@ set HIDDEN = ?,
     NAME = ?,
     DESCRIPTION = ?
 where ID = ?;
-
--- name: CreateConcentricStreet :exec
-insert into CONCENTRIC_STREET (EVENT, ID, NAME)
-values (?, ?, ?);
 
 -- name: AddActionLog :execlastid
 insert into ACTION_LOG
