@@ -153,6 +153,16 @@ To modify the IMS database schema:
 6. Update `store/queries.sql` if you modified existing tables/columns
 7. Fix any broken Go code and run `go test ./...`
 
+**Migrations are append-only history.** Each `XX-from-YY.sql` file represents
+the exact transformation applied to real databases at that version, so existing
+files are never edited or deleted — the integration test (`store/integration`)
+replays the full chain from a frozen historical snapshot to verify the upgrade
+path. Old migrations (versions 1–N) are intentionally retained, even ones that
+predate large refactors. Only `current.sql` describes the present-day schema for
+fresh installs. When in doubt, add a new migration rather than touching an old
+one. Frozen historical fixtures (e.g. `store/integration/06.sql`) must likewise
+be left as-is.
+
 ### Configuration
 
 Configuration uses environment variables loaded from a `.env` file (copy from `.env.example`).
