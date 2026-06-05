@@ -46,8 +46,9 @@ scarce pre-event time on beta value, not plumbing.
 Order of work:
 
 1. **Phase 1 clean-up** ([`10-cleanup-pass.md`](10-cleanup-pass.md), incl.
-   [`11-remove-concentric-streets.md`](11-remove-concentric-streets.md)) — small;
-   concentric-streets removal directly unblocks OCF locations.
+   [`11-remove-concentric-streets.md`](11-remove-concentric-streets.md)) —
+   ✅ **done 2026-06-05** (PRs #1–#5 merged); concentric-streets removal directly
+   unblocked OCF locations.
 2. **OCF beta domain work on the existing UI** — the deadline deliverable:
    terminology (Phase 2, kept lightweight in `templ`/`web/typescript`), incident
    categories (Phase 3a), locations (Phase 3c), roles (Phase 4). Outcomes (3b) and
@@ -80,8 +81,8 @@ or safer waits** — including the restructure and the whole platform track.
 
 | # | Phase | Outcome | Risk | Plan |
 |---|-------|---------|------|------|
-| 1 | **Preparation & clean-up** | Dead/deprecated code removed; baseline green | Low | `10-cleanup-pass.md` (TODO) |
-| 2 | **Terminology** | Burning Man terms → OCF terms across code + UI | Med | `20-terminology.md` (TODO) |
+| 1 | **Preparation & clean-up** | ✅ **Done** — dead/deprecated code removed; baseline green | Low | `10-cleanup-pass.md` ✅ |
+| 2 | **Terminology** | Burning Man terms → OCF terms across code + UI | Med | `20-terminology.md` (next) |
 | 3 | **Domain model** | OCF incident categories, outcomes, locations | Med–High | `30-domain-model.md` (TODO) |
 | 4 | **Roles & permissions** | OCF role structure in authz | Med | `40-roles-permissions.md` (TODO) |
 | 5 | **Dashboards & metrics** | Management reporting OCF will use | Med | `50-dashboards.md` (TODO) |
@@ -92,6 +93,10 @@ each ships independently.
 ---
 
 ## Phase 1 — Preparation & Clean-up Pass
+
+> ✅ **Done 2026-06-05** — shipped as PRs #1–#5 (merged to `master` @ `5eb3c57`).
+> See [`10-cleanup-pass.md`](10-cleanup-pass.md) for the per-task outcome. The
+> task list below is retained for historical context.
 
 **Objective:** Start from a stable, low-noise slate. Remove deprecated and dead
 code so subsequent OCF work isn't fighting cruft. No behavioral changes intended.
@@ -132,18 +137,19 @@ The smaller candidates a first sweep surfaced:
 > (grep for references, check tests). "Looks unused" ≠ "is unused".
 
 **Phase 1 tasks (detailed in `10-cleanup-pass.md`):**
-- [ ] **Remove the Concentric Streets feature** (`11-remove-concentric-streets.md`) — the headline clean-up item.
-- [ ] Full audit: grep for `deprecated`, `TODO`, `FIXME`, `XXX`, `legacy`,
+- [x] **Remove the Concentric Streets feature** (`11-remove-concentric-streets.md`) — the headline clean-up item. (PR #1)
+- [x] Full audit: grep for `deprecated`, `TODO`, `FIXME`, `XXX`, `legacy`,
       commented blocks; produce a confirmed remove/keep/defer list.
-- [ ] Remove confirmed dead code; resolve or explicitly defer each TODO.
-- [ ] Tighten or remove dev-only auth helpers from production paths.
-- [ ] Decide & document migration-consolidation policy.
-- [ ] Ensure linters (`golangci`, `eslint`) and `go test ./...` are green; fix
-      any pre-existing warnings that add noise.
-- [ ] Tag/commit a clean baseline before Phase 2 begins.
+- [x] Remove confirmed dead code; resolve or explicitly defer each TODO. (PRs #2–#5; B1/B2 deferred.)
+- [x] Tighten or remove dev-only auth helpers from production paths. *(Triaged and
+      kept by design — `NewSaltedArgon2idDevOnly` is an intentional test helper.)*
+- [x] Decide & document migration-consolidation policy. *(Append-only; documented in `CLAUDE.md`.)*
+- [x] Ensure `go test ./...` is green. *(`eslint` is non-functional repo-wide —
+      no config; `tsgo` validates TS. Tracked separately.)*
+- [x] Commit a clean baseline before Phase 2 begins. *(Merged PRs #1–#5; `master` @ `5eb3c57`.)*
 
-**Exit criteria:** No known dead code; all TODOs triaged; build + tests + lint
-green; baseline tagged.
+**Exit criteria:** ✅ Met — no known dead code; all TODOs triaged; build + tests
+green; baseline merged to `master`.
 
 ---
 
@@ -306,4 +312,8 @@ Phase 1 (clean-up)  ──►  Phase 2 (terminology)  ──┬──►  Phase 
                                                   └──►  Phase 5 (dashboards, after 3)
 ```
 
-Next action: write **`10-cleanup-pass.md`** and execute Phase 1.
+Phase 1 is ✅ complete (PRs #1–#5 merged 2026-06-05). Next action: write
+**`20-terminology.md`** and execute Phase 2 — but first resolve its open
+stakeholder decisions (finalize the term-mapping table; settle the "Field Report
+→ Incident Report" vs. existing "Incident" naming collision; decide
+cosmetic-vs-deep rename depth).

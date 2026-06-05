@@ -1,6 +1,10 @@
 # Phase 1 — Remove the Concentric Streets feature
 
-> **Status:** Ready to execute &nbsp;·&nbsp; **Parent:** [10-cleanup-pass.md](10-cleanup-pass.md)
+> **Status:** ✅ Done — shipped in **PR #1** (`cleanup/remove-concentric-streets`,
+> merged 2026-06-05 as commit `032e92b`). Both stages landed as two commits:
+> Stage 1 (management surface) + Stage 2 (schema migration `32-from-31.sql`).
+> Verified against real MariaDB via `go test ./store/integration`. &nbsp;·&nbsp;
+> **Parent:** [10-cleanup-pass.md](10-cleanup-pass.md)
 > → [00-master-plan.md](00-master-plan.md) &nbsp;·&nbsp; **Last updated:** 2026-06-05
 
 ## Why this has its own plan
