@@ -1,8 +1,9 @@
 # Phase 2 — Terminology (Burning Man → OCF)
 
-> **Status:** Draft — core decisions captured, including the **Ranger → first-class
-> Person/People** data-model direction; remaining per-term wording (Event, small
-> terms) still needs OCF stakeholder sign-off. &nbsp;·&nbsp;
+> **Status:** Draft — most decisions locked (Report; Ranger → first-class
+> Person/People; nickname/`person_id`; `ROLE`→involvement; **Event kept verbatim**;
+> **API is web-UI-only**). Remaining: small-term wording, and the Fair org-structure
+> (crews/titles/roles) which is its own **Phase 4** design. &nbsp;·&nbsp;
 > **Parent:** [00-master-plan.md](00-master-plan.md) &nbsp;·&nbsp;
 > **Last updated:** 2026-06-05 &nbsp;·&nbsp; **Prereq:** Phase 1 ✅ (`master` @ `5eb3c57`)
 
@@ -65,7 +66,7 @@ conversion.
 | Ranger handle / callsign | **nickname** (+ stable `person_id` for FKs) | ✅ decided — see below |
 | Attached-Ranger "role" (free text) | **involvement** | ✅ decided — see below |
 | "Rangers" attached to an incident (list) | **People Involved** | ✅ decided |
-| Event | **Event** (kept structural; UI may show "Fair") | ⚠️ recommend keep — see below |
+| Event | **Event** (kept everywhere, incl. UI) | ✅ decided — keep; *not* "Fair" (see below) |
 | Black Rock City | **Oregon Country Fair** | mostly UI/config/branding |
 | Patrol | Path Rove / Gate / Radio Handle | ⚠️ confirm OCF term |
 | Ranger HQ | Fair Central / QM | ⚠️ confirm OCF term |
@@ -169,29 +170,54 @@ This connects three threads: the **People entity** (Phase 2, decided), **People
 sourcing / invites** (Phase 4), and the **permission model** (Phase 4). A crew
 leader inviting a person is *both* an onboarding flow *and* a permission grant.
 
+**Vocabulary — three distinct concepts (decided 2026-06-05):**
+- **Crew** = a group of People; **nestable** (crews within crews).
+- **Title** = a descriptive position label (e.g. "Medical Lead"); cosmetic, does
+  *not* by itself grant permissions.
+- **Role** = a permission tier (Basic Reporter / Coordinator / Management) — the
+  *only* thing that drives authorization. Keeps "role" un-collided with involvement.
+
+**Invites — support both flows (decided 2026-06-05):** a crew leader can either
+(a) send an **email invite** and let the invitee **self-register** (choose their own
+nickname + credentials), or (b) **create the `Person` record directly** (nickname +
+temp credentials) and hand it over. This *is* the answer to "how are People created
+without Clubhouse." Both are scoped to the inviter's crew/authority.
+
 **Open design questions (for the Phase 4 design doc):**
-1. **"Title" vs "role" vs "crew" — distinct concepts?** Likely: *crew* = a group
-   (nestable), *title* = a descriptive position label, *role* = a permission tier
-   (Basic Reporter / Coordinator / Management). Confirm the vocabulary so we don't
-   re-collide "role".
-2. **Crew leader = a permission, not a new entity?** Probably a `Person`↔`crew`
+1. **Crew leader = a permission, not a new entity?** Probably a `Person`↔`crew`
    membership edge flagged `is_leader` (or a per-crew role), granting leader-scoped
    permissions over that crew and its sub-crews.
-3. **What can a crew leader do?** Invite People, manage their crew's membership,
-   create sub-crews, assign involvement…? Defines the permission bits.
-4. **Invite mechanics.** Email invite → invitee self-registers (sets their own
-   nickname/credentials), or leader creates the `Person` record directly? Scoped to
-   the leader's crew? This *is* the "how People are created without Clubhouse" answer.
-5. **Do permissions inherit down the crew tree?** Does leading a parent crew grant
+2. **What exactly can a crew leader do** beyond inviting — manage their crew's
+   membership, create sub-crews, assign titles, assign involvement…? Defines the
+   permission bits.
+3. **Do permissions inherit down the crew tree?** Does leading a parent crew grant
    authority over sub-crews and their members?
+4. **How do crews/titles/roles map onto today's `EVENT_ACCESS` expressions**
+   (`team:`/`position:`/`person:`)? Do locally-owned crews/titles simply *become*
+   the new source for those expressions, or does the grant model change?
 
-### ⚠️ Recommend KEEP "Event" as the structural term
-`Event` is the system's partition key — `event_id` is on every incident, report,
-visit, access rule, and URL (2093 source lines). Deep-renaming it (e.g. to "Fair")
-would be the single largest and riskiest change in the conversion for almost no
-user benefit, since users rarely see the raw word. **Recommendation:** keep
-`Event`/`event_id` as the internal/structural noun; if OCF wants "Fair" in the UI,
-relabel display strings only. Flag for explicit sign-off.
+### ✅ KEEP "Event" everywhere — incl. the UI (decided 2026-06-05)
+**Confirmed by tracing actual usage.** `Event` is the system's top-level partition:
+- Every incident, report, visit, place, and access rule is scoped to one event via
+  an `EVENT` FK; **numbers restart at 1 per event** (composite PK `(EVENT, NUMBER)`,
+  `current.sql:55`). It's load-bearing, not cosmetic (2093 source lines, all URLs).
+- An event is identified by its **`NAME`**, which is the URL slug
+  (`/ims/app/events/{eventName}/…`, `web/mux.go:123`). At BRC the name is the **year**.
+- **Events already support grouping** (`IS_GROUP` + self-referencing `PARENT_GROUP`,
+  added in migration `25-from-24.sql`; fully wired through `admin_events.ts`,
+  `api/event.go`, and the `EventAndParentAccess` query). A *group* is an access
+  container whose rules cascade to child events; a group itself can't hold
+  incidents/reports (intentional).
+
+**Why this fits OCF perfectly.** OCF is one annual Fair **plus smaller events
+year-round** (work weekends, off-site) — which is exactly what this model already
+expresses: the **Fair is one event** (`"OCF 2026"`), **smaller events are sibling
+events**, and a per-year **group** can hold shared access rules across them.
+
+**Decision: keep `Event` as the word in DB, API, *and* UI.** Do **not** relabel to
+"Fair" — not every event is the Fair (a spring work-weekend isn't), so "Fair" would
+be inaccurate. "Event" is the correct generic term. This removes the single largest
+and riskiest rename from the phase for zero benefit.
 
 ### ⚠️ "Report" sits next to "Report Entry"
 The system already has a separate `REPORT_ENTRY` concept (the timestamped log
@@ -241,7 +267,9 @@ Sliced so each lands green and the beta can adopt completed slices incrementally
 | **2b** | **Ranger → Person/People** (first-class local entity) | Largest slice. Local `Person` table (replaces Clubhouse dependency); `RANGER_HANDLE` → `person_id` FK + `nickname`; `INCIDENT__RANGER`/`VISIT__RANGER` → "People Involved" with `ROLE`→`involvement`; `REPORT_ENTRY.AUTHOR` → `person_id`; `Ranger*` Go types → `Person*`; UI "Rangers" → "People Involved". May warrant its own sub-PRs (entity+table, then the FK migrations). Coordinates with Phase 4 on how People are sourced/created. |
 | **2c** | **Black Rock City → Oregon Country Fair** + branding strings | Mostly UI/config; low risk. |
 | **2d** | **Small terms** — Patrol, HQ, Participant, Camp | Bundle the low-count items; confirm OCF wording first. |
-| **(2e)** | **Event → Fair UI relabel** *(only if OCF wants it)* | Display-layer only; do **not** rename `event_id`/`EVENT`. |
+
+> **No Event slice.** `Event` is kept verbatim (DB + API + UI), so there's no
+> rename PR for it — see the Event decision above.
 
 Each PR: separate branch off `master`, green build + tests, opened for review —
 same workflow as Phase 1.
@@ -250,10 +278,13 @@ same workflow as Phase 1.
 
 The deep rename **changes JSON field names and URL paths** (e.g.
 `/ims/api/.../field_reports` → `/reports`, `"field_reports"` → `"reports"`). The
-first-party web UI and Playwright tests are updated in the same PRs. **Open
-question:** are there *external* API consumers (mobile, integrations, scripts)? If
-yes, we need a deprecation/redirect window or a coordinated cutover. If the API is
-purely internal to the web UI, the break is contained. **Confirm before PR 2a.**
+first-party web UI and Playwright tests are updated in the same PRs.
+
+✅ **Resolved (2026-06-05): the API is web-UI-only** — no external consumers
+(mobile, integrations, scripts). The OCF beta is a fresh deployment with no
+Clubhouse and no third-party clients, so **the contract break is fully contained**
+in the PRs we control. **No deprecation/redirect window or compatibility shims are
+needed** — we can rename JSON fields and URLs outright.
 
 ## Open questions for OCF stakeholders
 
@@ -265,22 +296,24 @@ purely internal to the web UI, the break is contained. **Confirm before PR 2a.**
    - **Org-role wording** (Basic Reporter / Coordinator / Management) → **Phase 4**.
    - **Involvement history** — structured effective-dated history vs. rely on the
      action log? → **Phase 3** design item.
-3. **Event** — keep as the structural partition key, or relabel to "Fair" in the UI
-   only? *Sub-question that decides this:* does OCF run **multiple** "events"
-   (e.g. the Fair vs. work-weekends/years), or is it effectively one annual Fair?
-4. **Per-term wording** — Patrol, Ranger HQ, Participant, Camp → confirm exact OCF
-   terms (drafts above are guesses).
-5. **External API consumers?** — anyone besides the first-party web UI calling the
-   JSON API? Sets whether the contract break needs a compatibility window. (For a
-   fresh OCF beta with no Clubhouse, likely "web UI only" — confirm.)
+3. ~~**Event**~~ — ✅ **decided: keep `Event` everywhere (DB + API + UI); do *not*
+   relabel to "Fair".** OCF runs one annual Fair **plus** smaller year-round events;
+   the Fair is one event, smaller events are siblings, and the existing
+   `IS_GROUP`/`PARENT_GROUP` grouping handles per-year access. "Event" is the
+   correct generic term.
+4. ~~**External API consumers?**~~ — ✅ **decided: web-UI-only**, no external
+   clients; contract break is contained, no compat window needed.
+5. **Per-term wording** — Patrol, Ranger HQ, Participant, Camp → confirm exact OCF
+   terms (drafts above are guesses). *(Still open.)*
 
 ## Exit criteria
 
 - [x] Personnel identity model decided — Ranger → first-class `Person`/`People`
       (`nickname` + `person_id`), `ROLE` → `involvement`.
-- [ ] Remaining per-term wording (Event, Patrol, HQ, Participant, Camp) confirmed
-      with OCF stakeholders.
-- [ ] External-API-consumer question answered (compat window if needed).
+- [x] Event decided — kept verbatim (DB + API + UI); not "Fair".
+- [x] External-API-consumer question answered — web-UI-only, no compat window.
+- [ ] Remaining per-term wording (Patrol, HQ, Participant, Camp) confirmed with
+      OCF stakeholders.
 - [ ] Each entity rename shipped as a green, independently-reviewable PR.
 - [ ] No BRC-specific terminology remains in user-facing surfaces; build + unit +
       integration + Playwright green.
