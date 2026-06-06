@@ -229,6 +229,19 @@ lines inside incidents/reports/visits). After the rename:
   one genuinely ugly artifact. **Recommendation:** accept it (it's generated and
   rarely typed by hand); revisit only if it grates in review.
 
+> #### 📌 Deferred follow-up (post-fair): rename `ReportEntry` → `LogEntry`
+> Decided 2026-06-06 (after slice 2a shipped). The double-"report" in
+> `REPORT__REPORT_ENTRY` / `ReportReportEntry` is only awkward because the *log-line*
+> concept is still called "Report Entry." Renaming that concept to **`LogEntry`**
+> (`REPORT_ENTRY` → `LOG_ENTRY`, join tables `<PARENT>__REPORT_ENTRY` →
+> `<PARENT>__LOG_ENTRY`, JSON `report_entries` → `log_entries`, Go `ReportEntry` →
+> `LogEntry`) reads better and ends the collision (`REPORT__LOG_ENTRY`,
+> `ReportLogEntry`). **Not done now**: it's a *separate* entity rename touching
+> incidents, reports, AND visits (not in the original Phase-2 term mapping), so it's
+> a post-fair slice of its own — same vertical-rename template + migration as 2a,
+> plus the FK-rename gotcha (implicit `*_ibfk_*` auto-follow, explicit FKs need
+> manual drop/re-add). Group it with the other post-fair domain cleanups.
+
 ## How a deep rename works per entity (the template)
 
 Migration `29-from-28.sql` already did exactly this for **`STAY` → `VISIT`** and is
