@@ -17,6 +17,9 @@
 package integration_test
 
 import (
+	"bytes"
+	"encoding/json"
+	"io"
 	"net/http"
 	"testing"
 
@@ -125,6 +128,51 @@ func TestIncidentServiceConnect(t *testing.T) {
 			nums = append(nums, i.GetNumber())
 		}
 		require.Contains(t, nums, incNum)
+	})
+
+	t.Run("raw JSON POST (browser path)", func(t *testing.T) {
+		// The browser's hand-written client (web/typescript/connectrpc.ts) does a
+		// plain fetch POST with Content-Type application/json — the Connect unary
+		// JSON protocol, NOT the binary protocol the connect-go client above uses.
+		// Exercise that exact wire format here so the frontend path is covered.
+		reqBody, err := json.Marshal(map[string]string{"event": eventName})
+		require.NoError(t, err)
+		url := shared.serverURL.JoinPath("/ocf.ims.v1.IncidentService/ListIncidents").String()
+		httpReq, err := http.NewRequestWithContext(ctx, http.MethodPost, url, bytes.NewReader(reqBody))
+		require.NoError(t, err)
+		httpReq.Header.Set("Content-Type", "application/json")
+		httpReq.Header.Set("Connect-Protocol-Version", "1")
+		httpReq.Header.Set("Authorization", "Bearer "+aliceJWT)
+
+		httpResp, err := http.DefaultClient.Do(httpReq)
+		require.NoError(t, err)
+		body, err := io.ReadAll(httpResp.Body)
+		require.NoError(t, err)
+		require.NoError(t, httpResp.Body.Close())
+		require.Equal(t, http.StatusOK, httpResp.StatusCode, "body: %s", body)
+		require.Equal(t, "application/json", httpResp.Header.Get("Content-Type"))
+
+		// proto3 JSON: lowerCamelCase fields, enums as string names.
+		var decoded struct {
+			Incidents []struct {
+				Number   int32  `json:"number"`
+				State    string `json:"state"`
+				Priority string `json:"priority"`
+			} `json:"incidents"`
+		}
+		require.NoError(t, json.Unmarshal(body, &decoded))
+		var nums []int32
+		for _, i := range decoded.Incidents {
+			nums = append(nums, i.Number)
+		}
+		require.Contains(t, nums, incNum)
+		// The created sample incident is "new"/priority 5 -> proto enum strings.
+		for _, i := range decoded.Incidents {
+			if i.Number == incNum {
+				require.Equal(t, "INCIDENT_STATE_NEW", i.State)
+				require.Equal(t, "INCIDENT_PRIORITY_HIGH", i.Priority)
+			}
+		}
 	})
 
 	t.Run("unauthenticated is rejected", func(t *testing.T) {

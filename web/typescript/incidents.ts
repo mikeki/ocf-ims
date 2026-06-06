@@ -17,6 +17,7 @@
 "use strict";
 
 import * as ims from "./ims.ts";
+import * as connectrpc from "./connectrpc.ts";
 
 declare global {
     interface Window {
@@ -190,6 +191,36 @@ async function initIncidentsPage(): Promise<void> {
 
 let eventFieldReports: ims.FieldReportsByNumber|undefined = undefined;
 let eventVisits: ims.VisitsByNumber|undefined = undefined;
+
+// Integration check for the proto-first Connect IncidentService (strangler
+// migration; see docs/plans/07-proto-integration.md). Alongside the REST load
+// below, we also fetch the same incidents over Connect and log a comparison,
+// so we can validate the new typed path against the live REST data. This runs
+// once per page load and never affects the rendered table. Remove once the
+// Connect path is the source of truth.
+let comparedConnectIncidents: boolean = false;
+
+async function compareConnectIncidents(restIncidents: ims.Incident[]): Promise<void> {
+    if (comparedConnectIncidents) {
+        return;
+    }
+    comparedConnectIncidents = true;
+    const event: string|null = ims.pathIds.eventName;
+    if (event == null) {
+        return;
+    }
+    const {json, err} = await connectrpc.listIncidents(event);
+    if (err != null || json == null) {
+        console.warn(`[connect] IncidentService.ListIncidents failed: ${err}`);
+        return;
+    }
+    const connectCount: number = json.incidents?.length??0;
+    const restCount: number = restIncidents.length;
+    console.log(
+        `[connect] IncidentService.ListIncidents returned ${connectCount} incident(s); ` +
+        `REST returned ${restCount}; match=${connectCount === restCount}`,
+    );
+}
 
 async function loadEventFieldReports(): Promise<{err: string|null}> {
     const {json, err} = await ims.fetchNoThrow<ims.FieldReport[]>(
@@ -381,6 +412,8 @@ function initDataTables(tablePrereqs: Promise<void>): void {
                         json = res.json;
                     }),
                 ]);
+                // Validate the proto-first Connect path against this REST load (logs once).
+                void compareConnectIncidents(json);
                 // then call the callback, only once all data sources have returned
                 callback({data: json});
             }
