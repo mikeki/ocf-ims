@@ -130,7 +130,8 @@ func (action GetIncidentAttachment) getIncidentAttachment(
 		return nil, "", herr.BadRequest("Failed to parse attachment number", err).From("[ParseInt32]")
 	}
 
-	if _, _, errHTTP := fetchIncident(ctx, action.imsDBQ, event.ID, incidentNumber, action.attachmentsStore.Type != conf.AttachmentsStoreNone); errHTTP != nil {
+	_, _, errHTTP = fetchIncident(ctx, action.imsDBQ, event.ID, incidentNumber, action.attachmentsStore.Type != conf.AttachmentsStoreNone)
+	if errHTTP != nil {
 		return nil, "", errHTTP.From("[fetchIncident]")
 	}
 
@@ -546,7 +547,8 @@ func (action GetVisitAttachment) getVisitAttachment(
 		return nil, "", herr.BadRequest("Failed to parse attachment number", err).From("[ParseInt32]")
 	}
 
-	if _, _, errHTTP := fetchVisit(ctx, action.imsDBQ, event.ID, visitNumber, action.attachmentsStore.Type != conf.AttachmentsStoreNone); errHTTP != nil {
+	_, _, errHTTP = fetchVisit(ctx, action.imsDBQ, event.ID, visitNumber, action.attachmentsStore.Type != conf.AttachmentsStoreNone)
+	if errHTTP != nil {
 		return nil, "", errHTTP.From("[fetchVisit]")
 	}
 
