@@ -15,6 +15,15 @@ ims-attachments
 # the temp dir for `go tool air`
 air_tmp
 
+# generated code — produced at build time inside the image (build.go
+# -generate-only), never copied from the build context. Mirrors .gitignore;
+# excluding it keeps stale/orphaned generated files (e.g. a renamed entity's
+# old *.js) out of the embed.FS. See docs/plans/07-proto-integration.md.
+/store/imsdb/
+/directory/clubhousedb/
+/web/template/*_templ.go
+/web/static/*.js
+
 # playwright generated stuff, including any node_modules anywhere
 **/node_modules
 playwright/test-results
