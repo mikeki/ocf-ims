@@ -42,11 +42,9 @@ air_tmp
 # Generated code — NOT committed. All of it is produced at build time by
 # `go run bin/build/build.go` (use `-generate-only` to skip the final compile),
 # and also in the Docker build + CI. One convention: no generated code in the tree.
-#   buf   -> /gen/
 #   sqlc  -> store/imsdb/, directory/clubhousedb/
 #   templ -> web/template/*_templ.go
 #   tsgo  -> web/static/*.js
-/gen/
 /store/imsdb/
 /directory/clubhousedb/
 /web/template/*_templ.go

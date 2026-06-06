@@ -67,13 +67,11 @@ jobs:
         with:
           go-version-file: "go.mod"
 
-      - name: Generate code (sqlc, templ, tsgo, buf)
+      - name: Generate code (sqlc, templ, tsgo)
         # None of the generated code is committed, so it must be produced before
         # pre-commit's golangci-lint/govulncheck/go-vet compile ./.... build.go
-        # -generate-only runs all four generators (and fetches build deps) without
-        # the final `go build`. DO_NOT_TRACK suppresses buf telemetry.
-        env:
-          DO_NOT_TRACK: "1"
+        # -generate-only runs the generators (and fetches build deps) without the
+        # final `go build`.
         run: go run bin/build/build.go -generate-only
 
       - name: Install Python
@@ -126,13 +124,11 @@ jobs:
         with:
           go-version-file: "go.mod"
 
-      - name: Generate code (sqlc, templ, tsgo, buf)
+      - name: Generate code (sqlc, templ, tsgo)
         # None of the generated code is committed, so it must be produced before
         # `go test ./...` can compile any package that imports it. build.go
-        # -generate-only runs all four generators (and fetches build deps) without
-        # the final `go build`. DO_NOT_TRACK suppresses buf telemetry.
-        env:
-          DO_NOT_TRACK: "1"
+        # -generate-only runs the generators (and fetches build deps) without the
+        # final `go build`.
         run: go run bin/build/build.go -generate-only
 
       - name: Compile, test, and cover

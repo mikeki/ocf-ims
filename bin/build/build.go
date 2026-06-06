@@ -51,10 +51,6 @@ func main() {
 		return nil
 	})
 	eg.Go(func() error {
-		mustRunInDir(exec.CommandContext(gCtx, "go", "tool", "buf", "generate"), repo.Name())
-		return nil
-	})
-	eg.Go(func() error {
 		mustRunInDir(exec.CommandContext(gCtx, "go", "tool", "templ", "generate"), repo.Name())
 		return nil
 	})
@@ -79,9 +75,9 @@ func main() {
 	})
 	must(eg.Wait())
 
-	// The generated code (sqlc, templ, tsgo, buf) is intentionally not committed
-	// to the repo, so it is produced at build time everywhere it's needed: locally,
-	// in CI, and in the Docker build. `-generate-only` lets those callers run the
+	// The generated code (sqlc, templ, tsgo) is intentionally not committed to the
+	// repo, so it is produced at build time everywhere it's needed: locally, in CI,
+	// and in the Docker build. `-generate-only` lets those callers run the
 	// generators without the final `go build` (e.g. Docker builds the binary itself
 	// with its own flags; CI compiles via `go test`).
 	if *generateOnly {

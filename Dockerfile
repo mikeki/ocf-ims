@@ -26,12 +26,11 @@ RUN go run ./bin/fetchbuilddeps/fetchbuilddeps.go
 # See https://pkg.go.dev/debug/buildinfo#BuildInfo
 COPY ./ ./
 
-# Generate all code (sqlc, templ, tsgo, buf). None of it is committed to the
-# repo, so it must be generated here before the build. Uses local go-tool
-# generators/plugins (pinned in go.mod) — hermetic, no remote plugin calls.
-# `-generate-only` runs the generators but skips the `go build` below, which we
-# do ourselves with the cross-compile flags. DO_NOT_TRACK suppresses buf telemetry.
-ENV DO_NOT_TRACK=1
+# Generate all code (sqlc, templ, tsgo). None of it is committed to the repo, so
+# it must be generated here before the build. Uses local go-tool generators
+# (pinned in go.mod) — hermetic, no remote calls. `-generate-only` runs the
+# generators but skips the `go build` below, which we do ourselves with the
+# cross-compile flags.
 RUN go run bin/build/build.go -generate-only
 
 # Build the server
