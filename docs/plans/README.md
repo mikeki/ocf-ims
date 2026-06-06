@@ -31,4 +31,4 @@ management system.
 | [07-proto-integration.md](07-proto-integration.md) | Platform — proto-first API contract (buf + Connect-Go) | Pipeline ✅ (PR #8); generate-at-build follow-up TODO |
 | [10-cleanup-pass.md](10-cleanup-pass.md) | Phase 1 — Preparation & clean-up | ✅ Done (PRs #1–#5) |
 | [11-remove-concentric-streets.md](11-remove-concentric-streets.md) | Phase 1 — Remove Concentric Streets | ✅ Done (PR #1) |
-| 20-terminology.md | Phase 2 — Terminology | Not started (next) |
+| [20-terminology.md](20-terminology.md) | Phase 2 — Terminology | Draft — core decisions captured; awaiting OCF wording sign-off |
