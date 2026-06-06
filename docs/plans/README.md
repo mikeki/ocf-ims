@@ -28,7 +28,7 @@ management system.
 | [00-master-plan.md](00-master-plan.md) | Master roadmap | Draft — Phase 1 ✅ done, Phase 2 next |
 | [05-platform-stack.md](05-platform-stack.md) | Foundation — proto-first polyglot monorepo | Decisions locked |
 | [06-go-workspace-restructure.md](06-go-workspace-restructure.md) | Platform — move Go into `go/ims` + `go.work` | Deferred (after beta) |
-| [07-proto-integration.md](07-proto-integration.md) | Platform — proto-first API contract (buf + Connect-Go) | Pipeline ✅ (PR #8); generate-at-build (all generators) ✅; first Connect handler next |
+| [07-proto-integration.md](07-proto-integration.md) | Platform — proto-first API contract (buf + Connect-Go) | Pipeline ✅ (PR #8); generate-at-build ✅ (PR #9); first Connect handler (IncidentService, read-only) ✅; mutations + generated TS client next |
 | [10-cleanup-pass.md](10-cleanup-pass.md) | Phase 1 — Preparation & clean-up | ✅ Done (PRs #1–#5) |
 | [11-remove-concentric-streets.md](11-remove-concentric-streets.md) | Phase 1 — Remove Concentric Streets | ✅ Done (PR #1) |
 | [20-terminology.md](20-terminology.md) | Phase 2 — Terminology | Draft — core decisions captured; awaiting OCF wording sign-off |

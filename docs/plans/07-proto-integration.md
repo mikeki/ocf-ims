@@ -1,7 +1,9 @@
 # Proto Integration: proto-first API contract (buf + Connect-Go)
 
-> **Status:** Pipeline ✅ shipped (PR #8); generate-at-build extended to **all four
-> generators** ✅ (branch `feat/generate-at-build`). Next: first Connect handler.
+> **Status:** Pipeline ✅ (PR #8); generate-at-build for all four generators ✅
+> (PR #9); first Connect handler — read-only `IncidentService`, exercised from the
+> static site — ✅ (branch `feat/incident-connect-service`). Next: mutations +
+> grow the surface; generated TS client toolchain still deferred (PI7).
 > &nbsp;·&nbsp; **Parent:** [05-platform-stack.md](05-platform-stack.md)
 > &nbsp;·&nbsp; **Last updated:** 2026-06-05
 
@@ -116,11 +118,37 @@ steps are in place for the first handler that does.
   jsdelivr/jquery/datatables (already allow-listed in both jobs); buf has
   `DO_NOT_TRACK=1`. Watch for any new host.
 
-## Roadmap (after this branch)
+## First Connect handler ✅ (branch `feat/incident-connect-service`)
 
-- **First Connect handler** — implement `ListIncidents` over `store/`, registered on
-  the existing mux next to the REST routes (platform **P2**). Proves the end-to-end
-  typed path and makes the CI generate step load-bearing.
+The read-only `IncidentService` (`ListIncidents` + `GetIncident`) is implemented
+over `store/`, registered on the existing mux next to the REST incident routes and
+wrapped in the same middleware (auth/log/panic/size-limit). This makes the
+build-time `buf generate` step load-bearing for the first time.
+
+- **Server** (`api/incident_rpc.go`): reuses the same store queries and
+  `authz.EventPermissions` as REST; `incidentToProto`/`reportEntryToProto` map the
+  stored rows to proto. The proto already speaks decided OCF terms, so the handler
+  name-maps (`handle`→`nickname`, `ROLE`→`involvement`, `person_id` left 0) until
+  the [20-terminology](20-terminology.md) rename lands.
+- **Test** (`api/integration/incident_rpc_test.go`): end-to-end against real
+  MariaDB using REST as the oracle (Connect must agree field-for-field), plus an
+  explicit raw-JSON-POST subtest covering the browser wire format and full auth
+  coverage (Unauthenticated / PermissionDenied / NotFound).
+- **Frontend typed client** — decision **PI7** below. A hand-typed TS client
+  (`web/typescript/connectrpc.ts`) calls `ListIncidents` over Connect-JSON via the
+  existing fetch/JWT plumbing; `incidents.ts` logs a REST-vs-Connect comparison.
+
+### PI7 — frontend client: hand-typed now, generated later
+A *generated* Connect-ES client needs `protoc-gen-es` (JS-only) plus a bundler for
+`@connectrpc/connect-web` + `@bufbuild/protobuf` — i.e. a Node/npm + bundler
+toolchain the repo deliberately avoids (zero-npm; tsgo transpiles file-by-file;
+vendored libs are prebuilt globals; offline-first, so no runtime CDN). Decision:
+**hand-write a small typed client + Connect-JSON-over-fetch for now**, no new deps.
+The generated toolchain (protoc-gen-es + esbuild, embedded for offline) remains a
+**deferred, separate infra PR** — it's the TS-codegen step the platform plan parks
+under "interface work." When it lands, `connectrpc.ts` is replaced wholesale.
+
+## Roadmap (after this branch)
 - **Grow the surface** — model **roles & permissions**
   ([40-roles-permissions.md](00-master-plan.md), when written) directly in proto;
   define mutations for Incident; add Report/Person once their renames land.
@@ -134,7 +162,8 @@ steps are in place for the first handler that does.
 - [x] Proto pipeline: schema + buf config + hermetic go-tool codegen, wired into
       `build.go`. (PR #8)
 - [x] `gen/` git-ignored; generated in Docker + CI + locally; documented.
-- [ ] First Connect handler (`ListIncidents`) proves the end-to-end path.
+- [x] First Connect handler (`ListIncidents`/`GetIncident`) proves the end-to-end
+      path; exercised from the static site. (branch `feat/incident-connect-service`)
 - [x] Follow-up PR: generate-at-build extended to sqlc/templ/tsgo (one convention).
       (branch `feat/generate-at-build`)
 - [ ] TypeScript target added (when interface work starts).
