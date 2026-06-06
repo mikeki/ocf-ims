@@ -176,21 +176,23 @@ Renamed / re-keyed existing tables (migration `34-from-33.sql`, schema → v34):
 
 ## Suggested sub-PR breakdown
 
-This is large; slice it so each PR lands green (same discipline as 2a). Likely
-order (refine as we go):
+This is large; slice it so each PR lands green (same discipline as 2a). Actual
+order (revised 2026-06-06 after the seam investigation):
 
-1. **Local `PERSON` table + credentials + local login** — stand up the table and
-   seed; switch `api/auth.go` to validate locally; JWT keyed on `person_id`. (Authz
-   can still read Clubhouse-derived positions/teams transitionally, or go local in
-   the same PR — decide based on diff size.)
-2. **Local org + authz** — local `POSITION`/`TEAM`/membership; `permission.go`
-   sourced locally; `person:<id>` expressions; admin via `is_admin`.
-3. **Re-key attached-people + author** — `INCIDENT__PERSON`/`VISIT__PERSON`,
-   `PERSON_ID` FKs, `INVOLVEMENT`, `AUTHOR_PERSON_ID` (the migration-heavy slice).
-4. **Retire `directory/` Clubhouse** — delete the dependency and config.
-5. **UI / JSON / URL vocabulary rename** — "People Involved", `/people/`,
+1. **Local people directory + identity re-key** — local `PERSON`/`POSITION`/`TEAM`/
+   membership tables + credentials + local login; the `IUserStore` seam with
+   clubhouse + local backends; and the attached-people/author **`person_id` FK
+   re-key** (`INCIDENT__PERSON`/`VISIT__PERSON`, `AUTHOR_PERSON_ID`). This **merges
+   the originally-separate slices 1, 2, and 3** — they fight the code if split (the
+   `UserStore` cache loads persons + positions/teams as one unit, and the clean-slate
+   DB removes any reason to defer the FK re-key). Detailed plan:
+   [`31-local-people-directory.md`](31-local-people-directory.md). JSON wire contract
+   stays handle-based; admins stay env-`IMS_ADMINS`; `onduty:` inert for now.
+2. **Retire `directory/` Clubhouse** — delete the dependency and config.
+3. **UI / JSON / URL vocabulary rename** — "People Involved", `/people/`,
    `rangers`→`people`, `role`→`involvement`, function/element renames (the 2b UI
-   surface inventoried in the exploration).
+   surface inventoried in the exploration); plus deferred bits — `PERSON.is_admin`
+   and local `onduty:` modeling.
 
 ## Open sub-decisions (resolve during implementation)
 
