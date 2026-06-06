@@ -130,6 +130,12 @@ func (action GetIncidentAttachment) getIncidentAttachment(
 		return nil, "", herr.BadRequest("Failed to parse attachment number", err).From("[ParseInt32]")
 	}
 
+	if _, _, errHTTP := fetchIncident(ctx, action.imsDBQ, event.ID, incidentNumber, action.attachmentsStore.Type != conf.AttachmentsStoreNone); errHTTP != nil {
+		return nil, "", errHTTP.From("[fetchIncident]")
+	}
+
+	// The internal attached-file name lives only on the stored row, not the JSON
+	// view, so look it up from the raw report-entry rows.
 	reportEntryRows, err := action.imsDBQ.Incident_ReportEntries(ctx, action.imsDBQ, imsdb.Incident_ReportEntriesParams{
 		Event:          event.ID,
 		IncidentNumber: incidentNumber,
@@ -277,6 +283,19 @@ func (action GetReportAttachment) getReportAttachment(
 		return nil, "", herr.BadRequest("Failed to parse attachment number", err).From("[ParseInt32]")
 	}
 
+	_, reportEntries, errHTTP := fetchReport(ctx, action.imsDBQ, event.ID, reportNumber, action.attachmentsStore.Type != conf.AttachmentsStoreNone)
+	if errHTTP != nil {
+		return nil, "", errHTTP.From("[fetchReport]")
+	}
+
+	if limitedAccess {
+		if !containsAuthor(reportEntries, jwtCtx.Claims.RangerHandle()) {
+			return nil, "", herr.Forbidden("The requestor does not have permission to read this particular Report", nil)
+		}
+	}
+
+	// The internal attached-file name lives only on the stored row, not the JSON
+	// view, so look it up from the raw report-entry rows.
 	reportEntryRows, err := action.imsDBQ.Report_ReportEntries(ctx, action.imsDBQ, imsdb.Report_ReportEntriesParams{
 		Event:        event.ID,
 		ReportNumber: reportNumber,
@@ -284,20 +303,6 @@ func (action GetReportAttachment) getReportAttachment(
 	if err != nil {
 		return nil, "", herr.InternalServerError("Failed to fetch report entries", err).From("[Report_ReportEntries]")
 	}
-
-	if limitedAccess {
-		authored := false
-		for _, row := range reportEntryRows {
-			if row.Author == jwtCtx.Claims.RangerHandle() {
-				authored = true
-				break
-			}
-		}
-		if !authored {
-			return nil, "", herr.Forbidden("The requestor does not have permission to read this particular Report", nil)
-		}
-	}
-
 	var filename string
 	for _, row := range reportEntryRows {
 		if row.ReportEntry.ID == attachmentNumber {
@@ -541,6 +546,12 @@ func (action GetVisitAttachment) getVisitAttachment(
 		return nil, "", herr.BadRequest("Failed to parse attachment number", err).From("[ParseInt32]")
 	}
 
+	if _, _, errHTTP := fetchVisit(ctx, action.imsDBQ, event.ID, visitNumber, action.attachmentsStore.Type != conf.AttachmentsStoreNone); errHTTP != nil {
+		return nil, "", errHTTP.From("[fetchVisit]")
+	}
+
+	// The internal attached-file name lives only on the stored row, not the JSON
+	// view, so look it up from the raw report-entry rows.
 	reportEntryRows, err := action.imsDBQ.Visit_ReportEntries(ctx, action.imsDBQ, imsdb.Visit_ReportEntriesParams{
 		Event:       event.ID,
 		VisitNumber: visitNumber,

@@ -111,8 +111,13 @@ config selector, local login, demo seed.
   pluggable data source with two backends:
   - **clubhouse** — today's `DBQ` over `chqueries` (behavior unchanged).
   - **local** — new sqlc queries over the IMS-DB people tables (step A).
-- The ~50 handler struct fields move `*directory.UserStore` → `directory.IUserStore`
-  (mechanical). This also makes the store mockable in `api/` tests.
+- `directory.IUserStore` is defined as the seam and is consumed by the new
+  `personIDByHandle` helper. **Migrating the ~50 handler struct fields from
+  `*directory.UserStore` to the interface is deferred** — it is pure mechanical
+  churn (and would cascade into `authz.EventPermissions`) with no functional value
+  until a test actually needs to mock the store. The concrete `*UserStore` already
+  satisfies `IUserStore`, so the seam is in place; the field-type swap can happen
+  when mocking is needed or during the Clubhouse retirement PR.
 - sqlc: add `Persons`, `Positions`, `Teams`, `PersonPositions`, `PersonTeams`,
   `PersonsOnDuty` (returns empty for now) for the local tables to `store/queries.sql`;
   regenerate `store/imsdb`.
@@ -156,6 +161,24 @@ The TypeScript/UI rename is a later PR, so the JSON stays as-is (`handle`,
   Playwright.
 
 ---
+
+## Cross-mode consequence discovered during implementation
+
+The `AUTHOR_PERSON_ID` / `PERSON_ID` FKs reference the **local** `PERSON` table, so
+*any* authenticated author/attachee must have a local `PERSON` row — even in
+Clubhouse mode, where login ids come from Clubhouse. For the transition this means
+the IMS `PERSON` table must be seeded with rows whose ids/nicknames match the
+directory:
+
+- **Local mode** (dev/demo default, the Fair): the local `PERSON` table *is* the
+  directory, so this is automatic.
+- **Clubhouse mode** (retained until the retirement PR): the demo seed
+  (`store/fakeimsdb/seed.sql`) and the `api/integration` setup seed matching `PERSON`
+  rows (ids 600–602 / 6000–6001) so FKs resolve and the author/handle join renders.
+
+A second behavioral change falls out of the FK: attaching a person now requires a
+**real** person (resolved via `personIDByHandle`); the old free-text "attach any
+handle" behavior is gone (integration tests updated accordingly).
 
 ## Build order (each step compiles/tests before the next where possible)
 

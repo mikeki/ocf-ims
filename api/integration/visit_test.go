@@ -58,7 +58,7 @@ func sampleVisit1(eventName string) imsjson.Visit {
 		ResourcePogs:    new("no, wasn't hungry"),
 		ResourceFoodBev: new("ate a lot of our grass"),
 		ResourceOther:   new("nothing else"),
-		Rangers:         &[]imsjson.VisitRanger{{Handle: "SomeOne"}, {Handle: "SomeTwo"}},
+		Rangers:         &[]imsjson.VisitRanger{{Handle: userAdminHandle}, {Handle: userAliceHandle}},
 		ReportEntries: []imsjson.ReportEntry{
 			{Text: "This is some visit report text"},
 			{Text: ""},
@@ -334,17 +334,17 @@ func TestCreateAndUpdateVisit(t *testing.T) {
 	require.Nil(t, visitAfterDetach.Incident)
 
 	// attach a Ranger
-	resp = apisNonAdmin.attachRangerToVisit(ctx, eventName, num, "Some Dude")
+	resp = apisNonAdmin.attachRangerToVisit(ctx, eventName, num, userAliceHandle)
 	require.Equal(t, http.StatusNoContent, resp.StatusCode)
 	require.NoError(t, resp.Body.Close())
 	retrievedVisitAfterUpdate, resp = apisNonAdmin.getVisit(ctx, eventName, num)
 	require.Equal(t, http.StatusOK, resp.StatusCode)
 	require.NoError(t, resp.Body.Close())
 	require.Len(t, *retrievedVisitAfterUpdate.Rangers, 1)
-	require.Equal(t, "Some Dude", (*retrievedVisitAfterUpdate.Rangers)[0].Handle)
+	require.Equal(t, userAliceHandle, (*retrievedVisitAfterUpdate.Rangers)[0].Handle)
 
 	// detach that Ranger
-	resp = apisNonAdmin.detachRangerFromVisit(ctx, eventName, num, "Some Dude")
+	resp = apisNonAdmin.detachRangerFromVisit(ctx, eventName, num, userAliceHandle)
 	require.Equal(t, http.StatusNoContent, resp.StatusCode)
 	require.NoError(t, resp.Body.Close())
 	retrievedVisitAfterUpdate, resp = apisNonAdmin.getVisit(ctx, eventName, num)
