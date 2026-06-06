@@ -26,12 +26,33 @@ import (
 	"github.com/mikeki/ocf-ims/lib/cache"
 )
 
+// IUserStore is the consumer-facing seam over the user/personnel directory. It is
+// satisfied today by the Clubhouse-backed UserStore and, as part of Phase 3, by a
+// local IMS-DB-backed implementation. See docs/plans/31-local-people-directory.md.
+type IUserStore interface {
+	GetAllUsers(ctx context.Context) (map[int64]*User, error)
+	GetRangers(ctx context.Context) ([]imsjson.Person, error)
+	GetPositionsAndTeams(ctx context.Context) (positions, teams map[int64]string, err error)
+}
+
+// personSource is the pluggable data backend behind UserStore. It abstracts over
+// the external Clubhouse directory (clubhouseSource) and the local IMS-DB people
+// tables (localSource), so the caching layer and all API consumers stay identical
+// regardless of where the people data lives.
+type personSource interface {
+	users(ctx context.Context) (map[int64]*User, error)
+	positions(ctx context.Context) (map[int64]string, error)
+	teams(ctx context.Context) (map[int64]string, error)
+}
+
 type UserStore struct {
-	DBQ           *DBQ
+	src           personSource
 	userCache     *cache.InMemory[map[int64]*User]
 	positionCache *cache.InMemory[map[int64]string]
 	teamCache     *cache.InMemory[map[int64]string]
 }
+
+var _ IUserStore = (*UserStore)(nil)
 
 type User struct {
 	ID     int64
@@ -49,9 +70,14 @@ type User struct {
 	OnDutyPositionName *string
 }
 
+// NewUserStore builds a UserStore backed by the external Clubhouse directory.
 func NewUserStore(dbq *DBQ, cacheTTL time.Duration) *UserStore {
+	return newUserStore(&clubhouseSource{dbq: dbq}, cacheTTL)
+}
+
+func newUserStore(src personSource, cacheTTL time.Duration) *UserStore {
 	us := &UserStore{
-		DBQ: dbq,
+		src: src,
 	}
 	us.userCache = cache.New(
 		cacheTTL,
@@ -113,18 +139,37 @@ func (store *UserStore) GetPositionsAndTeams(ctx context.Context) (positions, te
 }
 
 func (store *UserStore) refreshUserCache(ctx context.Context) (map[int64]*User, error) {
+	return store.src.users(ctx)
+}
+
+func (store *UserStore) refreshPositionCache(ctx context.Context) (map[int64]string, error) {
+	return store.src.positions(ctx)
+}
+
+func (store *UserStore) refreshTeamCache(ctx context.Context) (map[int64]string, error) {
+	return store.src.teams(ctx)
+}
+
+// clubhouseSource is the external-Clubhouse-directory backend for UserStore.
+type clubhouseSource struct {
+	dbq *DBQ
+}
+
+var _ personSource = (*clubhouseSource)(nil)
+
+func (s *clubhouseSource) users(ctx context.Context) (map[int64]*User, error) {
 	var errs []error
-	persons, err := store.DBQ.Persons(ctx, store.DBQ)
+	persons, err := s.dbq.Persons(ctx, s.dbq)
 	errs = append(errs, err)
-	teamRows, err := store.DBQ.Teams(ctx, store.DBQ)
+	teamRows, err := s.dbq.Teams(ctx, s.dbq)
 	errs = append(errs, err)
-	positionRows, err := store.DBQ.Positions(ctx, store.DBQ)
+	positionRows, err := s.dbq.Positions(ctx, s.dbq)
 	errs = append(errs, err)
-	personTeams, err := store.DBQ.PersonTeams(ctx, store.DBQ)
+	personTeams, err := s.dbq.PersonTeams(ctx, s.dbq)
 	errs = append(errs, err)
-	personPositions, err := store.DBQ.PersonPositions(ctx, store.DBQ)
+	personPositions, err := s.dbq.PersonPositions(ctx, s.dbq)
 	errs = append(errs, err)
-	personsOnDuty, err := store.DBQ.PersonsOnDuty(ctx, store.DBQ)
+	personsOnDuty, err := s.dbq.PersonsOnDuty(ctx, s.dbq)
 	errs = append(errs, err)
 	err = errors.Join(errs...)
 	if err != nil {
@@ -176,8 +221,8 @@ func (store *UserStore) refreshUserCache(ctx context.Context) (map[int64]*User, 
 	return m, nil
 }
 
-func (store *UserStore) refreshPositionCache(ctx context.Context) (map[int64]string, error) {
-	positionRows, err := store.DBQ.Positions(ctx, store.DBQ)
+func (s *clubhouseSource) positions(ctx context.Context) (map[int64]string, error) {
+	positionRows, err := s.dbq.Positions(ctx, s.dbq)
 	if err != nil {
 		return nil, fmt.Errorf("[Positions]: %w", err)
 	}
@@ -188,8 +233,8 @@ func (store *UserStore) refreshPositionCache(ctx context.Context) (map[int64]str
 	return positions, nil
 }
 
-func (store *UserStore) refreshTeamCache(ctx context.Context) (map[int64]string, error) {
-	teamRows, err := store.DBQ.Teams(ctx, store.DBQ)
+func (s *clubhouseSource) teams(ctx context.Context) (map[int64]string, error) {
+	teamRows, err := s.dbq.Teams(ctx, s.dbq)
 	if err != nil {
 		return nil, fmt.Errorf("[Teams]: %w", err)
 	}

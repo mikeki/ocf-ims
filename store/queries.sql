@@ -142,22 +142,26 @@ where
 group by
     i.NUMBER;
 
--- name: Incidents_Rangers :many
+-- name: Incidents_People :many
 select
-    sqlc.embed(ir)
+    sqlc.embed(ip),
+    p.NICKNAME
 from
-    INCIDENT__RANGER ir
+    INCIDENT__PERSON ip
+    join PERSON p on p.ID = ip.PERSON_ID
 where
-    ir.EVENT = ?;
+    ip.EVENT = ?;
 
--- name: Incident_Rangers :many
+-- name: Incident_People :many
 select
-    sqlc.embed(ir)
+    sqlc.embed(ip),
+    p.NICKNAME
 from
-    INCIDENT__RANGER ir
+    INCIDENT__PERSON ip
+    join PERSON p on p.ID = ip.PERSON_ID
 where
-    ir.EVENT = ?
-    and ir.INCIDENT_NUMBER = ?;
+    ip.EVENT = ?
+    and ip.INCIDENT_NUMBER = ?;
 
 -- name: Incident_LinkedIncidents :many
 select
@@ -180,11 +184,14 @@ where
 -- name: Incidents_ReportEntries :many
 select
     ire.INCIDENT_NUMBER,
-    sqlc.embed(re)
+    sqlc.embed(re),
+    p.NICKNAME as AUTHOR
 from
     INCIDENT__REPORT_ENTRY ire
         join REPORT_ENTRY re
              on re.ID = ire.REPORT_ENTRY
+        join PERSON p
+             on p.ID = re.AUTHOR_PERSON_ID
 where
     ire.EVENT = ?
     and re.GENERATED <= ?
@@ -193,11 +200,14 @@ where
 -- name: Incident_ReportEntries :many
 select
     ire.INCIDENT_NUMBER,
-    sqlc.embed(re)
+    sqlc.embed(re),
+    p.NICKNAME as AUTHOR
 from
     INCIDENT__REPORT_ENTRY ire
         join REPORT_ENTRY re
              on re.ID = ire.REPORT_ENTRY
+        join PERSON p
+             on p.ID = re.AUTHOR_PERSON_ID
 where
     ire.EVENT = ?
     and ire.INCIDENT_NUMBER = ?
@@ -226,11 +236,14 @@ where fr.EVENT = ?
 -- name: Reports_ReportEntries :many
 select
     irre.REPORT_NUMBER,
-    sqlc.embed(re)
+    sqlc.embed(re),
+    p.NICKNAME as AUTHOR
 from
     REPORT__REPORT_ENTRY irre
         join REPORT_ENTRY re
              on irre.REPORT_ENTRY = re.ID
+        join PERSON p
+             on p.ID = re.AUTHOR_PERSON_ID
 where
     irre.EVENT = ?
     and re.GENERATED <= ?
@@ -238,11 +251,14 @@ where
 
 -- name: Report_ReportEntries :many
 select
-    sqlc.embed(re)
+    sqlc.embed(re),
+    p.NICKNAME as AUTHOR
 from
     REPORT__REPORT_ENTRY irre
         join REPORT_ENTRY re
              on irre.REPORT_ENTRY = re.ID
+        join PERSON p
+             on p.ID = re.AUTHOR_PERSON_ID
 where
     irre.EVENT = ?
     and irre.REPORT_NUMBER = ?
@@ -287,7 +303,7 @@ where EVENT = ? and NUMBER = ?;
 
 -- name: CreateReportEntry :execlastid
 insert into REPORT_ENTRY (
-    AUTHOR, TEXT, CREATED, `GENERATED`, STRICKEN,
+    AUTHOR_PERSON_ID, TEXT, CREATED, `GENERATED`, STRICKEN,
     ATTACHED_FILE, ATTACHED_FILE_ORIGINAL_NAME, ATTACHED_FILE_MEDIA_TYPE
 ) values (
    ?, ?, ?, ?, ?, ?, ?, ?
@@ -360,16 +376,16 @@ where ID IN (
       and REPORT_ENTRY = ?
 );
 
--- name: AttachRangerHandleToIncident :exec
-insert into INCIDENT__RANGER (EVENT, INCIDENT_NUMBER, RANGER_HANDLE, ROLE)
+-- name: AttachPersonToIncident :exec
+insert into INCIDENT__PERSON (EVENT, INCIDENT_NUMBER, PERSON_ID, ROLE)
 values (?, ?, ?, ?);
 
--- name: DetachRangerHandleFromIncident :exec
-delete from INCIDENT__RANGER
+-- name: DetachPersonFromIncident :exec
+delete from INCIDENT__PERSON
 where
     EVENT = ?
     and INCIDENT_NUMBER = ?
-    and RANGER_HANDLE = ?
+    and PERSON_ID = ?
 ;
 
 -- name: LinkIncidents :exec
@@ -518,43 +534,50 @@ where
 group by
     s.NUMBER;
 
--- name: Visits_Rangers :many
+-- name: Visits_People :many
 select
-    sqlc.embed(sr)
+    sqlc.embed(vp),
+    p.NICKNAME
 from
-    VISIT__RANGER sr
+    VISIT__PERSON vp
+    join PERSON p on p.ID = vp.PERSON_ID
 where
-    sr.EVENT = ?;
+    vp.EVENT = ?;
 
--- name: Visit_Rangers :many
+-- name: Visit_People :many
 select
-    sqlc.embed(sr)
+    sqlc.embed(vp),
+    p.NICKNAME
 from
-    VISIT__RANGER sr
+    VISIT__PERSON vp
+    join PERSON p on p.ID = vp.PERSON_ID
 where
-    sr.EVENT = ?
-    and sr.VISIT_NUMBER = ?;
+    vp.EVENT = ?
+    and vp.VISIT_NUMBER = ?;
 
--- name: AttachRangerToVisit :exec
-insert into VISIT__RANGER (EVENT, VISIT_NUMBER, RANGER_HANDLE, ROLE)
+-- name: AttachPersonToVisit :exec
+insert into VISIT__PERSON (EVENT, VISIT_NUMBER, PERSON_ID, ROLE)
 values (?, ?, ?, ?);
 
--- name: DetachRangerFromVisit :exec
-delete from VISIT__RANGER
+-- name: DetachPersonFromVisit :exec
+delete from VISIT__PERSON
 where
     EVENT = ?
     and VISIT_NUMBER = ?
-    and RANGER_HANDLE = ?
+    and PERSON_ID = ?
 ;
 
 -- name: Visit_ReportEntries :many
 select
     sre.VISIT_NUMBER,
-    sqlc.embed(re)
+    sqlc.embed(re),
+    p.NICKNAME as AUTHOR
 from
     VISIT__REPORT_ENTRY sre
         join REPORT_ENTRY re
              on re.ID = sre.REPORT_ENTRY
+        join PERSON p
+             on p.ID = re.AUTHOR_PERSON_ID
 where
     sre.EVENT = ?
     and sre.VISIT_NUMBER = ?
@@ -563,11 +586,14 @@ where
 -- name: Visits_ReportEntries :many
 select
     sre.VISIT_NUMBER,
-    sqlc.embed(re)
+    sqlc.embed(re),
+    p.NICKNAME as AUTHOR
 from
     VISIT__REPORT_ENTRY sre
         join REPORT_ENTRY re
              on re.ID = sre.REPORT_ENTRY
+        join PERSON p
+             on p.ID = re.AUTHOR_PERSON_ID
 where
     sre.EVENT = ?
     and re.GENERATED <= ?
@@ -582,3 +608,32 @@ union
 select 1
 order by 1 desc
 limit 1;
+
+--
+-- Local people directory queries.
+--
+-- These back the local (IMS-DB) implementation of directory.IUserStore, mirroring
+-- the Clubhouse directory queries in directory/queries.sql but sourced from the
+-- local PERSON/POSITION/TEAM tables. See docs/plans/31-local-people-directory.md.
+--
+
+-- name: People :many
+select ID, NICKNAME, EMAIL, STATUS, ON_SITE, PASSWORD
+from PERSON
+where STATUS = 'active';
+
+-- name: PeoplePositions :many
+select PERSON_ID, POSITION_ID
+from PERSON__POSITION;
+
+-- name: PeopleTeams :many
+select PERSON_ID, TEAM_ID
+from PERSON__TEAM;
+
+-- name: PeoplePositionsList :many
+select ID, NAME
+from `POSITION`;
+
+-- name: PeopleTeamsList :many
+select ID, NAME
+from TEAM;

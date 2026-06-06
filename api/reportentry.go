@@ -56,7 +56,7 @@ func (action EditReportReportEntry) editReportEntry(req *http.Request) *herr.HTT
 	}
 	ctx := req.Context()
 
-	author := jwtCtx.Claims.RangerHandle()
+	authorPersonID := int32(jwtCtx.Claims.DirectoryID())
 
 	reportNumber, err := conv.ParseInt32(req.PathValue("reportNumber"))
 	if err != nil {
@@ -106,7 +106,7 @@ func (action EditReportReportEntry) editReportEntry(req *http.Request) *herr.HTT
 	if !*re.Stricken {
 		struckVerb = "Unstruck"
 	}
-	_, errHTTP = addReportEntry(ctx, action.imsDBQ, txn, event.ID, reportNumber, author, fmt.Sprintf("%v reportEntry %v", struckVerb, reportEntryId), true, "", "", "")
+	_, errHTTP = addReportEntry(ctx, action.imsDBQ, txn, event.ID, reportNumber, authorPersonID, fmt.Sprintf("%v reportEntry %v", struckVerb, reportEntryId), true, "", "", "")
 	if errHTTP != nil {
 		return errHTTP.From("[addReportEntry]")
 	}
@@ -146,7 +146,7 @@ func (action EditIncidentReportEntry) editIncidentReportEntry(req *http.Request)
 	}
 	ctx := req.Context()
 
-	author := jwtCtx.Claims.RangerHandle()
+	authorPersonID := int32(jwtCtx.Claims.DirectoryID())
 
 	incidentNumber, err := conv.ParseInt32(req.PathValue("incidentNumber"))
 	if err != nil {
@@ -188,7 +188,7 @@ func (action EditIncidentReportEntry) editIncidentReportEntry(req *http.Request)
 	if !*re.Stricken {
 		struckVerb = "Unstruck"
 	}
-	_, errHTTP = addIncidentReportEntry(ctx, action.imsDBQ, txn, event.ID, incidentNumber, author, fmt.Sprintf("%v reportEntry %v", struckVerb, reportEntryId), true, "", "", "")
+	_, errHTTP = addIncidentReportEntry(ctx, action.imsDBQ, txn, event.ID, incidentNumber, authorPersonID, fmt.Sprintf("%v reportEntry %v", struckVerb, reportEntryId), true, "", "", "")
 	if errHTTP != nil {
 		return errHTTP.From("[addIncidentReportEntry]")
 	}
@@ -227,7 +227,7 @@ func (action EditVisitReportEntry) editVisitReportEntry(req *http.Request) *herr
 	}
 	ctx := req.Context()
 
-	author := jwtCtx.Claims.RangerHandle()
+	authorPersonID := int32(jwtCtx.Claims.DirectoryID())
 
 	visitNumber, err := conv.ParseInt32(req.PathValue("visitNumber"))
 	if err != nil {
@@ -277,7 +277,7 @@ func (action EditVisitReportEntry) editVisitReportEntry(req *http.Request) *herr
 	if !*re.Stricken {
 		struckVerb = "Unstruck"
 	}
-	_, errHTTP = addVisitReportEntry(ctx, action.imsDBQ, txn, event.ID, visitNumber, author, fmt.Sprintf("%v reportEntry %v", struckVerb, reportEntryId), true, "", "", "")
+	_, errHTTP = addVisitReportEntry(ctx, action.imsDBQ, txn, event.ID, visitNumber, authorPersonID, fmt.Sprintf("%v reportEntry %v", struckVerb, reportEntryId), true, "", "", "")
 	if errHTTP != nil {
 		return errHTTP.From("[addVisitReportEntry]")
 	}
@@ -291,7 +291,10 @@ func (action EditVisitReportEntry) editVisitReportEntry(req *http.Request) *herr
 	return nil
 }
 
-func reportEntryToJSON(re imsdb.ReportEntry, attachmentsEnabled bool) imsjson.ReportEntry {
+// reportEntryToJSON builds the JSON view of a report entry. The author nickname
+// is supplied separately (resolved from AUTHOR_PERSON_ID via a PERSON join in the
+// fetching query) since the stored row now keys the author on person_id.
+func reportEntryToJSON(re imsdb.ReportEntry, author string, attachmentsEnabled bool) imsjson.ReportEntry {
 	var attachment imsjson.Attachment
 	if attachmentsEnabled && re.AttachedFileOriginalName.Valid {
 		attachment.Name = re.AttachedFileOriginalName.String
@@ -300,7 +303,7 @@ func reportEntryToJSON(re imsdb.ReportEntry, attachmentsEnabled bool) imsjson.Re
 	return imsjson.ReportEntry{
 		ID:          re.ID,
 		Created:     time.Unix(int64(re.Created), 0),
-		Author:      re.Author,
+		Author:      author,
 		SystemEntry: re.Generated,
 		Text:        re.Text,
 		Stricken:    new(re.Stricken),

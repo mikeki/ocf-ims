@@ -83,9 +83,10 @@ func (action GetReports) getReports(req *http.Request) (imsjson.Reports, *herr.H
 		return resp, herr.InternalServerError("Failed to get FR report entries", err).From("[Reports_ReportEntries]")
 	}
 
-	entriesByReport := make(map[int32][]imsdb.ReportEntry)
+	entriesByReport := make(map[int32][]imsjson.ReportEntry)
 	for _, row := range reportEntries {
-		entriesByReport[row.ReportNumber] = append(entriesByReport[row.ReportNumber], row.ReportEntry)
+		entriesByReport[row.ReportNumber] = append(entriesByReport[row.ReportNumber],
+			reportEntryToJSON(row.ReportEntry, row.Author, action.attachmentsEnabled))
 	}
 
 	storedReports, err := action.imsDBQ.Reports(req.Context(), action.imsDBQ, event.ID)
@@ -105,20 +106,13 @@ func (action GetReports) getReports(req *http.Request) (imsjson.Reports, *herr.H
 		authorizedReports = storedReports
 	}
 
-	entryJSONsByReport := make(map[int32][]imsdb.ReportEntry)
-	for reportNum, entries := range entriesByReport {
-		for _, entry := range entries {
-			entryJSONsByReport[reportNum] = append(entryJSONsByReport[reportNum], entry)
-		}
-	}
-
 	resp = make(imsjson.Reports, 0, len(authorizedReports))
 	for _, report := range authorizedReports {
 		resp = append(
 			resp,
 			reportToJSON(
 				report.Report,
-				entryJSONsByReport[report.Report.Number],
+				entriesByReport[report.Report.Number],
 				event,
 				action.attachmentsEnabled,
 			),
@@ -128,7 +122,7 @@ func (action GetReports) getReports(req *http.Request) (imsjson.Reports, *herr.H
 	return resp, nil
 }
 
-func containsAuthor(entries []imsdb.ReportEntry, author string) bool {
+func containsAuthor(entries []imsjson.ReportEntry, author string) bool {
 	for _, e := range entries {
 		if e.Author == author {
 			return true
@@ -173,7 +167,7 @@ func (action GetReport) getReport(req *http.Request) (imsjson.Report, *herr.HTTP
 		return response, herr.BadRequest("Invalid report number", err).From("[ParseInt32]")
 	}
 
-	report, reportEntries, errHTTP := fetchReport(ctx, action.imsDBQ, event.ID, reportNumber)
+	report, reportEntries, errHTTP := fetchReport(ctx, action.imsDBQ, event.ID, reportNumber, action.attachmentsEnabled)
 	if errHTTP != nil {
 		return response, errHTTP.From("[fetchReport]")
 	}
@@ -188,24 +182,20 @@ func (action GetReport) getReport(req *http.Request) (imsjson.Report, *herr.HTTP
 }
 
 func reportToJSON(
-	report imsdb.Report, reportEntries []imsdb.ReportEntry, event imsdb.Event, attachmentsEnabled bool,
+	report imsdb.Report, reportEntries []imsjson.ReportEntry, event imsdb.Event, attachmentsEnabled bool,
 ) imsjson.Report {
-	entries := make([]imsjson.ReportEntry, 0)
-	for _, re := range reportEntries {
-		entries = append(entries, reportEntryToJSON(re, attachmentsEnabled))
-	}
 	return imsjson.Report{
 		Event:         event.Name,
 		Number:        report.Number,
 		Created:       conv.FloatToTime(report.Created),
 		Summary:       conv.SqlToString(report.Summary),
 		Incident:      conv.SqlToInt32(report.IncidentNumber),
-		ReportEntries: entries,
+		ReportEntries: reportEntries,
 	}
 }
 
-func fetchReport(ctx context.Context, imsDBQ *store.DBQ, eventID, reportNumber int32) (
-	imsdb.Report, []imsdb.ReportEntry, *herr.HTTPError,
+func fetchReport(ctx context.Context, imsDBQ *store.DBQ, eventID, reportNumber int32, attachmentsEnabled bool) (
+	imsdb.Report, []imsjson.ReportEntry, *herr.HTTPError,
 ) {
 	reportRow, err := imsDBQ.Report(ctx, imsDBQ,
 		imsdb.ReportParams{
@@ -227,9 +217,9 @@ func fetchReport(ctx context.Context, imsDBQ *store.DBQ, eventID, reportNumber i
 	if err != nil {
 		return imsdb.Report{}, nil, herr.InternalServerError("Failed to fetch Report Entries", err).From("[Report_ReportEntries]")
 	}
-	var reportEntries []imsdb.ReportEntry
+	var reportEntries []imsjson.ReportEntry
 	for _, rer := range reportEntryRows {
-		reportEntries = append(reportEntries, rer.ReportEntry)
+		reportEntries = append(reportEntries, reportEntryToJSON(rer.ReportEntry, rer.Author, attachmentsEnabled))
 	}
 	return reportRow.Report, reportEntries, nil
 }
@@ -270,6 +260,7 @@ func (action EditReport) editReport(req *http.Request) *herr.HTTPError {
 		return herr.BadRequest("Invalid report number", err).From("[ParseInt32]")
 	}
 	author := jwt.Claims.RangerHandle()
+	authorPersonID := int32(jwt.Claims.DirectoryID())
 	if limitedAccess {
 		isPrevAuthor, errHTTP := action.isPreviousAuthor(req, event.ID, reportNumber, author)
 		if errHTTP != nil {
@@ -296,7 +287,7 @@ func (action EditReport) editReport(req *http.Request) *herr.HTTPError {
 		targetIncidentVal := req.FormValue("incident")
 
 		// TODO: get rid of this "action" framework, and just allow a standard POST, as with visit's incident field.
-		errHTTP = action.handleLinkToIncident(ctx, storedReport, event, queryAction, targetIncidentVal, author)
+		errHTTP = action.handleLinkToIncident(ctx, storedReport, event, queryAction, targetIncidentVal, authorPersonID)
 		if errHTTP != nil {
 			return errHTTP.From("[handleLinkToIncident]")
 		}
@@ -321,7 +312,7 @@ func (action EditReport) editReport(req *http.Request) *herr.HTTPError {
 	if requestReport.Summary != nil {
 		storedReport.Summary = conv.StringToSql(requestReport.Summary, 0)
 		text := "Changed summary to: " + *requestReport.Summary
-		_, errHTTP := addReportEntry(ctx, action.imsDBQ, txn, event.ID, storedReport.Number, author, text, true, "", "", "")
+		_, errHTTP := addReportEntry(ctx, action.imsDBQ, txn, event.ID, storedReport.Number, authorPersonID, text, true, "", "", "")
 		if errHTTP != nil {
 			return errHTTP.From("[addReportEntry]")
 		}
@@ -341,7 +332,7 @@ func (action EditReport) editReport(req *http.Request) *herr.HTTPError {
 		if entry.Text == "" {
 			continue
 		}
-		_, errHTTP := addReportEntry(ctx, action.imsDBQ, txn, event.ID, storedReport.Number, author, entry.Text, false, "", "", "")
+		_, errHTTP := addReportEntry(ctx, action.imsDBQ, txn, event.ID, storedReport.Number, authorPersonID, entry.Text, false, "", "", "")
 		if errHTTP != nil {
 			return errHTTP.From("[addReportEntry]")
 		}
@@ -362,7 +353,7 @@ func (action EditReport) handleLinkToIncident(
 	event imsdb.Event,
 	queryAction string,
 	targetIncidentVal string,
-	actor string,
+	actorPersonID int32,
 ) *herr.HTTPError {
 	previousIncident := storedReport.IncidentNumber
 	reportNumber := storedReport.Number
@@ -398,7 +389,7 @@ func (action EditReport) handleLinkToIncident(
 		}
 		return herr.InternalServerError("Failed to attach Report to incident", err).From("[AttachReportToIncident]")
 	}
-	_, errHTTP := addReportEntry(ctx, action.imsDBQ, action.imsDBQ, event.ID, reportNumber, actor, entryText, true, "", "", "")
+	_, errHTTP := addReportEntry(ctx, action.imsDBQ, action.imsDBQ, event.ID, reportNumber, actorPersonID, entryText, true, "", "", "")
 	if errHTTP != nil {
 		return errHTTP.From("[addReportEntry]")
 	}
@@ -431,7 +422,7 @@ func (action EditReport) isPreviousAuthor(
 	}
 	authorMatch := false
 	for _, entry := range entries {
-		if entry.ReportEntry.Author == author {
+		if entry.Author == author {
 			authorMatch = true
 			break
 		}
@@ -477,7 +468,7 @@ func (action NewReport) newReport(req *http.Request) (reportNumber int32, locati
 		return 0, "", herr.BadRequest("A new Report may not be attached to an incident", nil)
 	}
 
-	author := jwtCtx.Claims.RangerHandle()
+	authorPersonID := int32(jwtCtx.Claims.DirectoryID())
 
 	newReportNum, err := action.imsDBQ.NextReportNumber(ctx, action.imsDBQ, event.ID)
 	if err != nil {
@@ -506,7 +497,7 @@ func (action NewReport) newReport(req *http.Request) (reportNumber int32, locati
 
 	if report.Summary != nil {
 		text := "Changed summary to: " + *report.Summary
-		_, errHTTP := addReportEntry(ctx, action.imsDBQ, txn, event.ID, report.Number, author, text, true, "", "", "")
+		_, errHTTP := addReportEntry(ctx, action.imsDBQ, txn, event.ID, report.Number, authorPersonID, text, true, "", "", "")
 		if errHTTP != nil {
 			return 0, "", errHTTP.From("[addReportEntry]")
 		}
@@ -516,7 +507,7 @@ func (action NewReport) newReport(req *http.Request) (reportNumber int32, locati
 		if entry.Text == "" {
 			continue
 		}
-		_, errHTTP := addReportEntry(ctx, action.imsDBQ, txn, event.ID, report.Number, author, entry.Text, false, "", "", "")
+		_, errHTTP := addReportEntry(ctx, action.imsDBQ, txn, event.ID, report.Number, authorPersonID, entry.Text, false, "", "", "")
 		if errHTTP != nil {
 			return 0, "", errHTTP.From("[addReportEntry]")
 		}
@@ -534,13 +525,13 @@ func (action NewReport) newReport(req *http.Request) (reportNumber int32, locati
 
 func addReportEntry(
 	ctx context.Context, imsDBQ *store.DBQ, dbtx imsdb.DBTX, eventID, reportNum int32,
-	author, text string, generated bool,
+	authorPersonID int32, text string, generated bool,
 	attachment, attachmentOriginalName, attachmentMediaType string,
 ) (int32, *herr.HTTPError) {
 	reID64, err := imsDBQ.CreateReportEntry(ctx,
 		dbtx,
 		imsdb.CreateReportEntryParams{
-			Author:                   author,
+			AuthorPersonID:           authorPersonID,
 			Text:                     text,
 			Created:                  conv.TimeToFloat(time.Now()),
 			Generated:                generated,

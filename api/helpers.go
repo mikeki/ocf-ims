@@ -25,6 +25,7 @@ import (
 	"io"
 	"log/slog"
 	"net/http"
+	"strings"
 
 	"github.com/mikeki/ocf-ims/directory"
 	"github.com/mikeki/ocf-ims/lib/authz"
@@ -32,6 +33,22 @@ import (
 	"github.com/mikeki/ocf-ims/store"
 	"github.com/mikeki/ocf-ims/store/imsdb"
 )
+
+// personIDByHandle resolves a person's handle/nickname to their local person_id.
+// The web UI still addresses attached people by handle (the JSON/URL contract is
+// unchanged this PR), so attach/detach handlers translate handle -> person_id here.
+func personIDByHandle(ctx context.Context, userStore directory.IUserStore, handle string) (int32, *herr.HTTPError) {
+	users, err := userStore.GetAllUsers(ctx)
+	if err != nil {
+		return 0, herr.InternalServerError("Failed to fetch personnel", err).From("[GetAllUsers]")
+	}
+	for _, u := range users {
+		if strings.EqualFold(u.Handle, handle) {
+			return int32(u.ID), nil
+		}
+	}
+	return 0, herr.BadRequest("Unknown person: "+handle, nil)
+}
 
 func readBodyAs[T any](req *http.Request) (T, *herr.HTTPError) {
 	empty := *new(T)

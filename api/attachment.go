@@ -40,6 +40,7 @@ import (
 	"github.com/mikeki/ocf-ims/lib/format"
 	"github.com/mikeki/ocf-ims/lib/herr"
 	"github.com/mikeki/ocf-ims/store"
+	"github.com/mikeki/ocf-ims/store/imsdb"
 )
 
 const (
@@ -129,15 +130,18 @@ func (action GetIncidentAttachment) getIncidentAttachment(
 		return nil, "", herr.BadRequest("Failed to parse attachment number", err).From("[ParseInt32]")
 	}
 
-	_, reportEntries, errHTTP := fetchIncident(ctx, action.imsDBQ, event.ID, incidentNumber)
-	if errHTTP != nil {
-		return nil, "", errHTTP.From("[fetchIncident]")
+	reportEntryRows, err := action.imsDBQ.Incident_ReportEntries(ctx, action.imsDBQ, imsdb.Incident_ReportEntriesParams{
+		Event:          event.ID,
+		IncidentNumber: incidentNumber,
+	})
+	if err != nil {
+		return nil, "", herr.InternalServerError("Failed to fetch report entries", err).From("[Incident_ReportEntries]")
 	}
 
 	var filename string
-	for _, reportEntry := range reportEntries {
-		if reportEntry.ID == attachmentNumber {
-			filename = reportEntry.AttachedFile.String
+	for _, row := range reportEntryRows {
+		if row.ReportEntry.ID == attachmentNumber {
+			filename = row.ReportEntry.AttachedFile.String
 			break
 		}
 	}
@@ -273,21 +277,31 @@ func (action GetReportAttachment) getReportAttachment(
 		return nil, "", herr.BadRequest("Failed to parse attachment number", err).From("[ParseInt32]")
 	}
 
-	_, reportEntries, errHTTP := fetchReport(ctx, action.imsDBQ, event.ID, reportNumber)
-	if errHTTP != nil {
-		return nil, "", errHTTP.From("[fetchReport]")
+	reportEntryRows, err := action.imsDBQ.Report_ReportEntries(ctx, action.imsDBQ, imsdb.Report_ReportEntriesParams{
+		Event:        event.ID,
+		ReportNumber: reportNumber,
+	})
+	if err != nil {
+		return nil, "", herr.InternalServerError("Failed to fetch report entries", err).From("[Report_ReportEntries]")
 	}
 
 	if limitedAccess {
-		if !containsAuthor(reportEntries, jwtCtx.Claims.RangerHandle()) {
+		authored := false
+		for _, row := range reportEntryRows {
+			if row.Author == jwtCtx.Claims.RangerHandle() {
+				authored = true
+				break
+			}
+		}
+		if !authored {
 			return nil, "", herr.Forbidden("The requestor does not have permission to read this particular Report", nil)
 		}
 	}
 
 	var filename string
-	for _, reportEntry := range reportEntries {
-		if reportEntry.ID == attachmentNumber {
-			filename = reportEntry.AttachedFile.String
+	for _, row := range reportEntryRows {
+		if row.ReportEntry.ID == attachmentNumber {
+			filename = row.ReportEntry.AttachedFile.String
 			break
 		}
 	}
@@ -369,7 +383,7 @@ func (action AttachToIncident) attachToIncident(req *http.Request) (int32, *herr
 	reText := fmt.Sprintf("File Name: %v, Size: %v, Type:%v",
 		fiHead.Filename, format.HumanByteSize(fiHead.Size), mtype.String())
 	reID, errHTTP := addIncidentReportEntry(
-		ctx, action.imsDBQ, action.imsDBQ, event.ID, incidentNumber, jwtCtx.Claims.RangerHandle(),
+		ctx, action.imsDBQ, action.imsDBQ, event.ID, incidentNumber, int32(jwtCtx.Claims.DirectoryID()),
 		reText, false, newFileName, fiHead.Filename, mtype.String(),
 	)
 	if errHTTP != nil {
@@ -434,7 +448,7 @@ func (action AttachToReport) attachToReport(req *http.Request) (int32, *herr.HTT
 		return 0, herr.BadRequest("Failed to parse Report number", err).From("[ParseInt32]")
 	}
 
-	report, entries, errHTTP := fetchReport(ctx, action.imsDBQ, event.ID, reportNumber)
+	report, entries, errHTTP := fetchReport(ctx, action.imsDBQ, event.ID, reportNumber, action.attachmentsStore.Type != conf.AttachmentsStoreNone)
 	if errHTTP != nil {
 		return 0, errHTTP.From("[fetchReport]")
 	}
@@ -482,7 +496,7 @@ func (action AttachToReport) attachToReport(req *http.Request) (int32, *herr.HTT
 		fiHead.Filename, format.HumanByteSize(fiHead.Size), mtype.String())
 	reID, errHTTP := addReportEntry(
 		ctx, action.imsDBQ, action.imsDBQ, event.ID, reportNumber,
-		jwtCtx.Claims.RangerHandle(), reText, false,
+		int32(jwtCtx.Claims.DirectoryID()), reText, false,
 		newFileName, fiHead.Filename, mtype.String(),
 	)
 	if errHTTP != nil {
@@ -527,15 +541,18 @@ func (action GetVisitAttachment) getVisitAttachment(
 		return nil, "", herr.BadRequest("Failed to parse attachment number", err).From("[ParseInt32]")
 	}
 
-	_, reportEntries, errHTTP := fetchVisit(ctx, action.imsDBQ, event.ID, visitNumber)
-	if errHTTP != nil {
-		return nil, "", errHTTP.From("[fetchVisit]")
+	reportEntryRows, err := action.imsDBQ.Visit_ReportEntries(ctx, action.imsDBQ, imsdb.Visit_ReportEntriesParams{
+		Event:       event.ID,
+		VisitNumber: visitNumber,
+	})
+	if err != nil {
+		return nil, "", herr.InternalServerError("Failed to fetch report entries", err).From("[Visit_ReportEntries]")
 	}
 
 	var filename string
-	for _, reportEntry := range reportEntries {
-		if reportEntry.ID == attachmentNumber {
-			filename = reportEntry.AttachedFile.String
+	for _, row := range reportEntryRows {
+		if row.ReportEntry.ID == attachmentNumber {
+			filename = row.ReportEntry.AttachedFile.String
 			break
 		}
 	}
@@ -617,7 +634,7 @@ func (action AttachToVisit) attachToVisit(req *http.Request) (int32, *herr.HTTPE
 	reText := fmt.Sprintf("File Name: %v, Size: %v, Type:%v",
 		fiHead.Filename, format.HumanByteSize(fiHead.Size), mtype.String())
 	reID, errHTTP := addVisitReportEntry(
-		ctx, action.imsDBQ, action.imsDBQ, event.ID, visitNumber, jwtCtx.Claims.RangerHandle(),
+		ctx, action.imsDBQ, action.imsDBQ, event.ID, visitNumber, int32(jwtCtx.Claims.DirectoryID()),
 		reText, false, newFileName, fiHead.Filename, mtype.String(),
 	)
 	if errHTTP != nil {
