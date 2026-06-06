@@ -367,7 +367,7 @@ func (action NewIncident) newIncident(req *http.Request) (incidentNumber int32, 
 		return 0, "", errHTTP.From("[readBodyAs]")
 	}
 
-	authorPersonID := int32(jwtCtx.Claims.DirectoryID())
+	authorPersonID := conv.MustInt32(jwtCtx.Claims.DirectoryID())
 
 	// First create the incident, to lock in the incident number reservation
 	newIncidentNumber, err := action.imsDBQ.NextIncidentNumber(ctx, action.imsDBQ, event.ID)
@@ -845,7 +845,7 @@ func (action EditIncident) editIncident(req *http.Request) *herr.HTTPError {
 	newIncident.EventID = event.ID
 	newIncident.Number = incidentNumber
 
-	authorPersonID := int32(jwtCtx.Claims.DirectoryID())
+	authorPersonID := conv.MustInt32(jwtCtx.Claims.DirectoryID())
 
 	errHTTP = updateIncident(ctx, action.imsDBQ, action.es, newIncident, authorPersonID)
 	if errHTTP != nil {
@@ -926,7 +926,7 @@ func (action AttachRangerToIncident) attachRanger(req *http.Request) *herr.HTTPE
 
 	_, errHTTP = addIncidentReportEntry(
 		ctx, action.imsDBQ, txn, event.ID, incidentNumber,
-		int32(jwtCtx.Claims.DirectoryID()), fmt.Sprintf("Added Ranger: %v", rangerName),
+		conv.MustInt32(jwtCtx.Claims.DirectoryID()), fmt.Sprintf("Added Ranger: %v", rangerName),
 		true, "", "", "",
 	)
 	if errHTTP != nil {
@@ -998,7 +998,7 @@ func (action DetachRangerFromIncident) detachRanger(req *http.Request) *herr.HTT
 	}
 	_, errHTTP = addIncidentReportEntry(
 		ctx, action.imsDBQ, txn, event.ID, incidentNumber,
-		int32(jwtCtx.Claims.DirectoryID()), fmt.Sprintf("Removed Ranger: %v", rangerName),
+		conv.MustInt32(jwtCtx.Claims.DirectoryID()), fmt.Sprintf("Removed Ranger: %v", rangerName),
 		true, "", "", "",
 	)
 	if errHTTP != nil {

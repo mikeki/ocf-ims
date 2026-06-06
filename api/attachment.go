@@ -388,7 +388,7 @@ func (action AttachToIncident) attachToIncident(req *http.Request) (int32, *herr
 	reText := fmt.Sprintf("File Name: %v, Size: %v, Type:%v",
 		fiHead.Filename, format.HumanByteSize(fiHead.Size), mtype.String())
 	reID, errHTTP := addIncidentReportEntry(
-		ctx, action.imsDBQ, action.imsDBQ, event.ID, incidentNumber, int32(jwtCtx.Claims.DirectoryID()),
+		ctx, action.imsDBQ, action.imsDBQ, event.ID, incidentNumber, conv.MustInt32(jwtCtx.Claims.DirectoryID()),
 		reText, false, newFileName, fiHead.Filename, mtype.String(),
 	)
 	if errHTTP != nil {
@@ -501,7 +501,7 @@ func (action AttachToReport) attachToReport(req *http.Request) (int32, *herr.HTT
 		fiHead.Filename, format.HumanByteSize(fiHead.Size), mtype.String())
 	reID, errHTTP := addReportEntry(
 		ctx, action.imsDBQ, action.imsDBQ, event.ID, reportNumber,
-		int32(jwtCtx.Claims.DirectoryID()), reText, false,
+		conv.MustInt32(jwtCtx.Claims.DirectoryID()), reText, false,
 		newFileName, fiHead.Filename, mtype.String(),
 	)
 	if errHTTP != nil {
@@ -645,7 +645,7 @@ func (action AttachToVisit) attachToVisit(req *http.Request) (int32, *herr.HTTPE
 	reText := fmt.Sprintf("File Name: %v, Size: %v, Type:%v",
 		fiHead.Filename, format.HumanByteSize(fiHead.Size), mtype.String())
 	reID, errHTTP := addVisitReportEntry(
-		ctx, action.imsDBQ, action.imsDBQ, event.ID, visitNumber, int32(jwtCtx.Claims.DirectoryID()),
+		ctx, action.imsDBQ, action.imsDBQ, event.ID, visitNumber, conv.MustInt32(jwtCtx.Claims.DirectoryID()),
 		reText, false, newFileName, fiHead.Filename, mtype.String(),
 	)
 	if errHTTP != nil {
