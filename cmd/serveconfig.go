@@ -18,9 +18,9 @@ package cmd
 
 import (
 	"fmt"
-	"github.com/burningmantech/ranger-ims-go/conf"
-	"github.com/burningmantech/ranger-ims-go/lib/conv"
 	"github.com/joho/godotenv"
+	"github.com/mikeki/ocf-ims/conf"
+	"github.com/mikeki/ocf-ims/lib/conv"
 	"log/slog"
 	"os"
 	"strings"

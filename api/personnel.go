@@ -18,11 +18,11 @@ package api
 
 import (
 	"fmt"
-	"github.com/burningmantech/ranger-ims-go/directory"
-	imsjson "github.com/burningmantech/ranger-ims-go/json"
-	"github.com/burningmantech/ranger-ims-go/lib/authz"
-	"github.com/burningmantech/ranger-ims-go/lib/herr"
-	"github.com/burningmantech/ranger-ims-go/store"
+	"github.com/mikeki/ocf-ims/directory"
+	imsjson "github.com/mikeki/ocf-ims/json"
+	"github.com/mikeki/ocf-ims/lib/authz"
+	"github.com/mikeki/ocf-ims/lib/herr"
+	"github.com/mikeki/ocf-ims/store"
 	"net/http"
 	"time"
 )

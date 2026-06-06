@@ -17,8 +17,8 @@
 package integration_test
 
 import (
-	imsjson "github.com/burningmantech/ranger-ims-go/json"
-	"github.com/burningmantech/ranger-ims-go/lib/rand"
+	imsjson "github.com/mikeki/ocf-ims/json"
+	"github.com/mikeki/ocf-ims/lib/rand"
 	"github.com/stretchr/testify/require"
 	"net/http"
 	"testing"

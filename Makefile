@@ -2,7 +2,7 @@
 # https://www.alexedwards.net/blog/a-time-saving-makefile-for-your-go-projects
 
 main_package_path = ./
-binary_name = ranger-ims-go
+binary_name = ocf-ims
 
 ## build: build the server
 .PHONY: build

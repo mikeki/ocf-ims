@@ -22,8 +22,8 @@ import (
 	"fmt"
 	"time"
 
-	imsjson "github.com/burningmantech/ranger-ims-go/json"
-	"github.com/burningmantech/ranger-ims-go/lib/cache"
+	imsjson "github.com/mikeki/ocf-ims/json"
+	"github.com/mikeki/ocf-ims/lib/cache"
 )
 
 type UserStore struct {

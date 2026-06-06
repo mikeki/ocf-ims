@@ -7,7 +7,7 @@
 .env
 
 # the compiled binary
-ranger-ims-go
+ocf-ims
 
 # the default dir for storing attachments
 ims-attachments

@@ -27,15 +27,15 @@ import (
 	"strings"
 	"time"
 
-	"github.com/burningmantech/ranger-ims-go/conf"
-	"github.com/burningmantech/ranger-ims-go/directory"
-	"github.com/burningmantech/ranger-ims-go/lib/attachment"
-	"github.com/burningmantech/ranger-ims-go/lib/authz"
-	"github.com/burningmantech/ranger-ims-go/lib/conv"
-	"github.com/burningmantech/ranger-ims-go/lib/herr"
-	"github.com/burningmantech/ranger-ims-go/store"
-	"github.com/burningmantech/ranger-ims-go/store/actionlog"
-	"github.com/burningmantech/ranger-ims-go/store/imsdb"
+	"github.com/mikeki/ocf-ims/conf"
+	"github.com/mikeki/ocf-ims/directory"
+	"github.com/mikeki/ocf-ims/lib/attachment"
+	"github.com/mikeki/ocf-ims/lib/authz"
+	"github.com/mikeki/ocf-ims/lib/conv"
+	"github.com/mikeki/ocf-ims/lib/herr"
+	"github.com/mikeki/ocf-ims/store"
+	"github.com/mikeki/ocf-ims/store/actionlog"
+	"github.com/mikeki/ocf-ims/store/imsdb"
 )
 
 func AddToMux(

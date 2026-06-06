@@ -18,8 +18,8 @@ package attachment_test
 
 import (
 	"bytes"
-	"github.com/burningmantech/ranger-ims-go/lib/attachment"
-	"github.com/burningmantech/ranger-ims-go/lib/attachment/fake"
+	"github.com/mikeki/ocf-ims/lib/attachment"
+	"github.com/mikeki/ocf-ims/lib/attachment/fake"
 	"github.com/stretchr/testify/require"
 	"io"
 	"net/http"

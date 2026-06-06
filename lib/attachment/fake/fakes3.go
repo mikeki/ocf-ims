@@ -21,7 +21,7 @@ import (
 	"context"
 	"github.com/aws/aws-sdk-go-v2/service/s3"
 	"github.com/aws/aws-sdk-go-v2/service/s3/types"
-	"github.com/burningmantech/ranger-ims-go/lib/attachment"
+	"github.com/mikeki/ocf-ims/lib/attachment"
 	"io"
 )
 

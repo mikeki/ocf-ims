@@ -1991,7 +1991,7 @@ export type Personnel = {
     handle: string;
     directory_id?: number|null;
     // These are only the statuses that IMS actually reads from Clubhouse.
-    // See https://github.com/burningmantech/ranger-ims-go/blob/master/directory/queries.sql
+    // See https://github.com/mikeki/ocf-ims/blob/master/directory/queries.sql
     status: "active"|"alpha"|"auditor"|"inactive extension"|"inactive"|"prospective";
 }
 

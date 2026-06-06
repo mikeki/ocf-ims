@@ -26,11 +26,11 @@ import (
 	"log/slog"
 	"net/http"
 
-	"github.com/burningmantech/ranger-ims-go/directory"
-	"github.com/burningmantech/ranger-ims-go/lib/authz"
-	"github.com/burningmantech/ranger-ims-go/lib/herr"
-	"github.com/burningmantech/ranger-ims-go/store"
-	"github.com/burningmantech/ranger-ims-go/store/imsdb"
+	"github.com/mikeki/ocf-ims/directory"
+	"github.com/mikeki/ocf-ims/lib/authz"
+	"github.com/mikeki/ocf-ims/lib/herr"
+	"github.com/mikeki/ocf-ims/store"
+	"github.com/mikeki/ocf-ims/store/imsdb"
 )
 
 func readBodyAs[T any](req *http.Request) (T, *herr.HTTPError) {

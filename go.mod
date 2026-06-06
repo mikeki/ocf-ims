@@ -1,4 +1,4 @@
-module github.com/burningmantech/ranger-ims-go
+module github.com/mikeki/ocf-ims
 
 go 1.26.4
 

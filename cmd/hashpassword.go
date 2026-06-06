@@ -18,7 +18,7 @@ package cmd
 
 import (
 	"fmt"
-	"github.com/burningmantech/ranger-ims-go/lib/argon2id"
+	"github.com/mikeki/ocf-ims/lib/argon2id"
 	"github.com/spf13/cobra"
 )
 

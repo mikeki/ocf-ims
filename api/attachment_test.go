@@ -17,9 +17,9 @@
 package api
 
 import (
-	"github.com/burningmantech/ranger-ims-go/conf"
-	"github.com/burningmantech/ranger-ims-go/lib/attachment"
-	"github.com/burningmantech/ranger-ims-go/lib/attachment/fake"
+	"github.com/mikeki/ocf-ims/conf"
+	"github.com/mikeki/ocf-ims/lib/attachment"
+	"github.com/mikeki/ocf-ims/lib/attachment/fake"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"io"

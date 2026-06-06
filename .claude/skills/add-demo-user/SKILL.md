@@ -65,7 +65,7 @@ docker exec ranger-clubhouse-db mariadb -uclubhouseuser -pclubhousepassword rang
 The IMS server caches the user directory in-memory (default TTL **5 minutes**, see `conf/imsconfig.go` → `InMemoryCacheTTL`). New users become loginable either after the TTL elapses or immediately after:
 
 ```bash
-docker restart ranger-ims-go
+docker restart ocf-ims
 ```
 
 ## Notes

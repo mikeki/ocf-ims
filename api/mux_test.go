@@ -19,7 +19,7 @@ package api_test
 import (
 	"bytes"
 	"fmt"
-	"github.com/burningmantech/ranger-ims-go/api"
+	"github.com/mikeki/ocf-ims/api"
 	"github.com/stretchr/testify/require"
 	"net/http"
 	"testing"

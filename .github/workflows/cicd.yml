@@ -165,10 +165,10 @@ jobs:
         uses: actions/checkout@v6
 
       - name: Build Docker image
-        run: docker build --tag "ranger-ims-go:${{ github.sha }}" .
+        run: docker build --tag "ocf-ims:${{ github.sha }}" .
 
       - name: Save Docker image
-        run: docker image save ranger-ims-go | gzip -9 > docker_image.tgz
+        run: docker image save ocf-ims | gzip -9 > docker_image.tgz
 
       - name: Upload Docker image artifacts
         uses: actions/upload-artifact@v7

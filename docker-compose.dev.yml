@@ -23,7 +23,7 @@ services:
       context: .
       dockerfile: dev.Dockerfile
     image: "ims-go-air"
-    container_name: "ranger-ims-go"
+    container_name: "ocf-ims"
 
     # Map the repo into a directory in the container.
     working_dir: /src

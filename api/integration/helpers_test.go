@@ -29,10 +29,10 @@ import (
 	"testing"
 	"time"
 
-	"github.com/burningmantech/ranger-ims-go/api"
-	imsjson "github.com/burningmantech/ranger-ims-go/json"
-	"github.com/burningmantech/ranger-ims-go/lib/conv"
-	"github.com/burningmantech/ranger-ims-go/lib/rand"
+	"github.com/mikeki/ocf-ims/api"
+	imsjson "github.com/mikeki/ocf-ims/json"
+	"github.com/mikeki/ocf-ims/lib/conv"
+	"github.com/mikeki/ocf-ims/lib/rand"
 	"github.com/stretchr/testify/require"
 )
 

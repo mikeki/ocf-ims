@@ -25,13 +25,13 @@ import (
 	"sync"
 	"time"
 
-	"github.com/burningmantech/ranger-ims-go/directory"
-	imsjson "github.com/burningmantech/ranger-ims-go/json"
-	"github.com/burningmantech/ranger-ims-go/lib/authz"
-	"github.com/burningmantech/ranger-ims-go/lib/conv"
-	"github.com/burningmantech/ranger-ims-go/lib/herr"
-	"github.com/burningmantech/ranger-ims-go/store"
-	"github.com/burningmantech/ranger-ims-go/store/imsdb"
+	"github.com/mikeki/ocf-ims/directory"
+	imsjson "github.com/mikeki/ocf-ims/json"
+	"github.com/mikeki/ocf-ims/lib/authz"
+	"github.com/mikeki/ocf-ims/lib/conv"
+	"github.com/mikeki/ocf-ims/lib/herr"
+	"github.com/mikeki/ocf-ims/store"
+	"github.com/mikeki/ocf-ims/store/imsdb"
 )
 
 type GetEventAccesses struct {

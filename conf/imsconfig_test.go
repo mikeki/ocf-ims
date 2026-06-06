@@ -17,7 +17,7 @@
 package conf_test
 
 import (
-	"github.com/burningmantech/ranger-ims-go/conf"
+	"github.com/mikeki/ocf-ims/conf"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"os"

@@ -17,7 +17,7 @@
 package format_test
 
 import (
-	"github.com/burningmantech/ranger-ims-go/lib/format"
+	"github.com/mikeki/ocf-ims/lib/format"
 	"github.com/stretchr/testify/assert"
 	"math"
 	"testing"

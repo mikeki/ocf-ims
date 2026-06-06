@@ -27,10 +27,10 @@ import (
 	"time"
 
 	"github.com/a-h/templ"
-	"github.com/burningmantech/ranger-ims-go/conf"
-	"github.com/burningmantech/ranger-ims-go/lib/authz"
-	"github.com/burningmantech/ranger-ims-go/lib/herr"
-	"github.com/burningmantech/ranger-ims-go/web/template"
+	"github.com/mikeki/ocf-ims/conf"
+	"github.com/mikeki/ocf-ims/lib/authz"
+	"github.com/mikeki/ocf-ims/lib/herr"
+	"github.com/mikeki/ocf-ims/web/template"
 )
 
 func AddToMux(mux *http.ServeMux, cfg *conf.IMSConfig) *http.ServeMux {

@@ -13,7 +13,7 @@ RUN apk add --no-cache git
 WORKDIR /app
 
 # Install all the module dependencies early, so that this layer
-# can be cached before ranger-ims-go code is copied over.
+# can be cached before ocf-ims code is copied over.
 COPY go.mod go.sum ./
 RUN go mod download
 
@@ -34,17 +34,17 @@ COPY ./ ./
 RUN go run bin/build/build.go -generate-only
 
 # Build the server
-RUN CGO_ENABLED=0 GOOS=linux go build -o /app/ranger-ims-go
+RUN CGO_ENABLED=0 GOOS=linux go build -o /app/ocf-ims
 
 # Allow IMS to bind to privileged port numbers
-RUN setcap "cap_net_bind_service=+ep" /app/ranger-ims-go
+RUN setcap "cap_net_bind_service=+ep" /app/ocf-ims
 
 
 # --------------------
 # Deployed image stage
 # --------------------
 FROM alpine:latest
-COPY --from=build /app/ranger-ims-go /opt/ims/bin/ims
+COPY --from=build /app/ocf-ims /opt/ims/bin/ims
 
 # Docker-specific default configuration
 ENV IMS_HOSTNAME="0.0.0.0"

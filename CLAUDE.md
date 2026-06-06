@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-Ranger IMS is an Incident Management System for the Black Rock Rangers, used to track incidents at Black Rock City. This is a Go implementation that replaced a previous Python version.
+OCF IMS is an Incident Management System for the Oregon Country Fair, used to track incidents at the Fair. It is a Go codebase forked from the Black Rock Rangers' Ranger IMS (itself a Go implementation that replaced an earlier Python version).
 
 ## Development Commands
 
@@ -24,13 +24,13 @@ go run bin/build/build.go
 make build
 ```
 
-The build outputs a `ranger-ims-go` binary in the project root.
+The build outputs an `ocf-ims` binary in the project root.
 
 ### Running the Server
 
 Run with MariaDB (requires `.env` file configuration):
 ```bash
-./ranger-ims-go serve
+./ocf-ims serve
 ```
 
 Run with live reloading using air:

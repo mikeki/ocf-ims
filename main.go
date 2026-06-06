@@ -16,7 +16,7 @@
 
 package main
 
-import "github.com/burningmantech/ranger-ims-go/cmd"
+import "github.com/mikeki/ocf-ims/cmd"
 
 func main() {
 	cmd.Execute()

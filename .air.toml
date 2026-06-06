@@ -4,8 +4,8 @@ tmp_dir = "air_tmp"
 
 [build]
   args_bin = ["serve","--print-config=false"]
-  bin = "./compose.ranger-ims-go"
-  cmd = "go run bin/build/build.go -output-app=compose.ranger-ims-go"
+  bin = "./compose.ocf-ims"
+  cmd = "go run bin/build/build.go -output-app=compose.ocf-ims"
   delay = 100
   exclude_dir = [
     "node_modules",
@@ -18,7 +18,7 @@ tmp_dir = "air_tmp"
     "gen",
   ]
   exclude_file = [
-    "compose.ranger-ims-go",
+    "compose.ocf-ims",
     "web/template/*_templ.go",
     "web/static/*.js",
     "store/imsdb/*.go",
