@@ -99,13 +99,22 @@ contract-break cheaper. The **interface** and **restructure** still wait.
 | # | Phase | Outcome | Risk | Plan |
 |---|-------|---------|------|------|
 | 1 | **Preparation & clean-up** | ✅ **Done** — dead/deprecated code removed; baseline green | Low | `10-cleanup-pass.md` ✅ |
-| 2 | **Terminology** | Burning Man terms → OCF terms across code + UI | Med | `20-terminology.md` (next) |
-| 3 | **Domain model** | OCF incident categories, outcomes, locations | Med–High | `30-domain-model.md` (TODO) |
-| 4 | **Roles & permissions** | OCF role structure in authz | Med | `40-roles-permissions.md` (TODO) |
-| 5 | **Dashboards & metrics** | Management reporting OCF will use | Med | `50-dashboards.md` (TODO) |
+| 2 | **Terminology** | Burning Man terms → OCF terms across code + UI | Med | `20-terminology.md` (2a ✅, 2c ✅; 2b → Phase 3; 2d open) |
+| 3 | **Remove Clubhouse & local People** | Local `Person` identity replaces the external Clubhouse directory; Ranger→Person rename keyed on `person_id` | High | `30-remove-clubhouse.md` (design) |
+| 4 | **Domain model** | OCF incident categories, outcomes, locations | Med–High | `40-domain-model.md` (TODO) |
+| 5 | **Roles & permissions** | OCF crews/titles/roles in authz, built on Phase 3's local People | Med | `50-roles-permissions.md` (TODO) |
+| 6 | **Dashboards & metrics** | Management reporting OCF will use | Med | `60-dashboards.md` (TODO) |
 
-Phases 1→2 are sequential. Phases 3, 4, 5 can overlap once terminology lands, but
-each ships independently.
+Phases 1→2 are sequential. **Phase 3 (remove Clubhouse) is the identity foundation
+Phase 5 (roles & permissions) builds on**, so 3 precedes 5. Phases 4, 5, 6 can
+otherwise overlap once terminology lands, and each ships independently.
+
+> **Re-scope note (2026-06-06).** The old Phase 2 slice **2b (Ranger →
+> Person/People)** was promoted to its own **Phase 3** once it became clear the
+> rename and the Clubhouse removal are the same change (you can't key on `person_id`
+> without a local Person table, and login/authz still read Clubhouse). The former
+> Phases 3/4/5 (Domain model / Roles / Dashboards) shifted to **4/5/6**. See
+> [`30-remove-clubhouse.md`](30-remove-clubhouse.md).
 
 ---
 
@@ -218,11 +227,32 @@ surfaces; tests/build green.
 
 ---
 
-## Phase 3 — Domain Model: Categories, Outcomes, Locations
+## Phase 3 — Remove Clubhouse & Establish Local People
+
+**Objective:** Replace the external Clubhouse directory with a first-class local
+`Person` entity owned by OCF IMS, and complete the Ranger→Person/People +
+`role`→`involvement` rename keyed on a stable `person_id`. Minimum-viable local
+identity (roster + credentials + the existing authz expression engine, sourced
+locally); the rich crew/title/role model is **Phase 5**.
+
+This was the old Phase 2 slice **2b**, promoted to its own phase because the rename
+and the Clubhouse removal are inseparable (you can't key on `person_id` without a
+local Person table, and login/authz still read Clubhouse). It is the identity
+**foundation Phase 5 builds on**.
+
+**Decided (2026-06-06):** demo mode seeds local People by copying the existing fake
+Clubhouse data; the Fair launches on a clean DB seeded with a few admins. Interim
+authz keeps today's `person:`/`position:`/`team:`/`onduty:` expressions, just
+sourced locally. Full design, sub-PR breakdown, migration/cutover, and open
+sub-decisions: [`30-remove-clubhouse.md`](30-remove-clubhouse.md).
+
+---
+
+## Phase 4 — Domain Model: Categories, Outcomes, Locations
 
 **Objective:** Replace Burning Man incident taxonomy and geography with OCF's.
 
-### 3a. Incident categories (`INCIDENT_TYPE` and friends)
+### 4a. Incident categories (`INCIDENT_TYPE` and friends)
 OCF categories (draft, grouped):
 - **Safety:** Medical, Fire, Traffic/Vehicle, Child Welfare, Missing Person,
   Lost Child, Environmental Hazard
@@ -237,7 +267,7 @@ OCF categories (draft, grouped):
 > first-class concept, or just naming convention on flat incident types? Affects
 > schema. Today `INCIDENT_TYPE` is a flat list.
 
-### 3b. Incident outcomes / disposition
+### 4b. Incident outcomes / disposition
 OCF wants explicit outcomes (a concept the current model lacks — today there's
 only `State`: new / on_hold / dispatched / on_scene / closed):
 - Information Only, Resolved On Scene, Referred to Coordinator,
@@ -246,7 +276,7 @@ only `State`: new / on_hold / dispatched / on_scene / closed):
 
 > Likely a **new field/table** (outcome distinct from state). Schema migration.
 
-### 3c. Locations / geography
+### 4c. Locations / geography
 Current model is Burning Man-specific: concentric streets + radial hour/minute
 (clock geography) on the `INCIDENT` table, plus `Place`/`CONCENTRIC_STREET`.
 OCF geography is named areas, not a clock:
@@ -259,7 +289,7 @@ OCF geography is named areas, not a clock:
 > change seed data + UI. Map integration is a possible long-term add. Needs its
 > own design doc.
 
-**Phase 3 tasks (detailed in `30-domain-model.md`):**
+**Phase 4 tasks (detailed in `40-domain-model.md`):**
 - [ ] Confirm category list + whether groups are first-class.
 - [ ] Design + migrate outcome field/table.
 - [ ] Design location model change; migrate; seed OCF areas.
@@ -267,9 +297,11 @@ OCF geography is named areas, not a clock:
 
 ---
 
-## Phase 4 — Roles & Permissions
+## Phase 5 — Roles & Permissions
 
-**Objective:** Reshape `lib/authz` roles to match OCF's volunteer structure.
+**Objective:** Reshape `lib/authz` roles to match OCF's volunteer structure. Builds
+on **Phase 3**'s local `Person` foundation (which removed Clubhouse and made
+positions/teams/person-matches local).
 
 Current roles (`lib/authz/permission.go`): `AnyAuthenticatedUser`,
 `EventReporter`, `EventReader`, `EventWriter`, `EventVisitWriter`,
@@ -283,17 +315,19 @@ OCF target roles (draft):
 
 > Decide: do the existing permission primitives compose into these three roles
 > (likely yes — mostly a relabeling + grouping), or do we need new permission
-> bits? The directory/personnel integration (Clubhouse vs OCF directory) is a
-> related question — OCF won't use Clubhouse.
+> bits? This is also where OCF's **crews / titles / crew-leaders / invites** model
+> lands (the four open design questions in `20-terminology.md` §"Fair org
+> structure"). The directory-source question is **resolved by Phase 3** (local
+> People, no Clubhouse).
 
-**Phase 4 tasks (detailed in `40-roles-permissions.md`):**
+**Phase 5 tasks (detailed in `50-roles-permissions.md`):**
 - [ ] Map OCF roles onto existing permission primitives; add bits if needed.
-- [ ] Address directory source (OCF has no Clubhouse — fake/custom directory?).
-- [ ] Update `IMS_ADMINS` / admin onboarding for OCF.
+- [ ] Design crews (nestable) / titles / role tiers / crew-leader powers / invites.
+- [ ] Update admin onboarding for OCF (on top of Phase 3's `is_admin` bootstrap).
 
 ---
 
-## Phase 5 — Dashboards & Metrics (longer-term)
+## Phase 6 — Dashboards & Metrics (longer-term)
 
 **Objective:** Management-facing reporting OCF will actually use.
 
@@ -301,36 +335,44 @@ Candidate metrics: incident count by day, by area, medical incidents, lost
 children, conduct concerns, sound complaints, repeat locations, response times,
 open follow-ups.
 
-> Depends on Phases 3 (categories/locations/outcomes) and likely 4. Response
-> times and open follow-ups depend on outcome/follow-up modeling from Phase 3b.
+> Depends on Phase 4 (categories/locations/outcomes) and likely 5. Response
+> times and open follow-ups depend on outcome/follow-up modeling from Phase 4b.
 
-**Phase 5 tasks (detailed in `50-dashboards.md`):** TBD after Phase 3.
+**Phase 6 tasks (detailed in `60-dashboards.md`):** TBD after Phase 4.
 
 ---
 
 ## 4. Cross-cutting / open questions
 
-- **Stakeholder sign-off on terminology** — the mapping table is a first pass;
-  OCF must confirm wording (especially the Ranger→role split).
-- **Rename depth** — cosmetic (display) vs deep (API + DB). Sets the tone for
-  Phase 2 effort and external-client impact.
-- **Branding & naming** — repo/module name `ranger-ims-go`, binary, docs,
-  copyright. Out of scope for early phases; track for a later cleanup.
-- **Directory integration** — OCF has no Clubhouse DB; how are users/personnel
-  sourced? Affects Phase 4.
-- **Data migration** — is there existing production data to carry over, or do we
-  start fresh for OCF? Affects how aggressive schema changes can be.
+- **Stakeholder sign-off on terminology** — mostly resolved in `20-terminology.md`;
+  the small-term wording (Patrol/HQ/Participant/Camp, slice 2d) is the last open bit.
+- **Rename depth** — ✅ resolved: **deep** (API + DB + UI), API is web-UI-only so the
+  contract break is contained. See `20-terminology.md`.
+- **Branding & naming** — ✅ done (Phase 2c, PR #14): module `github.com/mikeki/ocf-ims`,
+  binary `ocf-ims`, product "Oregon Country Fair IMS". *Open follow-up:* `COPYRIGHT` /
+  license headers / footer "© Burning Man Project" left as-is — needs OCF counsel.
+- **Directory integration** — ✅ owned by **Phase 3** (remove Clubhouse; local
+  People). Demo seeds from the old fake data; the Fair seeds a clean DB with admins.
+- **Data migration** — start **fresh** for the Fair (clean DB); demo data is the
+  seeded fake roster. Lets schema changes be aggressive (no prod carry-over).
 
 ## 5. Sequencing summary
 
 ```
-Phase 1 (clean-up)  ──►  Phase 2 (terminology)  ──┬──►  Phase 3 (domain model)
-                                                  ├──►  Phase 4 (roles)
-                                                  └──►  Phase 5 (dashboards, after 3)
+Phase 1 (clean-up) ─► Phase 2 (terminology) ─► Phase 3 (remove Clubhouse / local People) ─┬─► Phase 5 (roles, needs 3)
+                                                                                          ├─► Phase 4 (domain model)
+                                                                                          └─► Phase 6 (dashboards, after 4)
 ```
 
-Phase 1 is ✅ complete (PRs #1–#5 merged 2026-06-05). Next action: write
-**`20-terminology.md`** and execute Phase 2 — but first resolve its open
-stakeholder decisions (finalize the term-mapping table; settle the "Field Report
-→ Incident Report" vs. existing "Incident" naming collision; decide
-cosmetic-vs-deep rename depth).
+**Status (2026-06-06):**
+- **Phase 1** ✅ complete (PRs #1–#5).
+- **Phase 2** (terminology): **2a** Field Report→Report ✅ (PR #13), **2c** OCF
+  branding ✅ (PR #14). **2b** (Ranger→Person) promoted to **Phase 3**. **2d**
+  (small terms: Patrol/HQ/Participant/Camp) still open — blocked on OCF wording.
+- **Phase 3** (remove Clubhouse / local People): design written
+  (`30-remove-clubhouse.md`); **next to implement**.
+- **Phases 4–6**: not yet started; design docs TODO.
+
+Next action: review `30-remove-clubhouse.md`, then slice Phase 3 into PRs
+(local Person table + login → local authz → re-key attached-people/author →
+retire Clubhouse → UI rename).
