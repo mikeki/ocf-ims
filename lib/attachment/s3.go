@@ -28,7 +28,7 @@ import (
 	"github.com/aws/aws-sdk-go-v2/config"
 	"github.com/aws/aws-sdk-go-v2/service/s3"
 	"github.com/aws/smithy-go"
-	"github.com/burningmantech/ranger-ims-go/lib/herr"
+	"github.com/mikeki/ocf-ims/lib/herr"
 )
 
 // S3Funcs is an interface for the S3 AWS APIs that IMS actually uses.

@@ -65,7 +65,7 @@ async function fetchBuildInfo(): Promise<void> {
     const dirty = buildInfoText.indexOf("vcs.modified=true") >= 0;
     const link = document.createElement("a");
     link.text = `The server was built at revision ${ref.substring(0,12)} ${dirty ? " (dirty)" : ""}`;
-    link.href = `https://github.com/burningmantech/ranger-ims-go/tree/${ref}`;
+    link.href = `https://github.com/mikeki/ocf-ims/tree/${ref}`;
     el.buildInfoP.replaceChildren(link);
     el.buildInfoDiv.style.display = "";
 }

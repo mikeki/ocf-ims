@@ -20,7 +20,7 @@ import (
 	"context"
 	"database/sql"
 
-	"github.com/burningmantech/ranger-ims-go/store/imsdb"
+	"github.com/mikeki/ocf-ims/store/imsdb"
 )
 
 // DBQ combines the SQL database and the Querier for the IMS datastore.

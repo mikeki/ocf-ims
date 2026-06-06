@@ -25,11 +25,11 @@ import (
 	"strings"
 	"time"
 
-	"github.com/burningmantech/ranger-ims-go/directory"
-	"github.com/burningmantech/ranger-ims-go/lib/authn"
-	"github.com/burningmantech/ranger-ims-go/lib/authz"
-	"github.com/burningmantech/ranger-ims-go/lib/herr"
-	"github.com/burningmantech/ranger-ims-go/store"
+	"github.com/mikeki/ocf-ims/directory"
+	"github.com/mikeki/ocf-ims/lib/authn"
+	"github.com/mikeki/ocf-ims/lib/authz"
+	"github.com/mikeki/ocf-ims/lib/herr"
+	"github.com/mikeki/ocf-ims/store"
 )
 
 type authError string

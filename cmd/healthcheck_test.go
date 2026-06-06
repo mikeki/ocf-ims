@@ -17,7 +17,7 @@
 package cmd
 
 import (
-	"github.com/burningmantech/ranger-ims-go/api"
+	"github.com/mikeki/ocf-ims/api"
 	"net/http"
 	"net/http/httptest"
 	"testing"

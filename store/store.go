@@ -21,9 +21,9 @@ import (
 	"database/sql"
 	"embed"
 	"fmt"
-	"github.com/burningmantech/ranger-ims-go/conf"
-	_ "github.com/burningmantech/ranger-ims-go/lib/noopdb"
 	"github.com/go-sql-driver/mysql"
+	"github.com/mikeki/ocf-ims/conf"
+	_ "github.com/mikeki/ocf-ims/lib/noopdb"
 	"log/slog"
 )
 

@@ -21,9 +21,9 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
-	"github.com/burningmantech/ranger-ims-go/lib/conv"
-	"github.com/burningmantech/ranger-ims-go/store/imsdb"
 	"github.com/go-sql-driver/mysql"
+	"github.com/mikeki/ocf-ims/lib/conv"
+	"github.com/mikeki/ocf-ims/store/imsdb"
 	"log/slog"
 	"strings"
 )

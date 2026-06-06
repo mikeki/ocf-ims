@@ -17,8 +17,8 @@
 package authz
 
 import (
-	"github.com/burningmantech/ranger-ims-go/lib/conv"
 	"github.com/golang-jwt/jwt/v5"
+	"github.com/mikeki/ocf-ims/lib/conv"
 	"math/big"
 	"time"
 )

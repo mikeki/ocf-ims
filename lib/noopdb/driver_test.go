@@ -18,7 +18,7 @@ package noopdb_test
 
 import (
 	"database/sql"
-	_ "github.com/burningmantech/ranger-ims-go/lib/noopdb"
+	_ "github.com/mikeki/ocf-ims/lib/noopdb"
 	"github.com/stretchr/testify/require"
 	"testing"
 )

@@ -32,7 +32,7 @@ import (
 	"time"
 )
 
-var outputApp = flag.String("output-app", "ranger-ims-go", "Output app name")
+var outputApp = flag.String("output-app", "ocf-ims", "Output app name")
 var generateOnly = flag.Bool("generate-only", false, "Run the code generators only; skip the final `go build`")
 
 func main() {

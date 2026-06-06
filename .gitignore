@@ -28,8 +28,8 @@ go.work.sum
 .env
 
 # compiled program
-ranger-ims-go
-compose.ranger-ims-go
+ocf-ims
+compose.ocf-ims
 
 node_modules
 

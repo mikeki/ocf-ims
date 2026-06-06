@@ -19,7 +19,7 @@ package authn_test
 import (
 	"testing"
 
-	"github.com/burningmantech/ranger-ims-go/lib/authn"
+	"github.com/mikeki/ocf-ims/lib/authn"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )

@@ -19,9 +19,9 @@ package api
 import (
 	"database/sql"
 	"errors"
-	_ "github.com/burningmantech/ranger-ims-go/lib/noopdb"
-	"github.com/burningmantech/ranger-ims-go/store"
-	"github.com/burningmantech/ranger-ims-go/store/imsdb"
+	_ "github.com/mikeki/ocf-ims/lib/noopdb"
+	"github.com/mikeki/ocf-ims/store"
+	"github.com/mikeki/ocf-ims/store/imsdb"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"io"

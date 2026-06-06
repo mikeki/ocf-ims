@@ -23,9 +23,9 @@ import (
 
 // rootCmd represents the base command when called without any subcommands.
 var rootCmd = &cobra.Command{
-	Use:   "ranger-ims-go",
-	Short: "The Ranger IMS server",
-	Long:  "The Black Rock Ranger IMS server",
+	Use:   "ocf-ims",
+	Short: "The Oregon Country Fair IMS server",
+	Long:  "The Oregon Country Fair Incident Management System (IMS) server.",
 }
 
 // Execute adds all child commands to the root command and sets flags appropriately.

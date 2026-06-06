@@ -18,8 +18,8 @@ package actionlog
 
 import (
 	"context"
-	"github.com/burningmantech/ranger-ims-go/store"
-	"github.com/burningmantech/ranger-ims-go/store/imsdb"
+	"github.com/mikeki/ocf-ims/store"
+	"github.com/mikeki/ocf-ims/store/imsdb"
 	"log/slog"
 	"time"
 )

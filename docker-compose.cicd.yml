@@ -4,7 +4,7 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
-    image: "ranger-ims-go:${IMAGE_TAG:-latest}"
+    image: "ocf-ims:${IMAGE_TAG:-latest}"
     environment:
       IMS_DB_HOST_NAME: "ims-db"
       IMS_DB_PORT: "${IMS_DB_PORT:-3306}"

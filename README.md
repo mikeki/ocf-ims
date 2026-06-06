@@ -1,9 +1,9 @@
-# Ranger IMS Server - now in Go
+# Oregon Country Fair IMS Server
 
 ![](/gopher.png)
 
-The Ranger Incident Management System is used by the Black Rock Rangers to track incidents
-that occur in Black Rock City.
+The Oregon Country Fair Incident Management System (IMS) is used to track incidents
+that occur at the Oregon Country Fair.
 
 ## Getting started with IMS development:
 
@@ -53,7 +53,7 @@ make compose/live
    and Linux, but Windows is so far untested.
    ```shell
    go run bin/build/build.go
-   ./ranger-ims-go serve
+   ./ocf-ims serve
    ```
 
 ## Run tests
@@ -73,8 +73,8 @@ go test -coverprofile=coverage.out --coverpkg ./... ./... && go tool cover -html
 ## Build and run with Docker
 
 ```shell
-docker build --tag ranger-ims-go .
-docker run --env-file .env -it -p 80:8080 ranger-ims-go:latest
+docker build --tag ocf-ims .
+docker run --env-file .env -it -p 80:8080 ocf-ims:latest
 ```
 
 or use `docker compose up`

@@ -21,9 +21,9 @@ import (
 	"database/sql"
 	_ "embed"
 	"fmt"
-	"github.com/burningmantech/ranger-ims-go/conf"
-	chqueries "github.com/burningmantech/ranger-ims-go/directory/clubhousedb"
 	"github.com/go-sql-driver/mysql"
+	"github.com/mikeki/ocf-ims/conf"
+	chqueries "github.com/mikeki/ocf-ims/directory/clubhousedb"
 	"log/slog"
 	"time"
 )

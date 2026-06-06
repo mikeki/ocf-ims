@@ -26,8 +26,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/burningmantech/ranger-ims-go/conf"
-	"github.com/burningmantech/ranger-ims-go/web"
+	"github.com/mikeki/ocf-ims/conf"
+	"github.com/mikeki/ocf-ims/web"
 	"github.com/stretchr/testify/require"
 )
 

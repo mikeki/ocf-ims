@@ -19,7 +19,7 @@ package authz
 import (
 	"testing"
 
-	"github.com/burningmantech/ranger-ims-go/store/imsdb"
+	"github.com/mikeki/ocf-ims/store/imsdb"
 	"github.com/stretchr/testify/require"
 )
 

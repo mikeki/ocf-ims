@@ -18,7 +18,7 @@ package redact_test
 
 import (
 	"fmt"
-	"github.com/burningmantech/ranger-ims-go/lib/redact"
+	"github.com/mikeki/ocf-ims/lib/redact"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"os"

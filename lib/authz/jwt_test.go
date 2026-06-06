@@ -17,7 +17,7 @@
 package authz_test
 
 import (
-	"github.com/burningmantech/ranger-ims-go/lib/authz"
+	"github.com/mikeki/ocf-ims/lib/authz"
 	"github.com/stretchr/testify/require"
 	"testing"
 	"time"

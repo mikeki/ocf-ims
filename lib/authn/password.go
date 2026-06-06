@@ -21,7 +21,7 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/burningmantech/ranger-ims-go/lib/argon2id"
+	"github.com/mikeki/ocf-ims/lib/argon2id"
 )
 
 // argonLocker is used to disallow concurrent calls into the Argon2id hash algorithm.

@@ -22,7 +22,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/burningmantech/ranger-ims-go/lib/cache"
+	"github.com/mikeki/ocf-ims/lib/cache"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"golang.org/x/sync/errgroup"

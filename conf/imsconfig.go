@@ -23,7 +23,7 @@ import (
 	"os"
 	"time"
 
-	"github.com/burningmantech/ranger-ims-go/lib/redact"
+	"github.com/mikeki/ocf-ims/lib/redact"
 )
 
 // mib is the number of bytes in 1 MiB.
