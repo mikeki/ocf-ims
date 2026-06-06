@@ -244,7 +244,7 @@ func incidentToJSON(storedRow imsdb.IncidentRow, incidentRangers []imsdb.Inciden
 		}
 	}
 
-	incidentTypeIDs, fieldReportNumbers, visitNumbers, err := readExtraIncidentRowFields(storedRow)
+	incidentTypeIDs, reportNumbers, visitNumbers, err := readExtraIncidentRowFields(storedRow)
 	if err != nil {
 		return resp, herr.InternalServerError("Failed to fetch Incident details", err).From("[readExtraIncidentRowFields]")
 	}
@@ -272,7 +272,7 @@ func incidentToJSON(storedRow imsdb.IncidentRow, incidentRangers []imsdb.Inciden
 			Description: conv.SqlToString(storedRow.Incident.LocationDescription),
 		},
 		IncidentTypeIDs: &incidentTypeIDs,
-		FieldReports:    &fieldReportNumbers,
+		Reports:         &reportNumbers,
 		Visits:          &visitNumbers,
 		Rangers:         &rangersJson,
 		ReportEntries:   resultEntries,
@@ -421,12 +421,12 @@ func unmarshalByteSlice[T any](isByteSlice any) (T, error) {
 	return result, nil
 }
 
-func readExtraIncidentRowFields(row imsdb.IncidentRow) (incidentTypeIDs, fieldReportNumbers, visitNumbers []int32, err error) {
+func readExtraIncidentRowFields(row imsdb.IncidentRow) (incidentTypeIDs, reportNumbers, visitNumbers []int32, err error) {
 	incidentTypeIDs, err = unmarshalByteSlice[[]int32](row.IncidentTypeIds)
 	if err != nil {
 		return nil, nil, nil, fmt.Errorf("[unmarshalByteSlice]: %w", err)
 	}
-	fieldReportNumbers, err = unmarshalByteSlice[[]int32](row.FieldReportNumbers)
+	reportNumbers, err = unmarshalByteSlice[[]int32](row.ReportNumbers)
 	if err != nil {
 		return nil, nil, nil, fmt.Errorf("[unmarshalByteSlice]: %w", err)
 	}
@@ -434,7 +434,7 @@ func readExtraIncidentRowFields(row imsdb.IncidentRow) (incidentTypeIDs, fieldRe
 	if err != nil {
 		return nil, nil, nil, fmt.Errorf("[unmarshalByteSlice]: %w", err)
 	}
-	return incidentTypeIDs, fieldReportNumbers, visitNumbers, nil
+	return incidentTypeIDs, reportNumbers, visitNumbers, nil
 }
 
 func updateIncident(ctx context.Context, imsDBQ *store.DBQ, es *EventSourcerer, newIncident imsjson.Incident, author string,
@@ -476,7 +476,7 @@ func updateIncident(ctx context.Context, imsDBQ *store.DBQ, es *EventSourcerer, 
 		return herr.InternalServerError("Failed to fetch linked incidents", err)
 	}
 
-	incidentTypeIDs, fieldReportNumbers, visitNumbers, err := readExtraIncidentRowFields(storedIncidentRow)
+	incidentTypeIDs, reportNumbers, visitNumbers, err := readExtraIncidentRowFields(storedIncidentRow)
 	if err != nil {
 		return herr.InternalServerError("Failed to read incident details", err).From("[readExtraIncidentRowFields]")
 	}
@@ -576,40 +576,40 @@ func updateIncident(ctx context.Context, imsDBQ *store.DBQ, es *EventSourcerer, 
 			}
 		}
 	}
-	var updatedFieldReports []int32
-	if newIncident.FieldReports != nil {
-		add := sliceSubtract(*newIncident.FieldReports, fieldReportNumbers)
-		sub := sliceSubtract(fieldReportNumbers, *newIncident.FieldReports)
-		updatedFieldReports = append(updatedFieldReports, add...)
-		updatedFieldReports = append(updatedFieldReports, sub...)
+	var updatedReports []int32
+	if newIncident.Reports != nil {
+		add := sliceSubtract(*newIncident.Reports, reportNumbers)
+		sub := sliceSubtract(reportNumbers, *newIncident.Reports)
+		updatedReports = append(updatedReports, add...)
+		updatedReports = append(updatedReports, sub...)
 
 		if len(add) > 0 {
-			logs = append(logs, fmt.Sprintf("Field Report added: %v", add))
-			for _, frNum := range add {
-				err = imsDBQ.AttachFieldReportToIncident(ctx, txn,
-					imsdb.AttachFieldReportToIncidentParams{
+			logs = append(logs, fmt.Sprintf("Report added: %v", add))
+			for _, reportNum := range add {
+				err = imsDBQ.AttachReportToIncident(ctx, txn,
+					imsdb.AttachReportToIncidentParams{
 						Event:          newIncident.EventID,
-						Number:         frNum,
+						Number:         reportNum,
 						IncidentNumber: sql.NullInt32{Int32: newIncident.Number, Valid: true},
 					},
 				)
 				if err != nil {
-					return herr.InternalServerError("Failed to attach Field Report", err).From("[AttachFieldReportToIncident]")
+					return herr.InternalServerError("Failed to attach Report", err).From("[AttachReportToIncident]")
 				}
 			}
 		}
 		if len(sub) > 0 {
-			logs = append(logs, fmt.Sprintf("Field Report removed: %v", sub))
-			for _, frNum := range sub {
-				err = imsDBQ.AttachFieldReportToIncident(ctx, txn,
-					imsdb.AttachFieldReportToIncidentParams{
+			logs = append(logs, fmt.Sprintf("Report removed: %v", sub))
+			for _, reportNum := range sub {
+				err = imsDBQ.AttachReportToIncident(ctx, txn,
+					imsdb.AttachReportToIncidentParams{
 						Event:          newIncident.EventID,
-						Number:         frNum,
+						Number:         reportNum,
 						IncidentNumber: sql.NullInt32{},
 					},
 				)
 				if err != nil {
-					return herr.InternalServerError("Failed to detach Field Report", err).From("[AttachFieldReportToIncident]")
+					return herr.InternalServerError("Failed to detach Report", err).From("[AttachReportToIncident]")
 				}
 			}
 		}
@@ -775,8 +775,8 @@ func updateIncident(ctx context.Context, imsDBQ *store.DBQ, es *EventSourcerer, 
 	}
 
 	es.notifyIncidentUpdate(newIncident.EventID, newIncident.Number)
-	for _, fr := range updatedFieldReports {
-		es.notifyFieldReportUpdate(newIncident.EventID, fr)
+	for _, fr := range updatedReports {
+		es.notifyReportUpdate(newIncident.EventID, fr)
 	}
 	for _, inc := range updatedLinkedIncidents {
 		es.notifyIncidentUpdate(inc.EventID, inc.Number)

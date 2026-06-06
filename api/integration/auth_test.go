@@ -148,13 +148,13 @@ func TestGetAuthWithEvent(t *testing.T) {
 		Admin:         true,
 		EventAccess: map[string]api.AccessForEvent{
 			eventName: {
-				EventID:           eventID,
-				ReadIncidents:     true,
-				WriteIncidents:    false,
-				WriteFieldReports: false,
-				ReadVisits:        true,
-				WriteVisits:       false,
-				AttachFiles:       true,
+				EventID:        eventID,
+				ReadIncidents:  true,
+				WriteIncidents: false,
+				WriteReports:   false,
+				ReadVisits:     true,
+				WriteVisits:    false,
+				AttachFiles:    true,
 			},
 		},
 	}, authResp)
@@ -173,12 +173,12 @@ func TestGetAuthWithBadEventNames(t *testing.T) {
 	require.NoError(t, httpResp.Body.Close())
 	assert.Contains(t, gar.EventAccess, "ThisEventDoesNotExist")
 	assert.Equal(t, api.AccessForEvent{
-		ReadIncidents:     false,
-		WriteIncidents:    false,
-		WriteFieldReports: false,
-		ReadVisits:        false,
-		WriteVisits:       false,
-		AttachFiles:       false,
+		ReadIncidents:  false,
+		WriteIncidents: false,
+		WriteReports:   false,
+		ReadVisits:     false,
+		WriteVisits:    false,
+		AttachFiles:    false,
 	}, gar.EventAccess["ThisEventDoesNotExist"])
 
 	// bad event name (has spaces)

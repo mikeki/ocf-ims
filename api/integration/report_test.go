@@ -27,8 +27,8 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func sampleFieldReport1(eventName string) imsjson.FieldReport {
-	return imsjson.FieldReport{
+func sampleReport1(eventName string) imsjson.Report {
+	return imsjson.Report{
 		Event:   eventName,
 		Summary: new("my summary!"),
 		ReportEntries: []imsjson.ReportEntry{
@@ -38,7 +38,7 @@ func sampleFieldReport1(eventName string) imsjson.FieldReport {
 	}
 }
 
-func TestCreateAndGetFieldReport(t *testing.T) {
+func TestCreateAndGetReport(t *testing.T) {
 	t.Parallel()
 	ctx := t.Context()
 
@@ -55,23 +55,23 @@ func TestCreateAndGetFieldReport(t *testing.T) {
 	require.Equal(t, http.StatusNoContent, resp.StatusCode)
 	require.NoError(t, resp.Body.Close())
 
-	// Use normal user to create a new Field Report
-	fieldReportReq := sampleFieldReport1(eventName)
-	entryReq := fieldReportReq.ReportEntries[0]
-	num := apisNonAdmin.newFieldReportSuccess(ctx, fieldReportReq)
-	fieldReportReq.Number = num
+	// Use normal user to create a new Report
+	reportReq := sampleReport1(eventName)
+	entryReq := reportReq.ReportEntries[0]
+	num := apisNonAdmin.newReportSuccess(ctx, reportReq)
+	reportReq.Number = num
 
 	{
-		// Use normal user to fetch that Field Report from the API and check it over
-		retrievedFieldReport, resp := apisNonAdmin.getFieldReport(ctx, eventName, num)
+		// Use normal user to fetch that Report from the API and check it over
+		retrievedReport, resp := apisNonAdmin.getReport(ctx, eventName, num)
 		require.Equal(t, http.StatusOK, resp.StatusCode)
 		require.NoError(t, resp.Body.Close())
-		require.NotNil(t, retrievedFieldReport)
-		requireEqualFieldReport(t, fieldReportReq, retrievedFieldReport)
-		require.Len(t, retrievedFieldReport.ReportEntries, 2)
+		require.NotNil(t, retrievedReport)
+		requireEqualReport(t, reportReq, retrievedReport)
+		require.Len(t, retrievedReport.ReportEntries, 2)
 
 		// The first report entry will be the system entry. The second should be the one we sent in the request
-		retrievedUserEntry := retrievedFieldReport.ReportEntries[1]
+		retrievedUserEntry := retrievedReport.ReportEntries[1]
 		retrievedUserEntry.ID = 0
 		require.WithinDuration(t, time.Now(), retrievedUserEntry.Created, 5*time.Minute)
 		retrievedUserEntry.Created = time.Time{}
@@ -81,17 +81,17 @@ func TestCreateAndGetFieldReport(t *testing.T) {
 	}
 
 	{
-		// Now get the field report via the GetFieldReports (plural) endpoint, and repeat the validation
-		retrievedFieldReports, resp := apisNonAdmin.getFieldReports(ctx, eventName)
+		// Now get the report via the GetReports (plural) endpoint, and repeat the validation
+		retrievedReports, resp := apisNonAdmin.getReports(ctx, eventName)
 		require.Equal(t, http.StatusOK, resp.StatusCode)
 		require.NoError(t, resp.Body.Close())
-		require.NotNil(t, retrievedFieldReports)
-		require.Len(t, retrievedFieldReports, 1)
-		requireEqualFieldReport(t, fieldReportReq, retrievedFieldReports[0])
-		require.Len(t, retrievedFieldReports[0].ReportEntries, 2)
+		require.NotNil(t, retrievedReports)
+		require.Len(t, retrievedReports, 1)
+		requireEqualReport(t, reportReq, retrievedReports[0])
+		require.Len(t, retrievedReports[0].ReportEntries, 2)
 
 		// The first report entry will be the system entry. The second should be the one we sent in the request
-		retrievedUserEntry := retrievedFieldReports[0].ReportEntries[1]
+		retrievedUserEntry := retrievedReports[0].ReportEntries[1]
 		retrievedUserEntry.ID = 0
 		require.WithinDuration(t, time.Now(), retrievedUserEntry.Created, 5*time.Minute)
 		retrievedUserEntry.Created = time.Time{}
@@ -100,7 +100,7 @@ func TestCreateAndGetFieldReport(t *testing.T) {
 	}
 }
 
-func TestCreateAndUpdateFieldReport(t *testing.T) {
+func TestCreateAndUpdateReport(t *testing.T) {
 	t.Parallel()
 	ctx := t.Context()
 
@@ -121,17 +121,17 @@ func TestCreateAndUpdateFieldReport(t *testing.T) {
 	require.Equal(t, http.StatusNoContent, resp.StatusCode)
 	require.NoError(t, resp.Body.Close())
 
-	// Use normal user to create a new Field Report
-	fieldReportReq := sampleFieldReport1(eventName)
-	num := apisAlice.newFieldReportSuccess(ctx, fieldReportReq)
-	fieldReportReq.Number = num
+	// Use normal user to create a new Report
+	reportReq := sampleReport1(eventName)
+	num := apisAlice.newReportSuccess(ctx, reportReq)
+	reportReq.Number = num
 
-	retrievedNewFieldReport, resp := apisAlice.getFieldReport(ctx, eventName, num)
+	retrievedNewReport, resp := apisAlice.getReport(ctx, eventName, num)
 	require.NoError(t, resp.Body.Close())
 
 	// Now let's update the FR. First let's try just adding an incident number.
-	updates := imsjson.FieldReport{
-		Event:    fieldReportReq.Event,
+	updates := imsjson.Report{
+		Event:    reportReq.Event,
 		Number:   num,
 		Incident: new(int32(12345)),
 		ReportEntries: []imsjson.ReportEntry{
@@ -144,95 +144,95 @@ func TestCreateAndUpdateFieldReport(t *testing.T) {
 		},
 	}
 
-	resp = apisAlice.updateFieldReport(ctx, eventName, num, updates)
+	resp = apisAlice.updateReport(ctx, eventName, num, updates)
 	require.Equal(t, http.StatusNoContent, resp.StatusCode)
 	require.NoError(t, resp.Body.Close())
 
-	retrievedFieldReportAfterUpdate, resp := apisAlice.getFieldReport(ctx, eventName, num)
+	retrievedReportAfterUpdate, resp := apisAlice.getReport(ctx, eventName, num)
 	require.Equal(t, http.StatusOK, resp.StatusCode)
 	require.NoError(t, resp.Body.Close())
-	requireEqualFieldReport(t, retrievedNewFieldReport, retrievedFieldReportAfterUpdate)
+	requireEqualReport(t, retrievedNewReport, retrievedReportAfterUpdate)
 
 	// now let's set all fields to empty
-	updates = imsjson.FieldReport{
-		Event:         fieldReportReq.Event,
+	updates = imsjson.Report{
+		Event:         reportReq.Event,
 		Number:        num,
 		Summary:       new(""),
 		Incident:      nil,
 		ReportEntries: []imsjson.ReportEntry{},
 	}
-	resp = apisAlice.updateFieldReport(ctx, eventName, num, updates)
+	resp = apisAlice.updateReport(ctx, eventName, num, updates)
 	require.Equal(t, http.StatusNoContent, resp.StatusCode)
 	require.NoError(t, resp.Body.Close())
 	// then check the result
-	retrievedFieldReportAfterUpdate, resp = apisAlice.getFieldReport(ctx, eventName, num)
+	retrievedReportAfterUpdate, resp = apisAlice.getReport(ctx, eventName, num)
 	require.Equal(t, http.StatusOK, resp.StatusCode)
 	require.NoError(t, resp.Body.Close())
-	expected := imsjson.FieldReport{
+	expected := imsjson.Report{
 		Event:    eventName,
 		Number:   num,
 		Summary:  nil,
 		Incident: nil,
 	}
-	requireEqualFieldReport(t, expected, retrievedFieldReportAfterUpdate)
+	requireEqualReport(t, expected, retrievedReportAfterUpdate)
 
 	// make an incident, then attach to it
 	incidentNumber := apisAdmin.newIncidentSuccess(ctx, imsjson.Incident{
 		Event: eventName,
 	})
-	resp = apisAlice.attachFieldReportToIncident(ctx, eventName, num, incidentNumber)
+	resp = apisAlice.attachReportToIncident(ctx, eventName, num, incidentNumber)
 	require.Equal(t, http.StatusNoContent, resp.StatusCode)
 	require.NoError(t, resp.Body.Close())
 
 	// confirm it worked
-	fieldReportAfterAttach, resp := apisAlice.getFieldReport(ctx, eventName, num)
+	reportAfterAttach, resp := apisAlice.getReport(ctx, eventName, num)
 	require.Equal(t, http.StatusOK, resp.StatusCode)
 	require.NoError(t, resp.Body.Close())
-	require.Equal(t, incidentNumber, *fieldReportAfterAttach.Incident)
+	require.Equal(t, incidentNumber, *reportAfterAttach.Incident)
 
 	// detach again
-	resp = apisAlice.detachFieldReportFromIncident(ctx, eventName, num)
+	resp = apisAlice.detachReportFromIncident(ctx, eventName, num)
 	require.Equal(t, http.StatusNoContent, resp.StatusCode)
 	require.NoError(t, resp.Body.Close())
 
 	// confirm it's detached
-	fieldReportAfterDetach, resp := apisAlice.getFieldReport(ctx, eventName, num)
+	reportAfterDetach, resp := apisAlice.getReport(ctx, eventName, num)
 	require.Equal(t, http.StatusOK, resp.StatusCode)
 	require.NoError(t, resp.Body.Close())
-	require.Nil(t, fieldReportAfterDetach.Incident)
+	require.Nil(t, reportAfterDetach.Incident)
 
 	// attach again, this time via the incident API
 	resp = apisAdmin.updateIncident(ctx, eventName, num, imsjson.Incident{
-		Event:        eventName,
-		Number:       incidentNumber,
-		FieldReports: &[]int32{num},
+		Event:   eventName,
+		Number:  incidentNumber,
+		Reports: &[]int32{num},
 	})
 	require.Equal(t, http.StatusNoContent, resp.StatusCode)
 	require.NoError(t, resp.Body.Close())
 
 	// check it attached
-	fieldReportAfterAttach, resp = apisAlice.getFieldReport(ctx, eventName, num)
+	reportAfterAttach, resp = apisAlice.getReport(ctx, eventName, num)
 	require.Equal(t, http.StatusOK, resp.StatusCode)
 	require.NoError(t, resp.Body.Close())
-	require.Equal(t, incidentNumber, *fieldReportAfterAttach.Incident)
+	require.Equal(t, incidentNumber, *reportAfterAttach.Incident)
 
 	// detach again, this time via the incident API
 	resp = apisAdmin.updateIncident(ctx, eventName, num, imsjson.Incident{
-		Event:        eventName,
-		Number:       incidentNumber,
-		FieldReports: &[]int32{},
+		Event:   eventName,
+		Number:  incidentNumber,
+		Reports: &[]int32{},
 	})
 	require.Equal(t, http.StatusNoContent, resp.StatusCode)
 	require.NoError(t, resp.Body.Close())
 
 	// check it detached
-	fieldReportAfterDetach, resp = apisAlice.getFieldReport(ctx, eventName, num)
+	reportAfterDetach, resp = apisAlice.getReport(ctx, eventName, num)
 	require.Equal(t, http.StatusOK, resp.StatusCode)
 	require.NoError(t, resp.Body.Close())
-	require.Nil(t, fieldReportAfterDetach.Incident)
+	require.Nil(t, reportAfterDetach.Incident)
 }
 
-func TestCreateAndAttachFileToFieldReport(t *testing.T) {
+func TestCreateAndAttachFileToReport(t *testing.T) {
 	t.Parallel()
 	ctx := t.Context()
 
@@ -249,33 +249,33 @@ func TestCreateAndAttachFileToFieldReport(t *testing.T) {
 	require.Equal(t, http.StatusNoContent, resp.StatusCode)
 	require.NoError(t, resp.Body.Close())
 
-	// Use normal user to create a new Field Report
-	fieldReportReq := sampleFieldReport1(eventName)
-	num := apisNonAdmin.newFieldReportSuccess(ctx, fieldReportReq)
-	fieldReportReq.Number = num
+	// Use normal user to create a new Report
+	reportReq := sampleReport1(eventName)
+	num := apisNonAdmin.newReportSuccess(ctx, reportReq)
+	reportReq.Number = num
 
 	// Now we'll upload an attachment. The "file" will just be this slice of bytes.
 	fileBytes := []byte("This is a text file maybe?")
-	reID, resp := apisNonAdmin.attachFileToFieldReport(ctx, eventName, num, fileBytes)
+	reID, resp := apisNonAdmin.attachFileToReport(ctx, eventName, num, fileBytes)
 	require.NoError(t, resp.Body.Close())
 	require.Equal(t, http.StatusNoContent, resp.StatusCode)
 
 	// Now call to fetch the attachment and check that it's the same as what we sent.
-	returnedAttachment, resp := apisNonAdmin.getFieldReportAttachment(ctx, eventName, num, reID)
+	returnedAttachment, resp := apisNonAdmin.getReportAttachment(ctx, eventName, num, reID)
 	require.Equal(t, http.StatusOK, resp.StatusCode)
 	require.NoError(t, resp.Body.Close())
 	require.Equal(t, fileBytes, returnedAttachment)
 
 	// Try to send something too large
 	fileBytes = []byte(strings.Repeat("a", int(shared.cfg.Core.MaxRequestBytes+1)))
-	_, resp = apisNonAdmin.attachFileToFieldReport(ctx, eventName, num, fileBytes)
+	_, resp = apisNonAdmin.attachFileToReport(ctx, eventName, num, fileBytes)
 	require.NoError(t, resp.Body.Close())
 	require.Equal(t, http.StatusRequestEntityTooLarge, resp.StatusCode)
 }
 
 // requireEqualIncident is a hacky way of checking two incident responses are the same.
 // It does not consider ReportEntries.
-func requireEqualFieldReport(t *testing.T, before, after imsjson.FieldReport) {
+func requireEqualReport(t *testing.T, before, after imsjson.Report) {
 	t.Helper()
 
 	// These will always be different. Check them separately of this function

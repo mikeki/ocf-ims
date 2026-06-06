@@ -263,7 +263,7 @@ Sliced so each lands green and the beta can adopt completed slices incrementally
 
 | PR | Scope | Notes |
 |---|---|---|
-| **2a** | **Field Report → Report** (all layers) | First & largest single entity; exercises the full template. ~migration + sqlc + api + json + urls + ui + tests. |
+| **2a** | **Field Report → Report** (all layers) | ✅ **Done** (branch `feat/2a-field-report-to-report`). Migration `33-from-32.sql` (rename `FIELD_REPORT`/`FIELD_REPORT__REPORT_ENTRY` + `FIELD_REPORT_NUMBER`→`REPORT_NUMBER`, explicit `RRE_TO_*` FKs mirroring the STAY→VISIT precedent); `current.sql` v33; `queries.sql`; `json`/`api`/`urls`/`templ`/`ts` renamed (incl. `fr`/`FR` shorthand, the `IMS-Report-Number` header, and the `R#` attach sentinel); Playwright + integration tests updated. Migration integration test confirms the v6→v33 chain is byte-identical to `current.sql`. |
 | **2b** | **Ranger → Person/People** (first-class local entity) | Largest slice. Local `Person` table (replaces Clubhouse dependency); `RANGER_HANDLE` → `person_id` FK + `nickname`; `INCIDENT__RANGER`/`VISIT__RANGER` → "People Involved" with `ROLE`→`involvement`; `REPORT_ENTRY.AUTHOR` → `person_id`; `Ranger*` Go types → `Person*`; UI "Rangers" → "People Involved". May warrant its own sub-PRs (entity+table, then the FK migrations). Coordinates with Phase 4 on how People are sourced/created. |
 | **2c** | **Black Rock City → Oregon Country Fair** + branding strings | Mostly UI/config; low risk. |
 | **2d** | **Small terms** — Patrol, HQ, Participant, Camp | Bundle the low-count items; confirm OCF wording first. |

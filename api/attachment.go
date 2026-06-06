@@ -64,7 +64,7 @@ type AttachToIncident struct {
 	imsAdmins        []string
 }
 
-type GetFieldReportAttachment struct {
+type GetReportAttachment struct {
 	imsDBQ           *store.DBQ
 	userStore        *directory.UserStore
 	attachmentsStore conf.AttachmentsStore
@@ -72,7 +72,7 @@ type GetFieldReportAttachment struct {
 	imsAdmins        []string
 }
 
-type AttachToFieldReport struct {
+type AttachToReport struct {
 	imsDBQ           *store.DBQ
 	userStore        *directory.UserStore
 	es               *EventSourcerer
@@ -239,48 +239,48 @@ func mustGetS3File(ctx context.Context, s3Client *attachment.S3Client, bucket, p
 	return file, nil
 }
 
-func (action GetFieldReportAttachment) ServeHTTP(w http.ResponseWriter, req *http.Request) {
-	file, contentType, errHTTP := action.getFieldReportAttachment(req)
+func (action GetReportAttachment) ServeHTTP(w http.ResponseWriter, req *http.Request) {
+	file, contentType, errHTTP := action.getReportAttachment(req)
 	if errHTTP != nil {
-		errHTTP.From("[getFieldReportAttachment]").WriteResponse(w)
+		errHTTP.From("[getReportAttachment]").WriteResponse(w)
 		return
 	}
 	w.Header().Set("Content-Type", contentType)
 	http.ServeContent(w, req, "Attached File", time.Now(), file)
 }
 
-func (action GetFieldReportAttachment) getFieldReportAttachment(
+func (action GetReportAttachment) getReportAttachment(
 	req *http.Request,
 ) (fi io.ReadSeeker, contentType string, errHTTP *herr.HTTPError) {
 	event, jwtCtx, eventPermissions, errHTTP := getEventPermissions(req, action.imsDBQ, action.userStore, action.imsAdmins)
 	if errHTTP != nil {
 		return nil, "", errHTTP.From("[getEventPermissions]")
 	}
-	if eventPermissions&(authz.EventReadAllFieldReports|authz.EventReadOwnFieldReports) == 0 {
-		return nil, "", herr.Forbidden("The requestor does not have permission to read Field Reports on this Event", nil)
+	if eventPermissions&(authz.EventReadAllReports|authz.EventReadOwnReports) == 0 {
+		return nil, "", herr.Forbidden("The requestor does not have permission to read Reports on this Event", nil)
 	}
-	// i.e. the user has EventReadOwnFieldReports, but not EventReadAllFieldReports
-	limitedAccess := eventPermissions&authz.EventReadAllFieldReports == 0
+	// i.e. the user has EventReadOwnReports, but not EventReadAllReports
+	limitedAccess := eventPermissions&authz.EventReadAllReports == 0
 
 	ctx := req.Context()
 
-	fieldReportNumber, err := conv.ParseInt32(req.PathValue("fieldReportNumber"))
+	reportNumber, err := conv.ParseInt32(req.PathValue("reportNumber"))
 	if err != nil {
-		return nil, "", herr.BadRequest("Failed to parse Field Report number", err).From("[ParseInt32]")
+		return nil, "", herr.BadRequest("Failed to parse Report number", err).From("[ParseInt32]")
 	}
 	attachmentNumber, err := conv.ParseInt32(req.PathValue("attachmentNumber"))
 	if err != nil {
 		return nil, "", herr.BadRequest("Failed to parse attachment number", err).From("[ParseInt32]")
 	}
 
-	_, reportEntries, errHTTP := fetchFieldReport(ctx, action.imsDBQ, event.ID, fieldReportNumber)
+	_, reportEntries, errHTTP := fetchReport(ctx, action.imsDBQ, event.ID, reportNumber)
 	if errHTTP != nil {
-		return nil, "", errHTTP.From("[fetchFieldReport]")
+		return nil, "", errHTTP.From("[fetchReport]")
 	}
 
 	if limitedAccess {
 		if !containsAuthor(reportEntries, jwtCtx.Claims.RangerHandle()) {
-			return nil, "", herr.Forbidden("The requestor does not have permission to read this particular Field Report", nil)
+			return nil, "", herr.Forbidden("The requestor does not have permission to read this particular Report", nil)
 		}
 	}
 
@@ -407,40 +407,40 @@ func saveFile(
 	return nil
 }
 
-func (action AttachToFieldReport) ServeHTTP(w http.ResponseWriter, req *http.Request) {
-	reID, errHTTP := action.attachToFieldReport(req)
+func (action AttachToReport) ServeHTTP(w http.ResponseWriter, req *http.Request) {
+	reID, errHTTP := action.attachToReport(req)
 	if errHTTP != nil {
-		errHTTP.From("[attachToFieldReport]").WriteResponse(w)
+		errHTTP.From("[attachToReport]").WriteResponse(w)
 		return
 	}
-	slog.Info("Saved Field Report attachment")
+	slog.Info("Saved Report attachment")
 	w.Header().Set("IMS-Report-Entry-Number", conv.FormatInt(reID))
-	herr.WriteNoContentResponse(w, "Saved Field Report attachment")
+	herr.WriteNoContentResponse(w, "Saved Report attachment")
 }
-func (action AttachToFieldReport) attachToFieldReport(req *http.Request) (int32, *herr.HTTPError) {
+func (action AttachToReport) attachToReport(req *http.Request) (int32, *herr.HTTPError) {
 	event, jwtCtx, eventPermissions, errHTTP := getEventPermissions(req, action.imsDBQ, action.userStore, action.imsAdmins)
 	if errHTTP != nil {
 		return 0, errHTTP.From("[getEventPermissions]")
 	}
-	if eventPermissions&(authz.EventWriteAllFieldReports|authz.EventWriteOwnFieldReports) == 0 {
-		return 0, herr.Forbidden("The requestor does not have permission to write Field Reports on this Event", nil)
+	if eventPermissions&(authz.EventWriteAllReports|authz.EventWriteOwnReports) == 0 {
+		return 0, herr.Forbidden("The requestor does not have permission to write Reports on this Event", nil)
 	}
-	// i.e. the user has EventReadOwnFieldReports, but not EventReadAllFieldReports
-	limitedAccess := eventPermissions&authz.EventReadAllFieldReports == 0
+	// i.e. the user has EventReadOwnReports, but not EventReadAllReports
+	limitedAccess := eventPermissions&authz.EventReadAllReports == 0
 	ctx := req.Context()
 
-	fieldReportNumber, err := conv.ParseInt32(req.PathValue("fieldReportNumber"))
+	reportNumber, err := conv.ParseInt32(req.PathValue("reportNumber"))
 	if err != nil {
-		return 0, herr.BadRequest("Failed to parse Field Report number", err).From("[ParseInt32]")
+		return 0, herr.BadRequest("Failed to parse Report number", err).From("[ParseInt32]")
 	}
 
-	fieldReport, entries, errHTTP := fetchFieldReport(ctx, action.imsDBQ, event.ID, fieldReportNumber)
+	report, entries, errHTTP := fetchReport(ctx, action.imsDBQ, event.ID, reportNumber)
 	if errHTTP != nil {
-		return 0, errHTTP.From("[fetchFieldReport]")
+		return 0, errHTTP.From("[fetchReport]")
 	}
 	if limitedAccess {
 		if !containsAuthor(entries, jwtCtx.Claims.RangerHandle()) {
-			return 0, herr.Forbidden("The requestor does not have permission to read this particular Field Report", nil)
+			return 0, herr.Forbidden("The requestor does not have permission to read this particular Report", nil)
 		}
 	}
 
@@ -460,12 +460,12 @@ func (action AttachToFieldReport) attachToFieldReport(req *http.Request) (int32,
 		return 0, errHTTP.From("[sniffFile]")
 	}
 
-	newFileName := fmt.Sprintf("event_%05d_fieldreport_%05d_%v%v", event.ID, fieldReportNumber, rand.Text(), mtype.Extension())
+	newFileName := fmt.Sprintf("event_%05d_report_%05d_%v%v", event.ID, reportNumber, rand.Text(), mtype.Extension())
 	// #nosec G706 // log injection
-	slog.Info("User uploaded a Field Report attachment",
+	slog.Info("User uploaded a Report attachment",
 		"user", jwtCtx.Claims.RangerHandle(),
 		"eventName", event.Name,
-		"fieldReportNumber", fieldReportNumber,
+		"reportNumber", reportNumber,
 		"originalName", fiHead.Filename,
 		"newFileName", newFileName,
 		"size", fiHead.Size,
@@ -480,18 +480,18 @@ func (action AttachToFieldReport) attachToFieldReport(req *http.Request) (int32,
 
 	reText := fmt.Sprintf("File Name: %v, Size: %v, Type: %v",
 		fiHead.Filename, format.HumanByteSize(fiHead.Size), mtype.String())
-	reID, errHTTP := addFRReportEntry(
-		ctx, action.imsDBQ, action.imsDBQ, event.ID, fieldReportNumber,
+	reID, errHTTP := addReportEntry(
+		ctx, action.imsDBQ, action.imsDBQ, event.ID, reportNumber,
 		jwtCtx.Claims.RangerHandle(), reText, false,
 		newFileName, fiHead.Filename, mtype.String(),
 	)
 	if errHTTP != nil {
-		return 0, errHTTP.From("[addFRReportEntry]")
+		return 0, errHTTP.From("[addReportEntry]")
 	}
 
-	action.es.notifyFieldReportUpdate(event.ID, fieldReportNumber)
-	if fieldReport.IncidentNumber.Valid {
-		action.es.notifyIncidentUpdate(event.ID, fieldReport.IncidentNumber.Int32)
+	action.es.notifyReportUpdate(event.ID, reportNumber)
+	if report.IncidentNumber.Valid {
+		action.es.notifyIncidentUpdate(event.ID, report.IncidentNumber.Int32)
 	}
 	return reID, nil
 }

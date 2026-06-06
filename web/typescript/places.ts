@@ -54,7 +54,7 @@ async function initPlacesPage(): Promise<void> {
         await ims.redirectToLogin();
         return;
     }
-    if (!ims.eventAccess!.readIncidents && !ims.eventAccess!.writeFieldReports) {
+    if (!ims.eventAccess!.readIncidents && !ims.eventAccess!.writeReports) {
         ims.setErrorMessage(
             `You're not currently authorized to view Places in Event "${ims.pathIds.eventName}".`
         );

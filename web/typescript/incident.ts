@@ -29,8 +29,8 @@ declare global {
         removeRanger: (el: HTMLElement)=>void;
         setRangerRole: (el: HTMLInputElement)=>void;
         removeIncidentType: (el: HTMLElement)=>Promise<void>;
-        detachFieldReport: (el: HTMLElement)=>Promise<void>;
-        attachFieldReport: ()=>Promise<void>;
+        detachReport: (el: HTMLElement)=>Promise<void>;
+        attachReport: ()=>Promise<void>;
         unlinkIncident: (el: HTMLElement)=>Promise<void>;
         linkIncident: (el: HTMLInputElement)=>Promise<void>;
         addRanger: ()=>void;
@@ -81,10 +81,10 @@ const el = {
 
     placesList: ims.typedElement("places-list", HTMLDataListElement),
 
-    attachedFieldReportLiTemplate: ims.typedElement("attached_field_report_li_template", HTMLTemplateElement),
-    attachedFieldReportAddContainer: ims.typedElement("attached_field_report_add_container", HTMLDivElement),
-    attachedFieldReportAdd: ims.typedElement("attached_field_report_add", HTMLSelectElement),
-    attachedFieldReports: ims.typedElement("attached_field_reports", HTMLUListElement),
+    attachedReportLiTemplate: ims.typedElement("attached_report_li_template", HTMLTemplateElement),
+    attachedReportAddContainer: ims.typedElement("attached_report_add_container", HTMLDivElement),
+    attachedReportAdd: ims.typedElement("attached_report_add", HTMLSelectElement),
+    attachedReports: ims.typedElement("attached_reports", HTMLUListElement),
 
     linkedIncidents: ims.typedElement("linked_incidents", HTMLElement),
 
@@ -121,8 +121,8 @@ async function initIncidentPage(): Promise<void> {
     window.removeRanger = removeRanger;
     window.setRangerRole = setRangerRole;
     window.removeIncidentType = removeIncidentType;
-    window.detachFieldReport = detachFieldReport;
-    window.attachFieldReport = attachFieldReport;
+    window.detachReport = detachReport;
+    window.attachReport = attachReport;
     window.unlinkIncident = unlinkIncident;
     window.linkIncident = linkIncident;
     window.addRanger = addRanger;
@@ -144,7 +144,7 @@ async function initIncidentPage(): Promise<void> {
         ),
         await loadPlaces(),
         await loadAllVisits(),
-        await loadAllFieldReports(),
+        await loadAllReports(),
     ]);
 
     allEvents = await initResult.eventDatas;
@@ -161,7 +161,7 @@ async function initIncidentPage(): Promise<void> {
     drawIncidentTypesToAdd();
     drawIncidentTypeInfo();
     drawPlacesList();
-    renderFieldReportData();
+    renderReportData();
 
     ims.hideLoadingOverlay();
 
@@ -188,26 +188,26 @@ async function initIncidentPage(): Promise<void> {
             console.log("Got incident update: " + number);
             await loadAndDisplayIncident();
             await loadAllVisits();
-            await loadAllFieldReports();
-            renderFieldReportData();
+            await loadAllReports();
+            renderReportData();
         }
     };
 
-    ims.newFieldReportChannel().onmessage = async function (e: MessageEvent<ims.FieldReportBroadcast>): Promise<void> {
+    ims.newReportChannel().onmessage = async function (e: MessageEvent<ims.ReportBroadcast>): Promise<void> {
         const updateAll = e.data.update_all??false;
         if (updateAll) {
-            console.log("Updating all field reports");
-            await loadAllFieldReports();
-            renderFieldReportData();
+            console.log("Updating all reports");
+            await loadAllReports();
+            renderReportData();
             return;
         }
 
-        const number = e.data.field_report_number;
+        const number = e.data.report_number;
         const eventId = e.data.event_id;
         if (eventId === ims.pathIds.eventId) {
-            console.log("Got field report update: " + number);
-            await loadOneFieldReport(number!);
-            renderFieldReportData();
+            console.log("Got report update: " + number);
+            await loadOneReport(number!);
+            renderReportData();
             return;
         }
     };
@@ -217,7 +217,7 @@ async function initIncidentPage(): Promise<void> {
         if (updateAll) {
             console.log("Updating all visits");
             await loadAllVisits();
-            renderFieldReportData();
+            renderReportData();
             return;
         }
 
@@ -226,7 +226,7 @@ async function initIncidentPage(): Promise<void> {
         if (eventId === ims.pathIds.eventId) {
             console.log("Got visit update: " + number);
             await loadOneVisit(number!);
-            renderFieldReportData();
+            renderReportData();
             return;
         }
     }
@@ -358,13 +358,13 @@ function displayIncident(): void {
     }
 }
 
-// Do all the client-side rendering based on the state of allFieldReports.
-function renderFieldReportData(): void {
-    loadAttachedFieldReports();
+// Do all the client-side rendering based on the state of allReports.
+function renderReportData(): void {
+    loadAttachedReports();
     loadAttachedVisits();
-    drawFieldReportsToAttach();
+    drawReportsToAttach();
     drawMergedReportEntries();
-    drawAttachedFieldReportsVisits();
+    drawAttachedReportsVisits();
     drawLinkedIncidents();
 }
 
@@ -384,53 +384,53 @@ async function loadPersonnel(): Promise<void> {
 }
 
 //
-// Load all field reports and visits
+// Load all reports and visits
 //
 
-let allFieldReports: ims.FieldReport[]|null|undefined = null;
+let allReports: ims.Report[]|null|undefined = null;
 
-async function loadAllFieldReports(): Promise<{err: string|null}> {
-    if (allFieldReports === undefined) {
+async function loadAllReports(): Promise<{err: string|null}> {
+    if (allReports === undefined) {
         return {err: null};
     }
 
-    const {resp, json, err} = await ims.fetchNoThrow<ims.FieldReport[]>(ims.urlReplace(url_fieldReports), null);
+    const {resp, json, err} = await ims.fetchNoThrow<ims.Report[]>(ims.urlReplace(url_reports), null);
     if (err != null) {
         if (resp != null && resp.status === 403) {
             // We're not allowed to look these up.
-            allFieldReports = undefined;
-            console.error("Got a 403 looking up field reports");
+            allReports = undefined;
+            console.error("Got a 403 looking up reports");
             return {err: null};
         } else {
-            const message = `Failed to load field reports: ${err}`;
+            const message = `Failed to load reports: ${err}`;
             console.error(message);
             ims.setErrorMessage(message);
             return {err: message};
         }
     }
-    const _allFieldReports: ims.FieldReport[] = [];
+    const _allReports: ims.Report[] = [];
     for (const d of json!) {
-        _allFieldReports.push(d);
+        _allReports.push(d);
     }
-    // apply a descending sort based on the field report number,
-    // being cautious about field report number being null
-    _allFieldReports.sort(function (a, b) {
+    // apply a descending sort based on the report number,
+    // being cautious about report number being null
+    _allReports.sort(function (a, b) {
         return (b.number ?? -1) - (a.number ?? -1);
     });
-    allFieldReports = _allFieldReports;
+    allReports = _allReports;
     return {err: null};
 }
 
-async function loadOneFieldReport(fieldReportNumber: number): Promise<{err: string|null}> {
-    if (allFieldReports === undefined) {
+async function loadOneReport(reportNumber: number): Promise<{err: string|null}> {
+    if (allReports === undefined) {
         return {err: null};
     }
 
-    const {resp, json, err} = await ims.fetchNoThrow<ims.FieldReport>(
-        ims.urlReplace(url_fieldReport).replace("<field_report_number>", fieldReportNumber.toString()), null);
+    const {resp, json, err} = await ims.fetchNoThrow<ims.Report>(
+        ims.urlReplace(url_report).replace("<report_number>", reportNumber.toString()), null);
     if (err != null) {
         if (resp == null || resp.status !== 403) {
-            const message = `Failed to load field report ${fieldReportNumber} ${err}`;
+            const message = `Failed to load report ${reportNumber} ${err}`;
             console.error(message);
             ims.setErrorMessage(message);
             return {err: message};
@@ -438,20 +438,20 @@ async function loadOneFieldReport(fieldReportNumber: number): Promise<{err: stri
     }
 
     let found = false;
-    for (const i in allFieldReports!) {
-        if (allFieldReports[i]!.number === json!.number) {
-            allFieldReports[i] = json!;
+    for (const i in allReports!) {
+        if (allReports[i]!.number === json!.number) {
+            allReports[i] = json!;
             found = true;
         }
     }
     if (!found) {
-        if (allFieldReports == null) {
-            allFieldReports = [];
+        if (allReports == null) {
+            allReports = [];
         }
-        allFieldReports.push(json!);
-        // apply a descending sort based on the field report number,
-        // being cautious about field report number being null
-        allFieldReports.sort(function (a, b) {
+        allReports.push(json!);
+        // apply a descending sort based on the report number,
+        // being cautious about report number being null
+        allReports.sort(function (a, b) {
             return (b.number ?? -1) - (a.number ?? -1);
         });
     }
@@ -470,7 +470,7 @@ async function loadAllVisits(): Promise<{err: string|null}> {
     if (err != null) {
         if (resp != null && resp.status === 403) {
             // We're not allowed to look these up.
-            allFieldReports = undefined;
+            allReports = undefined;
             console.error("Got a 403 looking up visits");
             return {err: null};
         } else {
@@ -534,22 +534,22 @@ async function loadOneVisit(visitNumber: number): Promise<{err: string|null}> {
 
 
 //
-// Load attached field reports and visits
+// Load attached reports and visits
 //
 
-let attachedFieldReports: ims.FieldReport[]|null = null;
+let attachedReports: ims.Report[]|null = null;
 
-function loadAttachedFieldReports() {
+function loadAttachedReports() {
     if (ims.pathIds.incidentNumber == null) {
         return;
     }
-    const _attachedFieldReports: ims.FieldReport[] = [];
-    for (const fr of allFieldReports??[]) {
+    const _attachedReports: ims.Report[] = [];
+    for (const fr of allReports??[]) {
         if (fr.incident === ims.pathIds.incidentNumber) {
-            _attachedFieldReports.push(fr);
+            _attachedReports.push(fr);
         }
     }
-    attachedFieldReports = _attachedFieldReports;
+    attachedReports = _attachedReports;
 }
 
 let attachedVisits: ims.Visit[]|null = null;
@@ -598,7 +598,7 @@ function drawIncidentFields() {
 function drawIncidentTitle(mode: "for_display"|"for_print_to_pdf"): void {
     let newTitle: string = "";
     if (mode === "for_print_to_pdf" && incident?.number) {
-        const fsSafeDescription: string = ims.summarizeIncidentOrFR(incident)
+        const fsSafeDescription: string = ims.summarizeIncidentOrReport(incident)
             .replaceAll("#", "-")
             .replaceAll("\n", "-")
             .replaceAll(" ", "-")
@@ -686,7 +686,7 @@ function drawIncidentSummary(): void {
         return;
     }
 
-    el.incidentSummary.value = ims.summarizeIncidentOrFR(incident!);
+    el.incidentSummary.value = ims.summarizeIncidentOrReport(incident!);
 }
 
 
@@ -896,9 +896,9 @@ function drawLocationDescription() {
 function drawMergedReportEntries(): void {
     const entries: ims.ReportEntry[] = (incident!.report_entries??[]).slice()
 
-    for (const report of (attachedFieldReports??[])) {
+    for (const report of (attachedReports??[])) {
         for (const entry of report.report_entries??[]) {
-            entry.frNum = report.number??null;
+            entry.reportNum = report.number??null;
             entries.push(entry);
         }
     }
@@ -915,30 +915,30 @@ function drawMergedReportEntries(): void {
     ims.drawReportEntries(entries);
 }
 
-function drawAttachedFieldReportsVisits() {
-    el.attachedFieldReports.querySelectorAll("li").forEach((li: HTMLElement) => {li.remove()});
+function drawAttachedReportsVisits() {
+    el.attachedReports.querySelectorAll("li").forEach((li: HTMLElement) => {li.remove()});
 
-    const reports = attachedFieldReports??[];
+    const reports = attachedReports??[];
     const visits = attachedVisits??[];
 
-    el.attachedFieldReports.replaceChildren();
+    el.attachedReports.replaceChildren();
 
     for (const report of reports) {
-        const fragment = el.attachedFieldReportLiTemplate.content.cloneNode(true) as DocumentFragment;
+        const fragment = el.attachedReportLiTemplate.content.cloneNode(true) as DocumentFragment;
         const item = fragment.querySelector("li")!;
 
         const link: HTMLAnchorElement = document.createElement("a");
-        link.href = `${ims.urlReplace(url_viewFieldReports)}/${report.number}`;
-        link.innerText = ims.fieldReportAsString(report);
+        link.href = `${ims.urlReplace(url_viewReports)}/${report.number}`;
+        link.innerText = ims.reportAsString(report);
 
         item.classList.remove("hidden");
         item.append(link);
-        item.dataset["frNumber"] = report.number!.toString();
+        item.dataset["reportNumber"] = report.number!.toString();
 
-        el.attachedFieldReports.append(item);
+        el.attachedReports.append(item);
     }
     for (const visit of visits) {
-        const fragment = el.attachedFieldReportLiTemplate.content.cloneNode(true) as DocumentFragment;
+        const fragment = el.attachedReportLiTemplate.content.cloneNode(true) as DocumentFragment;
         const item = fragment.querySelector("li")!;
 
         const link: HTMLAnchorElement = document.createElement("a");
@@ -949,7 +949,7 @@ function drawAttachedFieldReportsVisits() {
         item.append(link);
         item.dataset["visitNumber"] = visit.number!.toString();
 
-        el.attachedFieldReports.append(item);
+        el.attachedReports.append(item);
     }
 }
 
@@ -1001,22 +1001,22 @@ function drawLinkedIncidents(): void {
 }
 
 
-function drawFieldReportsToAttach() {
-    el.attachedFieldReportAdd.replaceChildren();
-    el.attachedFieldReportAdd.append(document.createElement("option"));
+function drawReportsToAttach() {
+    el.attachedReportAdd.replaceChildren();
+    el.attachedReportAdd.append(document.createElement("option"));
 
     const unattachedGroup: HTMLOptGroupElement = document.createElement("optgroup");
     unattachedGroup.label = "Unattached to any incident";
-    el.attachedFieldReportAdd.append(unattachedGroup);
-    for (const report of allFieldReports??[]) {
-        // Skip field reports that *are* attached to an incident
+    el.attachedReportAdd.append(unattachedGroup);
+    for (const report of allReports??[]) {
+        // Skip reports that *are* attached to an incident
         if (report.incident != null) {
             continue;
         }
         const option: HTMLOptionElement = document.createElement("option");
-        option.value = `FR#${report.number!.toString()}`;
-        option.text = ims.fieldReportAsString(report);
-        el.attachedFieldReportAdd.append(option);
+        option.value = `R#${report.number!.toString()}`;
+        option.text = ims.reportAsString(report);
+        el.attachedReportAdd.append(option);
     }
     for (const visit of allVisits??[]) {
         // Skip visits that *are* attached to an incident
@@ -1026,24 +1026,24 @@ function drawFieldReportsToAttach() {
         const option: HTMLOptionElement = document.createElement("option");
         option.value = `VS#${visit.number!.toString()}`;
         option.text = ims.visitAsString(visit);
-        el.attachedFieldReportAdd.append(option);
+        el.attachedReportAdd.append(option);
     }
     const attachedGroup: HTMLOptGroupElement = document.createElement("optgroup");
     attachedGroup.label = "Attached to another incident";
-    el.attachedFieldReportAdd.append(attachedGroup);
-    for (const report of allFieldReports??[]) {
-        // Skip field reports that *are not* attached to an incident
+    el.attachedReportAdd.append(attachedGroup);
+    for (const report of allReports??[]) {
+        // Skip reports that *are not* attached to an incident
         if (report.incident == null) {
             continue;
         }
-        // Skip field reports that are already attached this incident
+        // Skip reports that are already attached this incident
         if (report.incident === ims.pathIds.incidentNumber) {
             continue;
         }
         const option: HTMLOptionElement = document.createElement("option");
-        option.value = `FR#${report.number!.toString()}`;
-        option.text = ims.fieldReportAsString(report);
-        el.attachedFieldReportAdd.append(option);
+        option.value = `R#${report.number!.toString()}`;
+        option.text = ims.reportAsString(report);
+        el.attachedReportAdd.append(option);
     }
     for (const visit of allVisits??[]) {
         // Skip visits that *are not* attached to an incident
@@ -1057,11 +1057,11 @@ function drawFieldReportsToAttach() {
         const option: HTMLOptionElement = document.createElement("option");
         option.value = `VS#${visit.number!.toString()}`;
         option.text = ims.visitAsString(visit);
-        el.attachedFieldReportAdd.append(option);
+        el.attachedReportAdd.append(option);
     }
-    el.attachedFieldReportAdd.append(document.createElement("optgroup"));
+    el.attachedReportAdd.append(document.createElement("optgroup"));
 
-    el.attachedFieldReportAddContainer.classList.remove("hidden");
+    el.attachedReportAddContainer.classList.remove("hidden");
 }
 
 
@@ -1392,15 +1392,15 @@ async function addIncidentType(): Promise<void> {
 }
 
 
-async function detachFieldReport(sender: HTMLElement): Promise<void> {
+async function detachReport(sender: HTMLElement): Promise<void> {
     const parent: HTMLElement = sender.parentElement!;
-    const frNumber = parent.dataset["frNumber"]||null;
+    const reportNumber = parent.dataset["reportNumber"]||null;
     const visitNumber = parent.dataset["visitNumber"]||null;
 
     let err: string|null = null;
-    if (frNumber) {
+    if (reportNumber) {
         const url = (
-            `${ims.urlReplace(url_fieldReports)}/${frNumber}` +
+            `${ims.urlReplace(url_reports)}/${reportNumber}` +
             `?action=detach&incident=${ims.pathIds.incidentNumber}`
         );
         ({err} = await ims.fetchNoThrow(url, {
@@ -1418,21 +1418,21 @@ async function detachFieldReport(sender: HTMLElement): Promise<void> {
         }));
     }
     if (err != null) {
-        const message = `Failed to detach field report ${err}`;
+        const message = `Failed to detach report ${err}`;
         console.log(message);
         await loadAllVisits();
-        await loadAllFieldReports();
-        renderFieldReportData();
+        await loadAllReports();
+        renderReportData();
         ims.setErrorMessage(message);
         return;
     }
     await loadAllVisits();
-    await loadAllFieldReports();
-    renderFieldReportData();
+    await loadAllReports();
+    renderReportData();
 }
 
 
-async function attachFieldReport(): Promise<void> {
+async function attachReport(): Promise<void> {
     if (ims.pathIds.incidentNumber == null) {
         // Incident doesn't exist yet. Create it first.
         const {err} = await sendEdits({});
@@ -1442,17 +1442,17 @@ async function attachFieldReport(): Promise<void> {
     }
 
     let err: string | null = null;
-    if (el.attachedFieldReportAdd.value.startsWith("FR#")) {
-        const fieldReportNumber = el.attachedFieldReportAdd.value.substring("FR#".length);
+    if (el.attachedReportAdd.value.startsWith("R#")) {
+        const reportNumber = el.attachedReportAdd.value.substring("R#".length);
         const url = (
-            `${ims.urlReplace(url_fieldReports)}/${fieldReportNumber}` +
+            `${ims.urlReplace(url_reports)}/${reportNumber}` +
             `?action=attach&incident=${ims.pathIds.incidentNumber}`
         );
         ({err} = await ims.fetchNoThrow(url, {
             body: JSON.stringify({}),
         }));
-    } else if (el.attachedFieldReportAdd.value.startsWith("VS#")) {
-        const visitNumber = el.attachedFieldReportAdd.value.substring("VS#".length);
+    } else if (el.attachedReportAdd.value.startsWith("VS#")) {
+        const visitNumber = el.attachedReportAdd.value.substring("VS#".length);
         const url = `${ims.urlReplace(url_visits)}/${visitNumber}`;
         const visit: ims.Visit = {
             event: ims.pathIds.eventName,
@@ -1467,16 +1467,16 @@ async function attachFieldReport(): Promise<void> {
         const message = `Failed to attach: ${err}`;
         console.log(message);
         await loadAllVisits();
-        await loadAllFieldReports();
-        renderFieldReportData();
+        await loadAllReports();
+        renderReportData();
         ims.setErrorMessage(message);
-        ims.controlHasError(el.attachedFieldReportAdd);
+        ims.controlHasError(el.attachedReportAdd);
         return;
     }
     await loadAllVisits();
-    await loadAllFieldReports();
-    renderFieldReportData();
-    ims.controlHasSuccess(el.attachedFieldReportAdd);
+    await loadAllReports();
+    renderReportData();
+    ims.controlHasSuccess(el.attachedReportAdd);
 }
 
 async function unlinkIncident(sender: HTMLElement): Promise<void> {
@@ -1578,8 +1578,8 @@ async function linkIncident(input: HTMLInputElement): Promise<void> {
 async function onStrikeSuccess(): Promise<void> {
     await loadAndDisplayIncident();
     await loadAllVisits();
-    await loadAllFieldReports();
-    renderFieldReportData();
+    await loadAllReports();
+    renderReportData();
     ims.clearErrorMessage();
 }
 ims.setOnStrikeSuccess(onStrikeSuccess);

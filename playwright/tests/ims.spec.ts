@@ -374,7 +374,7 @@ test("incidents", async ({ page, browser }) => {
 })
 
 
-test("field_reports", async ({ page, browser }) => {
+test("reports", async ({ page, browser }) => {
   test.slow();
 
   // make a new event with a writer
@@ -389,8 +389,8 @@ test("field_reports", async ({ page, browser }) => {
   await page.getByRole("button", {name: "Event"}).click();
   await page.getByRole("link", {name: eventName}).click();
   // we'll first hit the Incidents page, but because we're a reporter, we'll
-  // get auto-redirected to Field Reports.
-  await page.waitForURL(`http://localhost:8080/ims/app/events/${eventName}/field_reports`)
+  // get auto-redirected to Reports.
+  await page.waitForURL(`http://localhost:8080/ims/app/events/${eventName}/reports`)
 
   await page.close();
 
@@ -399,55 +399,55 @@ test("field_reports", async ({ page, browser }) => {
     const page = await ctx.newPage()
     await login(page);
 
-    await page.goto(`http://localhost:8080/ims/app/events/${eventName}/field_reports`);
+    await page.goto(`http://localhost:8080/ims/app/events/${eventName}/reports`);
     const tablePage = page;
 
-    const frPage = await ctx.newPage();
-    await frPage.goto(`http://localhost:8080/ims/app/events/${eventName}/field_reports`);
-    await frPage.getByRole("button", {name: "New"}).click();
+    const reportPage = await ctx.newPage();
+    await reportPage.goto(`http://localhost:8080/ims/app/events/${eventName}/reports`);
+    await reportPage.getByRole("button", {name: "New"}).click();
 
-    await expect(frPage.getByLabel("FR #")).toHaveValue("(new)");
-    const frSummary = randomName("summary");
-    await frPage.getByLabel("Summary").fill(frSummary);
-    await frPage.getByLabel("Summary").press("Tab");
+    await expect(reportPage.getByLabel("FR #")).toHaveValue("(new)");
+    const reportSummary = randomName("summary");
+    await reportPage.getByLabel("Summary").fill(reportSummary);
+    await reportPage.getByLabel("Summary").press("Tab");
     // wait for the new incident to be persisted
-    await expect(frPage.getByLabel("FR #")).toHaveValue(/^\d+$/);
+    await expect(reportPage.getByLabel("FR #")).toHaveValue(/^\d+$/);
 
     // check that the BroadcastChannel update to the first page worked
-    await expect(tablePage.getByText(frSummary)).toBeVisible();
+    await expect(tablePage.getByText(reportSummary)).toBeVisible();
 
       // change the summary
-      const newSummary = frSummary + " with suffix";
-      await frPage.getByLabel("Summary").fill(newSummary);
-      await frPage.getByLabel("Summary").press("Tab");
+      const newSummary = reportSummary + " with suffix";
+      await reportPage.getByLabel("Summary").fill(newSummary);
+      await reportPage.getByLabel("Summary").press("Tab");
       // check that the BroadcastChannel update to the first page worked
       await expect(tablePage.getByText(newSummary)).toBeVisible();
 
       // add a report entry
       const reportEntry = `This is some text - ${randomName("text")}`;
       {
-        await frPage.getByLabel("New report entry text").fill(reportEntry);
-        await frPage.getByLabel("Submit report entry").click();
-        await expect(frPage.getByLabel("New report entry text")).toBeEmpty();
-        await expect(frPage.getByText(reportEntry)).toBeVisible();
+        await reportPage.getByLabel("New report entry text").fill(reportEntry);
+        await reportPage.getByLabel("Submit report entry").click();
+        await expect(reportPage.getByLabel("New report entry text")).toBeEmpty();
+        await expect(reportPage.getByText(reportEntry)).toBeVisible();
       }
       // strike the entry, verified it's stricken
       {
-        await frPage.getByText(reportEntry).hover();
-        await frPage.getByRole("button", {name: "Strike"}).click({force: true});
-        await expect(frPage.getByText(reportEntry)).toBeHidden();
+        await reportPage.getByText(reportEntry).hover();
+        await reportPage.getByRole("button", {name: "Strike"}).click({force: true});
+        await expect(reportPage.getByText(reportEntry)).toBeHidden();
       }
       // but the entry is shown when the right checkbox is ticked
       {
-        await frPage.getByLabel("Show history and stricken").check();
-        await expect(frPage.getByText(reportEntry)).toBeVisible();
+        await reportPage.getByLabel("Show history and stricken").check();
+        await expect(reportPage.getByText(reportEntry)).toBeVisible();
       }
       // unstrike the entry and see it return to the default view
       {
-        await frPage.getByText(reportEntry).hover();
-        await frPage.getByRole("button", {name: "Unstrike"}).click({force: true});
-        await frPage.getByLabel("Show history and stricken").uncheck();
-        await expect(frPage.getByText(reportEntry)).toBeVisible();
+        await reportPage.getByText(reportEntry).hover();
+        await reportPage.getByRole("button", {name: "Unstrike"}).click({force: true});
+        await reportPage.getByLabel("Show history and stricken").uncheck();
+        await expect(reportPage.getByText(reportEntry)).toBeVisible();
       }
 
       // try searching for the incident by its report text
@@ -463,7 +463,7 @@ test("field_reports", async ({ page, browser }) => {
         await expect(tablePage.getByText(newSummary)).toBeVisible();
       }
 
-      await frPage.close();
+      await reportPage.close();
       await tablePage.close();
       await ctx.close();
   }

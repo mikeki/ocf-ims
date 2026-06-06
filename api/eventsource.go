@@ -31,13 +31,13 @@ type IMSEventData struct {
 	EventID int32  `json:"event_id,omitzero"`
 	Comment string `json:"comment,omitzero"`
 
-	// Exactly one of IncidentNumber, FieldReportNumber, VisitNumber,
+	// Exactly one of IncidentNumber, ReportNumber, VisitNumber,
 	// or InitialEvent must be set, as this indicates the type of IMS SSE.
 
-	IncidentNumber    int32 `json:"incident_number,omitzero"`
-	FieldReportNumber int32 `json:"field_report_number,omitzero"`
-	VisitNumber       int32 `json:"visit_number,omitzero"`
-	InitialEvent      bool  `json:"initial_event,omitzero"`
+	IncidentNumber int32 `json:"incident_number,omitzero"`
+	ReportNumber   int32 `json:"report_number,omitzero"`
+	VisitNumber    int32 `json:"visit_number,omitzero"`
+	InitialEvent   bool  `json:"initial_event,omitzero"`
 }
 
 type IMSEvent struct {
@@ -53,8 +53,8 @@ func (e IMSEvent) Event() string {
 	if e.EventData.IncidentNumber > 0 {
 		return "Incident"
 	}
-	if e.EventData.FieldReportNumber > 0 {
-		return "FieldReport"
+	if e.EventData.ReportNumber > 0 {
+		return "Report"
 	}
 	if e.EventData.VisitNumber > 0 {
 		return "Visit"
@@ -104,15 +104,15 @@ func (es *EventSourcerer) Replay(channel, id string) chan eventsource.Event {
 	return out
 }
 
-func (es *EventSourcerer) notifyFieldReportUpdate(eventID int32, frNumber int32) {
-	if frNumber == 0 {
+func (es *EventSourcerer) notifyReportUpdate(eventID int32, reportNumber int32) {
+	if reportNumber == 0 {
 		return
 	}
 	es.Server.Publish([]string{EventSourceChannel}, IMSEvent{
 		EventID: es.IdCounter.Add(1),
 		EventData: IMSEventData{
-			EventID:           eventID,
-			FieldReportNumber: frNumber,
+			EventID:      eventID,
+			ReportNumber: reportNumber,
 		},
 	})
 }

@@ -74,10 +74,10 @@ const (
 
 	EventReadIncidents EventPermissionMask = 1 << iota
 	EventWriteIncidents
-	EventReadAllFieldReports
-	EventReadOwnFieldReports
-	EventWriteAllFieldReports
-	EventWriteOwnFieldReports
+	EventReadAllReports
+	EventReadOwnReports
+	EventWriteAllReports
+	EventWriteOwnReports
 	EventReadEventName
 	EventReadPlaces
 	EventReadVisits
@@ -102,9 +102,9 @@ var RolesToGlobalPerms = map[Role]GlobalPermissionMask{
 }
 
 var RolesToEventPerms = map[Role]EventPermissionMask{
-	EventReporter:    EventReadEventName | EventReadOwnFieldReports | EventWriteOwnFieldReports | EventReadPlaces,
-	EventReader:      EventReadEventName | EventReadIncidents | EventReadOwnFieldReports | EventReadAllFieldReports | EventReadVisits | EventReadPlaces,
-	EventWriter:      EventReadEventName | EventReadIncidents | EventWriteIncidents | EventReadAllFieldReports | EventReadOwnFieldReports | EventWriteAllFieldReports | EventWriteOwnFieldReports | EventReadVisits | EventWriteVisits | EventReadPlaces,
+	EventReporter:    EventReadEventName | EventReadOwnReports | EventWriteOwnReports | EventReadPlaces,
+	EventReader:      EventReadEventName | EventReadIncidents | EventReadOwnReports | EventReadAllReports | EventReadVisits | EventReadPlaces,
+	EventWriter:      EventReadEventName | EventReadIncidents | EventWriteIncidents | EventReadAllReports | EventReadOwnReports | EventWriteAllReports | EventWriteOwnReports | EventReadVisits | EventWriteVisits | EventReadPlaces,
 	EventVisitWriter: EventReadEventName | EventReadVisits | EventWriteVisits | EventReadPlaces,
 }
 

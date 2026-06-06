@@ -104,18 +104,18 @@ func AddToMux(mux *http.ServeMux, cfg *conf.IMSConfig) *http.ServeMux {
 			).ServeHTTP(w, r)
 		},
 	)
-	mux.HandleFunc("GET /ims/app/events/{eventName}/field_reports",
+	mux.HandleFunc("GET /ims/app/events/{eventName}/reports",
 		func(w http.ResponseWriter, r *http.Request) {
 			AdaptTempl(
-				template.FieldReports(deployment, versionName, versionRef, r.PathValue("eventName")),
+				template.Reports(deployment, versionName, versionRef, r.PathValue("eventName")),
 				cfg.Core.CacheControlLong,
 			).ServeHTTP(w, r)
 		},
 	)
-	mux.HandleFunc("GET /ims/app/events/{eventName}/field_reports/{fieldReportNumber}",
+	mux.HandleFunc("GET /ims/app/events/{eventName}/reports/{reportNumber}",
 		func(w http.ResponseWriter, r *http.Request) {
 			AdaptTempl(
-				template.FieldReport(deployment, versionName, versionRef, r.PathValue("eventName")),
+				template.Report(deployment, versionName, versionRef, r.PathValue("eventName")),
 				cfg.Core.CacheControlLong,
 			).ServeHTTP(w, r)
 		},

@@ -30,37 +30,37 @@ import (
 	"github.com/burningmantech/ranger-ims-go/store/imsdb"
 )
 
-type EditFieldReportReportEntry struct {
+type EditReportReportEntry struct {
 	imsDBQ      *store.DBQ
 	userStore   *directory.UserStore
 	eventSource *EventSourcerer
 	imsAdmins   []string
 }
 
-func (action EditFieldReportReportEntry) ServeHTTP(w http.ResponseWriter, req *http.Request) {
-	errHTTP := action.editFieldReportEntry(req)
+func (action EditReportReportEntry) ServeHTTP(w http.ResponseWriter, req *http.Request) {
+	errHTTP := action.editReportEntry(req)
 	if errHTTP != nil {
-		errHTTP.From("[editFieldReportEntry]").WriteResponse(w)
+		errHTTP.From("[editReportEntry]").WriteResponse(w)
 		return
 	}
 	herr.WriteNoContentResponse(w, "Success")
 }
 
-func (action EditFieldReportReportEntry) editFieldReportEntry(req *http.Request) *herr.HTTPError {
+func (action EditReportReportEntry) editReportEntry(req *http.Request) *herr.HTTPError {
 	event, jwtCtx, eventPermissions, errHTTP := getEventPermissions(req, action.imsDBQ, action.userStore, action.imsAdmins)
 	if errHTTP != nil {
 		return errHTTP.From("[getEventPermissions]")
 	}
-	if eventPermissions&(authz.EventWriteAllFieldReports|authz.EventWriteOwnFieldReports) == 0 {
-		return herr.Forbidden("The requestor does not have permission to write Field Reports on this Event", nil)
+	if eventPermissions&(authz.EventWriteAllReports|authz.EventWriteOwnReports) == 0 {
+		return herr.Forbidden("The requestor does not have permission to write Reports on this Event", nil)
 	}
 	ctx := req.Context()
 
 	author := jwtCtx.Claims.RangerHandle()
 
-	fieldReportNumber, err := conv.ParseInt32(req.PathValue("fieldReportNumber"))
+	reportNumber, err := conv.ParseInt32(req.PathValue("reportNumber"))
 	if err != nil {
-		return herr.BadRequest("Failed to parse fieldReportNumber", err).From("[ParseInt32]")
+		return herr.BadRequest("Failed to parse reportNumber", err).From("[ParseInt32]")
 	}
 	reportEntryId, err := conv.ParseInt32(req.PathValue("reportEntryId"))
 	if err != nil {
@@ -72,12 +72,12 @@ func (action EditFieldReportReportEntry) editFieldReportEntry(req *http.Request)
 		return errHTTP.From("[readBodyAs]")
 	}
 
-	_, err = action.imsDBQ.FieldReport(ctx, action.imsDBQ, imsdb.FieldReportParams{
+	_, err = action.imsDBQ.Report(ctx, action.imsDBQ, imsdb.ReportParams{
 		Event:  event.ID,
-		Number: fieldReportNumber,
+		Number: reportNumber,
 	})
 	if err != nil {
-		return herr.NotFound("There is no Field Report for the provided ID", err).From("[FieldReport]")
+		return herr.NotFound("There is no Report for the provided ID", err).From("[Report]")
 	}
 
 	if re.Stricken == nil {
@@ -91,31 +91,31 @@ func (action EditFieldReportReportEntry) editFieldReportEntry(req *http.Request)
 	}
 	defer rollback(txn)
 
-	err = action.imsDBQ.SetFieldReportReportEntryStricken(ctx, txn,
-		imsdb.SetFieldReportReportEntryStrickenParams{
-			Stricken:          *re.Stricken,
-			Event:             event.ID,
-			FieldReportNumber: fieldReportNumber,
-			ReportEntry:       reportEntryId,
+	err = action.imsDBQ.SetReportReportEntryStricken(ctx, txn,
+		imsdb.SetReportReportEntryStrickenParams{
+			Stricken:     *re.Stricken,
+			Event:        event.ID,
+			ReportNumber: reportNumber,
+			ReportEntry:  reportEntryId,
 		},
 	)
 	if err != nil {
-		return herr.InternalServerError("Error setting field report entry", err).From("[SetFieldReportReportEntryStricken]")
+		return herr.InternalServerError("Error setting report entry", err).From("[SetReportReportEntryStricken]")
 	}
 	struckVerb := "Struck"
 	if !*re.Stricken {
 		struckVerb = "Unstruck"
 	}
-	_, errHTTP = addFRReportEntry(ctx, action.imsDBQ, txn, event.ID, fieldReportNumber, author, fmt.Sprintf("%v reportEntry %v", struckVerb, reportEntryId), true, "", "", "")
+	_, errHTTP = addReportEntry(ctx, action.imsDBQ, txn, event.ID, reportNumber, author, fmt.Sprintf("%v reportEntry %v", struckVerb, reportEntryId), true, "", "", "")
 	if errHTTP != nil {
-		return errHTTP.From("[addFRReportEntry]")
+		return errHTTP.From("[addReportEntry]")
 	}
 	err = txn.Commit()
 	if err != nil {
 		return herr.InternalServerError("Error committing transaction", err).From("[Commit]")
 	}
 
-	defer action.eventSource.notifyFieldReportUpdate(event.ID, fieldReportNumber)
+	defer action.eventSource.notifyReportUpdate(event.ID, reportNumber)
 
 	return nil
 }

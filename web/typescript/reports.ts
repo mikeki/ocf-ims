@@ -20,23 +20,23 @@ import * as ims from "./ims.ts";
 
 declare global {
     interface Window {
-        frShowDays: (daysBackToShow: number | string, replaceState: boolean)=>void;
-        frShowRows: (rowsToShow: string, replaceState: boolean)=>void;
+        reportShowDays: (daysBackToShow: number | string, replaceState: boolean)=>void;
+        reportShowRows: (rowsToShow: string, replaceState: boolean)=>void;
         toggleMultisearchModal: (e?: MouseEvent)=>void;
     }
 }
 
-let fieldReportsTable: ims.DataTablesTable|null = null;
+let reportsTable: ims.DataTablesTable|null = null;
 
-let _frShowModifiedAfter: Date|null = null;
-let _frShowDaysBack: number|string|null = null;
-const frDefaultDaysBack = "all";
+let _reportShowModifiedAfter: Date|null = null;
+let _reportShowDaysBack: number|string|null = null;
+const reportDefaultDaysBack = "all";
 
-const _frSearchDelayMs = 250;
-let _frSearchDelayTimer: number|undefined = undefined;
+const _reportSearchDelayMs = 250;
+let _reportSearchDelayTimer: number|undefined = undefined;
 
-let _frShowRows: string|null = null;
-const frDefaultRows = "25";
+let _reportShowRows: string|null = null;
+const reportDefaultRows = "25";
 
 //
 // Initialize UI
@@ -44,7 +44,7 @@ const frDefaultRows = "25";
 
 const el = {
     searchInput: ims.typedElement("search_input", HTMLInputElement),
-    newFieldReport: ims.typedElement("new_field_report", HTMLButtonElement),
+    newReport: ims.typedElement("new_report", HTMLButtonElement),
 
     showDaysMenu: ims.typedElement("show_days", HTMLButtonElement),
     showRowsMenu: ims.typedElement("show_rows", HTMLButtonElement),
@@ -54,27 +54,27 @@ const el = {
     multisearchEventsList: ims.typedElement("multisearch-events-list", HTMLUListElement),
 };
 
-initFieldReportsPage();
+initReportsPage();
 
-async function initFieldReportsPage(): Promise<void> {
+async function initReportsPage(): Promise<void> {
     const initResult = await ims.commonPageInit();
     if (!initResult.authInfo.authenticated) {
         await ims.redirectToLogin();
         return;
     }
-    if (!ims.eventAccess!.readIncidents && !ims.eventAccess!.writeFieldReports) {
+    if (!ims.eventAccess!.readIncidents && !ims.eventAccess!.writeReports) {
         ims.setErrorMessage(
-            `You're not currently authorized to view Field Reports in Event "${ims.pathIds.eventName}".`
+            `You're not currently authorized to view Reports in Event "${ims.pathIds.eventName}".`
         );
         ims.hideLoadingOverlay();
         return;
     }
 
-    window.frShowDays = frShowDays;
-    window.frShowRows = frShowRows;
+    window.reportShowDays = reportShowDays;
+    window.reportShowRows = reportShowRows;
 
     ims.disableEditing();
-    initFieldReportsTable();
+    initReportsTable();
 
     const helpModal = ims.bsModal(el.helpModal);
 
@@ -96,7 +96,7 @@ async function initFieldReportsPage(): Promise<void> {
             const liFrag = liTemplate.content.cloneNode(true) as DocumentFragment;
             const eventLink = liFrag.querySelector("a")!;
             eventLink.textContent = eventData.name;
-            eventLink.href = `${url_viewFieldReports.replace("<event_id>", eventData.name)}#${new URLSearchParams(hashParams).toString()}`;
+            eventLink.href = `${url_viewReports.replace("<event_id>", eventData.name)}#${new URLSearchParams(hashParams).toString()}`;
             el.multisearchEventsList.append(liFrag);
         }
     }
@@ -123,7 +123,7 @@ async function initFieldReportsPage(): Promise<void> {
         }
         // n --> new incident
         if (e.key.toLowerCase() === "n") {
-            el.newFieldReport.click();
+            el.newReport.click();
         }
         // m -> multi-search
         if (e.key.toLowerCase() === "m") {
@@ -146,45 +146,45 @@ async function initFieldReportsPage(): Promise<void> {
 // Dispatch queue table
 //
 
-function initFieldReportsTable() {
-    frInitDataTables();
-    frInitTableButtons();
-    frInitSearchField();
-    frInitSearch();
+function initReportsTable() {
+    reportInitDataTables();
+    reportInitTableButtons();
+    reportInitSearchField();
+    reportInitSearch();
     ims.clearErrorMessage();
 
-    if (ims.eventAccess?.writeFieldReports) {
+    if (ims.eventAccess?.writeReports) {
         ims.enableEditing();
     }
 
     // Wait until the table is initialized before starting to listen for updates.
     // https://github.com/burningmantech/ranger-ims-go/issues/399
-    fieldReportsTable!.on("init", function (): void {
+    reportsTable!.on("init", function (): void {
         console.log("Table initialized. Requesting EventSource lock");
         ims.requestEventSourceLock();
 
-        ims.newFieldReportChannel().onmessage = function (e: MessageEvent<ims.FieldReportBroadcast>): void {
+        ims.newReportChannel().onmessage = function (e: MessageEvent<ims.ReportBroadcast>): void {
             if (e.data.update_all) {
                 console.log("Reloading the whole table to be cautious, as an SSE was missed");
-                fieldReportsTable!.ajax.reload();
+                reportsTable!.ajax.reload();
                 ims.clearErrorMessage();
                 return;
             }
 
-            const number = e.data.field_report_number;
+            const number = e.data.report_number;
             const eventId = e.data.event_id;
             if (eventId !== ims.pathIds.eventId) {
                 return;
             }
-            console.log(`Got field report update: ${number}`);
-            // TODO(issue/1498): this reloads the entire Field Report table on any
-            //  update to any Field Report. That's not ideal. The thing of which
-            //  to be mindful when GETting a particular single Field Report is that
+            console.log(`Got report update: ${number}`);
+            // TODO(issue/1498): this reloads the entire Report table on any
+            //  update to any Report. That's not ideal. The thing of which
+            //  to be mindful when GETting a particular single Report is that
             //  limited access users will receive errors when they try to access
-            //  Field Reports for which they're not authorized, and those errors
+            //  Reports for which they're not authorized, and those errors
             //  show up in the browser console. I'd like to find a way to avoid
             //  bringing those errors into the console constantly.
-            fieldReportsTable!.ajax.reload(null, false);
+            reportsTable!.ajax.reload(null, false);
             ims.clearErrorMessage();
         };
     });
@@ -196,9 +196,9 @@ declare let DataTable: any;
 // Initialize DataTables
 //
 
-function frInitDataTables() {
+function reportInitDataTables() {
     DataTable.ext.errMode = "none";
-    fieldReportsTable = new DataTable("#field_reports_table", {
+    reportsTable = new DataTable("#reports_table", {
         // Save table state to SessionStorage (-1). This tells DataTables to save state
         // on any update to the sorting/filtering, and to load that table state again
         // when the browsing context comes back to this page.
@@ -232,14 +232,14 @@ function frInitDataTables() {
         // DataTables gets mad if you return a Promise from this function, so we use an inner
         // async function instead.
         // https://datatables.net/forums/discussion/47411/i-always-get-error-when-i-use-table-ajax-reload
-        "ajax": function (_data: unknown, callback: (resp: {data: ims.FieldReport[]})=>void, _settings: unknown): void {
+        "ajax": function (_data: unknown, callback: (resp: {data: ims.Report[]})=>void, _settings: unknown): void {
             async function doAjax(): Promise<void> {
-                const {json, err} = await ims.fetchNoThrow<ims.FieldReport[]>(
-                    // don't use exclude_system_entries here, since the field reports
-                    // per-user authorization can exclude field reports entirely from
-                    // someone who created a field report but then didn't add an
+                const {json, err} = await ims.fetchNoThrow<ims.Report[]>(
+                    // don't use exclude_system_entries here, since the reports
+                    // per-user authorization can exclude reports entirely from
+                    // someone who created a report but then didn't add an
                     // entry to it.
-                    ims.urlReplace(url_fieldReports), null,
+                    ims.urlReplace(url_reports), null,
                 );
                 if (err != null || json == null) {
                     ims.setErrorMessage(`Failed to load table: ${err}`);
@@ -251,32 +251,32 @@ function frInitDataTables() {
         },
         "columns": [
             {   // 0
-                "name": "field_report_number",
-                "className": "field_report_number text-right all",
+                "name": "report_number",
+                "className": "report_number text-right all",
                 "data": "number",
                 "defaultContent": null,
-                "render": ims.renderFieldReportNumber,
+                "render": ims.renderReportNumber,
                 "cellType": "th",
             },
             {   // 1
-                "name": "field_report_incident",
-                "className": "field_report_incident text-center",
+                "name": "report_incident",
+                "className": "report_incident text-center",
                 "data": "incident",
                 "defaultContent": "-",
                 "render": ims.renderIncidentNumber,
                 "responsivePriority": 3,
             },
             {   // 2
-                "name": "field_report_created",
-                "className": "field_report_created text-center",
+                "name": "report_created",
+                "className": "report_created text-center",
                 "data": "created",
                 "defaultContent": null,
                 "render": ims.renderDate,
                 "responsivePriority": 4,
             },
             {   // 3
-                "name": "field_report_summary",
-                "className": "field_report_summary all",
+                "name": "report_summary",
+                "className": "report_summary all",
                 "data": "summary",
                 "defaultContent": "",
                 "render": renderSummary,
@@ -287,7 +287,7 @@ function frInitDataTables() {
             // creation time descending
             [2, "dsc"],
         ],
-        "createdRow": function (row: HTMLElement, fieldReport: ims.FieldReport, _index: number) {
+        "createdRow": function (row: HTMLElement, report: ims.Report, _index: number) {
             const openLink = function(e: MouseEvent): void {
                 // If the user clicked on a link, then let them access that link without the JS below.
                 if (e.target?.constructor?.name === "HTMLAnchorElement") {
@@ -300,11 +300,11 @@ function frInitDataTables() {
 
                 // Left click while not holding a modifier key: open in the same tab
                 if (isLeftClick && !holdingModifier) {
-                    window.location.href = `${ims.urlReplace(url_viewFieldReports)}/${fieldReport.number}`;
+                    window.location.href = `${ims.urlReplace(url_viewReports)}/${report.number}`;
                 }
                 // Left click while holding modifier key or middle click: open in a new tab
                 if (isMiddleClick || (isLeftClick && holdingModifier)) {
-                    window.open(`${ims.urlReplace(url_viewFieldReports)}/${fieldReport.number}`);
+                    window.open(`${ims.urlReplace(url_viewReports)}/${report.number}`);
                     return;
                 }
             }
@@ -314,17 +314,17 @@ function frInitDataTables() {
     });
 }
 
-function renderSummary(_data: string|null, type: string, fieldReport: ims.FieldReport): string|undefined {
+function renderSummary(_data: string|null, type: string, report: ims.Report): string|undefined {
     switch (type) {
         case "display":
             // XSS prevention
-            return DataTable.render.text().display(ims.summarizeIncidentOrFR(fieldReport)) as string;
+            return DataTable.render.text().display(ims.summarizeIncidentOrReport(report)) as string;
         case "filter":
-            return ims.reportTextFromIncident(fieldReport);
+            return ims.reportTextFromIncident(report);
         case "sort":
         case "type":
         case undefined:
-            return DataTable.render.text().display(ims.summarizeIncidentOrFR(fieldReport)) as string;
+            return DataTable.render.text().display(ims.summarizeIncidentOrReport(report)) as string;
         default:
             return undefined;
     }
@@ -334,20 +334,20 @@ function renderSummary(_data: string|null, type: string, fieldReport: ims.FieldR
 // Initialize table buttons
 //
 
-function frInitTableButtons() {
+function reportInitTableButtons() {
     const fragmentParams: URLSearchParams = ims.windowFragmentParams();
 
     // Set button defaults
 
-    frShowDays(fragmentParams.get("days")??frDefaultDaysBack, false);
+    reportShowDays(fragmentParams.get("days")??reportDefaultDaysBack, false);
 
-    frShowRows(fragmentParams.get("rows")??frDefaultRows, false);
+    reportShowRows(fragmentParams.get("rows")??reportDefaultRows, false);
 
-    frShowRows(
+    reportShowRows(
         ims.coalesceRowsPerPage(
             fragmentParams.get("rows"),
             ims.getPreferredTableRowsPerPage(),
-            frDefaultRows,
+            reportDefaultRows,
         ), false);
 }
 
@@ -356,10 +356,10 @@ function frInitTableButtons() {
 // Initialize search field
 //
 
-function frInitSearchField(): void {
+function reportInitSearchField(): void {
     // Search field handling
     function searchAndDraw(): void {
-        frReplaceWindowState();
+        reportReplaceWindowState();
         let q = el.searchInput.value;
         let isRegex = false;
         let smartSearch = true;
@@ -368,8 +368,8 @@ function frInitSearchField(): void {
             smartSearch = false;
             q = q.slice(1, q.length-1);
         }
-        fieldReportsTable!.search(q, isRegex, smartSearch);
-        fieldReportsTable!.draw();
+        reportsTable!.search(q, isRegex, smartSearch);
+        reportsTable!.draw();
     }
 
     const fragmentParams: URLSearchParams = ims.windowFragmentParams();
@@ -385,8 +385,8 @@ function frInitSearchField(): void {
             // This reduces perceived lag, since searching can be
             // very slow, and it's super annoying for a user when
             // the page fully locks up before they're done typing.
-            clearTimeout(_frSearchDelayTimer);
-            _frSearchDelayTimer = setTimeout(searchAndDraw, _frSearchDelayMs);
+            clearTimeout(_reportSearchDelayTimer);
+            _reportSearchDelayTimer = setTimeout(searchAndDraw, _reportSearchDelayMs);
         }
     );
     el.searchInput.addEventListener("keydown",
@@ -395,19 +395,19 @@ function frInitSearchField(): void {
             if (e.altKey || e.ctrlKey || e.metaKey) {
                 return;
             }
-            // "Jump to Field Report" functionality, triggered on hitting Enter
+            // "Jump to Report" functionality, triggered on hitting Enter
             if (e.key === "Enter") {
-                // If the value in the search box is an integer, assume it's an FR number and go to it.
-                // This will work regardless of whether that FR is visible with the current filters.
+                // If the value in the search box is an integer, assume it's an Report number and go to it.
+                // This will work regardless of whether that Report is visible with the current filters.
                 const val = el.searchInput.value;
                 if (ims.integerRegExp.test(val)) {
-                    // Open the Field Report
-                    window.location.href = `${ims.urlReplace(url_viewFieldReports)}/${val}`;
+                    // Open the Report
+                    window.location.href = `${ims.urlReplace(url_viewReports)}/${val}`;
                     el.searchInput.value = "";
                     return;
                 }
                 // Otherwise, search immediately on Enter.
-                clearTimeout(_frSearchDelayTimer);
+                clearTimeout(_reportSearchDelayTimer);
                 searchAndDraw();
             }
         }
@@ -419,13 +419,13 @@ function frInitSearchField(): void {
 // Initialize search plug-in
 //
 
-function frInitSearch() {
-    function modifiedAfter(fieldReport: ims.FieldReport, timestamp: Date) {
-        if (timestamp < new Date(Date.parse(fieldReport.created!))) {
+function reportInitSearch() {
+    function modifiedAfter(report: ims.Report, timestamp: Date) {
+        if (timestamp < new Date(Date.parse(report.created!))) {
             return true;
         }
         // needs to use native comparison
-        for (const entry of fieldReport.report_entries??[]) {
+        for (const entry of report.report_entries??[]) {
             if (timestamp < new Date(Date.parse(entry.created!))) {
                 return true;
             }
@@ -433,11 +433,11 @@ function frInitSearch() {
         return false;
     }
 
-    fieldReportsTable!.search.fixed("modification_date",
+    reportsTable!.search.fixed("modification_date",
         function(_searchStr: string, _rowData: object, rowIndex: number): boolean {
-            const fieldReport = fieldReportsTable!.data()[rowIndex]!;
-            return !(_frShowModifiedAfter != null &&
-                !modifiedAfter(fieldReport, _frShowModifiedAfter));
+            const report = reportsTable!.data()[rowIndex]!;
+            return !(_reportShowModifiedAfter != null &&
+                !modifiedAfter(report, _reportShowModifiedAfter));
 
         },
     );
@@ -448,9 +448,9 @@ function frInitSearch() {
 // Show days button handling
 //
 
-function frShowDays(daysBackToShow: number|string, replaceState: boolean): void {
+function reportShowDays(daysBackToShow: number|string, replaceState: boolean): void {
     const id: string = daysBackToShow.toString();
-    _frShowDaysBack = daysBackToShow;
+    _reportShowDaysBack = daysBackToShow;
 
     const item = document.getElementById("show_days_" + id) as HTMLLIElement;
 
@@ -461,21 +461,21 @@ function frShowDays(daysBackToShow: number|string, replaceState: boolean): void 
     el.showDaysMenu.getElementsByClassName("selection")[0]!.textContent = selection
 
     if (daysBackToShow === "all")  {
-        _frShowModifiedAfter = null;
+        _reportShowModifiedAfter = null;
     } else {
         const after = new Date();
         after.setHours(0);
         after.setMinutes(0);
         after.setSeconds(0);
         after.setDate(after.getDate()-Number(daysBackToShow));
-        _frShowModifiedAfter = after;
+        _reportShowModifiedAfter = after;
     }
 
     if (replaceState) {
-        frReplaceWindowState();
+        reportReplaceWindowState();
     }
 
-    fieldReportsTable!.draw();
+    reportsTable!.draw();
 }
 
 
@@ -483,9 +483,9 @@ function frShowDays(daysBackToShow: number|string, replaceState: boolean): void 
 // Show rows button handling
 //
 
-function frShowRows(rowsToShow: string, replaceState: boolean) {
+function reportShowRows(rowsToShow: string, replaceState: boolean) {
     const id = rowsToShow.toString();
-    _frShowRows = rowsToShow;
+    _reportShowRows = rowsToShow;
 
     const item = document.getElementById("show_rows_" + id) as HTMLLIElement;
 
@@ -500,11 +500,11 @@ function frShowRows(rowsToShow: string, replaceState: boolean) {
     }
 
     if (replaceState) {
-        frReplaceWindowState();
+        reportReplaceWindowState();
     }
 
-    fieldReportsTable!.page.len(ims.parseInt10(rowsToShow));
-    fieldReportsTable!.draw();
+    reportsTable!.page.len(ims.parseInt10(rowsToShow));
+    reportsTable!.draw();
 }
 
 
@@ -512,22 +512,22 @@ function frShowRows(rowsToShow: string, replaceState: boolean) {
 // Update the page URL based on the search input and other filters.
 //
 
-function frReplaceWindowState(): void {
+function reportReplaceWindowState(): void {
     const newParams: [string, string][] = [];
 
     const searchVal = el.searchInput.value;
     if (searchVal) {
         newParams.push(["q", searchVal]);
     }
-    if (_frShowDaysBack != null && _frShowDaysBack !== frDefaultDaysBack) {
-        newParams.push(["days", _frShowDaysBack.toString()]);
+    if (_reportShowDaysBack != null && _reportShowDaysBack !== reportDefaultDaysBack) {
+        newParams.push(["days", _reportShowDaysBack.toString()]);
     }
-    if (_frShowRows != null && _frShowRows !== frDefaultRows) {
-        newParams.push(["rows", _frShowRows.toString()]);
+    if (_reportShowRows != null && _reportShowRows !== reportDefaultRows) {
+        newParams.push(["rows", _reportShowRows.toString()]);
     }
 
     // Next step is to create search params for the other filters too
 
-    const newURL = `${ims.urlReplace(url_viewFieldReports)}#${new URLSearchParams(newParams).toString()}`;
+    const newURL = `${ims.urlReplace(url_viewReports)}#${new URLSearchParams(newParams).toString()}`;
     window.history.replaceState(null, "", newURL);
 }
