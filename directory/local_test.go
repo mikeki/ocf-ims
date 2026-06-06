@@ -55,7 +55,7 @@ func TestLocalUserStore(t *testing.T) {
 	require.NoError(t, err)
 
 	_, err = sqlDB.ExecContext(ctx, `
-		insert into PERSON (ID, NICKNAME, EMAIL, PASSWORD, STATUS, ON_SITE, CREATED) values
+		insert into PERSON (ID, HANDLE, EMAIL, PASSWORD, STATUS, ON_SITE, CREATED) values
 			(1, 'Alice', 'alice@example.com', 'hashA', 'active', true, 0),
 			(2, 'Bob',   'bob@example.com',   'hashB', 'active', false, 0);
 		insert into `+"`POSITION`"+` (ID, NAME) values (10, 'Driver'), (11, 'Dancer');

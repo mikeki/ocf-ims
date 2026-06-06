@@ -103,7 +103,7 @@ func (action GetIncidents) getIncidents(req *http.Request) (imsjson.Incidents, *
 		}
 		for _, row := range rangersRows {
 			rangersByIncident[row.IncidentPerson.IncidentNumber] = append(rangersByIncident[row.IncidentPerson.IncidentNumber],
-				imsjson.IncidentRanger{Handle: row.Nickname, Role: conv.SqlToString(row.IncidentPerson.Role)})
+				imsjson.IncidentRanger{Handle: row.Handle, Role: conv.SqlToString(row.IncidentPerson.Role)})
 		}
 		return nil
 	})
@@ -194,7 +194,7 @@ func (action GetIncident) getIncident(req *http.Request) (imsjson.Incident, *her
 	}
 	rangers := make([]imsjson.IncidentRanger, len(rangersRows))
 	for i, row := range rangersRows {
-		rangers[i] = imsjson.IncidentRanger{Handle: row.Nickname, Role: conv.SqlToString(row.IncidentPerson.Role)}
+		rangers[i] = imsjson.IncidentRanger{Handle: row.Handle, Role: conv.SqlToString(row.IncidentPerson.Role)}
 	}
 
 	linkedIncidents, err := action.imsDBQ.Incident_LinkedIncidents(ctx, action.imsDBQ, imsdb.Incident_LinkedIncidentsParams{

@@ -145,7 +145,7 @@ group by
 -- name: Incidents_People :many
 select
     sqlc.embed(ip),
-    p.NICKNAME
+    p.HANDLE
 from
     INCIDENT__PERSON ip
     join PERSON p on p.ID = ip.PERSON_ID
@@ -155,7 +155,7 @@ where
 -- name: Incident_People :many
 select
     sqlc.embed(ip),
-    p.NICKNAME
+    p.HANDLE
 from
     INCIDENT__PERSON ip
     join PERSON p on p.ID = ip.PERSON_ID
@@ -185,7 +185,7 @@ where
 select
     ire.INCIDENT_NUMBER,
     sqlc.embed(re),
-    p.NICKNAME as AUTHOR
+    p.HANDLE as AUTHOR
 from
     INCIDENT__REPORT_ENTRY ire
         join REPORT_ENTRY re
@@ -201,7 +201,7 @@ where
 select
     ire.INCIDENT_NUMBER,
     sqlc.embed(re),
-    p.NICKNAME as AUTHOR
+    p.HANDLE as AUTHOR
 from
     INCIDENT__REPORT_ENTRY ire
         join REPORT_ENTRY re
@@ -237,7 +237,7 @@ where fr.EVENT = ?
 select
     irre.REPORT_NUMBER,
     sqlc.embed(re),
-    p.NICKNAME as AUTHOR
+    p.HANDLE as AUTHOR
 from
     REPORT__REPORT_ENTRY irre
         join REPORT_ENTRY re
@@ -252,7 +252,7 @@ where
 -- name: Report_ReportEntries :many
 select
     sqlc.embed(re),
-    p.NICKNAME as AUTHOR
+    p.HANDLE as AUTHOR
 from
     REPORT__REPORT_ENTRY irre
         join REPORT_ENTRY re
@@ -537,7 +537,7 @@ group by
 -- name: Visits_People :many
 select
     sqlc.embed(vp),
-    p.NICKNAME
+    p.HANDLE
 from
     VISIT__PERSON vp
     join PERSON p on p.ID = vp.PERSON_ID
@@ -547,7 +547,7 @@ where
 -- name: Visit_People :many
 select
     sqlc.embed(vp),
-    p.NICKNAME
+    p.HANDLE
 from
     VISIT__PERSON vp
     join PERSON p on p.ID = vp.PERSON_ID
@@ -571,7 +571,7 @@ where
 select
     sre.VISIT_NUMBER,
     sqlc.embed(re),
-    p.NICKNAME as AUTHOR
+    p.HANDLE as AUTHOR
 from
     VISIT__REPORT_ENTRY sre
         join REPORT_ENTRY re
@@ -587,7 +587,7 @@ where
 select
     sre.VISIT_NUMBER,
     sqlc.embed(re),
-    p.NICKNAME as AUTHOR
+    p.HANDLE as AUTHOR
 from
     VISIT__REPORT_ENTRY sre
         join REPORT_ENTRY re
@@ -618,7 +618,7 @@ limit 1;
 --
 
 -- name: People :many
-select ID, NICKNAME, EMAIL, STATUS, ON_SITE, PASSWORD
+select ID, HANDLE, EMAIL, STATUS, ON_SITE, PASSWORD
 from PERSON
 where STATUS = 'active';
 

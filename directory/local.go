@@ -64,7 +64,7 @@ func (s *localSource) users(ctx context.Context) (map[int64]*User, error) {
 	for _, person := range people {
 		m[int64(person.ID)] = &User{
 			ID:       int64(person.ID),
-			Handle:   person.Nickname,
+			Handle:   person.Handle,
 			Email:    person.Email.String,
 			Status:   person.Status,
 			Onsite:   person.OnSite,

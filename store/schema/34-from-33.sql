@@ -6,7 +6,7 @@
 
 create table PERSON (
     ID          integer      not null auto_increment,
-    NICKNAME    varchar(64)  not null,
+    HANDLE    varchar(64)  not null,
     EMAIL       varchar(128),
     STATUS      varchar(32)  not null default 'active',
     ON_SITE     boolean      not null default false,
@@ -14,7 +14,7 @@ create table PERSON (
     CREATED     double       not null,
 
     primary key (ID),
-    unique key (NICKNAME),
+    unique key (HANDLE),
     unique key (EMAIL)
 ) DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 

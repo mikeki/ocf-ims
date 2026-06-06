@@ -73,7 +73,7 @@ config selector, local login, demo seed.
 
 ### New tables (additive)
 
-- **`PERSON`** — `ID` PK auto-increment, `NICKNAME` varchar(64) unique (the former
+- **`PERSON`** — `ID` PK auto-increment, `HANDLE` varchar(64) unique (the former
   callsign/handle; human-facing, changeable), `EMAIL` varchar unique-ish nullable,
   `STATUS` (mirror the statuses the directory filters on), `ON_SITE` bool,
   `PASSWORD` varchar(255) nullable (argon2id hash), `CREATED` double.
@@ -130,7 +130,7 @@ The TypeScript/UI rename is a later PR, so the JSON stays as-is (`handle`,
 - **Write path:** report-entry author = `claims.DirectoryID()` (the JWT already
   carries the person id — no lookup). Attaching *another* person resolves their
   handle → `person_id` via the local store.
-- **Read path:** join `PERSON_ID → NICKNAME` to fill the existing `handle` / `author`
+- **Read path:** join `PERSON_ID → HANDLE` to fill the existing `handle` / `author`
   JSON fields.
 - `containsAuthor(...)` compares person ids instead of handle strings.
 - Internal store/sqlc identifiers rename to Person (`AttachPersonToIncident`, etc.);

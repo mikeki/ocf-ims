@@ -78,7 +78,7 @@ const (
 // person_id FKs (attachments, report-entry author) resolve and the author join
 // renders the expected handle.
 const imsPeopleTestSeed = `
-insert into PERSON (ID, NICKNAME, EMAIL, STATUS, ON_SITE, CREATED) values
+insert into PERSON (ID, HANDLE, EMAIL, STATUS, ON_SITE, CREATED) values
     (6000, 'AdminTestRanger', 'admintestranger@example.com', 'active', true, 0),
     (6001, 'AliceTestRanger', 'alicetestranger@example.com', 'active', true, 0);
 `
@@ -182,7 +182,7 @@ func setup(ctx context.Context, tempDir string) {
 		}
 		// Seed the local PERSON table with rows whose ids/nicknames match the
 		// Clubhouse directory users, so attachment/author person_id FKs resolve
-		// and the PERSON->NICKNAME join renders the right author. See
+		// and the PERSON->HANDLE join renders the right author. See
 		// docs/plans/31-local-people-directory.md.
 		_, err = db.ExecContext(ctx, imsPeopleTestSeed)
 		if err != nil {

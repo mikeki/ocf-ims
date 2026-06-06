@@ -102,7 +102,7 @@ func (action GetVisits) getVisits(req *http.Request) (imsjson.Visits, *herr.HTTP
 		}
 		for _, row := range rangersRows {
 			rangersByVisit[row.VisitPerson.VisitNumber] = append(rangersByVisit[row.VisitPerson.VisitNumber],
-				imsjson.VisitRanger{Handle: row.Nickname, Role: conv.SqlToString(row.VisitPerson.Role)})
+				imsjson.VisitRanger{Handle: row.Handle, Role: conv.SqlToString(row.VisitPerson.Role)})
 		}
 		return nil
 	})
@@ -183,7 +183,7 @@ func (action GetVisit) getVisit(req *http.Request) (imsjson.Visit, *herr.HTTPErr
 	}
 	rangers := make([]imsjson.VisitRanger, len(rangersRows))
 	for i, row := range rangersRows {
-		rangers[i] = imsjson.VisitRanger{Handle: row.Nickname, Role: conv.SqlToString(row.VisitPerson.Role)}
+		rangers[i] = imsjson.VisitRanger{Handle: row.Handle, Role: conv.SqlToString(row.VisitPerson.Role)}
 	}
 
 	resp, errHTTP = visitToJSON(storedRow, rangers, reportEntries, event, action.attachmentsEnabled)
