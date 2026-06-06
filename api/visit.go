@@ -311,7 +311,7 @@ func (action NewVisit) newVisit(req *http.Request) (visitNumber int32, location 
 		return 0, "", errHTTP.From("[readBodyAs]")
 	}
 
-	authorPersonID := conv.MustInt32(jwtCtx.Claims.DirectoryID())
+	authorPersonID := jwtCtx.Claims.PersonID()
 
 	// First create the visit, to lock in the visit number reservation
 	newVisitNumber, err := action.imsDBQ.NextVisitNumber(ctx, action.imsDBQ, event.ID)
@@ -626,7 +626,7 @@ func (action EditVisit) editVisit(req *http.Request) *herr.HTTPError {
 	newVisit.EventID = event.ID
 	newVisit.Number = visitNumber
 
-	authorPersonID := conv.MustInt32(jwtCtx.Claims.DirectoryID())
+	authorPersonID := jwtCtx.Claims.PersonID()
 
 	errHTTP = updateVisit(ctx, action.imsDBQ, action.es, newVisit, authorPersonID)
 	if errHTTP != nil {
@@ -707,7 +707,7 @@ func (action AttachRangerToVisit) attachRanger(req *http.Request) *herr.HTTPErro
 
 	_, errHTTP = addVisitReportEntry(
 		ctx, action.imsDBQ, txn, event.ID, visitNumber,
-		conv.MustInt32(jwtCtx.Claims.DirectoryID()), fmt.Sprintf("Added Ranger: %v", rangerName),
+		jwtCtx.Claims.PersonID(), fmt.Sprintf("Added Ranger: %v", rangerName),
 		true, "", "", "",
 	)
 	if errHTTP != nil {
@@ -779,7 +779,7 @@ func (action DetachRangerFromVisit) detachRanger(req *http.Request) *herr.HTTPEr
 	}
 	_, errHTTP = addVisitReportEntry(
 		ctx, action.imsDBQ, txn, event.ID, visitNumber,
-		conv.MustInt32(jwtCtx.Claims.DirectoryID()), fmt.Sprintf("Removed Ranger: %v", rangerName),
+		jwtCtx.Claims.PersonID(), fmt.Sprintf("Removed Ranger: %v", rangerName),
 		true, "", "", "",
 	)
 	if errHTTP != nil {

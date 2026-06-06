@@ -56,7 +56,7 @@ func (action EditReportReportEntry) editReportEntry(req *http.Request) *herr.HTT
 	}
 	ctx := req.Context()
 
-	authorPersonID := conv.MustInt32(jwtCtx.Claims.DirectoryID())
+	authorPersonID := jwtCtx.Claims.PersonID()
 
 	reportNumber, err := conv.ParseInt32(req.PathValue("reportNumber"))
 	if err != nil {
@@ -146,7 +146,7 @@ func (action EditIncidentReportEntry) editIncidentReportEntry(req *http.Request)
 	}
 	ctx := req.Context()
 
-	authorPersonID := conv.MustInt32(jwtCtx.Claims.DirectoryID())
+	authorPersonID := jwtCtx.Claims.PersonID()
 
 	incidentNumber, err := conv.ParseInt32(req.PathValue("incidentNumber"))
 	if err != nil {
@@ -227,7 +227,7 @@ func (action EditVisitReportEntry) editVisitReportEntry(req *http.Request) *herr
 	}
 	ctx := req.Context()
 
-	authorPersonID := conv.MustInt32(jwtCtx.Claims.DirectoryID())
+	authorPersonID := jwtCtx.Claims.PersonID()
 
 	visitNumber, err := conv.ParseInt32(req.PathValue("visitNumber"))
 	if err != nil {

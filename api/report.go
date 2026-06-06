@@ -260,7 +260,7 @@ func (action EditReport) editReport(req *http.Request) *herr.HTTPError {
 		return herr.BadRequest("Invalid report number", err).From("[ParseInt32]")
 	}
 	author := jwt.Claims.RangerHandle()
-	authorPersonID := conv.MustInt32(jwt.Claims.DirectoryID())
+	authorPersonID := jwt.Claims.PersonID()
 	if limitedAccess {
 		isPrevAuthor, errHTTP := action.isPreviousAuthor(req, event.ID, reportNumber, author)
 		if errHTTP != nil {
@@ -468,7 +468,7 @@ func (action NewReport) newReport(req *http.Request) (reportNumber int32, locati
 		return 0, "", herr.BadRequest("A new Report may not be attached to an incident", nil)
 	}
 
-	authorPersonID := conv.MustInt32(jwtCtx.Claims.DirectoryID())
+	authorPersonID := jwtCtx.Claims.PersonID()
 
 	newReportNum, err := action.imsDBQ.NextReportNumber(ctx, action.imsDBQ, event.ID)
 	if err != nil {
