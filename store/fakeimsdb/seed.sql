@@ -1,3 +1,22 @@
+-- Local people for demo/dev. The 600-602 accounts mirror the fake Clubhouse
+-- directory (directory/fakeclubhousedb/seed.sql) so local-directory mode can log
+-- in (each password equals the case-sensitive nickname); 603-606 are referenced by
+-- the historical incident/report seed data below and need no login.
+insert into PERSON (ID, HANDLE, EMAIL, PASSWORD, STATUS, ON_SITE, CREATED)
+values  (600, 'Miguel',       'miguel@example.com',       '$argon2id$v=19$m=8192,t=4,p=1$tL68tr5BXPSUKD+2m4fx5A$h+JZLy1t+Ch1NnM+xro0REQrSAfq7Egtc/RgfOfzWYo', 'active', true,  0),
+        (601, 'ShadowDancer', 'shadowdancer@example.com', '$argon2id$v=19$m=8192,t=4,p=1$pZevNxeYuILQUIzHBHmEcQ$1tUEWKGlpmEHakHQXoz3UYQ5EyL01qHmlVfBfuq5oj0', 'active', true,  0),
+        (602, 'TeamMember',   'teammember@example.com',   '$argon2id$v=19$m=8192,t=4,p=1$aeRknlIpDHICmM6mD7DyUA$nGvCg3AIwmWAiT1M2HBqlScDS0cEHEIoE93w71DzqlI', 'active', true,  0),
+        (603, 'Abraham',      null, null, 'active', false, 0),
+        (604, 'Hardware',     null, null, 'active', false, 0),
+        (605, 'Defect',       null, null, 'active', false, 0),
+        (606, 'Loosy',        null, null, 'active', false, 0);
+
+insert into `POSITION` (ID, NAME) values (701, 'Driver'), (702, 'Dancer');
+insert into TEAM (ID, NAME) values (800, 'Driving Team');
+insert into PERSON__POSITION (PERSON_ID, POSITION_ID) values (601, 702);
+insert into PERSON__TEAM (PERSON_ID, TEAM_ID) values (602, 800);
+
+
 insert into EVENT (ID, NAME, IS_GROUP, PARENT_GROUP)
 values  (6, 'TestBRC', true, null);
 
@@ -223,27 +242,27 @@ values  (1, 1, 1748459852.644699, 3, 'dispatched', 1748459852.644699, 'Something
 insert into REPORT (EVENT, NUMBER, CREATED, SUMMARY, INCIDENT_NUMBER)
 values  (1, 1, 1748460231.287398, 'Report from the field', 2);
 
-insert into REPORT_ENTRY (ID, AUTHOR, TEXT, CREATED, GENERATED, STRICKEN, ATTACHED_FILE)
-values  (1, 'Abraham', 'Changed priority: 3
+insert into REPORT_ENTRY (ID, AUTHOR_PERSON_ID, TEXT, CREATED, GENERATED, STRICKEN, ATTACHED_FILE)
+values  (1, 603, 'Changed priority: 3
 Changed state: new
 Changed summary: Something bad!', 1748459852.649554, 1, 0, null),
-        (2, 'Abraham', 'Changed state: dispatched', 1748459854.045146, 1, 0, null),
-        (3, 'Abraham', 'Added Ranger: Hardware', 1748460179.390828, 1, 0, null),
-        (4, 'Abraham', 'Added Ranger: Defect', 1748460180.76589, 1, 0, null),
-        (5, 'Abraham', 'Added type: Admin', 1748460183.617861, 1, 0, null),
-        (6, 'Abraham', 'Added type: MOOP', 1748460184.78715, 1, 0, null),
-        (7, 'Abraham', 'Changed location name: Dog Camp', 1748460192.069875, 1, 0, null),
-        (8, 'Abraham', 'Changed location radial hour: 2', 1748460193.558534, 1, 0, null),
-        (9, 'Abraham', 'Changed location radial minute: 10', 1748460194.422526, 1, 0, null),
-        (10, 'Abraham', 'Changed location concentric: 2', 1748460196.736211, 1, 0, null),
-        (11, 'Abraham', 'Something happened!', 1748460208.873552, 0, 0, null),
-        (12, 'Abraham', 'Changed summary to: Report from the field', 1748460231.289929, 1, 0, null),
-        (13, 'Abraham', 'Something happened out in the dust', 1748460241.587492, 0, 0, null),
-        (14, 'Abraham', 'Changed summary: Report from the field
+        (2, 603, 'Changed state: dispatched', 1748459854.045146, 1, 0, null),
+        (3, 603, 'Added Ranger: Hardware', 1748460179.390828, 1, 0, null),
+        (4, 603, 'Added Ranger: Defect', 1748460180.76589, 1, 0, null),
+        (5, 603, 'Added type: Admin', 1748460183.617861, 1, 0, null),
+        (6, 603, 'Added type: MOOP', 1748460184.78715, 1, 0, null),
+        (7, 603, 'Changed location name: Dog Camp', 1748460192.069875, 1, 0, null),
+        (8, 603, 'Changed location radial hour: 2', 1748460193.558534, 1, 0, null),
+        (9, 603, 'Changed location radial minute: 10', 1748460194.422526, 1, 0, null),
+        (10, 603, 'Changed location concentric: 2', 1748460196.736211, 1, 0, null),
+        (11, 603, 'Something happened!', 1748460208.873552, 0, 0, null),
+        (12, 603, 'Changed summary to: Report from the field', 1748460231.289929, 1, 0, null),
+        (13, 603, 'Something happened out in the dust', 1748460241.587492, 0, 0, null),
+        (14, 603, 'Changed summary: Report from the field
 Added Ranger: Abraham', 1748460242.688133, 1, 0, null),
-        (15, 'Abraham', 'Attached to incident: 2', 1748460242.696368, 1, 0, null),
-        (16, 'Abraham', 'Added Ranger: Loosy', 1748460254.830443, 1, 0, null),
-        (17, 'Abraham', 'Removed Ranger: Abraham', 1748460256.071517, 1, 0, null);
+        (15, 603, 'Attached to incident: 2', 1748460242.696368, 1, 0, null),
+        (16, 603, 'Added Ranger: Loosy', 1748460254.830443, 1, 0, null),
+        (17, 603, 'Removed Ranger: Abraham', 1748460256.071517, 1, 0, null);
 
 insert into REPORT__REPORT_ENTRY (EVENT, REPORT_NUMBER, REPORT_ENTRY)
 values  (1, 1, 12),
@@ -262,10 +281,10 @@ insert into INCIDENT__INCIDENT_TYPE (EVENT, INCIDENT_NUMBER, INCIDENT_TYPE)
 values  (1, 1, 1),
         (1, 1, 6);
 
-insert into INCIDENT__RANGER (ID, EVENT, INCIDENT_NUMBER, RANGER_HANDLE)
-values  (1, 1, 1, 'Hardware'),
-        (2, 1, 1, 'Defect'),
-        (4, 1, 2, 'Loosy');
+insert into INCIDENT__PERSON (ID, EVENT, INCIDENT_NUMBER, PERSON_ID)
+values  (1, 1, 1, 604),
+        (2, 1, 1, 605),
+        (4, 1, 2, 606);
 
 insert into INCIDENT__REPORT_ENTRY (EVENT, INCIDENT_NUMBER, REPORT_ENTRY)
 values  (1, 1, 1),

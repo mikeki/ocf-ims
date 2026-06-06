@@ -73,7 +73,7 @@ func (action GetIncidents) getIncidents(req *http.Request) (imsjson.Incidents, *
 	// and process those results concurrently.
 	group, groupCtx := errgroup.WithContext(req.Context())
 
-	entriesByIncident := make(map[int32][]imsdb.ReportEntry)
+	entriesByIncident := make(map[int32][]imsjson.ReportEntry)
 	group.Go(func() error {
 		reportEntries, err := action.imsDBQ.Incidents_ReportEntries(
 			groupCtx,
@@ -89,20 +89,21 @@ func (action GetIncidents) getIncidents(req *http.Request) (imsjson.Incidents, *
 		for _, row := range reportEntries {
 			entriesByIncident[row.IncidentNumber] = append(
 				entriesByIncident[row.IncidentNumber],
-				row.ReportEntry,
+				reportEntryToJSON(row.ReportEntry, row.Author, action.attachmentsEnabled),
 			)
 		}
 		return nil
 	})
 
-	rangersByIncident := make(map[int32][]imsdb.IncidentRanger)
+	rangersByIncident := make(map[int32][]imsjson.IncidentRanger)
 	group.Go(func() error {
-		rangersRows, err := action.imsDBQ.Incidents_Rangers(groupCtx, action.imsDBQ, event.ID)
+		rangersRows, err := action.imsDBQ.Incidents_People(groupCtx, action.imsDBQ, event.ID)
 		if err != nil {
-			return herr.InternalServerError("Failed to fetch rangers", err).From("[Incidents_Rangers]")
+			return herr.InternalServerError("Failed to fetch people", err).From("[Incidents_People]")
 		}
 		for _, row := range rangersRows {
-			rangersByIncident[row.IncidentRanger.IncidentNumber] = append(rangersByIncident[row.IncidentRanger.IncidentNumber], row.IncidentRanger)
+			rangersByIncident[row.IncidentPerson.IncidentNumber] = append(rangersByIncident[row.IncidentPerson.IncidentNumber],
+				imsjson.IncidentRanger{Handle: row.Handle, Role: conv.SqlToString(row.IncidentPerson.Role)})
 		}
 		return nil
 	})
@@ -174,7 +175,7 @@ func (action GetIncident) getIncident(req *http.Request) (imsjson.Incident, *her
 		return resp, herr.BadRequest("Failed to parse incident number", err)
 	}
 
-	storedRow, reportEntries, errHTTP := fetchIncident(ctx, action.imsDBQ, event.ID, incidentNumber)
+	storedRow, reportEntries, errHTTP := fetchIncident(ctx, action.imsDBQ, event.ID, incidentNumber, action.attachmentsEnabled)
 	if errHTTP != nil {
 		return resp, errHTTP.From("[fetchIncident]")
 	}
@@ -184,16 +185,16 @@ func (action GetIncident) getIncident(req *http.Request) (imsjson.Incident, *her
 		return resp, errHTTP.From("[permissionsByEvent]")
 	}
 
-	rangersRows, err := action.imsDBQ.Incident_Rangers(ctx, action.imsDBQ, imsdb.Incident_RangersParams{
+	rangersRows, err := action.imsDBQ.Incident_People(ctx, action.imsDBQ, imsdb.Incident_PeopleParams{
 		Event:          event.ID,
 		IncidentNumber: incidentNumber,
 	})
 	if err != nil {
-		return resp, herr.InternalServerError("Failed to fetch rangers", err)
+		return resp, herr.InternalServerError("Failed to fetch people", err)
 	}
-	rangers := make([]imsdb.IncidentRanger, len(rangersRows))
+	rangers := make([]imsjson.IncidentRanger, len(rangersRows))
 	for i, row := range rangersRows {
-		rangers[i] = row.IncidentRanger
+		rangers[i] = imsjson.IncidentRanger{Handle: row.Handle, Role: conv.SqlToString(row.IncidentPerson.Role)}
 	}
 
 	linkedIncidents, err := action.imsDBQ.Incident_LinkedIncidents(ctx, action.imsDBQ, imsdb.Incident_LinkedIncidentsParams{
@@ -216,15 +217,11 @@ func (action GetIncident) getIncident(req *http.Request) (imsjson.Incident, *her
 	return resp, nil
 }
 
-func incidentToJSON(storedRow imsdb.IncidentRow, incidentRangers []imsdb.IncidentRanger,
-	reportEntries []imsdb.ReportEntry, linkedIncidents []imsdb.Incident_LinkedIncidentsRow,
+func incidentToJSON(storedRow imsdb.IncidentRow, incidentRangers []imsjson.IncidentRanger,
+	resultEntries []imsjson.ReportEntry, linkedIncidents []imsdb.Incident_LinkedIncidentsRow,
 	event imsdb.Event, attachmentsEnabled bool,
 ) (imsjson.Incident, *herr.HTTPError) {
 	var resp imsjson.Incident
-	resultEntries := make([]imsjson.ReportEntry, len(reportEntries))
-	for i, re := range reportEntries {
-		resultEntries[i] = reportEntryToJSON(re, attachmentsEnabled)
-	}
 
 	linkedIncidentJson := make([]imsjson.LinkedIncident, len(linkedIncidents))
 	for i, li := range linkedIncidents {
@@ -236,13 +233,7 @@ func incidentToJSON(storedRow imsdb.IncidentRow, incidentRangers []imsdb.Inciden
 		}
 	}
 
-	rangersJson := make([]imsjson.IncidentRanger, len(incidentRangers))
-	for i, ir := range incidentRangers {
-		rangersJson[i] = imsjson.IncidentRanger{
-			Handle: ir.RangerHandle,
-			Role:   conv.SqlToString(ir.Role),
-		}
-	}
+	rangersJson := incidentRangers
 
 	incidentTypeIDs, reportNumbers, visitNumbers, err := readExtraIncidentRowFields(storedRow)
 	if err != nil {
@@ -281,11 +272,11 @@ func incidentToJSON(storedRow imsdb.IncidentRow, incidentRangers []imsdb.Inciden
 	return resp, nil
 }
 
-func fetchIncident(ctx context.Context, imsDBQ *store.DBQ, eventID, incidentNumber int32) (
-	imsdb.IncidentRow, []imsdb.ReportEntry, *herr.HTTPError,
+func fetchIncident(ctx context.Context, imsDBQ *store.DBQ, eventID, incidentNumber int32, attachmentsEnabled bool) (
+	imsdb.IncidentRow, []imsjson.ReportEntry, *herr.HTTPError,
 ) {
 	var empty imsdb.IncidentRow
-	var reportEntries []imsdb.ReportEntry
+	var reportEntries []imsjson.ReportEntry
 	incidentRow, err := imsDBQ.Incident(ctx, imsDBQ,
 		imsdb.IncidentParams{
 			Event:  eventID,
@@ -308,18 +299,18 @@ func fetchIncident(ctx context.Context, imsDBQ *store.DBQ, eventID, incidentNumb
 		return empty, nil, herr.InternalServerError("Failed to fetch report entries", err).From("[Incident_ReportEntries]")
 	}
 	for _, rer := range reportEntryRows {
-		reportEntries = append(reportEntries, rer.ReportEntry)
+		reportEntries = append(reportEntries, reportEntryToJSON(rer.ReportEntry, rer.Author, attachmentsEnabled))
 	}
 	return incidentRow, reportEntries, nil
 }
 
 func addIncidentReportEntry(
 	ctx context.Context, db *store.DBQ, dbtx imsdb.DBTX,
-	eventID, incidentNum int32, author, text string, generated bool,
+	eventID, incidentNum int32, authorPersonID int32, text string, generated bool,
 	attachment, attachmentOriginalName, attachmentMediaType string,
 ) (int32, *herr.HTTPError) {
 	reID64, err := db.CreateReportEntry(ctx, dbtx, imsdb.CreateReportEntryParams{
-		Author:                   author,
+		AuthorPersonID:           authorPersonID,
 		Text:                     text,
 		Created:                  conv.TimeToFloat(time.Now()),
 		Generated:                generated,
@@ -376,7 +367,7 @@ func (action NewIncident) newIncident(req *http.Request) (incidentNumber int32, 
 		return 0, "", errHTTP.From("[readBodyAs]")
 	}
 
-	author := jwtCtx.Claims.RangerHandle()
+	authorPersonID := jwtCtx.Claims.PersonID()
 
 	// First create the incident, to lock in the incident number reservation
 	newIncidentNumber, err := action.imsDBQ.NextIncidentNumber(ctx, action.imsDBQ, event.ID)
@@ -400,7 +391,7 @@ func (action NewIncident) newIncident(req *http.Request) (incidentNumber int32, 
 		return 0, "", herr.InternalServerError("Failed to create incident", err).From("[CreateIncident]")
 	}
 
-	errHTTP = updateIncident(ctx, action.imsDBQ, action.es, newIncident, author)
+	errHTTP = updateIncident(ctx, action.imsDBQ, action.es, newIncident, authorPersonID)
 	if errHTTP != nil {
 		return 0, "", errHTTP.From("[updateIncident]")
 	}
@@ -437,7 +428,7 @@ func readExtraIncidentRowFields(row imsdb.IncidentRow) (incidentTypeIDs, reportN
 	return incidentTypeIDs, reportNumbers, visitNumbers, nil
 }
 
-func updateIncident(ctx context.Context, imsDBQ *store.DBQ, es *EventSourcerer, newIncident imsjson.Incident, author string,
+func updateIncident(ctx context.Context, imsDBQ *store.DBQ, es *EventSourcerer, newIncident imsjson.Incident, authorPersonID int32,
 ) *herr.HTTPError {
 	storedIncidentRow, err := imsDBQ.Incident(ctx, imsDBQ,
 		imsdb.IncidentParams{
@@ -704,7 +695,7 @@ func updateIncident(ctx context.Context, imsDBQ *store.DBQ, es *EventSourcerer, 
 				}
 				_, errHTTP := addIncidentReportEntry(
 					ctx, imsDBQ, txn, otherIncident.EventID, otherIncident.Number,
-					author, fmt.Sprintf("Incident linked: %v #%v", eventNameById[newIncident.EventID],
+					authorPersonID, fmt.Sprintf("Incident linked: %v #%v", eventNameById[newIncident.EventID],
 						newIncident.Number,
 					), true, "", "", "",
 				)
@@ -741,7 +732,7 @@ func updateIncident(ctx context.Context, imsDBQ *store.DBQ, es *EventSourcerer, 
 				}
 				_, errHTTP := addIncidentReportEntry(
 					ctx, imsDBQ, txn, otherIncident.EventID, otherIncident.Number,
-					author, fmt.Sprintf("Incident unlinked: %v #%v", eventNameById[newIncident.EventID],
+					authorPersonID, fmt.Sprintf("Incident unlinked: %v #%v", eventNameById[newIncident.EventID],
 						newIncident.Number,
 					), true, "", "", "",
 				)
@@ -753,7 +744,7 @@ func updateIncident(ctx context.Context, imsDBQ *store.DBQ, es *EventSourcerer, 
 	}
 
 	if len(logs) > 0 {
-		_, errHTTP := addIncidentReportEntry(ctx, imsDBQ, txn, newIncident.EventID, newIncident.Number, author, strings.Join(logs, "\n"), true, "", "", "")
+		_, errHTTP := addIncidentReportEntry(ctx, imsDBQ, txn, newIncident.EventID, newIncident.Number, authorPersonID, strings.Join(logs, "\n"), true, "", "", "")
 		if errHTTP != nil {
 			return errHTTP.From("[addIncidentReportEntry]")
 		}
@@ -763,7 +754,7 @@ func updateIncident(ctx context.Context, imsDBQ *store.DBQ, es *EventSourcerer, 
 		if entry.Text == "" {
 			continue
 		}
-		_, errHTTP := addIncidentReportEntry(ctx, imsDBQ, txn, newIncident.EventID, newIncident.Number, author, entry.Text, false, "", "", "")
+		_, errHTTP := addIncidentReportEntry(ctx, imsDBQ, txn, newIncident.EventID, newIncident.Number, authorPersonID, entry.Text, false, "", "", "")
 		if errHTTP != nil {
 			return errHTTP.From("[addIncidentReportEntry]")
 		}
@@ -854,9 +845,9 @@ func (action EditIncident) editIncident(req *http.Request) *herr.HTTPError {
 	newIncident.EventID = event.ID
 	newIncident.Number = incidentNumber
 
-	author := jwtCtx.Claims.RangerHandle()
+	authorPersonID := jwtCtx.Claims.PersonID()
 
-	errHTTP = updateIncident(ctx, action.imsDBQ, action.es, newIncident, author)
+	errHTTP = updateIncident(ctx, action.imsDBQ, action.es, newIncident, authorPersonID)
 	if errHTTP != nil {
 		return errHTTP.From("[updateIncident]")
 	}
@@ -899,6 +890,10 @@ func (action AttachRangerToIncident) attachRanger(req *http.Request) *herr.HTTPE
 	if rangerName == "" {
 		return herr.BadRequest("Empty Ranger Name", nil)
 	}
+	personID, errHTTP := personIDByHandle(ctx, action.userStore, rangerName)
+	if errHTTP != nil {
+		return errHTTP.From("[personIDByHandle]")
+	}
 
 	body, errHTTP := readBodyAs[imsjson.IncidentRanger](req)
 	if errHTTP != nil {
@@ -910,28 +905,28 @@ func (action AttachRangerToIncident) attachRanger(req *http.Request) *herr.HTTPE
 	}
 	defer rollback(txn)
 
-	err = action.imsDBQ.DetachRangerHandleFromIncident(ctx, txn, imsdb.DetachRangerHandleFromIncidentParams{
+	err = action.imsDBQ.DetachPersonFromIncident(ctx, txn, imsdb.DetachPersonFromIncidentParams{
 		Event:          event.ID,
 		IncidentNumber: incidentNumber,
-		RangerHandle:   rangerName,
+		PersonID:       personID,
 	})
 	if err != nil {
-		return herr.InternalServerError("Failed to detach Ranger from Incident", err).From("[DetachRangerHandleFromIncident]")
+		return herr.InternalServerError("Failed to detach person from Incident", err).From("[DetachPersonFromIncident]")
 	}
 
-	err = action.imsDBQ.AttachRangerHandleToIncident(ctx, txn, imsdb.AttachRangerHandleToIncidentParams{
+	err = action.imsDBQ.AttachPersonToIncident(ctx, txn, imsdb.AttachPersonToIncidentParams{
 		Event:          event.ID,
 		IncidentNumber: incidentNumber,
-		RangerHandle:   rangerName,
+		PersonID:       personID,
 		Role:           conv.StringToSql(body.Role, 128),
 	})
 	if err != nil {
-		return herr.InternalServerError("Failed to attach Ranger to Incident", err).From("[AttachRangerHandleToIncident]")
+		return herr.InternalServerError("Failed to attach person to Incident", err).From("[AttachPersonToIncident]")
 	}
 
 	_, errHTTP = addIncidentReportEntry(
 		ctx, action.imsDBQ, txn, event.ID, incidentNumber,
-		jwtCtx.Claims.RangerHandle(), fmt.Sprintf("Added Ranger: %v", rangerName),
+		jwtCtx.Claims.PersonID(), fmt.Sprintf("Added Ranger: %v", rangerName),
 		true, "", "", "",
 	)
 	if errHTTP != nil {
@@ -982,6 +977,10 @@ func (action DetachRangerFromIncident) detachRanger(req *http.Request) *herr.HTT
 	if rangerName == "" {
 		return herr.BadRequest("Empty Ranger Name", nil)
 	}
+	personID, errHTTP := personIDByHandle(ctx, action.userStore, rangerName)
+	if errHTTP != nil {
+		return errHTTP.From("[personIDByHandle]")
+	}
 
 	txn, err := action.imsDBQ.Begin()
 	if err != nil {
@@ -989,17 +988,17 @@ func (action DetachRangerFromIncident) detachRanger(req *http.Request) *herr.HTT
 	}
 	defer rollback(txn)
 
-	err = action.imsDBQ.DetachRangerHandleFromIncident(ctx, txn, imsdb.DetachRangerHandleFromIncidentParams{
+	err = action.imsDBQ.DetachPersonFromIncident(ctx, txn, imsdb.DetachPersonFromIncidentParams{
 		Event:          event.ID,
 		IncidentNumber: incidentNumber,
-		RangerHandle:   rangerName,
+		PersonID:       personID,
 	})
 	if err != nil {
-		return herr.InternalServerError("Failed to detach Ranger from Incident", err).From("[DetachRangerHandleFromIncident]")
+		return herr.InternalServerError("Failed to detach person from Incident", err).From("[DetachPersonFromIncident]")
 	}
 	_, errHTTP = addIncidentReportEntry(
 		ctx, action.imsDBQ, txn, event.ID, incidentNumber,
-		jwtCtx.Claims.RangerHandle(), fmt.Sprintf("Removed Ranger: %v", rangerName),
+		jwtCtx.Claims.PersonID(), fmt.Sprintf("Removed Ranger: %v", rangerName),
 		true, "", "", "",
 	)
 	if errHTTP != nil {

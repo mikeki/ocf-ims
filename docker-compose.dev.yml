@@ -46,6 +46,12 @@ services:
       IMS_DB_PORT: "3306"
       IMS_DB_USER_NAME: "${IMS_DB_USER_NAME:-ims}"
       IMS_DB_PASSWORD: "${IMS_DB_PASSWORD:-ims}"
+      # Use the local IMS-DB people directory (seeded from store/fakeimsdb/seed.sql)
+      # instead of the external Clubhouse directory. See
+      # docs/plans/31-local-people-directory.md. Demo logins: Miguel / ShadowDancer /
+      # TeamMember (password == nickname). The Clubhouse DB below is left running but
+      # unused; set IMS_DIRECTORY=clubhousedb to switch back.
+      IMS_DIRECTORY: "${IMS_DIRECTORY:-local}"
       IMS_DMS_HOSTNAME: "ranger-clubhouse-db:3306"
       IMS_DMS_DATABASE: "${IMS_DMS_DATABASE:-rangers}"
       IMS_DMS_USERNAME: "${IMS_DMS_USERNAME:-clubhouseuser}"

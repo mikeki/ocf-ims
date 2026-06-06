@@ -73,6 +73,16 @@ const (
 	userAlicePassword = "password"
 )
 
+// imsPeopleTestSeed mirrors the Clubhouse directory users into the local IMS-DB
+// PERSON table. The ids/nicknames must match clubhousedb_test_seed.sql so that
+// person_id FKs (attachments, report-entry author) resolve and the author join
+// renders the expected handle.
+const imsPeopleTestSeed = `
+insert into PERSON (ID, HANDLE, EMAIL, STATUS, ON_SITE, CREATED) values
+    (6000, 'AdminTestRanger', 'admintestranger@example.com', 'active', true, 0),
+    (6001, 'AliceTestRanger', 'alicetestranger@example.com', 'active', true, 0);
+`
+
 // TestMain does the common setup and teardown for all tests in this package.
 // It's slow to start up a MariaDB container, so we want to only have to do
 // that once for the whole suite of test files.
@@ -167,6 +177,14 @@ func setup(ctx context.Context, tempDir string) {
 		mainTestInternal.dbCtrCleanup = cleanup
 		shared.cfg.Store.MariaDB.HostPort = dbHostPort
 		db, err := store.SqlDB(ctx, shared.cfg.Store, true)
+		if err != nil {
+			return err
+		}
+		// Seed the local PERSON table with rows whose ids/nicknames match the
+		// Clubhouse directory users, so attachment/author person_id FKs resolve
+		// and the PERSON->HANDLE join renders the right author. See
+		// docs/plans/31-local-people-directory.md.
+		_, err = db.ExecContext(ctx, imsPeopleTestSeed)
 		if err != nil {
 			return err
 		}

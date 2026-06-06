@@ -109,13 +109,9 @@ func mustStartServer(ctx context.Context, unvalidatedCfg *conf.IMSConfig, printC
 		stderrPrintf("With JWTSecret: %v...%v\n", imsCfg.Core.JWTSecret[:1], imsCfg.Core.JWTSecret[len(imsCfg.Core.JWTSecret)-1:])
 	}
 
-	clubhouseDB, err := directory.MariaDB(ctx, imsCfg.Directory)
-	must(err)
-	clubhouseDBQ := directory.NewDBQ(clubhouseDB, chqueries.New(), imsCfg.Directory.InMemoryCacheTTL)
-	userStore := directory.NewUserStore(clubhouseDBQ, imsCfg.Directory.InMemoryCacheTTL)
-
 	var s3Client *attachment.S3Client
 	if imsCfg.AttachmentsStore.Type == conf.AttachmentsStoreS3 {
+		var err error
 		s3Client, err = attachment.NewS3Client(ctx)
 		must(err)
 	}
@@ -123,6 +119,20 @@ func mustStartServer(ctx context.Context, unvalidatedCfg *conf.IMSConfig, printC
 	imsDB, err := store.SqlDB(ctx, imsCfg.Store, true)
 	must(err)
 	imsDBQ := store.NewDBQ(imsDB, imsdb.New())
+
+	// The user/personnel directory is either the local IMS-DB people tables or the
+	// external Clubhouse directory, selected by config. See
+	// docs/plans/31-local-people-directory.md.
+	var userStore *directory.UserStore
+	if imsCfg.Directory.Directory == conf.DirectoryTypeLocal {
+		slog.Info("Using local IMS-DB people directory")
+		userStore = directory.NewLocalUserStore(imsDBQ, imsCfg.Directory.InMemoryCacheTTL)
+	} else {
+		clubhouseDB, errCH := directory.MariaDB(ctx, imsCfg.Directory)
+		must(errCH)
+		clubhouseDBQ := directory.NewDBQ(clubhouseDB, chqueries.New(), imsCfg.Directory.InMemoryCacheTTL)
+		userStore = directory.NewUserStore(clubhouseDBQ, imsCfg.Directory.InMemoryCacheTTL)
+	}
 	actionLogger := actionlog.NewLogger(ctx, imsDBQ, imsCfg.Core.ActionLogEnabled, false)
 
 	eventSource := api.NewEventSourcerer()

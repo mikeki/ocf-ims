@@ -6,7 +6,7 @@ create table SCHEMA_INFO (
 -- This value must be updated when you make a new migration file.
 --
 
-insert into SCHEMA_INFO (VERSION) values (33);
+insert into SCHEMA_INFO (VERSION) values (34);
 
 
 create table `EVENT` (
@@ -36,9 +36,63 @@ insert into INCIDENT_TYPE (ID, NAME, HIDDEN) values (1, 'Admin', 0);
 insert into INCIDENT_TYPE (ID, NAME, HIDDEN) values (2, 'Junk' , 0);
 
 
+-- Local people model (OCF-owned, replacing the external Clubhouse directory).
+-- Defined before REPORT_ENTRY so the author foreign key below resolves on a
+-- fresh create. See docs/plans/31-local-people-directory.md.
+create table PERSON (
+    ID          integer      not null auto_increment,
+    HANDLE    varchar(64)  not null,
+    EMAIL       varchar(128),
+    STATUS      varchar(32)  not null default 'active',
+    ON_SITE     boolean      not null default false,
+    PASSWORD    varchar(255),
+    CREATED     double       not null,
+
+    primary key (ID),
+    unique key (HANDLE),
+    unique key (EMAIL)
+) DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+create table `POSITION` (
+    ID      integer      not null auto_increment,
+    NAME    varchar(128) not null,
+
+    primary key (ID),
+    unique key (NAME)
+) DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+create table TEAM (
+    ID      integer      not null auto_increment,
+    NAME    varchar(128) not null,
+
+    primary key (ID),
+    unique key (NAME)
+) DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+create table PERSON__POSITION (
+    PERSON_ID   integer not null,
+    POSITION_ID integer not null,
+
+    foreign key `PP_TO_PERSON`   (PERSON_ID)   references PERSON(ID),
+    foreign key `PP_TO_POSITION` (POSITION_ID) references `POSITION`(ID),
+
+    primary key (PERSON_ID, POSITION_ID)
+) DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+create table PERSON__TEAM (
+    PERSON_ID integer not null,
+    TEAM_ID   integer not null,
+
+    foreign key `PT_TO_PERSON` (PERSON_ID) references PERSON(ID),
+    foreign key `PT_TO_TEAM`   (TEAM_ID)   references TEAM(ID),
+
+    primary key (PERSON_ID, TEAM_ID)
+) DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+
 create table REPORT_ENTRY (
     ID              integer         not null auto_increment,
-    AUTHOR          varchar(64)     not null,
+    AUTHOR_PERSON_ID integer        not null,
     TEXT            mediumtext      not null,
     CREATED         double          not null,
     `GENERATED`     boolean         not null,
@@ -48,7 +102,8 @@ create table REPORT_ENTRY (
     ATTACHED_FILE_ORIGINAL_NAME     varchar(128),
     ATTACHED_FILE_MEDIA_TYPE        varchar(128),
 
-    primary key (ID)
+    primary key (ID),
+    foreign key `RE_TO_AUTHOR` (AUTHOR_PERSON_ID) references PERSON(ID)
 ) DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 
@@ -77,24 +132,21 @@ create table INCIDENT (
 ) DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 
-create table INCIDENT__RANGER (
+create table INCIDENT__PERSON (
     ID              integer     not null auto_increment,
     `EVENT`         integer     not null,
     INCIDENT_NUMBER integer     not null,
-    RANGER_HANDLE   varchar(64) not null,
+    PERSON_ID       integer     not null,
     ROLE            varchar(128),
 
+    primary key (ID),
+    -- Declared inline (and before the PERSON_ID FK) so the index order matches
+    -- the migration chain, where this index predates the IPE_TO_PERSON FK.
+    key `INCIDENT__PERSON_EVENT_INCIDENT_NUMBER_index` (`EVENT`, INCIDENT_NUMBER),
     foreign key (`EVENT`) references `EVENT`(ID),
     foreign key (`EVENT`, INCIDENT_NUMBER) references INCIDENT(`EVENT`, NUMBER),
-
-    -- FIXME: RANGER_HANDLE is an external non-primary key.
-    -- Primary key is DMS Person ID.
-
-    primary key (ID)
+    foreign key `IPE_TO_PERSON` (PERSON_ID) references PERSON(ID)
 ) DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
-
-create index `INCIDENT__RANGER_EVENT_INCIDENT_NUMBER_index`
-    on `INCIDENT__RANGER` (`EVENT`, INCIDENT_NUMBER);
 
 create table INCIDENT__LINKED_INCIDENT (
     EVENT_1             integer not null,
@@ -271,15 +323,16 @@ create table VISIT__REPORT_ENTRY (
     primary key (`EVENT`, VISIT_NUMBER, REPORT_ENTRY)
 ) DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
-create table VISIT__RANGER (
+create table VISIT__PERSON (
     ID                  integer     not null auto_increment,
     `EVENT`             integer     not null,
     VISIT_NUMBER        integer     not null,
-    RANGER_HANDLE       varchar(64) not null,
+    PERSON_ID           integer     not null,
     ROLE                varchar(128),
 
     foreign key (`EVENT`) references `EVENT` (ID),
     foreign key (`EVENT`, VISIT_NUMBER) references VISIT (`EVENT`, NUMBER),
+    foreign key `VPE_TO_PERSON` (PERSON_ID) references PERSON(ID),
 
     primary key (ID)
 ) DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;

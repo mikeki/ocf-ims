@@ -41,7 +41,7 @@ func sampleIncident1(eventName string) imsjson.Incident {
 		IncidentTypeIDs: &[]int32{1, 2},
 		Reports:         &[]int32{},
 		Visits:          &[]int32{},
-		Rangers:         &[]imsjson.IncidentRanger{{Handle: "SomeOne"}, {Handle: "SomeTwo"}},
+		Rangers:         &[]imsjson.IncidentRanger{{Handle: userAdminHandle}, {Handle: userAliceHandle}},
 		ReportEntries: []imsjson.ReportEntry{
 			{Text: "This is some report text lol"},
 			{Text: ""},
@@ -280,17 +280,17 @@ func TestCreateAndUpdateIncident(t *testing.T) {
 	requireEqualIncident(t, expected, retrievedIncidentAfterUpdate)
 
 	// attach a Ranger
-	resp = apisNonAdmin.attachRangerToIncident(ctx, eventName, num, "Some Dude")
+	resp = apisNonAdmin.attachRangerToIncident(ctx, eventName, num, userAliceHandle)
 	require.Equal(t, http.StatusNoContent, resp.StatusCode)
 	require.NoError(t, resp.Body.Close())
 	retrievedIncidentAfterUpdate, resp = apisNonAdmin.getIncident(ctx, eventName, num)
 	require.Equal(t, http.StatusOK, resp.StatusCode)
 	require.NoError(t, resp.Body.Close())
 	require.Len(t, *retrievedIncidentAfterUpdate.Rangers, 1)
-	require.Equal(t, "Some Dude", (*retrievedIncidentAfterUpdate.Rangers)[0].Handle)
+	require.Equal(t, userAliceHandle, (*retrievedIncidentAfterUpdate.Rangers)[0].Handle)
 
 	// detach that Ranger
-	resp = apisNonAdmin.detachRangerFromIncident(ctx, eventName, num, "Some Dude")
+	resp = apisNonAdmin.detachRangerFromIncident(ctx, eventName, num, userAliceHandle)
 	require.Equal(t, http.StatusNoContent, resp.StatusCode)
 	require.NoError(t, resp.Body.Close())
 	retrievedIncidentAfterUpdate, resp = apisNonAdmin.getIncident(ctx, eventName, num)

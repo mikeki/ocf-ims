@@ -17,10 +17,12 @@
 package authz
 
 import (
-	"github.com/golang-jwt/jwt/v5"
-	"github.com/mikeki/ocf-ims/lib/conv"
+	"math"
 	"math/big"
 	"time"
+
+	"github.com/golang-jwt/jwt/v5"
+	"github.com/mikeki/ocf-ims/lib/conv"
 )
 
 const compactIntBase = 62
@@ -145,6 +147,18 @@ func (c IMSClaims) DirectoryID() int64 {
 		return -1
 	}
 	return subN
+}
+
+// PersonID returns the authenticated person's local id (the JWT subject) as the
+// int32 used by PERSON.ID and its foreign keys. It returns -1 if the subject is
+// missing, unparseable, or out of int32 range; -1 fails safely against the FK
+// rather than silently truncating a 64-bit value.
+func (c IMSClaims) PersonID() int32 {
+	id := c.DirectoryID()
+	if id < math.MinInt32 || id > math.MaxInt32 {
+		return -1
+	}
+	return int32(id)
 }
 
 func (c IMSClaims) RangerOnDutyPosition() *int64 {
