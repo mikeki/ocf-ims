@@ -1,0 +1,13 @@
+# Codegen for the proto contract. Plugins are local `go tool` binaries (pinned in
+# go.mod), so generation is hermetic — no remote calls, no system installs.
+# Run via `go tool buf generate` (wired into bin/build/build.go).
+#
+# Go only for now; a TypeScript target is added here when the interface work starts.
+version: v2
+plugins:
+  - local: ["go", "tool", "protoc-gen-go"]
+    out: gen
+    opt: paths=source_relative
+  - local: ["go", "tool", "protoc-gen-connect-go"]
+    out: gen
+    opt: paths=source_relative

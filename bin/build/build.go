@@ -50,6 +50,10 @@ func main() {
 		return nil
 	})
 	eg.Go(func() error {
+		mustRunInDir(exec.CommandContext(gCtx, "go", "tool", "buf", "generate"), repo.Name())
+		return nil
+	})
+	eg.Go(func() error {
 		mustRunInDir(exec.CommandContext(gCtx, "go", "tool", "templ", "generate"), repo.Name())
 		return nil
 	})
