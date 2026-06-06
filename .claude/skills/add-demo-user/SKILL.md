@@ -21,9 +21,11 @@ stack you must also apply the new rows to the live DB.
 
 The server expects ClubhouseParams: `m=8192, t=4, p=1, saltLen=16, keyLen=32`.
 
-**Preferred** — use the project's CLI (requires `go` on PATH):
+**Preferred** — use the project's `ocf-ims` CLI. Build it once with
+`go run bin/build/build.go` (the `cmd` package needs the code generators to have
+run), then:
 ```bash
-go run main.go hash_password --password='<the-password>'
+./ocf-ims hash_password --password='<the-password>'
 ```
 
 **Fallback** — if `go` isn't available, use the `argon2` npm package with matching params:
