@@ -18,8 +18,8 @@ package json
 
 import "time"
 
-type FieldReports []FieldReport
-type FieldReport struct {
+type Reports []Report
+type Report struct {
 	Event         string        `json:"event"`
 	Number        int32         `json:"number"`
 	Created       time.Time     `json:"created,omitzero"`

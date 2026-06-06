@@ -121,13 +121,13 @@ func TestEventEndpoints_ForNoEventPerms(t *testing.T) {
 	postIncidentRE := MethodURL{http.MethodPost, eventPath + "/incidents/1/report_entries/2"}
 	postIncidentRanger := MethodURL{http.MethodPost, eventPath + "/incidents/1/rangers/some_name"}
 	deleteIncidentRanger := MethodURL{http.MethodDelete, eventPath + "/incidents/1/rangers/some_name"}
-	getFieldReports := MethodURL{http.MethodGet, eventPath + "/field_reports"}
-	getFieldReport := MethodURL{http.MethodGet, eventPath + "/field_reports/1"}
-	getFieldReportAttachment := MethodURL{http.MethodGet, eventPath + "/field_reports/1/attachments/1"}
-	createFieldReport := MethodURL{http.MethodPost, eventPath + "/field_reports"}
-	updateFieldReport := MethodURL{http.MethodPost, eventPath + "/field_reports/9999999"}
-	postFieldReportAttachment := MethodURL{http.MethodPost, eventPath + "/field_reports/9999999/attachments"}
-	postFieldReportRE := MethodURL{http.MethodPost, eventPath + "/field_reports/9999999/report_entries/2"}
+	getReports := MethodURL{http.MethodGet, eventPath + "/reports"}
+	getReport := MethodURL{http.MethodGet, eventPath + "/reports/1"}
+	getReportAttachment := MethodURL{http.MethodGet, eventPath + "/reports/1/attachments/1"}
+	createReport := MethodURL{http.MethodPost, eventPath + "/reports"}
+	updateReport := MethodURL{http.MethodPost, eventPath + "/reports/9999999"}
+	postReportAttachment := MethodURL{http.MethodPost, eventPath + "/reports/9999999/attachments"}
+	postReportRE := MethodURL{http.MethodPost, eventPath + "/reports/9999999/report_entries/2"}
 	getVisits := MethodURL{http.MethodGet, eventPath + "/visits"}
 	getVisit := MethodURL{http.MethodGet, eventPath + "/visits/1"}
 	getVisitAttachment := MethodURL{http.MethodGet, eventPath + "/visits/1/attachments/1"}
@@ -149,13 +149,13 @@ func TestEventEndpoints_ForNoEventPerms(t *testing.T) {
 		postIncidentRE,
 		postIncidentRanger,
 		deleteIncidentRanger,
-		getFieldReports,
-		getFieldReport,
-		getFieldReportAttachment,
-		createFieldReport,
-		updateFieldReport,
-		postFieldReportAttachment,
-		postFieldReportRE,
+		getReports,
+		getReport,
+		getReportAttachment,
+		createReport,
+		updateReport,
+		postReportAttachment,
+		postReportRE,
 		getVisits,
 		getVisit,
 		getVisitAttachment,
@@ -168,21 +168,21 @@ func TestEventEndpoints_ForNoEventPerms(t *testing.T) {
 		getPlaces,
 	}
 	reporter := []MethodURL{
-		getFieldReports,
-		getFieldReport,
-		getFieldReportAttachment,
-		createFieldReport,
-		postFieldReportAttachment,
-		postFieldReportRE,
+		getReports,
+		getReport,
+		getReportAttachment,
+		createReport,
+		postReportAttachment,
+		postReportRE,
 		getPlaces,
 	}
 	reader := []MethodURL{
 		getIncidents,
 		getIncident,
 		getIncidentAttachment,
-		getFieldReports,
-		getFieldReport,
-		getFieldReportAttachment,
+		getReports,
+		getReport,
+		getReportAttachment,
 		getVisits,
 		getVisit,
 		getVisitAttachment,
@@ -228,7 +228,7 @@ func TestEventEndpoints_ForNoEventPerms(t *testing.T) {
 	// now the user can hit some more endpoints
 	for _, api := range allPerms {
 		switch {
-		case api == updateFieldReport || api == postFieldReportRE || api == postFieldReportAttachment:
+		case api == updateReport || api == postReportRE || api == postReportAttachment:
 			// the user won't be able to write to an FR for which they're not an author,
 			// e.g. the one in this dummy call, so we should expect a 403 or 404, but we
 			// can confirm they got the right error message

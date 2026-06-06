@@ -6,7 +6,7 @@ create table SCHEMA_INFO (
 -- This value must be updated when you make a new migration file.
 --
 
-insert into SCHEMA_INFO (VERSION) values (32);
+insert into SCHEMA_INFO (VERSION) values (33);
 
 
 create table `EVENT` (
@@ -150,7 +150,7 @@ create table EVENT_ACCESS (
 ) DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 
-create table FIELD_REPORT (
+create table REPORT (
     `EVENT` integer  not null,
     NUMBER  integer  not null,
     CREATED double   not null,
@@ -165,18 +165,18 @@ create table FIELD_REPORT (
 ) DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 
-create table FIELD_REPORT__REPORT_ENTRY (
+create table REPORT__REPORT_ENTRY (
     `EVENT`                integer not null,
-    FIELD_REPORT_NUMBER    integer not null,
+    REPORT_NUMBER          integer not null,
     REPORT_ENTRY           integer not null,
 
-    foreign key `FIELD_REPORT__REPORT_ENTRY_ibfk_1` (`EVENT`) references `EVENT`(ID),
-    foreign key `FIELD_REPORT__REPORT_ENTRY___FIELD_REPORT_FK` (`EVENT`, FIELD_REPORT_NUMBER)
-        references FIELD_REPORT(`EVENT`, NUMBER),
-    foreign key `FR_REPORT_ENTRY_TO_REPORT_ENTRY` (REPORT_ENTRY)
+    foreign key `RRE_TO_EVENT` (`EVENT`) references `EVENT`(ID),
+    foreign key `RRE_TO_REPORT` (`EVENT`, REPORT_NUMBER)
+        references REPORT(`EVENT`, NUMBER),
+    foreign key `RRE_TO_REPORT_ENTRY` (REPORT_ENTRY)
         references REPORT_ENTRY(ID),
 
-    primary key (`EVENT`, FIELD_REPORT_NUMBER, REPORT_ENTRY)
+    primary key (`EVENT`, REPORT_NUMBER, REPORT_ENTRY)
 ) DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 

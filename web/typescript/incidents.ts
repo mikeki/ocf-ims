@@ -87,18 +87,18 @@ async function initIncidentsPage(): Promise<void> {
         return;
     }
     if (!ims.eventAccess!.readIncidents) {
-        // This is a janky way of recreating the old server-side redirect to the Field Reports page.
+        // This is a janky way of recreating the old server-side redirect to the Reports page.
         // The idea is that if the user is coming from the IMS home page and they don't have incidents
         // access, we should try to send them to FRs instead. If they're already within the scope of
         // the event, we should send them to the viewIncidents page and let them see the auth error.
-        if (ims.eventAccess!.writeFieldReports && document.referrer.indexOf(ims.urlReplace(url_viewEvent)) < 0) {
-            console.log("redirecting to Field Reports");
-            window.location.replace(ims.urlReplace(url_viewFieldReports));
+        if (ims.eventAccess!.writeReports && document.referrer.indexOf(ims.urlReplace(url_viewEvent)) < 0) {
+            console.log("redirecting to Reports");
+            window.location.replace(ims.urlReplace(url_viewReports));
             return;
         }
         ims.setErrorMessage(
             "You're not currently authorized to access Incidents for this event. " +
-            "You may be able to write Field Reports though. If you need access to " +
+            "You may be able to write Reports though. If you need access to " +
             "IMS Incidents while on-site, please get in touch with an on-duty " +
             "Operator. For post-event access, reach out to the tech cadre, at " +
             "ranger-tech-" + "" + "cadre" + "@burningman.org"
@@ -182,34 +182,34 @@ async function initIncidentsPage(): Promise<void> {
 
 
 //
-// Load event field reports and visits
+// Load event reports and visits
 //
 // Note that nothing from these data is displayed in the incidents table.
 // We do this fetch in order to make incidents searchable by text in their
-// attached field reports.
+// attached reports.
 
-let eventFieldReports: ims.FieldReportsByNumber|undefined = undefined;
+let eventReports: ims.ReportsByNumber|undefined = undefined;
 let eventVisits: ims.VisitsByNumber|undefined = undefined;
 
-async function loadEventFieldReports(): Promise<{err: string|null}> {
-    const {json, err} = await ims.fetchNoThrow<ims.FieldReport[]>(
-        ims.urlReplace(url_fieldReports + "?exclude_system_entries=true"), null,
+async function loadEventReports(): Promise<{err: string|null}> {
+    const {json, err} = await ims.fetchNoThrow<ims.Report[]>(
+        ims.urlReplace(url_reports + "?exclude_system_entries=true"), null,
     );
     if (err != null) {
-        const message = `Failed to load event field reports: ${err}`;
+        const message = `Failed to load event reports: ${err}`;
         console.error(message);
         ims.setErrorMessage(message);
         return {err: message};
     }
-    const reports: ims.FieldReportsByNumber = {};
+    const reports: ims.ReportsByNumber = {};
 
     for (const report of json!) {
         reports[report.number!] = report;
     }
 
-    eventFieldReports = reports;
+    eventReports = reports;
 
-    console.log("Loaded event field reports");
+    console.log("Loaded event reports");
     return {err: null};
 }
 
@@ -369,7 +369,7 @@ function initDataTables(tablePrereqs: Promise<void>): void {
                 // concurrently fetch the data needed for the table
                 await Promise.all([
                     tablePrereqs,
-                    loadEventFieldReports(),
+                    loadEventReports(),
                     loadEventVisits(),
                     ims.fetchNoThrow<ims.Incident[]>(
                         ims.urlReplace(url_incidents + "?exclude_system_entries=true"), null,
@@ -489,7 +489,7 @@ function renderSummary(_data: string|null, type: ims.RenderType, incident: ims.I
     switch (type) {
         case "display": {
             const maxDisplayLength = 250;
-            let summarized = ims.summarizeIncidentOrFR(incident);
+            let summarized = ims.summarizeIncidentOrReport(incident);
             if (summarized.length > maxDisplayLength) {
                 summarized = summarized.substring(0, maxDisplayLength - 3) + "...";
             }
@@ -497,11 +497,11 @@ function renderSummary(_data: string|null, type: ims.RenderType, incident: ims.I
             return DataTable.render.text().display(summarized) as string;
         }
         case "filter":
-            return ims.reportTextFromIncident(incident, eventFieldReports, eventVisits);
+            return ims.reportTextFromIncident(incident, eventReports, eventVisits);
         case "sort":
         case "type":
         case undefined:
-            return DataTable.render.text().display(ims.summarizeIncidentOrFR(incident)) as string;
+            return DataTable.render.text().display(ims.summarizeIncidentOrReport(incident)) as string;
         default:
             return undefined;
     }

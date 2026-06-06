@@ -220,7 +220,7 @@ values  (1, 1, 1748459852.644699, 3, 'dispatched', 1748459852.644699, 'Something
         (2, 1, 1748459852.644699, 3, 'dispatched', 1748459852.644699, 'Something bad 2026!', 'Dog Camp', null),
         (2, 2, 1748460242.68441, 3, 'new', 1748460242.68441, 'Report from the field 2026', null, null);
 
-insert into FIELD_REPORT (EVENT, NUMBER, CREATED, SUMMARY, INCIDENT_NUMBER)
+insert into REPORT (EVENT, NUMBER, CREATED, SUMMARY, INCIDENT_NUMBER)
 values  (1, 1, 1748460231.287398, 'Report from the field', 2);
 
 insert into REPORT_ENTRY (ID, AUTHOR, TEXT, CREATED, GENERATED, STRICKEN, ATTACHED_FILE)
@@ -245,7 +245,7 @@ Added Ranger: Abraham', 1748460242.688133, 1, 0, null),
         (16, 'Abraham', 'Added Ranger: Loosy', 1748460254.830443, 1, 0, null),
         (17, 'Abraham', 'Removed Ranger: Abraham', 1748460256.071517, 1, 0, null);
 
-insert into FIELD_REPORT__REPORT_ENTRY (EVENT, FIELD_REPORT_NUMBER, REPORT_ENTRY)
+insert into REPORT__REPORT_ENTRY (EVENT, REPORT_NUMBER, REPORT_ENTRY)
 values  (1, 1, 12),
         (1, 1, 13),
         (1, 1, 15);

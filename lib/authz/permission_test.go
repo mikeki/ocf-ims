@@ -26,9 +26,9 @@ import (
 var testAdmins = []string{"AdminCat", "AdminDog"}
 
 const (
-	readerPerm             = EventReadEventName | EventReadIncidents | EventReadOwnFieldReports | EventReadAllFieldReports | EventReadVisits | EventReadPlaces
-	writerPerm             = EventReadEventName | EventReadIncidents | EventWriteIncidents | EventReadAllFieldReports | EventReadOwnFieldReports | EventWriteAllFieldReports | EventWriteOwnFieldReports | EventReadVisits | EventWriteVisits | EventReadPlaces
-	reporterPerm           = EventReadEventName | EventReadOwnFieldReports | EventWriteOwnFieldReports | EventReadPlaces
+	readerPerm             = EventReadEventName | EventReadIncidents | EventReadOwnReports | EventReadAllReports | EventReadVisits | EventReadPlaces
+	writerPerm             = EventReadEventName | EventReadIncidents | EventWriteIncidents | EventReadAllReports | EventReadOwnReports | EventWriteAllReports | EventWriteOwnReports | EventReadVisits | EventWriteVisits | EventReadPlaces
+	reporterPerm           = EventReadEventName | EventReadOwnReports | EventWriteOwnReports | EventReadPlaces
 	visitWriterPerm        = EventReadEventName | EventReadVisits | EventWriteVisits | EventReadPlaces
 	authenticatedUserPerms = GlobalListEvents | GlobalReadIncidentTypes | GlobalReadPersonnel
 	adminGlobalPerms       = GlobalAdministrateEvents | GlobalAdministrateIncidentTypes | GlobalAdministrateDebugging | GlobalAdministratePlaces

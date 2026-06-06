@@ -16,37 +16,37 @@
 
 package template
 
-templ FieldReports(deployment, versionName, versionRef, eventName string) {
+templ Reports(deployment, versionName, versionRef, eventName string) {
 <!DOCTYPE html>
 <html lang="en">
-@Head("Field Reports | " + eventName, "field_reports.js", true, versionRef)
+@Head("Reports | " + eventName, "reports.js", true, versionRef)
 
 <body>
 <div class="container-fluid">
 @Header(deployment)
 @Nav(eventName)
-<h1 id="doc-title">Field Reports</h1>
+<h1 id="doc-title">Reports</h1>
 
 @ErrorInfo()
 
-    <!-- Help modal for field reports page -->
+    <!-- Help modal for reports page -->
     <div class="modal no-print" id="helpModal" tabindex="-1" aria-labelledby="helpModalLabel" aria-hidden="true">
       <div class="modal-dialog">
         <div class="modal-content">
           <div class="modal-header">
-            <p class="modal-title fs-5" id="helpModalLabel">Field Reports help</p>
+            <p class="modal-title fs-5" id="helpModalLabel">Reports help</p>
             <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close" />
           </div>
           <div class="modal-body">
             <p class="mt-2 mb-0">Keyboard shortcuts</p>
             <ul>
-              <li><code>n</code>: create (n)ew Field Report <br/></li>
+              <li><code>n</code>: create (n)ew Report <br/></li>
               <li><code>/</code>: jump to search field <br/><br/></li>
               <li><code>m</code>: (m)ulti-search <br/></li>
             </ul>
             <p class="mt-2 mb-0">In the search field</p>
             <ul>
-              <li>Type an FR number then press <code>⏎</code> to be redirected to that Field Report</li>
+              <li>Type a Report number then press <code>⏎</code> to be redirected to that Report</li>
               <li>Search by regular expression by enclosing a pattern with slashes, e.g. <code>/r.nger/</code> or <code>/\b(dog|cat)\b/</code></li>
               <li>All searches are case insensitive</li>
             </ul>
@@ -65,10 +65,10 @@ templ FieldReports(deployment, versionName, versionRef, eventName string) {
 
     <div class="row">
       <div id="button_container" class="col-sm-7">
-        <div class="btn-group new_field_report no-print">
-          <a href="./field_reports/new">
+        <div class="btn-group new_report no-print">
+          <a href="./reports/new">
             <button
-                    id="new_field_report"
+                    id="new_report"
                     type="button"
                     class="btn btn-sm btn-default btn-primary"
             >
@@ -88,19 +88,19 @@ templ FieldReports(deployment, versionName, versionRef, eventName string) {
         </button>
         <ul class="dropdown-menu">
           <li id="show_days_all">
-            <a href="#" class="name dropdown-item" onclick="frShowDays('all', true); return false;">All Days</a>
+            <a href="#" class="name dropdown-item" onclick="reportShowDays('all', true); return false;">All Days</a>
           </li>
           <li id="show_days_0">
-            <a href="#" class="name dropdown-item" onclick="frShowDays(0, true); return false;">Today</a>
+            <a href="#" class="name dropdown-item" onclick="reportShowDays(0, true); return false;">Today</a>
           </li>
           <li id="show_days_1">
-            <a href="#" class="name dropdown-item" onclick="frShowDays(1, true); return false;">Last 2 Days</a>
+            <a href="#" class="name dropdown-item" onclick="reportShowDays(1, true); return false;">Last 2 Days</a>
           </li>
           <li id="show_days_2">
-            <a href="#" class="name dropdown-item" onclick="frShowDays(2, true); return false;">Last 3 Days</a>
+            <a href="#" class="name dropdown-item" onclick="reportShowDays(2, true); return false;">Last 3 Days</a>
           </li>
           <li id="show_days_3">
-            <a href="#" class="name dropdown-item" onclick="frShowDays(3, true); return false;">Last 4 Days</a>
+            <a href="#" class="name dropdown-item" onclick="reportShowDays(3, true); return false;">Last 4 Days</a>
           </li>
         </ul>
         { }
@@ -114,16 +114,16 @@ templ FieldReports(deployment, versionName, versionRef, eventName string) {
         </button>
         <ul class="dropdown-menu">
           <li id="show_rows_all">
-            <a href="#" class="name dropdown-item" onclick="frShowRows('all', true); return false;">All Rows</a>
+            <a href="#" class="name dropdown-item" onclick="reportShowRows('all', true); return false;">All Rows</a>
           </li>
           <li id="show_rows_25">
-            <a href="#" class="name dropdown-item" onclick="frShowRows('25', true); return false;">25 Rows</a>
+            <a href="#" class="name dropdown-item" onclick="reportShowRows('25', true); return false;">25 Rows</a>
           </li>
           <li id="show_rows_50">
-            <a href="#" class="name dropdown-item" onclick="frShowRows('50', true); return false;">50 Rows</a>
+            <a href="#" class="name dropdown-item" onclick="reportShowRows('50', true); return false;">50 Rows</a>
           </li>
           <li id="show_rows_100">
-            <a href="#" class="name dropdown-item" onclick="frShowRows('100', true); return false;">100 Rows</a>
+            <a href="#" class="name dropdown-item" onclick="reportShowRows('100', true); return false;">100 Rows</a>
           </li>
           <li class="border-top">
             <a href="/ims/app/settings" class="name dropdown-item">Change default</a>
@@ -149,16 +149,16 @@ templ FieldReports(deployment, versionName, versionRef, eventName string) {
                   placeholder="Press &quot; ⁄ &quot; to search"
                   inputmode="latin"
                   autocomplete="off"
-                  aria-controls="field_reports_table"
+                  aria-controls="reports_table"
           />
         </div>
       </div>
     </div>
 
-    <table id="field_reports_table" class="table table-striped table-hover">
+    <table id="reports_table" class="table table-striped table-hover">
       <thead>
       <tr>
-        <th>FR#</th>
+        <th>Report#</th>
         <th>IMS#</th>
         <th>Created</th>
         <th>Summary</th>
@@ -167,7 +167,7 @@ templ FieldReports(deployment, versionName, versionRef, eventName string) {
       <tbody/>
       <tfoot>
       <tr>
-        <th>FR#</th>
+        <th>Report#</th>
         <th>IMS#</th>
         <th>Created</th>
         <th>Summary</th>

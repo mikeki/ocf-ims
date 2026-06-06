@@ -226,9 +226,9 @@ func AddToMux(
 		),
 	)
 
-	mux.Handle("GET /ims/api/events/{eventName}/field_reports",
+	mux.Handle("GET /ims/api/events/{eventName}/reports",
 		Adapt(
-			GetFieldReports{db, userStore, cfg.Core.Admins, attachmentsEnabled},
+			GetReports{db, userStore, cfg.Core.Admins, attachmentsEnabled},
 			RecoverFromPanic(),
 			RequireAuthN(jwter),
 			LogRequest(false, actionLogger, userStore),
@@ -236,9 +236,9 @@ func AddToMux(
 		),
 	)
 
-	mux.Handle("POST /ims/api/events/{eventName}/field_reports",
+	mux.Handle("POST /ims/api/events/{eventName}/reports",
 		Adapt(
-			NewFieldReport{db, userStore, es, cfg.Core.Admins},
+			NewReport{db, userStore, es, cfg.Core.Admins},
 			RecoverFromPanic(),
 			RequireAuthN(jwter),
 			LogRequest(true, actionLogger, userStore),
@@ -246,9 +246,9 @@ func AddToMux(
 		),
 	)
 
-	mux.Handle("GET /ims/api/events/{eventName}/field_reports/{fieldReportNumber}",
+	mux.Handle("GET /ims/api/events/{eventName}/reports/{reportNumber}",
 		Adapt(
-			GetFieldReport{db, userStore, cfg.Core.Admins, attachmentsEnabled},
+			GetReport{db, userStore, cfg.Core.Admins, attachmentsEnabled},
 			RecoverFromPanic(),
 			RequireAuthN(jwter),
 			LogRequest(false, actionLogger, userStore),
@@ -256,9 +256,9 @@ func AddToMux(
 		),
 	)
 
-	mux.Handle("POST /ims/api/events/{eventName}/field_reports/{fieldReportNumber}",
+	mux.Handle("POST /ims/api/events/{eventName}/reports/{reportNumber}",
 		Adapt(
-			EditFieldReport{db, userStore, es, cfg.Core.Admins},
+			EditReport{db, userStore, es, cfg.Core.Admins},
 			RecoverFromPanic(),
 			RequireAuthN(jwter),
 			LogRequest(true, actionLogger, userStore),
@@ -266,9 +266,9 @@ func AddToMux(
 		),
 	)
 
-	mux.Handle("GET /ims/api/events/{eventName}/field_reports/{fieldReportNumber}/attachments/{attachmentNumber}",
+	mux.Handle("GET /ims/api/events/{eventName}/reports/{reportNumber}/attachments/{attachmentNumber}",
 		Adapt(
-			GetFieldReportAttachment{db, userStore, cfg.AttachmentsStore, s3Client, cfg.Core.Admins},
+			GetReportAttachment{db, userStore, cfg.AttachmentsStore, s3Client, cfg.Core.Admins},
 			RecoverFromPanic(),
 			RequireAuthN(jwter),
 			LogRequest(true, actionLogger, userStore),
@@ -276,9 +276,9 @@ func AddToMux(
 		),
 	)
 
-	mux.Handle("POST /ims/api/events/{eventName}/field_reports/{fieldReportNumber}/attachments",
+	mux.Handle("POST /ims/api/events/{eventName}/reports/{reportNumber}/attachments",
 		Adapt(
-			AttachToFieldReport{db, userStore, es, cfg.AttachmentsStore, s3Client, cfg.Core.Admins},
+			AttachToReport{db, userStore, es, cfg.AttachmentsStore, s3Client, cfg.Core.Admins},
 			RecoverFromPanic(),
 			RequireAuthN(jwter),
 			LogRequest(true, actionLogger, userStore),
@@ -286,9 +286,9 @@ func AddToMux(
 		),
 	)
 
-	mux.Handle("POST /ims/api/events/{eventName}/field_reports/{fieldReportNumber}/report_entries/{reportEntryId}",
+	mux.Handle("POST /ims/api/events/{eventName}/reports/{reportNumber}/report_entries/{reportEntryId}",
 		Adapt(
-			EditFieldReportReportEntry{db, userStore, es, cfg.Core.Admins},
+			EditReportReportEntry{db, userStore, es, cfg.Core.Admins},
 			RecoverFromPanic(),
 			RequireAuthN(jwter),
 			LogRequest(true, actionLogger, userStore),

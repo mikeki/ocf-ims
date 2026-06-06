@@ -30,15 +30,15 @@ declare global {
     }
 }
 
-let fieldReport: ims.FieldReport|null = null;
+let report: ims.Report|null = null;
 
 //
 // Initialize UI
 //
 
 const el = {
-    fieldReportNumber: ims.typedElement("field_report_number", HTMLInputElement),
-    fieldReportSummary: ims.typedElement("field_report_summary", HTMLInputElement),
+    reportNumber: ims.typedElement("report_number", HTMLInputElement),
+    reportSummary: ims.typedElement("report_summary", HTMLInputElement),
     incidentNumber: ims.typedElement("incident_number", HTMLInputElement),
     incidentNumberLink: ims.typedElement("incident_number_link", HTMLAnchorElement),
     createIncident: ims.typedElement("create_incident", HTMLElement),
@@ -52,18 +52,18 @@ const el = {
     helpModal: ims.typedElement("helpModal", HTMLDivElement),
 };
 
-initFieldReportPage();
+initReportPage();
 
-async function initFieldReportPage(): Promise<void> {
+async function initReportPage(): Promise<void> {
     const initResult = await ims.commonPageInit();
     if (!initResult.authInfo.authenticated) {
         await ims.redirectToLogin();
         return;
     }
-    const canReadFieldReports = ims.eventAccess!.readIncidents || ims.eventAccess!.writeFieldReports;
-    if (!canReadFieldReports) {
+    const canReadReports = ims.eventAccess!.readIncidents || ims.eventAccess!.writeReports;
+    if (!canReadReports) {
         ims.setErrorMessage(
-            `You're not currently authorized to view Field Reports in Event "${ims.pathIds.eventName}".`
+            `You're not currently authorized to view Reports in Event "${ims.pathIds.eventName}".`
         );
         ims.hideLoadingOverlay();
         return;
@@ -77,21 +77,21 @@ async function initFieldReportPage(): Promise<void> {
     window.attachFile = attachFile;
     window.updateIncident = updateIncident;
 
-    await loadAndDisplayFieldReport();
+    await loadAndDisplayReport();
 
-    if (fieldReport == null) {
+    if (report == null) {
         return;
     }
 
     ims.hideLoadingOverlay();
 
-    // for a new field report
-    if (fieldReport.number == null) {
+    // for a new report
+    if (report.number == null) {
         // assume that Rangers without Incident access ought to see the instructions by default
         if (!ims.eventAccess?.readIncidents && !ims.eventAccess?.writeIncidents) {
             document.getElementById("fr-instructions")!.click();
         }
-        el.fieldReportSummary.focus();
+        el.reportSummary.focus();
     }
 
     // Warn the user if they're about to navigate away with unsaved text.
@@ -103,14 +103,14 @@ async function initFieldReportPage(): Promise<void> {
 
     ims.requestEventSourceLock();
 
-    ims.newFieldReportChannel().onmessage = async function (e: MessageEvent<ims.FieldReportBroadcast>): Promise<void> {
-        const number = e.data.field_report_number;
+    ims.newReportChannel().onmessage = async function (e: MessageEvent<ims.ReportBroadcast>): Promise<void> {
+        const number = e.data.report_number;
         const eventId = e.data.event_id;
         const updateAll = e.data.update_all;
 
-        if (updateAll || (eventId === ims.pathIds.eventName && number === ims.pathIds.fieldReportNumber)) {
-            console.log(`Got field report update. number = ${number}, update_all = ${updateAll}`);
-            await loadAndDisplayFieldReport();
+        if (updateAll || (eventId === ims.pathIds.eventName && number === ims.pathIds.reportNumber)) {
+            console.log(`Got report update. number = ${number}, update_all = ${updateAll}`);
+            await loadAndDisplayReport();
         }
     };
 
@@ -142,7 +142,7 @@ async function initFieldReportPage(): Promise<void> {
         if (e.key.toLowerCase() === "h") {
             el.historyCheckbox.click();
         }
-        // n --> new field report
+        // n --> new report
         if (e.key.toLowerCase() === "n") {
             (window.open("./new", '_blank') as Window).focus();
         }
@@ -165,43 +165,43 @@ async function initFieldReportPage(): Promise<void> {
 }
 
 //
-// Load field report
+// Load report
 //
 
-async function loadFieldReport(): Promise<{err: string|null}> {
+async function loadReport(): Promise<{err: string|null}> {
     let number: number|null;
-    if (fieldReport == null) {
+    if (report == null) {
         // First time here.  Use page JavaScript initial value.
-        number = ims.pathIds.fieldReportNumber??null;
+        number = ims.pathIds.reportNumber??null;
     } else {
         // We have an incident already.  Use that number.
-        number = fieldReport.number??null;
+        number = report.number??null;
     }
 
     if (number == null) {
-        fieldReport = {
+        report = {
             "number": null,
             "created": null,
         };
     } else {
-        const {json, err} = await ims.fetchNoThrow<ims.FieldReport>(
-            `${ims.urlReplace(url_fieldReports)}/${number}`, null);
+        const {json, err} = await ims.fetchNoThrow<ims.Report>(
+            `${ims.urlReplace(url_reports)}/${number}`, null);
         if (err != null) {
             ims.disableEditing();
-            const message = "Failed to load field report: " + err;
+            const message = "Failed to load report: " + err;
             console.error(message);
             ims.setErrorMessage(message);
             return {err: message};
         }
-        fieldReport = json;
+        report = json;
     }
     return {err: null};
 }
 
-async function loadAndDisplayFieldReport(): Promise<void> {
-    const {err} = await loadFieldReport();
+async function loadAndDisplayReport(): Promise<void> {
+    const {err} = await loadReport();
 
-    if (fieldReport == null || err != null) {
+    if (report == null || err != null) {
         console.log(err);
         ims.setErrorMessage(err??"");
         ims.hideLoadingOverlay();
@@ -213,12 +213,12 @@ async function loadAndDisplayFieldReport(): Promise<void> {
     drawIncident();
     drawSummary();
     ims.toggleShowHistory();
-    ims.drawReportEntries(fieldReport.report_entries??[]);
+    ims.drawReportEntries(report.report_entries??[]);
     ims.clearErrorMessage();
 
     el.reportEntryAdd.addEventListener("input", ims.reportEntryEdited);
 
-    if (ims.eventAccess?.writeFieldReports) {
+    if (ims.eventAccess?.writeReports) {
         ims.enableEditing();
     } else {
         ims.disableEditing();
@@ -233,25 +233,25 @@ async function updateIncident(el: HTMLInputElement): Promise<void> {
     // Only incident writers are allowed to attach/detach FRs from Incidents.
     if (!ims.eventAccess?.writeIncidents) {
         ims.controlHasError(el);
-        await loadAndDisplayFieldReport();
+        await loadAndDisplayReport();
         return;
     }
     let url: string|null = null;
-    if (fieldReport?.incident && el.value === "") {
-        // The FR is attached to an incident and the user wants to detach it.
+    if (report?.incident && el.value === "") {
+        // The Report is attached to an incident and the user wants to detach it.
         url = (
-            `${ims.urlReplace(url_fieldReports)}/${fieldReport.number}` +
-            `?action=detach&incident=${fieldReport.incident}`
+            `${ims.urlReplace(url_reports)}/${report.number}` +
+            `?action=detach&incident=${report.incident}`
         );
     } else {
-        // The user wants to attach the FR to an incident.
+        // The user wants to attach the Report to an incident.
         const incidentNumber = ims.parseInt10(el.value);
-        if (incidentNumber == null || !fieldReport || !fieldReport?.number) {
+        if (incidentNumber == null || !report || !report?.number) {
             ims.controlHasError(el);
             return;
         }
         url = (
-            `${ims.urlReplace(url_fieldReports)}/${fieldReport.number}` +
+            `${ims.urlReplace(url_reports)}/${report.number}` +
             `?action=attach&incident=${incidentNumber}`
         );
     }
@@ -264,7 +264,7 @@ async function updateIncident(el: HTMLInputElement): Promise<void> {
         return;
     }
     ims.controlHasSuccess(el);
-    await loadAndDisplayFieldReport();
+    await loadAndDisplayReport();
 }
 
 //
@@ -273,17 +273,17 @@ async function updateIncident(el: HTMLInputElement): Promise<void> {
 
 function drawTitle(): void {
     const eventSuffix = ims.pathIds.eventName != null ? ` | ${ims.pathIds.eventName}` : "";
-    document.title = `${ims.fieldReportAsString(fieldReport!)}${eventSuffix}`;
+    document.title = `${ims.reportAsString(report!)}${eventSuffix}`;
 }
 
 
 //
-// Populate field report number
+// Populate report number
 //
 
 function drawNumber(): void {
-    const number: number|string = fieldReport!.number??"(new)";
-    el.fieldReportNumber.value = number.toString();
+    const number: number|string = report!.number??"(new)";
+    el.reportNumber.value = number.toString();
 }
 
 //
@@ -292,13 +292,13 @@ function drawNumber(): void {
 
 function drawIncident(): void {
     el.incidentNumber.value = "";
-    // New Field Report. There can be no Incident
-    if (fieldReport!.number == null) {
+    // New Report. There can be no Incident
+    if (report!.number == null) {
         el.incidentNumber.placeholder = "(none)";
         return;
     }
     // If there's an attached Incident, then show a link to it
-    const incident = fieldReport!.incident;
+    const incident = report!.incident;
     if (incident != null) {
         const incidentURL = ims.urlReplace(url_viewIncidentNumber).replace("<number>", incident.toString());
         el.incidentNumber.value = incident.toString();
@@ -320,18 +320,18 @@ function drawIncident(): void {
 
 
 //
-// Populate field report summary
+// Populate report summary
 //
 
 function drawSummary(): void {
-    el.fieldReportSummary.placeholder = "One-line summary. **Pretty-please include an IMS# here**";
-    if (fieldReport!.summary) {
-        el.fieldReportSummary.value = fieldReport!.summary;
-        el.fieldReportSummary.placeholder = "";
+    el.reportSummary.placeholder = "One-line summary. **Pretty-please include an IMS# here**";
+    if (report!.summary) {
+        el.reportSummary.value = report!.summary;
+        el.reportSummary.placeholder = "";
         return;
     }
 
-    el.fieldReportSummary.value = ims.summarizeIncidentOrFR(fieldReport!);
+    el.reportSummary.value = ims.summarizeIncidentOrReport(report!);
 }
 
 
@@ -339,17 +339,17 @@ function drawSummary(): void {
 // Editing
 //
 
-async function frSendEdits(edits: ims.FieldReport): Promise<{err:string|null}> {
-    if (fieldReport == null) {
-        return {err: "fieldReport is null!"};
+async function reportSendEdits(edits: ims.Report): Promise<{err:string|null}> {
+    if (report == null) {
+        return {err: "report is null!"};
     }
-    const number = fieldReport.number;
-    let url = ims.urlReplace(url_fieldReports);
+    const number = report.number;
+    let url = ims.urlReplace(url_reports);
 
     if (number == null) {
-        // No fields are required for a new FR, nothing to do here
+        // No fields are required for a new Report, nothing to do here
     } else {
-        // We're editing an existing field report.
+        // We're editing an existing report.
         edits.number = number;
         url += `/${number}`;
     }
@@ -360,35 +360,35 @@ async function frSendEdits(edits: ims.FieldReport): Promise<{err:string|null}> {
     if (err != null) {
         const message = `Failed to apply edit: ${err}`;
         console.log(message);
-        await loadAndDisplayFieldReport();
+        await loadAndDisplayReport();
         ims.setErrorMessage(message);
         return {err: message};
     }
     if (number == null) {
-        // We created a new field report.
-        // We need to find out the created field report number so that
+        // We created a new report.
+        // We need to find out the created report number so that
         // future edits don't keep creating new resources.
 
-        const newNumber: string|null = resp?.headers.get("IMS-Field-Report-Number")??null;
+        const newNumber: string|null = resp?.headers.get("IMS-Report-Number")??null;
         // Check that we got a value back
         if (newNumber == null) {
-            return {err: "No IMS-Field-Report-Number header provided."};
+            return {err: "No IMS-Report-Number header provided."};
         }
 
         const newAsNumber = ims.parseInt10(newNumber);
         // Check that the value we got back is valid
         if (newAsNumber == null) {
-            return {err: "Non-integer IMS-Field-Report-Number header provided: " + newAsNumber};
+            return {err: "Non-integer IMS-Report-Number header provided: " + newAsNumber};
         }
 
-        // Store the new number in our field report object
-        ims.pathIds.fieldReportNumber = fieldReport.number = newAsNumber;
+        // Store the new number in our report object
+        ims.pathIds.reportNumber = report.number = newAsNumber;
 
         // Update browser history to update URL
         drawTitle();
         window.history.pushState(
             null, document.title,
-            `${ims.urlReplace(url_viewFieldReports)}/${newNumber}`
+            `${ims.urlReplace(url_viewReports)}/${newNumber}`
         );
 
         // Fetch auth info again with the newly updated URL, just to update
@@ -396,35 +396,35 @@ async function frSendEdits(edits: ims.FieldReport): Promise<{err:string|null}> {
         await ims.getAuthInfo();
     }
 
-    await loadAndDisplayFieldReport();
+    await loadAndDisplayReport();
     return {err: null};
 }
-ims.setSendEdits(frSendEdits);
+ims.setSendEdits(reportSendEdits);
 
 async function editSummary(): Promise<void> {
-    await ims.editFromElement(el.fieldReportSummary, "summary");
+    await ims.editFromElement(el.reportSummary, "summary");
 }
 
 //
-// Make a new incident and attach this Field Report to it
+// Make a new incident and attach this Report to it
 //
 
 async function makeIncident(): Promise<void> {
     // Create the new incident
     const incidentsURL = ims.urlReplace(url_incidents);
 
-    if (fieldReport == null) {
-        ims.setErrorMessage("fieldReport is null!");
+    if (report == null) {
+        ims.setErrorMessage("report is null!");
         return;
     }
 
     const authors: string[] = [];
-    if (fieldReport.report_entries) {
-        authors.push(fieldReport.report_entries[0]!.author??"null");
+    if (report.report_entries) {
+        authors.push(report.report_entries[0]!.author??"null");
     }
     const {resp, err} = await ims.fetchNoThrow(incidentsURL, {
         body:JSON.stringify({
-            "summary": fieldReport.summary,
+            "summary": report.summary,
             "ranger_handles": authors,
         }),
     });
@@ -439,36 +439,36 @@ async function makeIncident(): Promise<void> {
         ims.setErrorMessage("Failed to create incident: no IMS Incident Number provided");
         return;
     }
-    fieldReport.incident = ims.parseInt10(newNum);
+    report.incident = ims.parseInt10(newNum);
 
-    // Attach this FR to that new incident
+    // Attach this Report to that new incident
     const attachToIncidentUrl =
-        `${ims.urlReplace(url_fieldReports)}/${fieldReport.number}` +
-        `?action=attach&incident=${fieldReport.incident}`;
+        `${ims.urlReplace(url_reports)}/${report.number}` +
+        `?action=attach&incident=${report.incident}`;
     const {err: attachErr} = await ims.fetchNoThrow(attachToIncidentUrl, {
         body: JSON.stringify({}),
     });
     if (attachErr != null) {
         ims.disableEditing();
-        ims.setErrorMessage(`Failed to attach field report: ${attachErr}`);
+        ims.setErrorMessage(`Failed to attach report: ${attachErr}`);
         return;
     }
-    console.log("Created and attached to new incident " + fieldReport.incident);
-    await loadAndDisplayFieldReport();
+    console.log("Created and attached to new incident " + report.incident);
+    await loadAndDisplayReport();
 }
 
 
 // The success callback for a report entry strike call.
-async function frOnStrikeSuccess(): Promise<void> {
-    await loadAndDisplayFieldReport();
+async function reportOnStrikeSuccess(): Promise<void> {
+    await loadAndDisplayReport();
     ims.clearErrorMessage();
 }
-ims.setOnStrikeSuccess(frOnStrikeSuccess);
+ims.setOnStrikeSuccess(reportOnStrikeSuccess);
 
 async function attachFile(): Promise<void> {
-    if (ims.pathIds.fieldReportNumber == null) {
-        // Field Report doesn't exist yet.  Create it first.
-        const {err} = await frSendEdits({});
+    if (ims.pathIds.reportNumber == null) {
+        // Report doesn't exist yet.  Create it first.
+        const {err} = await reportSendEdits({});
         if (err != null) {
             return;
         }
@@ -480,8 +480,8 @@ async function attachFile(): Promise<void> {
         formData.append("imsAttachment", f);
     }
 
-    const attachURL = ims.urlReplace(url_fieldReportAttachments)
-        .replace("<field_report_number>", (ims.pathIds.fieldReportNumber??"").toString());
+    const attachURL = ims.urlReplace(url_reportAttachments)
+        .replace("<report_number>", (ims.pathIds.reportNumber??"").toString());
     const {err} = await ims.fetchNoThrow(attachURL, {
         body: formData
     });
@@ -492,5 +492,5 @@ async function attachFile(): Promise<void> {
     }
     ims.clearErrorMessage();
     el.attachFileInput.value = "";
-    await loadAndDisplayFieldReport();
+    await loadAndDisplayReport();
 }

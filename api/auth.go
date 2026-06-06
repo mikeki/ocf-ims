@@ -187,13 +187,13 @@ type GetAuthResponse struct {
 }
 
 type AccessForEvent struct {
-	EventID           int32 `json:"event_id"`
-	ReadIncidents     bool  `json:"readIncidents"`
-	WriteIncidents    bool  `json:"writeIncidents"`
-	WriteFieldReports bool  `json:"writeFieldReports"`
-	ReadVisits        bool  `json:"readVisits"`
-	WriteVisits       bool  `json:"writeVisits"`
-	AttachFiles       bool  `json:"attachFiles"`
+	EventID        int32 `json:"event_id"`
+	ReadIncidents  bool  `json:"readIncidents"`
+	WriteIncidents bool  `json:"writeIncidents"`
+	WriteReports   bool  `json:"writeReports"`
+	ReadVisits     bool  `json:"readVisits"`
+	WriteVisits    bool  `json:"writeVisits"`
+	AttachFiles    bool  `json:"attachFiles"`
 }
 
 func (action GetAuth) ServeHTTP(w http.ResponseWriter, req *http.Request) {
@@ -239,12 +239,12 @@ func (action GetAuth) getAuth(req *http.Request) (GetAuthResponse, *herr.HTTPErr
 				// user has no access.
 				resp.EventAccess = map[string]AccessForEvent{
 					eventName: {
-						ReadIncidents:     false,
-						WriteIncidents:    false,
-						WriteFieldReports: false,
-						ReadVisits:        false,
-						WriteVisits:       false,
-						AttachFiles:       false,
+						ReadIncidents:  false,
+						WriteIncidents: false,
+						WriteReports:   false,
+						ReadVisits:     false,
+						WriteVisits:    false,
+						AttachFiles:    false,
 					},
 				}
 				return resp, nil
@@ -258,13 +258,13 @@ func (action GetAuth) getAuth(req *http.Request) (GetAuthResponse, *herr.HTTPErr
 
 		resp.EventAccess = map[string]AccessForEvent{
 			eventName: {
-				EventID:           event.ID,
-				ReadIncidents:     eventPermissions[event.ID]&authz.EventReadIncidents != 0,
-				WriteIncidents:    eventPermissions[event.ID]&authz.EventWriteIncidents != 0,
-				WriteFieldReports: eventPermissions[event.ID]&(authz.EventWriteOwnFieldReports|authz.EventWriteAllFieldReports) != 0,
-				ReadVisits:        eventPermissions[event.ID]&authz.EventReadVisits != 0,
-				WriteVisits:       eventPermissions[event.ID]&authz.EventWriteVisits != 0,
-				AttachFiles:       action.attachmentsEnabled,
+				EventID:        event.ID,
+				ReadIncidents:  eventPermissions[event.ID]&authz.EventReadIncidents != 0,
+				WriteIncidents: eventPermissions[event.ID]&authz.EventWriteIncidents != 0,
+				WriteReports:   eventPermissions[event.ID]&(authz.EventWriteOwnReports|authz.EventWriteAllReports) != 0,
+				ReadVisits:     eventPermissions[event.ID]&authz.EventReadVisits != 0,
+				WriteVisits:    eventPermissions[event.ID]&authz.EventWriteVisits != 0,
+				AttachFiles:    action.attachmentsEnabled,
 			},
 		}
 	}

@@ -262,28 +262,28 @@ templ Incident(deployment, versionName, versionRef, eventName string) {
       </div>
     </div>
 
-    <!-- Attached field reports, linked incidents -->
+    <!-- Attached reports, linked incidents -->
 
     <div class="row py-2">
       <div class="col-sm-6">
         <div class="card">
-          <label class="control-label card-header">Attached Field Reports/Visits</label>
-          <ul id="attached_field_reports" class="list-group list-group-small card-body list-group-flush">
-            <template id="attached_field_report_li_template">
+          <label class="control-label card-header">Attached Reports/Visits</label>
+          <ul id="attached_reports" class="list-group list-group-small card-body list-group-flush">
+            <template id="attached_report_li_template">
               <li class="list-group-item ps-3 hidden">
                 <button class="badge btn btn-danger remove-badge float-end"
-                        onclick="detachFieldReport(this)">
+                        onclick="detachReport(this)">
                   X
                 </button>
               </li>
             </template>
           </ul>
-          <div id="attached_field_report_add_container" class="flex-input-container card-footer no-print">
-            <label for="attached_field_report_add" class="control-label">Add:</label>
+          <div id="attached_report_add_container" class="flex-input-container card-footer no-print">
+            <label for="attached_report_add" class="control-label">Add:</label>
             <select
-                    id="attached_field_report_add"
+                    id="attached_report_add"
                     class="form-control form-control-sm"
-                    onchange="attachFieldReport()"
+                    onchange="attachReport()"
             >
               <option value=""/>
             </select>
@@ -321,7 +321,7 @@ templ Incident(deployment, versionName, versionRef, eventName string) {
     <div class="row">
       <div class="col-sm-12">
         <div class="card">
-          <label class="control-label card-header">Entries from Incident and attached Field Reports/Visits</label>
+          <label class="control-label card-header">Entries from Incident and attached Reports/Visits</label>
           <div id="report_entry_well" class="card-body">
             <label class="control-label">
               <input id="history_checkbox" type="checkbox" onchange="toggleShowHistory()"/>

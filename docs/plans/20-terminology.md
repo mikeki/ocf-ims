@@ -229,6 +229,19 @@ lines inside incidents/reports/visits). After the rename:
   one genuinely ugly artifact. **Recommendation:** accept it (it's generated and
   rarely typed by hand); revisit only if it grates in review.
 
+> #### 📌 Deferred follow-up (post-fair): rename `ReportEntry` → `LogEntry`
+> Decided 2026-06-06 (after slice 2a shipped). The double-"report" in
+> `REPORT__REPORT_ENTRY` / `ReportReportEntry` is only awkward because the *log-line*
+> concept is still called "Report Entry." Renaming that concept to **`LogEntry`**
+> (`REPORT_ENTRY` → `LOG_ENTRY`, join tables `<PARENT>__REPORT_ENTRY` →
+> `<PARENT>__LOG_ENTRY`, JSON `report_entries` → `log_entries`, Go `ReportEntry` →
+> `LogEntry`) reads better and ends the collision (`REPORT__LOG_ENTRY`,
+> `ReportLogEntry`). **Not done now**: it's a *separate* entity rename touching
+> incidents, reports, AND visits (not in the original Phase-2 term mapping), so it's
+> a post-fair slice of its own — same vertical-rename template + migration as 2a,
+> plus the FK-rename gotcha (implicit `*_ibfk_*` auto-follow, explicit FKs need
+> manual drop/re-add). Group it with the other post-fair domain cleanups.
+
 ## How a deep rename works per entity (the template)
 
 Migration `29-from-28.sql` already did exactly this for **`STAY` → `VISIT`** and is
@@ -263,7 +276,7 @@ Sliced so each lands green and the beta can adopt completed slices incrementally
 
 | PR | Scope | Notes |
 |---|---|---|
-| **2a** | **Field Report → Report** (all layers) | First & largest single entity; exercises the full template. ~migration + sqlc + api + json + urls + ui + tests. |
+| **2a** | **Field Report → Report** (all layers) | ✅ **Done** (branch `feat/2a-field-report-to-report`). Migration `33-from-32.sql` (rename `FIELD_REPORT`/`FIELD_REPORT__REPORT_ENTRY` + `FIELD_REPORT_NUMBER`→`REPORT_NUMBER`, explicit `RRE_TO_*` FKs mirroring the STAY→VISIT precedent); `current.sql` v33; `queries.sql`; `json`/`api`/`urls`/`templ`/`ts` renamed (incl. `fr`/`FR` shorthand, the `IMS-Report-Number` header, and the `R#` attach sentinel); Playwright + integration tests updated. Migration integration test confirms the v6→v33 chain is byte-identical to `current.sql`. |
 | **2b** | **Ranger → Person/People** (first-class local entity) | Largest slice. Local `Person` table (replaces Clubhouse dependency); `RANGER_HANDLE` → `person_id` FK + `nickname`; `INCIDENT__RANGER`/`VISIT__RANGER` → "People Involved" with `ROLE`→`involvement`; `REPORT_ENTRY.AUTHOR` → `person_id`; `Ranger*` Go types → `Person*`; UI "Rangers" → "People Involved". May warrant its own sub-PRs (entity+table, then the FK migrations). Coordinates with Phase 4 on how People are sourced/created. |
 | **2c** | **Black Rock City → Oregon Country Fair** + branding strings | Mostly UI/config; low risk. |
 | **2d** | **Small terms** — Patrol, HQ, Participant, Camp | Bundle the low-count items; confirm OCF wording first. |

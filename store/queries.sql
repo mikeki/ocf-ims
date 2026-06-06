@@ -100,10 +100,10 @@ select
     ) as INCIDENT_TYPE_IDS,
     (
         select coalesce(json_arrayagg(irep.NUMBER), "[]")
-        from FIELD_REPORT irep
+        from REPORT irep
         where i.EVENT = irep.EVENT
           and i.NUMBER = irep.INCIDENT_NUMBER
-    ) as FIELD_REPORT_NUMBERS,
+    ) as REPORT_NUMBERS,
     (
         select coalesce(json_arrayagg(visit.NUMBER), "[]")
         from VISIT visit
@@ -125,10 +125,10 @@ select
     ) as INCIDENT_TYPE_IDS,
     (
         select coalesce(json_arrayagg(irep.NUMBER), "[]")
-        from FIELD_REPORT irep
+        from REPORT irep
         where i.EVENT = irep.EVENT
             and i.NUMBER = irep.INCIDENT_NUMBER
-    ) as FIELD_REPORT_NUMBERS,
+    ) as REPORT_NUMBERS,
     (
         select coalesce(json_arrayagg(visit.NUMBER), "[]")
         from VISIT visit
@@ -212,23 +212,23 @@ select sqlc.embed(it)
 from INCIDENT_TYPE it
 where it.ID = ?;
 
--- name: FieldReports :many
+-- name: Reports :many
 select sqlc.embed(fr)
-from FIELD_REPORT fr
+from REPORT fr
 where fr.EVENT = ?;
 
--- name: FieldReport :one
+-- name: Report :one
 select sqlc.embed(fr)
-from FIELD_REPORT fr
+from REPORT fr
 where fr.EVENT = ?
     and fr.NUMBER = ?;
 
--- name: FieldReports_ReportEntries :many
+-- name: Reports_ReportEntries :many
 select
-    irre.FIELD_REPORT_NUMBER,
+    irre.REPORT_NUMBER,
     sqlc.embed(re)
 from
-    FIELD_REPORT__REPORT_ENTRY irre
+    REPORT__REPORT_ENTRY irre
         join REPORT_ENTRY re
              on irre.REPORT_ENTRY = re.ID
 where
@@ -236,28 +236,28 @@ where
     and re.GENERATED <= ?
 ;
 
--- name: FieldReport_ReportEntries :many
+-- name: Report_ReportEntries :many
 select
     sqlc.embed(re)
 from
-    FIELD_REPORT__REPORT_ENTRY irre
+    REPORT__REPORT_ENTRY irre
         join REPORT_ENTRY re
              on irre.REPORT_ENTRY = re.ID
 where
     irre.EVENT = ?
-    and irre.FIELD_REPORT_NUMBER = ?
+    and irre.REPORT_NUMBER = ?
 ;
 
--- name: AttachFieldReportToIncident :exec
-update FIELD_REPORT
+-- name: AttachReportToIncident :exec
+update REPORT
 set INCIDENT_NUMBER = ?
 where EVENT = ? and NUMBER = ?
 ;
 
 -- This doesn't use "MAX" because sqlc can't figure out the type for aggregations :(.
--- name: NextFieldReportNumber :one
+-- name: NextReportNumber :one
 select NUMBER + 1 as NEXT_ID
-from FIELD_REPORT
+from REPORT
 where EVENT = ?
 union
 select 1
@@ -274,14 +274,14 @@ select 1
 order by 1 desc
 limit 1;
 
--- name: CreateFieldReport :exec
-insert into FIELD_REPORT (
+-- name: CreateReport :exec
+insert into REPORT (
     EVENT, NUMBER, CREATED, SUMMARY, INCIDENT_NUMBER
 )
 values (?, ?, ?, ?, ?);
 
--- name: UpdateFieldReport :exec
-update FIELD_REPORT
+-- name: UpdateReport :exec
+update REPORT
 set SUMMARY = ?, INCIDENT_NUMBER = ?
 where EVENT = ? and NUMBER = ?;
 
@@ -293,9 +293,9 @@ insert into REPORT_ENTRY (
    ?, ?, ?, ?, ?, ?, ?, ?
 );
 
--- name: AttachReportEntryToFieldReport :exec
-insert into FIELD_REPORT__REPORT_ENTRY (
-    EVENT, FIELD_REPORT_NUMBER, REPORT_ENTRY
+-- name: AttachReportEntryToReport :exec
+insert into REPORT__REPORT_ENTRY (
+    EVENT, REPORT_NUMBER, REPORT_ENTRY
 ) values (
     ?, ?, ?
 );
@@ -338,14 +338,14 @@ where ID IN (
         and REPORT_ENTRY = ?
 );
 
--- name: SetFieldReportReportEntryStricken :exec
+-- name: SetReportReportEntryStricken :exec
 update REPORT_ENTRY
 set STRICKEN = ?
 where ID IN (
     select REPORT_ENTRY
-    from FIELD_REPORT__REPORT_ENTRY
+    from REPORT__REPORT_ENTRY
     where EVENT = ?
-      and FIELD_REPORT_NUMBER = ?
+      and REPORT_NUMBER = ?
       and REPORT_ENTRY = ?
 );
 

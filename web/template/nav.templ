@@ -122,7 +122,7 @@ templ Nav(eventName string) {
         </li>
       </ul>
 
-      <!-- Links to Incidents, Field Reports, Visits for current event -->
+      <!-- Links to Incidents, Reports, Visits for current event -->
       <ul class="navbar-nav">
         <li class="nav-item">
           <a id="active-event-incidents"
@@ -134,13 +134,13 @@ templ Nav(eventName string) {
              href="">Incidents</a>
         </li>
         <li class="nav-item">
-          <a id="active-event-field-reports"
+          <a id="active-event-reports"
              if eventSet {
                class="nav-link"
              } else {
                class="nav-link hidden"
              }
-             href="">Field Reports</a>
+             href="">Reports</a>
         </li>
         <li class="nav-item">
           <a id="active-event-visits"

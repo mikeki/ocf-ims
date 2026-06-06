@@ -92,7 +92,7 @@ func TestEditIncidentReportEntry(t *testing.T) {
 	require.NoError(t, resp.Body.Close())
 }
 
-func TestEditFieldReportReportEntry(t *testing.T) {
+func TestEditReportReportEntry(t *testing.T) {
 	t.Parallel()
 	ctx := t.Context()
 
@@ -110,13 +110,13 @@ func TestEditFieldReportReportEntry(t *testing.T) {
 	require.NoError(t, resp.Body.Close())
 
 	// Use normal user to create a new FR
-	frReq := sampleFieldReport1(eventName)
-	entryReq := frReq.ReportEntries[0]
-	num := apisNonAdmin.newFieldReportSuccess(ctx, frReq)
-	frReq.Number = num
+	reportReq := sampleReport1(eventName)
+	entryReq := reportReq.ReportEntries[0]
+	num := apisNonAdmin.newReportSuccess(ctx, reportReq)
+	reportReq.Number = num
 
 	// Use normal user to fetch that FR from the API
-	retrievedFR, resp := apisNonAdmin.getFieldReport(ctx, eventName, num)
+	retrievedFR, resp := apisNonAdmin.getReport(ctx, eventName, num)
 	require.Equal(t, http.StatusOK, resp.StatusCode)
 	require.NoError(t, resp.Body.Close())
 	require.NotNil(t, retrievedFR)
@@ -126,12 +126,12 @@ func TestEditFieldReportReportEntry(t *testing.T) {
 
 	// Strike that report entry
 	reportEntry.Stricken = new(true)
-	resp = apisNonAdmin.updateFieldReportReportEntry(ctx, eventName, num, reportEntry)
+	resp = apisNonAdmin.updateReportReportEntry(ctx, eventName, num, reportEntry)
 	require.Equal(t, http.StatusNoContent, resp.StatusCode)
 	require.NoError(t, resp.Body.Close())
 
 	// Check that the striking worked
-	retrievedFR, resp = apisNonAdmin.getFieldReport(ctx, eventName, num)
+	retrievedFR, resp = apisNonAdmin.getReport(ctx, eventName, num)
 	require.Equal(t, http.StatusOK, resp.StatusCode)
 	require.NoError(t, resp.Body.Close())
 	require.NotNil(t, retrievedFR)
@@ -140,12 +140,12 @@ func TestEditFieldReportReportEntry(t *testing.T) {
 
 	// Unstrike that report entry
 	reportEntry.Stricken = new(false)
-	resp = apisNonAdmin.updateFieldReportReportEntry(ctx, eventName, num, reportEntry)
+	resp = apisNonAdmin.updateReportReportEntry(ctx, eventName, num, reportEntry)
 	require.Equal(t, http.StatusNoContent, resp.StatusCode)
 	require.NoError(t, resp.Body.Close())
 
 	// Check that the unstriking worked
-	retrievedFR, resp = apisNonAdmin.getFieldReport(ctx, eventName, num)
+	retrievedFR, resp = apisNonAdmin.getReport(ctx, eventName, num)
 	require.Equal(t, http.StatusOK, resp.StatusCode)
 	require.NoError(t, resp.Body.Close())
 	require.NotNil(t, retrievedFR)
@@ -154,7 +154,7 @@ func TestEditFieldReportReportEntry(t *testing.T) {
 
 	// If no Stricken value is provided, nothing happens
 	reportEntry.Stricken = nil
-	resp = apisNonAdmin.updateFieldReportReportEntry(ctx, eventName, num, reportEntry)
+	resp = apisNonAdmin.updateReportReportEntry(ctx, eventName, num, reportEntry)
 	require.Equal(t, http.StatusNoContent, resp.StatusCode)
 	require.NoError(t, resp.Body.Close())
 }

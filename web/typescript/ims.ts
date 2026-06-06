@@ -24,13 +24,13 @@ export let pathIds: {
     eventName: string|null,
     eventId: number|null,
     incidentNumber: number|null,
-    fieldReportNumber: number|null,
+    reportNumber: number|null,
     visitNumber: number|null,
 } = {
     eventName: null,
     eventId: null,
     incidentNumber: null,
-    fieldReportNumber: null,
+    reportNumber: null,
     visitNumber: null,
 };
 
@@ -55,7 +55,7 @@ function idsFromPath(): {
     eventName: string|null,
     eventId: number|null,
     incidentNumber:number|null,
-    fieldReportNumber: number|null,
+    reportNumber: number|null,
     visitNumber:number|null,
 } {
     const splits = window.location.pathname.split("/");
@@ -79,7 +79,7 @@ function idsFromPath(): {
         eventName: tokenAfter("events"),
         eventId: null,
         incidentNumber: parseInt10(tokenAfter("incidents")),
-        fieldReportNumber: parseInt10(tokenAfter("field_reports")),
+        reportNumber: parseInt10(tokenAfter("reports")),
         visitNumber: parseInt10(tokenAfter("visits")),
     };
 }
@@ -413,7 +413,7 @@ function renderCommonPageItems(authInfo: AuthInfo): void {
         hide(".if-admin");
     }
 
-    // Set the active event in the navbar, show "Incidents" and "Field Report" buttons
+    // Set the active event in the navbar, show "Incidents" and "Report" buttons
     const event: string|null = pathIds.eventName;
     if (event != null) {
         const eventLabel = document.getElementById("nav-event-id")!;
@@ -430,12 +430,12 @@ function renderCommonPageItems(authInfo: AuthInfo): void {
             }
         }
 
-        const activeEventFRs = document.getElementById("active-event-field-reports") as HTMLAnchorElement|null;
+        const activeEventFRs = document.getElementById("active-event-reports") as HTMLAnchorElement|null;
         if (activeEventFRs != null) {
-            activeEventFRs.href = urlReplace(url_viewFieldReports);
+            activeEventFRs.href = urlReplace(url_viewReports);
             activeEventFRs.classList.remove("hidden");
 
-            if (window.location.pathname.startsWith(urlReplace(url_viewFieldReports))) {
+            if (window.location.pathname.startsWith(urlReplace(url_viewReports))) {
                 activeEventFRs.classList.add("active");
             }
         }
@@ -581,7 +581,7 @@ export function stateForIncident(incident: Incident): IncidentState {
 
 
 // Return a summary for a given incident.
-export function summarizeIncidentOrFR(ifr: Incident|FieldReport): string {
+export function summarizeIncidentOrReport(ifr: Incident|Report): string {
     if (ifr.summary) {
         return ifr.summary;
     }
@@ -616,8 +616,8 @@ function incidentAuthor(incident: Incident): string {
 }
 
 
-// Get author for field report
-function fieldReportAuthor(report: FieldReport): string {
+// Get author for report
+function reportAuthor(report: Report): string {
     return incidentAuthor(report);
 }
 
@@ -627,16 +627,16 @@ export function incidentAsString(incident: Incident): string {
     if (incident.number == null) {
         return `New Incident`;
     }
-    return `#${incident.number} ${summarizeIncidentOrFR(incident)}`;
+    return `#${incident.number} ${summarizeIncidentOrReport(incident)}`;
 }
 
 
-// Render field report as a string
-export function fieldReportAsString(report: FieldReport): string {
+// Render report as a string
+export function reportAsString(report: Report): string {
     if (report.number == null) {
-        return `New Field Report`;
+        return `New Report`;
     }
-    return `FR #${report.number} (${fieldReportAuthor(report)}): ${summarizeIncidentOrFR(report)}`;
+    return `Report #${report.number} (${reportAuthor(report)}): ${summarizeIncidentOrReport(report)}`;
 }
 
 export function visitAsString(s: Visit): string {
@@ -648,8 +648,8 @@ export function visitAsString(s: Visit): string {
 
 // Return all user-entered report text for a given incident as a single string.
 export function reportTextFromIncident(
-    incidentFROrVisit: Incident|FieldReport|Visit,
-    eventFieldReports?: FieldReportsByNumber,
+    incidentFROrVisit: Incident|Report|Visit,
+    eventReports?: ReportsByNumber,
     eventVisits?: VisitsByNumber,
 ): string {
     const texts: string[] = [];
@@ -679,10 +679,10 @@ export function reportTextFromIncident(
         }
     }
 
-    // Incidents page loads all field reports for the event
-    if (eventFieldReports != null && "field_reports" in incidentFROrVisit) {
-        for (const reportNumber of incidentFROrVisit.field_reports??[]) {
-            const report: FieldReport = eventFieldReports[reportNumber]!;
+    // Incidents page loads all reports for the event
+    if (eventReports != null && "reports" in incidentFROrVisit) {
+        for (const reportNumber of incidentFROrVisit.reports??[]) {
+            const report: Report = eventReports[reportNumber]!;
             const reportText = reportTextFromIncident(report);
 
             texts.push(reportText);
@@ -764,21 +764,21 @@ export function renderIncidentNumber(incidentNumber: number|null, type: string, 
     }
 }
 
-export function renderFieldReportNumber(fieldReportNumber: number|null, type: string, _fieldReport: any): RenderValue {
+export function renderReportNumber(reportNumber: number|null, type: string, _report: any): RenderValue {
     switch (type) {
         case "display":
-            if (fieldReportNumber == null) {
+            if (reportNumber == null) {
                 return null;
             }
             const link = document.createElement("a");
-            link.href = urlReplace(url_viewFieldReportNumber).replace("<number>", fieldReportNumber.toString());
-            link.text = fieldReportNumber.toString();
+            link.href = urlReplace(url_viewReportNumber).replace("<number>", reportNumber.toString());
+            link.text = reportNumber.toString();
             return link;
         case "filter":
         case "type":
         case "sort":
         case undefined:
-            return fieldReportNumber;
+            return reportNumber;
         default:
             return undefined;
     }
@@ -971,7 +971,7 @@ function reportEntryElement(entry: ReportEntry): HTMLDivElement {
         entryContainer.classList.add("report_entry_user");
     }
 
-    if (entry.frNum || entry.visitNum) {
+    if (entry.reportNum || entry.visitNum) {
         entryContainer.classList.add("report_entry_merged");
     }
 
@@ -986,11 +986,11 @@ function reportEntryElement(entry: ReportEntry): HTMLDivElement {
         const entryStricken = entry.stricken!;
         if (pathIds.incidentNumber != null) {
             // we're on the incident page
-            if (entry.frNum) {
-                const entryMerged = entry.frNum;
-                // this is an entry from a field report, as shown on the incident page
+            if (entry.reportNum) {
+                const entryMerged = entry.reportNum;
+                // this is an entry from a report, as shown on the incident page
                 strikeContainer.onclick = async (_e: MouseEvent): Promise<void> => {
-                    await setStrikeFieldReportEntry(entryMerged, entryId, !entryStricken);
+                    await setStrikeReportEntry(entryMerged, entryId, !entryStricken);
                 }
             } else if (entry.visitNum) {
                 const entryMerged = entry.visitNum;
@@ -1005,11 +1005,11 @@ function reportEntryElement(entry: ReportEntry): HTMLDivElement {
                     await setStrikeIncidentEntry(incidentNum, entryId, !entryStricken);
                 }
             }
-        } else if (pathIds.fieldReportNumber != null) {
-            // we're on the field report page
-            const fieldReportNum = pathIds.fieldReportNumber;
+        } else if (pathIds.reportNumber != null) {
+            // we're on the report page
+            const reportNum = pathIds.reportNumber;
             strikeContainer.onclick = async (_e: MouseEvent): Promise<void> => {
-                await setStrikeFieldReportEntry(fieldReportNum, entryId, !entryStricken);
+                await setStrikeReportEntry(reportNum, entryId, !entryStricken);
             }
         } else if (pathIds.visitNumber != null) {
             // we're on the visit page
@@ -1035,12 +1035,12 @@ function reportEntryElement(entry: ReportEntry): HTMLDivElement {
 
     metaDataContainer.append(authorContainer);
 
-    if (entry.frNum) {
+    if (entry.reportNum) {
         metaDataContainer.append(" ");
 
         const link: HTMLAnchorElement = document.createElement("a");
-        link.textContent = "field report #" + entry.frNum;
-        link.href = `${urlReplace(url_viewFieldReports)}/${entry.frNum}`;
+        link.textContent = "report #" + entry.reportNum;
+        link.href = `${urlReplace(url_viewReports)}/${entry.reportNum}`;
 
         metaDataContainer.append("(via ", link, ")");
         metaDataContainer.classList.add("report_entry_source");
@@ -1069,29 +1069,29 @@ function reportEntryElement(entry: ReportEntry): HTMLDivElement {
         textContainer.textContent = paragraph;
         entryContainer.append(textContainer);
     }
-    if (entry.attachment?.name && (pathIds.incidentNumber || pathIds.fieldReportNumber || pathIds.visitNumber)) {
+    if (entry.attachment?.name && (pathIds.incidentNumber || pathIds.reportNumber || pathIds.visitNumber)) {
 
         let url: string = "";
-        if (pathIds.fieldReportNumber != null) {
-            // FR attachment on FR page
-            const frNum = (pathIds.fieldReportNumber??"wontHappen").toString();
-            url = urlReplace(url_fieldReportAttachmentNumber)
-                .replace("<field_report_number>", frNum)
+        if (pathIds.reportNumber != null) {
+            // Report attachment on Report page
+            const reportNum = (pathIds.reportNumber??"wontHappen").toString();
+            url = urlReplace(url_reportAttachmentNumber)
+                .replace("<report_number>", reportNum)
                 .replace("<attachment_number>", entry.id!.toString());
         } else if (pathIds.visitNumber != null) {
             // Visit attachment on visit page
             url = urlReplace(url_visitAttachmentNumber)
                 .replace("<visit_number>", pathIds.visitNumber.toString())
                 .replace("<attachment_number>", entry.id!.toString());
-        } else if (pathIds.incidentNumber != null && entry.frNum == null) {
+        } else if (pathIds.incidentNumber != null && entry.reportNum == null) {
             // incident attachment on incident page
             url = urlReplace(url_incidentAttachmentNumber)
                 .replace("<incident_number>", pathIds.incidentNumber.toString())
                 .replace("<attachment_number>", entry.id!.toString());
-        } else if (pathIds.incidentNumber != null && entry.frNum != null) {
-            // FR attachment on incident page
-            url = urlReplace(url_fieldReportAttachmentNumber)
-                .replace("<field_report_number>", entry.frNum.toString())
+        } else if (pathIds.incidentNumber != null && entry.reportNum != null) {
+            // Report attachment on incident page
+            url = urlReplace(url_reportAttachmentNumber)
+                .replace("<report_number>", entry.reportNum.toString())
                 .replace("<attachment_number>", entry.id!.toString());
         } else if (pathIds.incidentNumber != null && entry.visitNum != null) {
             // Visit attachment on incident page
@@ -1206,7 +1206,7 @@ export function reportEntryEdited(): void {
 
 // The error callback for a report entry strike call.
 // This function is designed to work from either the incident
-// or the field report page.
+// or the report page.
 function onStrikeError(err: string): void {
     const message = `Failed to set report entry strike status: ${err}`;
     console.log(message);
@@ -1214,7 +1214,7 @@ function onStrikeError(err: string): void {
 }
 
 // This is the function to call when a report entry is successfully stricken.
-// We need to be able to call either the incident.ts version or the field_report.ts
+// We need to be able to call either the incident.ts version or the report.ts
 // version, depending on the current page in scope. The ims.ts TypeScript file should
 // not depend on those files (lest there be a circular dependency), so we let those
 // files register their functions here instead.
@@ -1237,9 +1237,9 @@ async function setStrikeIncidentEntry(incidentNumber: number, reportEntryId: num
     }
 }
 
-async function setStrikeFieldReportEntry(fieldReportNumber: number, reportEntryId: number, strike: boolean): Promise<void> {
-    const url = urlReplace(url_fieldReport_reportEntry)
-        .replace("<field_report_number>", fieldReportNumber.toString())
+async function setStrikeReportEntry(reportNumber: number, reportEntryId: number, strike: boolean): Promise<void> {
+    const url = urlReplace(url_report_reportEntry)
+        .replace("<report_number>", reportNumber.toString())
         .replace("<report_entry_id>", reportEntryId.toString());
     const {err} = await fetchNoThrow(url, {
         body: JSON.stringify({"stricken": strike}),
@@ -1266,12 +1266,12 @@ async function setStrikeVisitEntry(visitNumber: number, reportEntryId: number, s
 }
 
 // This is the function to call when edits are being sent to the server.
-// We need to be able to call either the incident.ts version or the field_report.ts
+// We need to be able to call either the incident.ts version or the report.ts
 // version, depending on the current page in scope. The ims.ts TypeScript file should
 // not depend on those files (lest there be a circular dependency), so we let those
 // files register their functions here instead.
-let sendEditsFunc: ((edits: Incident|FieldReport)=>Promise<{err:string|null}>)|null = null;
-export function setSendEdits(func: ((edits: Incident|FieldReport)=>Promise<{err:string|null}>)): void {
+let sendEditsFunc: ((edits: Incident|Report)=>Promise<{err:string|null}>)|null = null;
+export function setSendEdits(func: ((edits: Incident|Report)=>Promise<{err:string|null}>)): void {
     sendEditsFunc = func;
 }
 
@@ -1366,9 +1366,9 @@ export function newIncidentChannel(): BroadcastChannelTyped<IncidentBroadcast> {
     const incidentChannelName = "incident_update";
     return new BroadcastChannel(incidentChannelName);
 }
-export function newFieldReportChannel(): BroadcastChannelTyped<FieldReportBroadcast> {
-    const fieldReportChannelName= "field_report_update";
-    return new BroadcastChannel(fieldReportChannelName);
+export function newReportChannel(): BroadcastChannelTyped<ReportBroadcast> {
+    const reportChannelName= "report_update";
+    return new BroadcastChannel(reportChannelName);
 }
 export function newVisitChannel(): BroadcastChannelTyped<VisitBroadcast> {
     const visitChannelName= "visit_update";
@@ -1451,7 +1451,7 @@ function subscribeToUpdates(closed: (_value?: undefined)=>void): void {
         }
         localStorage.setItem(lastSseIDKey, e.lastEventId);
         newIncidentChannel().postMessage({update_all: true});
-        newFieldReportChannel().postMessage({update_all: true});
+        newReportChannel().postMessage({update_all: true});
     });
 
     eventSource.addEventListener("Incident", function(e: MessageEvent<string>) {
@@ -1459,9 +1459,9 @@ function subscribeToUpdates(closed: (_value?: undefined)=>void): void {
         newIncidentChannel().postMessage(JSON.parse(e.data) as IncidentBroadcast);
     });
 
-    eventSource.addEventListener("FieldReport", function(e: MessageEvent<string>) {
+    eventSource.addEventListener("Report", function(e: MessageEvent<string>) {
         localStorage.setItem(lastSseIDKey, e.lastEventId);
-        newFieldReportChannel().postMessage(JSON.parse(e.data) as FieldReportBroadcast);
+        newReportChannel().postMessage(JSON.parse(e.data) as ReportBroadcast);
     });
 
     eventSource.addEventListener("Visit", function(e: MessageEvent<string>) {
@@ -1774,12 +1774,12 @@ export type Incident = {
     incident_type_ids?: number[]|null;
     location?: EventLocation|null;
     report_entries?: ReportEntry[]|null;
-    field_reports?: number[]|null;
+    reports?: number[]|null;
     visits?: number[]|null;
     linked_incidents?: LinkedIncident[]|null;
 }
 
-export type FieldReport = {
+export type Report = {
     event?: string|null;
     number?: number|null;
     created?: string|null;
@@ -1788,7 +1788,7 @@ export type FieldReport = {
     report_entries?: ReportEntry[]|null;
 }
 
-export type FieldReportsByNumber = Record<number, FieldReport>;
+export type ReportsByNumber = Record<number, Report>;
 export type VisitsByNumber = Record<number, Visit>;
 
 export type Visit = {
@@ -1845,7 +1845,7 @@ export interface ReportEntry {
     id?: number|null;
     created?: string|null;
     author?: string|null;
-    frNum?: number|null,
+    reportNum?: number|null,
     visitNum?: number|null,
     text?: string|null;
     system_entry?: boolean|null;
@@ -1981,7 +1981,7 @@ export type AuthInfoEventAccess = {
     event_id: number;
     readIncidents: boolean,
     writeIncidents: boolean,
-    writeFieldReports: boolean,
+    writeReports: boolean,
     readVisits: boolean,
     writeVisits: boolean,
     attachFiles: boolean,
@@ -2011,10 +2011,10 @@ export type IncidentBroadcast = {
     update_all?: boolean;
 }
 
-export type FieldReportBroadcast = {
+export type ReportBroadcast = {
     // fields from SSE
     event_id?: number|null;
-    field_report_number?: number|null;
+    report_number?: number|null;
     // additional fields for use in BroadcastChannel
     update_all?: boolean
 }
