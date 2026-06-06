@@ -612,9 +612,9 @@ limit 1;
 --
 -- Local people directory queries.
 --
--- These back the local (IMS-DB) implementation of directory.IUserStore, mirroring
--- the Clubhouse directory queries in directory/queries.sql but sourced from the
--- local PERSON/POSITION/TEAM tables. See docs/plans/31-local-people-directory.md.
+-- These back the local (IMS-DB) implementation of directory.IUserStore, sourced
+-- from the local PERSON/POSITION/TEAM tables. See
+-- docs/plans/31-local-people-directory.md and docs/plans/32-retire-clubhouse.md.
 --
 
 -- name: People :many

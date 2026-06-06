@@ -1,16 +1,17 @@
-# This docker-compose brings up a local live-reloading IMS server, IMS DB, and Clubhouse DB.
+# This docker-compose brings up a local live-reloading IMS server and IMS DB.
 #
 # `docker compose -f docker-compose.dev.yml up`
 #
 # Here's some helpful information:
 #
 # 1. The server will rebuild and restart on any code update, thanks to air.
-# 2. When the compose stack is first brought up, the IMS and Clubhouse databases
-#    will be created, DDLed to the latest schema, then seeded  with data for
-#    local development. Search for "docker-entrypoint-initdb.d" below for more info.
-# 3. If you ever want to delete one of those databases and start fresh, then you just
-#    need to delete ./.docker/mysql/data-clubhouse/ or ./.docker/mysql/data-ims/, and
-#    the stack will re-create and re-seed the databases when you next `docker compose up`.
+# 2. When the compose stack is first brought up, the IMS database will be created,
+#    DDLed to the latest schema, then seeded with data for local development
+#    (including the local PERSON directory). Search for "docker-entrypoint-initdb.d"
+#    below for more info.
+# 3. If you ever want to delete the database and start fresh, then you just need to
+#    delete ./.docker/mysql/data-ims/, and the stack will re-create and re-seed the
+#    database when you next `docker compose up`.
 
 services:
 
@@ -35,6 +36,10 @@ services:
     # 2. ./.env file, if present, which is overridden by
     # 3. The environment values here.
     environment:
+      # The user directory is the local IMS-DB PERSON table, seeded from
+      # store/fakeimsdb/seed.sql. See docs/plans/32-retire-clubhouse.md. Demo
+      # logins: Miguel / ShadowDancer / TeamMember (password == handle).
+      #
       # The bind-mounted /src often has a UID that doesn't match the in-container
       # user, which trips git's "dubious ownership" check and makes `go build`
       # fail with "error obtaining VCS status: exit status 128". Disable VCS
@@ -46,16 +51,6 @@ services:
       IMS_DB_PORT: "3306"
       IMS_DB_USER_NAME: "${IMS_DB_USER_NAME:-ims}"
       IMS_DB_PASSWORD: "${IMS_DB_PASSWORD:-ims}"
-      # Use the local IMS-DB people directory (seeded from store/fakeimsdb/seed.sql)
-      # instead of the external Clubhouse directory. See
-      # docs/plans/31-local-people-directory.md. Demo logins: Miguel / ShadowDancer /
-      # TeamMember (password == nickname). The Clubhouse DB below is left running but
-      # unused; set IMS_DIRECTORY=clubhousedb to switch back.
-      IMS_DIRECTORY: "${IMS_DIRECTORY:-local}"
-      IMS_DMS_HOSTNAME: "ranger-clubhouse-db:3306"
-      IMS_DMS_DATABASE: "${IMS_DMS_DATABASE:-rangers}"
-      IMS_DMS_USERNAME: "${IMS_DMS_USERNAME:-clubhouseuser}"
-      IMS_DMS_PASSWORD: "${IMS_DMS_PASSWORD:-clubhousepassword}"
     ports:
       # Override IMS_HOST_PORT to set the port mapping on the host.
       - "${IMS_HOST_PORT:-8090}:8080"
@@ -64,8 +59,6 @@ services:
       - maybloom-proxy
     depends_on:
       ims-db:
-        condition: service_healthy
-      clubhouse-db:
         condition: service_healthy
 
   ims-db:
@@ -82,26 +75,6 @@ services:
       - ./.docker/mysql/data-ims/:/var/lib/mysql
       - ./store/schema/current.sql:/docker-entrypoint-initdb.d/1.schema.sql
       - ./store/fakeimsdb/seed.sql:/docker-entrypoint-initdb.d/2.seed.sql
-    healthcheck:
-      test: [ "CMD", "healthcheck.sh", "--connect", "--innodb_initialized" ]
-      interval: 1s
-      timeout: 5s
-      retries: 10
-
-  clubhouse-db:
-    image: "mariadb:10.5.27"
-    container_name: "ranger-clubhouse-db"
-    environment:
-      MARIADB_DATABASE: "${IMS_DMS_DATABASE:-rangers}"
-      MARIADB_USER: "${IMS_DMS_USERNAME:-clubhouseuser}"
-      MARIADB_PASSWORD: "${IMS_DMS_PASSWORD:-clubhousepassword}"
-      MARIADB_RANDOM_ROOT_PASSWORD: "yes"
-    ports:
-      - "3306"
-    volumes:
-      - ./.docker/mysql/data-clubhouse/:/var/lib/mysql
-      - ./directory/schema/current.sql:/docker-entrypoint-initdb.d/1.schema.sql
-      - ./directory/fakeclubhousedb/seed.sql:/docker-entrypoint-initdb.d/2.seed.sql
     healthcheck:
       test: [ "CMD", "healthcheck.sh", "--connect", "--innodb_initialized" ]
       interval: 1s

@@ -5,7 +5,7 @@
 Parent plan: [`30-remove-clubhouse.md`](30-remove-clubhouse.md). Follows
 [`31-local-people-directory.md`](31-local-people-directory.md) (PR #1, merged as #16),
 which stood up the local `PERSON`/`POSITION`/`TEAM` model, the `person_id` re-key,
-and the `directory.IUserStore` seam with **two** backends (clubhouse + local). With
+and the `directory.UserStore` seam with **two** backends (clubhouse + local). With
 `local` directory mode now fully functional, this PR removes the external Clubhouse
 dependency entirely so the local IMS-DB people tables are the *only* directory.
 
@@ -25,13 +25,20 @@ exist:
 
 | Interface | Role | Fate |
 |---|---|---|
-| `personSource` | **backend seam** — where person data is fetched from (was clubhouse vs local) | **Kept** — now one impl (`localSource`), but it remains the extension point for a future alternate source (LDAP, an importer, etc.); a new source plugs in here and inherits `UserStore`'s caching for free. |
-| `IUserStore` | **consumer seam** — what the API handlers depend on | **Kept and adopted** — the ~50 handler fields + `authz.EventPermissions` migrate from concrete `*directory.UserStore` to the interface, so handlers can be unit-tested with an in-memory fake instead of a real MariaDB. |
+| `personSource` | **backend seam** — where person data is fetched from (was clubhouse vs local) | **Kept** — now one impl (`localPersonSource`), but it remains the extension point for a future alternate source (LDAP, an importer, etc.); a new source plugs in here and inherits the cached store's caching for free. |
+| `UserStore` (interface) | **consumer seam** — what the API handlers depend on | **Kept and adopted** — the ~50 handler fields + `authz.EventPermissions` migrate from the concrete store to the interface, so handlers can be unit-tested with an in-memory fake instead of a real MariaDB. |
 
 We are **not** collapsing these. The interface that abstracted over *real backends*
-(`clubhouseSource`/`localSource`) keeps its second purpose (future sources); the
-interface that abstracts the store *for tests* (`IUserStore`) finally earns its keep
-once consumers depend on it. (Decision 2026-06-06.)
+(`clubhouseSource`/`localPersonSource`) keeps its second purpose (future sources);
+the interface that abstracts the store *for tests* (`UserStore`) finally earns its
+keep once consumers depend on it. (Decision 2026-06-06.)
+
+**Naming (decided 2026-06-06):** adopt idiomatic Go — the *interface* gets the clean
+name and the implementation gets a qualifying name (cf. `io.Reader`/`bytes.Reader`).
+So PR #1's `IUserStore` interface becomes **`UserStore`**, the concrete cached store
+becomes **`cachedUserStore`** (unexported; `NewLocalUserStore` returns the `UserStore`
+interface), and the backend impl `localSource` becomes **`localPersonSource`**. The
+`I`-prefix (a C#/.NET convention) is dropped.
 
 ## Scope
 
@@ -44,16 +51,23 @@ once consumers depend on it. (Decision 2026-06-06.)
    - Generated/sql sources: `directory/clubhousedb/` (gitignored gen),
      `directory/queries.sql`, `directory/schema/`, `directory/fakeclubhousedb/`.
    - Remove the `clubhousedb` block from `sqlc.yaml`.
-2. **Migrate consumers to `directory.IUserStore`** — the handler `userStore` fields
+2. **Migrate consumers to `directory.UserStore`** — the handler `userStore` fields
    across `api/`, the `api/mux.go` `AddToMux` parameter, and the
    `authz.EventPermissions` parameter flip from `*directory.UserStore` to the
    interface. `personIDByHandle` already takes it.
 3. **Config / env / wiring**
    - `conf`: drop `DirectoryTypeClubhouseDB`, the `ClubhouseDB` struct, and
-     `Directory.ClubhouseDB`; default directory → `local`; simplify `Validate`.
-     Keep the `DirectoryType` selector (`local` default, `noop` retained) as the
-     future-source wiring point.
-   - `cmd/serveconfig.go`: drop the `IMS_DMS_*` env mappings.
+     `Directory.ClubhouseDB`; simplify `Validate`.
+   - **Remove the `DirectoryType` selector entirely** (decided 2026-06-06). With
+     Clubhouse gone, `cmd/serve.go` builds the local store unconditionally and never
+     reads the directory type, so the `IMS_DIRECTORY` env, the `DirectoryType` type +
+     `local`/`noop` consts, the `Directory.Directory` field, and its validation were
+     all vestigial — a knob whose only effect was validating itself. The real
+     extension seam for a future source is the `personSource` interface; a config
+     selector is cheap to re-add when a second backend actually exists. `Directory`
+     config shrinks to just `InMemoryCacheTTL`.
+   - `cmd/serveconfig.go`: drop the `IMS_DMS_*` and `IMS_DIRECTORY` env mappings
+     (keep `IMS_DIRECTORY_CACHE_TTL`).
    - `cmd/serve.go`: build the local store from `imsDBQ` (no clubhouse branch).
 4. **`api/integration` → local mode** — drop the Clubhouse container/goroutine; seed
    the IMS `PERSON`/`POSITION`/`TEAM`/membership tables (with the same argon2id
@@ -83,7 +97,7 @@ once consumers depend on it. (Decision 2026-06-06.)
 1. Delete the Clubhouse backend + `sqlc.yaml` block; `go run bin/build/build.go
    -generate-only` to confirm codegen still works without the directory schema.
 2. Remove Clubhouse config/env; fix `conf` + `serveconfig` tests.
-3. Migrate consumers + `EventPermissions` to `IUserStore`; simplify `cmd/serve.go`.
+3. Migrate consumers + `EventPermissions` to `UserStore`; simplify `cmd/serve.go`.
 4. Retire `DirectoryID()`; fix the two int64 sites.
 5. Convert `api/integration` to local mode; delete the clubhouse seed.
 6. Compose/docs cleanup.
@@ -104,7 +118,7 @@ once consumers depend on it. (Decision 2026-06-06.)
 
 - [ ] No `directory/clubhousedb`, `directory/queries.sql`, `directory/schema/`,
       `directory/fakeclubhousedb/`, or Clubhouse config/env/container remains.
-- [ ] `IUserStore` is the consumer-facing type; `personSource`/`localSource` kept.
+- [ ] `UserStore` is the consumer-facing interface; `personSource`/`localPersonSource` kept.
 - [ ] `api/integration` runs in local mode (one DB container); FK-seeding wart gone.
 - [ ] `DirectoryID()` retired in favor of `PersonID()`.
 - [ ] Build + `go test ./...` + `store/integration` + `api/integration` +

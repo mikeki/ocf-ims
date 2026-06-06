@@ -93,7 +93,7 @@ go tool tsgo
 >
 > | Generator | Output |
 > |---|---|
-> | sqlc | `store/imsdb/`, `directory/clubhousedb/` |
+> | sqlc | `store/imsdb/` |
 > | templ | `web/template/*_templ.go` |
 > | tsgo | `web/static/*.js` |
 >
@@ -138,21 +138,22 @@ The codebase follows a layered architecture:
 - **`api/`** - HTTP API handlers and middleware for the REST/JSON API
 - **`web/`** - Web UI handlers, templates (templ), TypeScript, and static assets
 - **`store/`** - Database layer for the IMS database (incidents, field reports, etc.)
-- **`directory/`** - User directory layer (Clubhouse DB or fake user store)
+- **`directory/`** - User directory layer (local IMS-DB-backed people store behind the `IUserStore` seam)
 - **`lib/`** - Reusable utilities (auth, logging, caching, formatting, etc.)
 - **`json/`** - JSON serialization types for the API
 
 ### Database Architecture
 
-The system uses **two separate databases**:
+The system uses a **single IMS database** (`store/` package) for both incident data
+and the people directory. The `directory/` package no longer owns its own database;
+it reads the local `PERSON`/`POSITION`/`TEAM` tables that live in the IMS schema (see
+`docs/plans/32-retire-clubhouse.md` — the external Clubhouse directory was retired).
 
-1. **IMS Database** (`store/` package) - Stores incident data, field reports, etc.
-2. **Directory Database** (`directory/` package) - User/personnel data (either ClubhouseDB or fake)
-
-Both use **sqlc** for type-safe SQL code generation:
-- SQL schemas: `store/schema/current.sql` and `directory/schema/current.sql`
-- SQL queries: `store/queries.sql` and `directory/queries.sql`
-- Generated Go code: `store/imsdb/` and `directory/clubhousedb/`
+The IMS database uses **sqlc** for type-safe SQL code generation:
+- SQL schema: `store/schema/current.sql`
+- SQL queries: `store/queries.sql` (incidents, field reports, **and** the local
+  people-directory queries)
+- Generated Go code: `store/imsdb/`
 
 ### Database Migrations
 
@@ -184,11 +185,11 @@ be left as-is.
 Configuration uses environment variables loaded from a `.env` file (copy from `.env.example`).
 
 Key configuration concepts:
-- **Directory types**: `fake` (test users from `directory/fakeclubhousedb/seed.sql`) or `ClubhouseDB` (real MariaDB)
+- **User directory**: always the local IMS-DB `PERSON` table (dev users seeded from `store/fakeimsdb/seed.sql`); there is no directory-type selector
 - **DB store types**: `MariaDB` (persistent storage) or `noop` (no-op for testing only)
 - **Attachments stores**: `local` (filesystem) or `s3` (AWS S3)
 
-To add demo/test users to the fake directory, use the `add-demo-user` repo skill at `.claude/skills/add-demo-user/SKILL.md` — it covers password hashing, the seed file edit, applying inserts to a live `clubhouse-db` container, and the 5-min user-cache TTL.
+To add demo/test users to the local directory, use the `add-demo-user` repo skill at `.claude/skills/add-demo-user/SKILL.md` — it covers password hashing, the seed file edit, applying inserts to a live `ims-db` container, and the 5-min user-cache TTL.
 
 ### API Structure
 
@@ -222,9 +223,11 @@ The project uses several code generators (all invoked by the build script):
 
 ### Directory/User Store Pattern
 
-The `directory.UserStore` provides user lookups with caching. It abstracts over either:
-- Real ClubhouseDB (production personnel database)
-- Fake ClubhouseDB (seeded test data for local dev)
+The `directory.UserStore` provides user lookups with caching behind the
+`directory.IUserStore` consumer interface. Its data comes from a pluggable
+`personSource`; today the only backend is `localSource` (the IMS-DB
+`PERSON`/`POSITION`/`TEAM` tables), but the seam is kept so a future alternate source
+can plug in and inherit the caching.
 
 ### Store Pattern
 
