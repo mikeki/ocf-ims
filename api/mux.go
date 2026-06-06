@@ -43,7 +43,7 @@ func AddToMux(
 	es *EventSourcerer,
 	cfg *conf.IMSConfig,
 	db *store.DBQ,
-	userStore *directory.UserStore,
+	userStore directory.UserStore,
 	s3Client *attachment.S3Client,
 	actionLogger *actionlog.Logger,
 ) *http.ServeMux {
@@ -565,7 +565,7 @@ func clientAddress(r *http.Request) string {
 	return addrPort.Addr().String()
 }
 
-func LogRequest(enable bool, actionLogger *actionlog.Logger, userStore *directory.UserStore) Adapter {
+func LogRequest(enable bool, actionLogger *actionlog.Logger, userStore directory.UserStore) Adapter {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			start := time.Now()
@@ -580,7 +580,7 @@ func LogRequest(enable bool, actionLogger *actionlog.Logger, userStore *director
 			jwtCtx, _ := r.Context().Value(JWTContextKey).(JWTContext)
 			if jwtCtx.Claims != nil {
 				username = conv.StringToSql(new(jwtCtx.Claims.RangerHandle()), 128)
-				userID = sql.NullInt64{Int64: jwtCtx.Claims.DirectoryID(), Valid: true}
+				userID = sql.NullInt64{Int64: int64(jwtCtx.Claims.PersonID()), Valid: true}
 				if posID := jwtCtx.Claims.RangerOnDutyPosition(); posID != nil {
 					positionID = sql.NullInt64{Int64: *posID, Valid: true}
 					positions, _, _ := userStore.GetPositionsAndTeams(r.Context())

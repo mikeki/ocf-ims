@@ -40,7 +40,7 @@ import (
 
 type GetIncidents struct {
 	imsDBQ             *store.DBQ
-	userStore          *directory.UserStore
+	userStore          directory.UserStore
 	imsAdmins          []string
 	attachmentsEnabled bool
 }
@@ -144,7 +144,7 @@ func (action GetIncidents) getIncidents(req *http.Request) (imsjson.Incidents, *
 
 type GetIncident struct {
 	imsDBQ             *store.DBQ
-	userStore          *directory.UserStore
+	userStore          directory.UserStore
 	imsAdmins          []string
 	attachmentsEnabled bool
 }
@@ -337,7 +337,7 @@ func addIncidentReportEntry(
 
 type NewIncident struct {
 	imsDBQ    *store.DBQ
-	userStore *directory.UserStore
+	userStore directory.UserStore
 	es        *EventSourcerer
 	imsAdmins []string
 }
@@ -809,7 +809,7 @@ func sliceSubtract[T comparable](a, b []T) []T {
 
 type EditIncident struct {
 	imsDBQ    *store.DBQ
-	userStore *directory.UserStore
+	userStore directory.UserStore
 	es        *EventSourcerer
 	imsAdmins []string
 }
@@ -857,7 +857,7 @@ func (action EditIncident) editIncident(req *http.Request) *herr.HTTPError {
 
 type AttachRangerToIncident struct {
 	imsDBQ    *store.DBQ
-	userStore *directory.UserStore
+	userStore directory.UserStore
 	es        *EventSourcerer
 	imsAdmins []string
 }
@@ -944,7 +944,7 @@ func (action AttachRangerToIncident) attachRanger(req *http.Request) *herr.HTTPE
 
 type DetachRangerFromIncident struct {
 	imsDBQ    *store.DBQ
-	userStore *directory.UserStore
+	userStore directory.UserStore
 	es        *EventSourcerer
 	imsAdmins []string
 }

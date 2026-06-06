@@ -112,7 +112,7 @@ func EventPermissions(
 	ctx context.Context,
 	eventID *int32, // nil for no event
 	imsDBQ *store.DBQ,
-	userStore *directory.UserStore,
+	userStore directory.UserStore,
 	imsAdmins []string,
 	claims IMSClaims,
 ) (eventPermissions map[int32]EventPermissionMask, globalPermissions GlobalPermissionMask, err error) {

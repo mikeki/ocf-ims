@@ -32,7 +32,7 @@ import (
 
 type EditReportReportEntry struct {
 	imsDBQ      *store.DBQ
-	userStore   *directory.UserStore
+	userStore   directory.UserStore
 	eventSource *EventSourcerer
 	imsAdmins   []string
 }
@@ -122,7 +122,7 @@ func (action EditReportReportEntry) editReportEntry(req *http.Request) *herr.HTT
 
 type EditIncidentReportEntry struct {
 	imsDBQ      *store.DBQ
-	userStore   *directory.UserStore
+	userStore   directory.UserStore
 	eventSource *EventSourcerer
 	imsAdmins   []string
 }
@@ -203,7 +203,7 @@ func (action EditIncidentReportEntry) editIncidentReportEntry(req *http.Request)
 
 type EditVisitReportEntry struct {
 	imsDBQ      *store.DBQ
-	userStore   *directory.UserStore
+	userStore   directory.UserStore
 	eventSource *EventSourcerer
 	imsAdmins   []string
 }

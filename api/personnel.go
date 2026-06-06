@@ -29,7 +29,7 @@ import (
 
 type GetPersonnel struct {
 	imsDBQ            *store.DBQ
-	userStore         *directory.UserStore
+	userStore         directory.UserStore
 	imsAdmins         []string
 	cacheControlShort time.Duration
 }

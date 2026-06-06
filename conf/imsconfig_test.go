@@ -37,12 +37,6 @@ func TestPrintRedacted(t *testing.T) {
 				Password: "db password",
 			},
 		},
-		Directory: conf.Directory{
-			ClubhouseDB: conf.ClubhouseDB{
-				Username: "clubhouse username",
-				Password: "clubhouse password",
-			},
-		},
 	}
 
 	redacted := cfg.PrintRedacted()
@@ -50,8 +44,6 @@ func TestPrintRedacted(t *testing.T) {
 	assert.Contains(t, redacted, "db username")
 	assert.NotContains(t, redacted, "db password")
 	assert.NotContains(t, redacted, "user password")
-	assert.Contains(t, redacted, "clubhouse username")
-	assert.NotContains(t, redacted, "clubhouse password")
 }
 
 func TestValidateBase(t *testing.T) {
@@ -73,25 +65,11 @@ func TestValidateDBStore(t *testing.T) {
 	require.Error(t, cfg.Validate())
 }
 
-func TestValidateDirectory(t *testing.T) {
-	t.Parallel()
-
-	cfg := conf.DefaultIMS()
-	cfg.Directory.Directory = "invalid type"
-	require.Error(t, cfg.Validate())
-}
-
 func TestValidateNonDevDeployment(t *testing.T) {
 	t.Parallel()
 
 	cfg := conf.DefaultIMS()
 	cfg.Core.Deployment = "not a valid deployment"
-	require.Error(t, cfg.Validate())
-
-	// non-dev deployment requires ClubhouseDB
-	cfg = conf.DefaultIMS()
-	cfg.Core.Deployment = conf.DeploymentTypeProduction
-	cfg.Directory.Directory = conf.DirectoryTypeNoOp
 	require.Error(t, cfg.Validate())
 
 	// non-dev deployment requires MariaDB store

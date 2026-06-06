@@ -32,7 +32,7 @@ import (
 
 type GetPlaces struct {
 	imsDBQ            *store.DBQ
-	userStore         *directory.UserStore
+	userStore         directory.UserStore
 	imsAdmins         []string
 	cacheControlShort time.Duration
 }
@@ -99,7 +99,7 @@ func (action GetPlaces) run(req *http.Request) (imsjson.Places, *herr.HTTPError)
 
 type UpdatePlaces struct {
 	imsDBQ            *store.DBQ
-	userStore         *directory.UserStore
+	userStore         directory.UserStore
 	imsAdmins         []string
 	cacheControlShort time.Duration
 }

@@ -44,7 +44,7 @@ const (
 
 type PostAuth struct {
 	imsDBQ               *store.DBQ
-	userStore            *directory.UserStore
+	userStore            directory.UserStore
 	jwtSecret            string
 	accessTokenDuration  time.Duration
 	refreshTokenDuration time.Duration
@@ -173,7 +173,7 @@ func (action PostAuth) postAuth(req *http.Request) (PostAuthResponse, *http.Cook
 
 type GetAuth struct {
 	imsDBQ             *store.DBQ
-	userStore          *directory.UserStore
+	userStore          directory.UserStore
 	jwtSecret          string
 	admins             []string
 	attachmentsEnabled bool
@@ -273,7 +273,7 @@ func (action GetAuth) getAuth(req *http.Request) (GetAuthResponse, *herr.HTTPErr
 
 type RefreshAccessToken struct {
 	imsDBQ              *store.DBQ
-	userStore           *directory.UserStore
+	userStore           directory.UserStore
 	jwtSecret           string
 	accessTokenDuration time.Duration
 }
@@ -313,7 +313,7 @@ func (action RefreshAccessToken) refreshAccessToken(req *http.Request) (RefreshA
 	}
 	var matchedPerson *directory.User
 	for _, ranger := range rangers {
-		if ranger.Handle == jwt.RangerHandle() && ranger.ID == jwt.DirectoryID() {
+		if ranger.Handle == jwt.RangerHandle() && ranger.ID == int64(jwt.PersonID()) {
 			matchedPerson = ranger
 			break
 		}

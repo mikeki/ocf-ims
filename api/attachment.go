@@ -50,7 +50,7 @@ const (
 
 type GetIncidentAttachment struct {
 	imsDBQ           *store.DBQ
-	userStore        *directory.UserStore
+	userStore        directory.UserStore
 	attachmentsStore conf.AttachmentsStore
 	s3Client         *attachment.S3Client
 	imsAdmins        []string
@@ -58,7 +58,7 @@ type GetIncidentAttachment struct {
 
 type AttachToIncident struct {
 	imsDBQ           *store.DBQ
-	userStore        *directory.UserStore
+	userStore        directory.UserStore
 	es               *EventSourcerer
 	attachmentsStore conf.AttachmentsStore
 	s3Client         *attachment.S3Client
@@ -67,7 +67,7 @@ type AttachToIncident struct {
 
 type GetReportAttachment struct {
 	imsDBQ           *store.DBQ
-	userStore        *directory.UserStore
+	userStore        directory.UserStore
 	attachmentsStore conf.AttachmentsStore
 	s3Client         *attachment.S3Client
 	imsAdmins        []string
@@ -75,7 +75,7 @@ type GetReportAttachment struct {
 
 type AttachToReport struct {
 	imsDBQ           *store.DBQ
-	userStore        *directory.UserStore
+	userStore        directory.UserStore
 	es               *EventSourcerer
 	attachmentsStore conf.AttachmentsStore
 	s3Client         *attachment.S3Client
@@ -84,7 +84,7 @@ type AttachToReport struct {
 
 type GetVisitAttachment struct {
 	imsDBQ           *store.DBQ
-	userStore        *directory.UserStore
+	userStore        directory.UserStore
 	attachmentsStore conf.AttachmentsStore
 	s3Client         *attachment.S3Client
 	imsAdmins        []string
@@ -92,7 +92,7 @@ type GetVisitAttachment struct {
 
 type AttachToVisit struct {
 	imsDBQ           *store.DBQ
-	userStore        *directory.UserStore
+	userStore        directory.UserStore
 	es               *EventSourcerer
 	attachmentsStore conf.AttachmentsStore
 	s3Client         *attachment.S3Client

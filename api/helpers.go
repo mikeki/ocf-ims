@@ -37,7 +37,7 @@ import (
 // personIDByHandle resolves a person's handle/nickname to their local person_id.
 // The web UI still addresses attached people by handle (the JSON/URL contract is
 // unchanged this PR), so attach/detach handlers translate handle -> person_id here.
-func personIDByHandle(ctx context.Context, userStore directory.IUserStore, handle string) (int32, *herr.HTTPError) {
+func personIDByHandle(ctx context.Context, userStore directory.UserStore, handle string) (int32, *herr.HTTPError) {
 	users, err := userStore.GetAllUsers(ctx)
 	if err != nil {
 		return 0, herr.InternalServerError("Failed to fetch personnel", err).From("[GetAllUsers]")
@@ -121,7 +121,7 @@ func getJwtCtx(req *http.Request) (JWTContext, *herr.HTTPError) {
 	return jwtCtx, nil
 }
 
-func getEventPermissions(req *http.Request, imsDBQ *store.DBQ, userStore *directory.UserStore, imsAdmins []string) (
+func getEventPermissions(req *http.Request, imsDBQ *store.DBQ, userStore directory.UserStore, imsAdmins []string) (
 	imsdb.Event, JWTContext, authz.EventPermissionMask, *herr.HTTPError,
 ) {
 	event, errHTTP := getEvent(req, req.PathValue("eventName"), imsDBQ)
@@ -139,7 +139,7 @@ func getEventPermissions(req *http.Request, imsDBQ *store.DBQ, userStore *direct
 	return event, jwtCtx, eventPermissions[event.ID], nil
 }
 
-func getGlobalPermissions(req *http.Request, imsDBQ *store.DBQ, userStore *directory.UserStore, imsAdmins []string) (
+func getGlobalPermissions(req *http.Request, imsDBQ *store.DBQ, userStore directory.UserStore, imsAdmins []string) (
 	JWTContext, authz.GlobalPermissionMask, *herr.HTTPError,
 ) {
 	empty := JWTContext{}
@@ -154,7 +154,7 @@ func getGlobalPermissions(req *http.Request, imsDBQ *store.DBQ, userStore *direc
 	return jwtCtx, globalPermissions, nil
 }
 
-func permissionsByEvent(ctx context.Context, jwtCtx JWTContext, imsDBQ *store.DBQ, userStore *directory.UserStore, imsAdmins []string) (
+func permissionsByEvent(ctx context.Context, jwtCtx JWTContext, imsDBQ *store.DBQ, userStore directory.UserStore, imsAdmins []string) (
 	map[int32]authz.EventPermissionMask, *herr.HTTPError,
 ) {
 	// This query doesn't know about parent groups. We'll start by accumulating EventAccesses directly referencing

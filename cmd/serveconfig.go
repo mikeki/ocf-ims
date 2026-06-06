@@ -90,9 +90,6 @@ func mustApplyEnvConfig(baseCfg *conf.IMSConfig, envFileName string) *conf.IMSCo
 	if v, ok := lookupEnv("IMS_ACTION_LOG_ENABLED"); ok {
 		baseCfg.Core.ActionLogEnabled = strings.EqualFold(v, "true")
 	}
-	if v, ok := lookupEnv("IMS_DIRECTORY"); ok {
-		baseCfg.Directory.Directory = conf.DirectoryType(strings.ToLower(v))
-	}
 	if v, ok := lookupEnv("IMS_ADMINS"); ok {
 		baseCfg.Core.Admins = strings.Split(v, ",")
 	}
@@ -117,18 +114,6 @@ func mustApplyEnvConfig(baseCfg *conf.IMSConfig, envFileName string) *conf.IMSCo
 	}
 	if v, ok := lookupEnv("IMS_DB_PASSWORD"); ok {
 		baseCfg.Store.MariaDB.Password = v
-	}
-	if v, ok := lookupEnv("IMS_DMS_HOSTNAME"); ok {
-		baseCfg.Directory.ClubhouseDB.Hostname = v
-	}
-	if v, ok := lookupEnv("IMS_DMS_DATABASE"); ok {
-		baseCfg.Directory.ClubhouseDB.Database = v
-	}
-	if v, ok := lookupEnv("IMS_DMS_USERNAME"); ok {
-		baseCfg.Directory.ClubhouseDB.Username = v
-	}
-	if v, ok := lookupEnv("IMS_DMS_PASSWORD"); ok {
-		baseCfg.Directory.ClubhouseDB.Password = v
 	}
 	if v, ok := lookupEnv("IMS_ATTACHMENTS_STORE"); ok {
 		baseCfg.AttachmentsStore.Type = conf.AttachmentsStoreType(v)
