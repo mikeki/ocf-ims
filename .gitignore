@@ -38,3 +38,7 @@ ims-attachments
 
 # the temp dir for `go tool air`
 air_tmp
+
+# Generated protobuf code — NOT committed. Produced by `go tool buf generate`
+# (also run by `go run bin/build/build.go` and in the Docker build + CI).
+/gen/

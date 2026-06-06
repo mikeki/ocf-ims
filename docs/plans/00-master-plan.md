@@ -26,7 +26,10 @@ This effort has two tracks that proceed together:
 2. **Platform track** ([`05-platform-stack.md`](05-platform-stack.md)) — evolve
    the *architecture* into a proto-first, Connect-RPC, `pnpm` polyglot monorepo
    with an Expo (iOS/Android/web) interface, **keeping the Go backend**. Proto
-   becomes the typed API contract; the new interface is built on top of it.
+   becomes the typed API contract; the new interface is built on top of it. The
+   **proto contract** part has begun ahead of the rest —
+   [`07-proto-integration.md`](07-proto-integration.md); the interface and
+   workspace restructure remain post-event (see sequencing below).
 
 They interact: notably, the Expo interface may eventually **replace the
 server-rendered `templ` web UI**, which affects how much domain-track UI work we
@@ -56,11 +59,22 @@ Order of work:
 3. **Go workspace restructure** ([`06-go-workspace-restructure.md`](06-go-workspace-restructure.md))
    — **deferred to after the event.** Mechanical and behavior-preserving; doing it
    later re-touches a more-diverged tree but is still straightforward.
-4. **Platform track P0→P4** (proto + Connect + Expo interface) — **after the
-   event**. Replaces the `templ` web UI later, not for this beta.
+4. **Proto-first API contract** ([`07-proto-integration.md`](07-proto-integration.md),
+   platform P0–P2) — **pulled forward (in progress).** A revision of the original
+   "whole platform track waits" call. Rationale: the Phase 2 terminology rename
+   breaks the JSON/HTTP contract *anyway* and the API is web-UI-only, so defining
+   the renamed/new surface once in proto avoids doing the contract twice. It's
+   **additive** — Connect runs alongside the existing REST/`templ` path and does
+   **not** touch the beta UI — so it doesn't threaten the deadline. Generated code
+   is not committed; it's produced at build time.
+5. **Platform track P3→P4** (Expo interface + the rest) — **after the event.** The
+   cross-platform interface replaces the `templ` web UI later, not for this beta.
+   The **workspace restructure** (item 3) also stays post-event.
 
 Rule of thumb for the next 4 weeks: **anything that doesn't make the beta better
-or safer waits** — including the restructure and the whole platform track.
+or safer waits** — with one deliberate exception: the **proto *contract*** (item 4),
+which is pulled forward precisely because it makes the unavoidable terminology
+contract-break cheaper. The **interface** and **restructure** still wait.
 
 ## 2. Guiding principles
 
