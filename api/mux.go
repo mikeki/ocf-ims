@@ -29,6 +29,7 @@ import (
 
 	"github.com/burningmantech/ranger-ims-go/conf"
 	"github.com/burningmantech/ranger-ims-go/directory"
+	"github.com/burningmantech/ranger-ims-go/gen/ocf/ims/v1/imsv1connect"
 	"github.com/burningmantech/ranger-ims-go/lib/attachment"
 	"github.com/burningmantech/ranger-ims-go/lib/authz"
 	"github.com/burningmantech/ranger-ims-go/lib/conv"
@@ -159,6 +160,25 @@ func AddToMux(
 	mux.Handle("GET /ims/api/events/{eventName}/incidents/{incidentNumber}",
 		Adapt(
 			GetIncident{db, userStore, cfg.Core.Admins, attachmentsEnabled},
+			RecoverFromPanic(),
+			RequireAuthN(jwter),
+			LogRequest(false, actionLogger, userStore),
+			LimitRequestBytes(cfg.Core.MaxRequestBytes),
+		),
+	)
+
+	// Proto-first Connect IncidentService (read-only for now), running alongside
+	// the REST incident routes above (strangler pattern; see
+	// docs/plans/07-proto-integration.md). It reuses the same store and authz, and
+	// we wrap it in the same middleware stack so auth/logging/panic-recovery behave
+	// identically to REST. NewIncidentServiceHandler returns the RPC path prefix
+	// ("/ocf.ims.v1.IncidentService/"); Connect dispatches the individual methods.
+	incidentRPCPath, incidentRPCHandler := imsv1connect.NewIncidentServiceHandler(
+		IncidentRPC{db, userStore, cfg.Core.Admins, attachmentsEnabled},
+	)
+	mux.Handle(incidentRPCPath,
+		Adapt(
+			incidentRPCHandler,
 			RecoverFromPanic(),
 			RequireAuthN(jwter),
 			LogRequest(false, actionLogger, userStore),
