@@ -70,6 +70,12 @@ jobs:
       - name: Fetch external build dependencies
         run: go run bin/fetchbuilddeps/fetchbuilddeps.go
 
+      - name: Generate protobuf code
+        # gen/ is not committed; pre-commit's golangci-lint/govulncheck compile ./...
+        env:
+          DO_NOT_TRACK: "1"
+        run: go tool buf generate
+
       - name: Install Python
         uses: actions/setup-python@v6
         with:
@@ -122,6 +128,13 @@ jobs:
 
       - name: Fetch external build dependencies
         run: go run bin/fetchbuilddeps/fetchbuilddeps.go
+
+      - name: Generate protobuf code
+        # gen/ is intentionally not committed, so it must be generated before
+        # `go test ./...` can compile any package that imports it.
+        env:
+          DO_NOT_TRACK: "1"
+        run: go tool buf generate
 
       # TODO: maybe install sqlc, templ, and tsc code generation
       #  here as well. They would add some additional build time
