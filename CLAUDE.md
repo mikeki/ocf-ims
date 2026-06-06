@@ -86,7 +86,16 @@ go tool templ generate
 
 # Generate JavaScript from TypeScript
 go tool tsgo
+
+# Generate Go + Connect-Go from the proto contract (proto/ -> gen/)
+go tool buf generate
 ```
+
+> **Generated proto code is NOT committed.** Unlike sqlc/templ/tsgo output (which
+> is checked in), the protobuf output under `gen/` is git-ignored and produced by
+> `go tool buf generate` (also run by `go run bin/build/build.go`, the Docker
+> build, and CI). After a fresh clone, run the build script — or `go tool buf
+> generate` — before any code that imports `gen/...` will compile.
 
 ### Linting
 

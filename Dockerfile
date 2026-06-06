@@ -26,6 +26,12 @@ RUN go run ./bin/fetchbuilddeps/fetchbuilddeps.go
 # See https://pkg.go.dev/debug/buildinfo#BuildInfo
 COPY ./ ./
 
+# Generate protobuf code (Go + Connect-Go). It is intentionally not committed
+# to the repo, so it must be generated here before the build. Uses local
+# go-tool plugins (pinned in go.mod) — hermetic, no remote plugin calls.
+ENV DO_NOT_TRACK=1
+RUN go tool buf generate
+
 # Build the server
 RUN CGO_ENABLED=0 GOOS=linux go build -o /app/ranger-ims-go
 
