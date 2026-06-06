@@ -13,6 +13,9 @@ tmp_dir = "air_tmp"
     "ims-attachments",
     ".git",
     ".idea",
+    # Generated buf output (proto). Like the other generated outputs below, it's
+    # produced by the build cmd; exclude it so regeneration doesn't loop rebuilds.
+    "gen",
   ]
   exclude_file = [
     "compose.ranger-ims-go",

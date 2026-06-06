@@ -65,8 +65,9 @@ Order of work:
    breaks the JSON/HTTP contract *anyway* and the API is web-UI-only, so defining
    the renamed/new surface once in proto avoids doing the contract twice. It's
    **additive** — Connect runs alongside the existing REST/`templ` path and does
-   **not** touch the beta UI — so it doesn't threaten the deadline. Generated code
-   is not committed; it's produced at build time.
+   **not** touch the beta UI — so it doesn't threaten the deadline. This effort also
+   established the repo-wide convention that **no generated code is committed** — all
+   of sqlc/templ/tsgo/buf output is produced at build time (`build.go -generate-only`).
 5. **Platform track P3→P4** (Expo interface + the rest) — **after the event.** The
    cross-platform interface replaces the `templ` web UI later, not for this beta.
    The **workspace restructure** (item 3) also stays post-event.

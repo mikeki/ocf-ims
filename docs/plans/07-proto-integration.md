@@ -1,7 +1,7 @@
 # Proto Integration: proto-first API contract (buf + Connect-Go)
 
-> **Status:** Pipeline ✅ shipped (PR #8, branch `feat/proto-pipeline`); the
-> generate-at-build-for-everything follow-up is **TODO** (next PR off this branch).
+> **Status:** Pipeline ✅ shipped (PR #8); generate-at-build extended to **all four
+> generators** ✅ (branch `feat/generate-at-build`). Next: first Connect handler.
 > &nbsp;·&nbsp; **Parent:** [05-platform-stack.md](05-platform-stack.md)
 > &nbsp;·&nbsp; **Last updated:** 2026-06-05
 
@@ -74,48 +74,47 @@ steps are in place for the first handler that does.
 | PI5 | Transport rollout | ✅ **Connect alongside REST** (strangler) | No rip-and-replace; the interface can adopt endpoints incrementally. |
 | PI6 | Repo layout | ✅ **Current layout, single module** | Proto added without the [06](06-go-workspace-restructure.md) restructure; `gen/` later moves to `go/gen/` per platform §2. |
 
-## Follow-up (TODO) — generate-at-build for *everything*
+## Follow-up ✅ — generate-at-build for *everything* (branch `feat/generate-at-build`)
 
-> **Scope of the next PR off this branch. Not started — plan only.**
+> **Shipped.** PI3's inconsistency is resolved: **all four generators are now
+> generate-at-build**, no generated code in the tree.
 
-PI3 currently creates an inconsistency: **proto output is generated-at-build, but
-sqlc/templ/tsgo output is still committed.** The goal is one convention — *no
-generated code in the tree* — applied to all four generators.
+**Generators moved out of VCS** (50 files untracked):
+- **sqlc** → `store/imsdb/`, `directory/clubhousedb/` ✅
+- **templ** → `web/template/*_templ.go` ✅
+- **tsgo** → `web/static/*.js` ✅
+- **buf** → `gen/` *(already done in PR #8)*
 
-**Generators to move out of VCS:**
-- **sqlc** → `store/imsdb/`, `directory/clubhousedb/`
-- **templ** → `web/**/*_templ.go`
-- **tsgo** → `web/static/*.js`
-- **buf** → `gen/` *(already done)*
+**What changed:**
+1. `.gitignore` extended to all four outputs; the 50 previously-committed files
+   `git rm --cached`'d (kept on disk, removed from VCS).
+2. **One entrypoint**: `bin/build/build.go` gained a `-generate-only` flag that runs
+   the existing parallel generator errgroup (sqlc/templ/tsgo/buf + fetchbuilddeps)
+   and skips the final `go build`. Every caller uses it:
+   - **Docker** — `RUN go run bin/build/build.go -generate-only` before the
+     cross-compile `go build`.
+   - **CI** — one "Generate code (sqlc, templ, tsgo, buf)" step in both the `build`
+     job (before `go test`) and the `lint` job (before pre-commit), replacing the
+     prior buf-only + separate fetch-deps steps. `DO_NOT_TRACK=1` set on both.
+   - **Local** — `go run bin/build/build.go` (full) or `-generate-only`.
+3. **Pre-commit**: per decision, generation is **not** a hook — it's an explicit CI
+   step before `pre-commit run --all-files`, matching how buf was handled. The
+   compiling hooks (`golangci-lint`, `govulncheck`, `go-vet`) see generated code
+   because the generate step precedes them. File-content hooks
+   (`prepend-license`/`end-of-file-fixer`/`trailing-whitespace`) never touch the
+   generated files — they're untracked, confirmed. Removed the stale `cicd.yml` TODO.
+4. `CLAUDE.md` updated: a fresh clone must run generate before anything compiles.
 
-**Work involved:**
-1. Git-ignore + untrack the three remaining generated outputs.
-2. Ensure each is produced before compile in **all** paths: Docker build, CI
-   (`build` + `lint`/pre-commit jobs), local (`build.go` already runs all four).
-3. Resolve pre-commit interactions: hooks that compile (`golangci-lint`,
-   `govulncheck`) need generated code present; file-content hooks
-   (`prepend-license`, `end-of-file-fixer`, `trailing-whitespace`) must not touch
-   generated files — they're untracked, so this should fall out for free, but
-   verify. Remove the stale `cicd.yml` TODO ("maybe install sqlc, templ, and tsc
-   code generation here") once these run in CI.
-4. Confirm `go tool air` live-reload still regenerates appropriately.
-5. Confirm IDE/editor experience: a fresh clone needs one generate run before
-   packages resolve — document prominently in `CLAUDE.md`/`README`.
+**Verified:** wiped all generated outputs, ran `-generate-only` from scratch, then
+`go build ./...` + `go vet ./...` green; all outputs confirmed git-ignored.
 
-**Why it's a separate PR:** it changes the build/CI contract for the *whole*
-codebase (not just proto), adds build time to CI (building sqlc/templ/tsgo from
-source there), and touches the developer onboarding flow. Worth isolating so it can
-be reviewed and reverted independently of the proto pipeline.
-
-**Risks / open questions:**
-- **CI build time** — compiling four generators from the module cache on every CI
-  run. Measure; consider caching the `go tool` builds.
-- **CI egress** — `buf generate` under the hardened-runner allow-list is unverified
-  locally (Go fetches use the allowed proxy; local plugins make no remote calls). If
-  it trips, add the needed host or pre-build the tool. Same caution applies if other
-  tools phone home.
-- **Pre-commit `--all-files`** runs in the `lint` job; make sure generate precedes
-  the compiling hooks there too.
+**Residual risks to watch (first CI run):**
+- **CI build time** — four generators compiled from the module cache each run
+  (sqlc dominates, ~24s locally). Measure; consider caching the `go tool` builds.
+- **CI egress** — generators run under the hardened-runner allow-list. Go fetches
+  use the allowed proxy; local plugins make no remote calls; fetchbuilddeps hits
+  jsdelivr/jquery/datatables (already allow-listed in both jobs); buf has
+  `DO_NOT_TRACK=1`. Watch for any new host.
 
 ## Roadmap (after this branch)
 
@@ -136,5 +135,6 @@ be reviewed and reverted independently of the proto pipeline.
       `build.go`. (PR #8)
 - [x] `gen/` git-ignored; generated in Docker + CI + locally; documented.
 - [ ] First Connect handler (`ListIncidents`) proves the end-to-end path.
-- [ ] Follow-up PR: generate-at-build extended to sqlc/templ/tsgo (one convention).
+- [x] Follow-up PR: generate-at-build extended to sqlc/templ/tsgo (one convention).
+      (branch `feat/generate-at-build`)
 - [ ] TypeScript target added (when interface work starts).

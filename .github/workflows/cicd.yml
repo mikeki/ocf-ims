@@ -67,14 +67,14 @@ jobs:
         with:
           go-version-file: "go.mod"
 
-      - name: Fetch external build dependencies
-        run: go run bin/fetchbuilddeps/fetchbuilddeps.go
-
-      - name: Generate protobuf code
-        # gen/ is not committed; pre-commit's golangci-lint/govulncheck compile ./...
+      - name: Generate code (sqlc, templ, tsgo, buf)
+        # None of the generated code is committed, so it must be produced before
+        # pre-commit's golangci-lint/govulncheck/go-vet compile ./.... build.go
+        # -generate-only runs all four generators (and fetches build deps) without
+        # the final `go build`. DO_NOT_TRACK suppresses buf telemetry.
         env:
           DO_NOT_TRACK: "1"
-        run: go tool buf generate
+        run: go run bin/build/build.go -generate-only
 
       - name: Install Python
         uses: actions/setup-python@v6
@@ -126,22 +126,14 @@ jobs:
         with:
           go-version-file: "go.mod"
 
-      - name: Fetch external build dependencies
-        run: go run bin/fetchbuilddeps/fetchbuilddeps.go
-
-      - name: Generate protobuf code
-        # gen/ is intentionally not committed, so it must be generated before
-        # `go test ./...` can compile any package that imports it.
+      - name: Generate code (sqlc, templ, tsgo, buf)
+        # None of the generated code is committed, so it must be produced before
+        # `go test ./...` can compile any package that imports it. build.go
+        # -generate-only runs all four generators (and fetches build deps) without
+        # the final `go build`. DO_NOT_TRACK suppresses buf telemetry.
         env:
           DO_NOT_TRACK: "1"
-        run: go tool buf generate
-
-      # TODO: maybe install sqlc, templ, and tsc code generation
-      #  here as well. They would add some additional build time
-      #  (mostly due to fetching their deps and building them),
-      #  which is less than ideal. For now, it should be fine to
-      #  do these on the developer's computer, and this can be
-      #  enforced by pre-commit.
+        run: go run bin/build/build.go -generate-only
 
       - name: Compile, test, and cover
         run: go test -race -covermode=atomic -coverprofile=coverage.txt --coverpkg ./... ./...

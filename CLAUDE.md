@@ -91,11 +91,22 @@ go tool tsgo
 go tool buf generate
 ```
 
-> **Generated proto code is NOT committed.** Unlike sqlc/templ/tsgo output (which
-> is checked in), the protobuf output under `gen/` is git-ignored and produced by
-> `go tool buf generate` (also run by `go run bin/build/build.go`, the Docker
-> build, and CI). After a fresh clone, run the build script — or `go tool buf
-> generate` — before any code that imports `gen/...` will compile.
+> **Generated code is NOT committed.** None of the generated output lives in the
+> tree — it is all git-ignored and produced at build time:
+>
+> | Generator | Output |
+> |---|---|
+> | sqlc | `store/imsdb/`, `directory/clubhousedb/` |
+> | templ | `web/template/*_templ.go` |
+> | tsgo | `web/static/*.js` |
+> | buf | `gen/` |
+>
+> **After a fresh clone, you must generate before anything compiles.** Run
+> `go run bin/build/build.go` (full build) or `go run bin/build/build.go
+> -generate-only` (generators only, no `go build`) — or the individual `go tool`
+> commands above. The same `-generate-only` step runs in the Docker build and in
+> CI (both the `build` and `lint` jobs) so generated code exists before compile.
+> IDEs/editors will show unresolved imports until the first generate run.
 
 ### Linting
 
