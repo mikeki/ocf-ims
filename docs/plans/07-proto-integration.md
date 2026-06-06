@@ -1,9 +1,28 @@
 # Proto Integration: proto-first API contract (buf + Connect-Go)
 
-> **Status:** Pipeline ✅ shipped (PR #8); generate-at-build extended to **all four
-> generators** ✅ (branch `feat/generate-at-build`). Next: first Connect handler.
+> ## ⏸️ PARKED until post-fair (decided 2026-06-05)
+> Adopting Protobuf for beta would mean standing up a JS/TS proto-codegen
+> (`protoc-gen-es`) + browser bundler toolchain the repo deliberately avoids — too
+> much new tooling this close to the fair. **For beta we stay on the existing
+> REST + static-site approach.** Proto work resumes **after the fair**.
+>
+> **The proto pipeline (buf/Connect-Go/`gen/`) and the first read-only
+> `IncidentService` handler + hand-typed TS client were REVERTED from `master`.**
+> All of it is preserved, intact and tested, on branch
+> **`archive/proto-integration`** — resume from there. The design and decisions
+> below stand as the record for when we pick it back up.
+>
+> **What stayed on `master`:** only the *generate-at-build* convention — sqlc/templ/
+> tsgo output is git-ignored and produced at build time (no committed generated
+> code). That is independent of proto and remains in effect; the "Follow-up" section
+> below describes it (minus the now-removed buf generator).
+>
 > &nbsp;·&nbsp; **Parent:** [05-platform-stack.md](05-platform-stack.md)
-> &nbsp;·&nbsp; **Last updated:** 2026-06-05
+> &nbsp;·&nbsp; **Last updated:** 2026-06-05 (parked)
+
+> **History (pre-park):** Pipeline shipped (PR #8); generate-at-build (PR #9); first
+> Connect handler built + exercised from the static site (closed PR #10) — then the
+> proto parts were reverted for beta per the decision above.
 
 This doc tracks the **protobuf integration** — bringing Protocol Buffers in as the
 source of truth for the OCF IMS API. It is the concrete execution of platform-stack

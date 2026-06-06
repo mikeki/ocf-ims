@@ -60,14 +60,16 @@ Order of work:
    — **deferred to after the event.** Mechanical and behavior-preserving; doing it
    later re-touches a more-diverged tree but is still straightforward.
 4. **Proto-first API contract** ([`07-proto-integration.md`](07-proto-integration.md),
-   platform P0–P2) — **pulled forward (in progress).** A revision of the original
-   "whole platform track waits" call. Rationale: the Phase 2 terminology rename
-   breaks the JSON/HTTP contract *anyway* and the API is web-UI-only, so defining
-   the renamed/new surface once in proto avoids doing the contract twice. It's
-   **additive** — Connect runs alongside the existing REST/`templ` path and does
-   **not** touch the beta UI — so it doesn't threaten the deadline. This effort also
-   established the repo-wide convention that **no generated code is committed** — all
-   of sqlc/templ/tsgo/buf output is produced at build time (`build.go -generate-only`).
+   platform P0–P2) — **⏸️ PARKED to post-fair (reverted from `master`).** It was
+   briefly pulled forward, but a *typed* Connect client needs a JS/TS proto-codegen
+   (`protoc-gen-es`) + browser bundler toolchain the repo deliberately avoids — too
+   much new tooling for beta. So the proto pipeline and the first `IncidentService`
+   handler were reverted from `master`; **for beta we stay on the existing REST +
+   static-site approach.** All proto work (pipeline + handler + hand-typed TS client)
+   is preserved on branch **`archive/proto-integration`**; we resume there after the
+   fair. One thing from that effort *stayed* on `master`: the convention that **no
+   generated code is committed** — sqlc/templ/tsgo output is produced at build time
+   (`build.go -generate-only`).
 5. **Platform track P3→P4** (Expo interface + the rest) — **after the event.** The
    cross-platform interface replaces the `templ` web UI later, not for this beta.
    The **workspace restructure** (item 3) also stays post-event.

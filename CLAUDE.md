@@ -86,9 +86,6 @@ go tool templ generate
 
 # Generate JavaScript from TypeScript
 go tool tsgo
-
-# Generate Go + Connect-Go from the proto contract (proto/ -> gen/)
-go tool buf generate
 ```
 
 > **Generated code is NOT committed.** None of the generated output lives in the
@@ -99,7 +96,6 @@ go tool buf generate
 > | sqlc | `store/imsdb/`, `directory/clubhousedb/` |
 > | templ | `web/template/*_templ.go` |
 > | tsgo | `web/static/*.js` |
-> | buf | `gen/` |
 >
 > **After a fresh clone, you must generate before anything compiles.** Run
 > `go run bin/build/build.go` (full build) or `go run bin/build/build.go
