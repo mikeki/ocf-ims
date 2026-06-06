@@ -26,11 +26,13 @@ RUN go run ./bin/fetchbuilddeps/fetchbuilddeps.go
 # See https://pkg.go.dev/debug/buildinfo#BuildInfo
 COPY ./ ./
 
-# Generate protobuf code (Go + Connect-Go). It is intentionally not committed
-# to the repo, so it must be generated here before the build. Uses local
-# go-tool plugins (pinned in go.mod) — hermetic, no remote plugin calls.
+# Generate all code (sqlc, templ, tsgo, buf). None of it is committed to the
+# repo, so it must be generated here before the build. Uses local go-tool
+# generators/plugins (pinned in go.mod) — hermetic, no remote plugin calls.
+# `-generate-only` runs the generators but skips the `go build` below, which we
+# do ourselves with the cross-compile flags. DO_NOT_TRACK suppresses buf telemetry.
 ENV DO_NOT_TRACK=1
-RUN go tool buf generate
+RUN go run bin/build/build.go -generate-only
 
 # Build the server
 RUN CGO_ENABLED=0 GOOS=linux go build -o /app/ranger-ims-go

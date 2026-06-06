@@ -33,6 +33,7 @@ import (
 )
 
 var outputApp = flag.String("output-app", "ranger-ims-go", "Output app name")
+var generateOnly = flag.Bool("generate-only", false, "Run the code generators only; skip the final `go build`")
 
 func main() {
 	flag.Parse()
@@ -77,6 +78,16 @@ func main() {
 		return nil
 	})
 	must(eg.Wait())
+
+	// The generated code (sqlc, templ, tsgo, buf) is intentionally not committed
+	// to the repo, so it is produced at build time everywhere it's needed: locally,
+	// in CI, and in the Docker build. `-generate-only` lets those callers run the
+	// generators without the final `go build` (e.g. Docker builds the binary itself
+	// with its own flags; CI compiles via `go test`).
+	if *generateOnly {
+		log.Printf("Code generation done in %v (skipped `go build`; -generate-only).", time.Since(start))
+		return
+	}
 
 	// #nosec G204
 	mustRunInDir(exec.CommandContext(ctx, "go", "build", "-o", *outputApp), repo.Name())

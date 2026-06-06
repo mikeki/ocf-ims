@@ -39,6 +39,15 @@ ims-attachments
 # the temp dir for `go tool air`
 air_tmp
 
-# Generated protobuf code — NOT committed. Produced by `go tool buf generate`
-# (also run by `go run bin/build/build.go` and in the Docker build + CI).
+# Generated code — NOT committed. All of it is produced at build time by
+# `go run bin/build/build.go` (use `-generate-only` to skip the final compile),
+# and also in the Docker build + CI. One convention: no generated code in the tree.
+#   buf   -> /gen/
+#   sqlc  -> store/imsdb/, directory/clubhousedb/
+#   templ -> web/template/*_templ.go
+#   tsgo  -> web/static/*.js
 /gen/
+/store/imsdb/
+/directory/clubhousedb/
+/web/template/*_templ.go
+/web/static/*.js
