@@ -25,11 +25,9 @@ from a CDN, so the page needs network access on first load.
   Caddy into the Go service, plus the Caddy route table.
 - **IMS database** — ER diagram and a filterable table reference covering every
   table in `store/schema/current.sql`.
-- **Clubhouse database** — ER diagram limited to what IMS actually queries
-  (most of the real `person` table is ignored). Includes the status whitelist
-  and how on-duty detection works.
-- **Cross-system links** — how IMS rows reference Clubhouse rows by string name
-  rather than foreign key.
+- **People directory** — the local `PERSON`/`POSITION`/`TEAM` tables in the IMS
+  database that back identity, credentials, and authz (replacing the former external
+  Clubhouse directory; see `docs/plans/32-retire-clubhouse.md`).
 - **Login flow** — sequence diagram for password verification and JWT minting.
 - **Authorization model** — global roles, event-level roles, expression
   matchers, and a flowchart of the per-request decision.
@@ -44,9 +42,7 @@ Things to refresh when the schema or model changes:
 
 | Source file | Doc section to update |
 |---|---|
-| `store/schema/current.sql` | IMS database ER + table reference |
-| `directory/schema/current.sql` | Clubhouse database ER |
-| `directory/queries.sql` | "What IMS actually queries" + status whitelist |
+| `store/schema/current.sql` | IMS database ER + table reference (incl. the local `PERSON`/`POSITION`/`TEAM` directory) |
 | `lib/authz/permission.go` | Authorization model (roles, matchers, permissions) |
 | `conf/imsconfig.go` | Cheat sheet env vars |
 | `web/mux.go` / `api/mux.go` | URL path table |

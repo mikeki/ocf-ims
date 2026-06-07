@@ -39,7 +39,7 @@ import (
 
 type GetVisits struct {
 	imsDBQ             *store.DBQ
-	userStore          *directory.UserStore
+	userStore          directory.UserStore
 	imsAdmins          []string
 	attachmentsEnabled bool
 }
@@ -138,7 +138,7 @@ func (action GetVisits) getVisits(req *http.Request) (imsjson.Visits, *herr.HTTP
 
 type GetVisit struct {
 	imsDBQ             *store.DBQ
-	userStore          *directory.UserStore
+	userStore          directory.UserStore
 	imsAdmins          []string
 	attachmentsEnabled bool
 }
@@ -281,7 +281,7 @@ func visitToJSON(storedRow imsdb.VisitRow, visitRangers []imsjson.VisitRanger,
 
 type NewVisit struct {
 	imsDBQ    *store.DBQ
-	userStore *directory.UserStore
+	userStore directory.UserStore
 	es        *EventSourcerer
 	imsAdmins []string
 }
@@ -590,7 +590,7 @@ func addVisitReportEntry(
 
 type EditVisit struct {
 	imsDBQ    *store.DBQ
-	userStore *directory.UserStore
+	userStore directory.UserStore
 	es        *EventSourcerer
 	imsAdmins []string
 }
@@ -638,7 +638,7 @@ func (action EditVisit) editVisit(req *http.Request) *herr.HTTPError {
 
 type AttachRangerToVisit struct {
 	imsDBQ    *store.DBQ
-	userStore *directory.UserStore
+	userStore directory.UserStore
 	es        *EventSourcerer
 	imsAdmins []string
 }
@@ -725,7 +725,7 @@ func (action AttachRangerToVisit) attachRanger(req *http.Request) *herr.HTTPErro
 
 type DetachRangerFromVisit struct {
 	imsDBQ    *store.DBQ
-	userStore *directory.UserStore
+	userStore directory.UserStore
 	es        *EventSourcerer
 	imsAdmins []string
 }

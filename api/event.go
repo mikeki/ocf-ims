@@ -39,7 +39,7 @@ import (
 
 type GetEvents struct {
 	imsDBQ            *store.DBQ
-	userStore         *directory.UserStore
+	userStore         directory.UserStore
 	imsAdmins         []string
 	cacheControlShort time.Duration
 }
@@ -107,7 +107,7 @@ func (action GetEvents) getEvents(req *http.Request) (imsjson.Events, *herr.HTTP
 
 type EditEvent struct {
 	imsDBQ    *store.DBQ
-	userStore *directory.UserStore
+	userStore directory.UserStore
 	imsAdmins []string
 }
 

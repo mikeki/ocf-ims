@@ -33,7 +33,6 @@ import (
 	"github.com/mikeki/ocf-ims/api"
 	"github.com/mikeki/ocf-ims/conf"
 	"github.com/mikeki/ocf-ims/directory"
-	chqueries "github.com/mikeki/ocf-ims/directory/clubhousedb"
 	"github.com/mikeki/ocf-ims/lib/attachment"
 	"github.com/mikeki/ocf-ims/lib/conv"
 	"github.com/mikeki/ocf-ims/store"
@@ -120,19 +119,10 @@ func mustStartServer(ctx context.Context, unvalidatedCfg *conf.IMSConfig, printC
 	must(err)
 	imsDBQ := store.NewDBQ(imsDB, imsdb.New())
 
-	// The user/personnel directory is either the local IMS-DB people tables or the
-	// external Clubhouse directory, selected by config. See
-	// docs/plans/31-local-people-directory.md.
-	var userStore *directory.UserStore
-	if imsCfg.Directory.Directory == conf.DirectoryTypeLocal {
-		slog.Info("Using local IMS-DB people directory")
-		userStore = directory.NewLocalUserStore(imsDBQ, imsCfg.Directory.InMemoryCacheTTL)
-	} else {
-		clubhouseDB, errCH := directory.MariaDB(ctx, imsCfg.Directory)
-		must(errCH)
-		clubhouseDBQ := directory.NewDBQ(clubhouseDB, chqueries.New(), imsCfg.Directory.InMemoryCacheTTL)
-		userStore = directory.NewUserStore(clubhouseDBQ, imsCfg.Directory.InMemoryCacheTTL)
-	}
+	// The user/personnel directory is the local IMS-DB people tables
+	// (PERSON/POSITION/TEAM). See docs/plans/32-retire-clubhouse.md.
+	slog.Info("Using local IMS-DB people directory")
+	var userStore directory.UserStore = directory.NewLocalUserStore(imsDBQ, imsCfg.Directory.InMemoryCacheTTL)
 	actionLogger := actionlog.NewLogger(ctx, imsDBQ, imsCfg.Core.ActionLogEnabled, false)
 
 	eventSource := api.NewEventSourcerer()

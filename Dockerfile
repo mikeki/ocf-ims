@@ -50,7 +50,6 @@ COPY --from=build /app/ocf-ims /opt/ims/bin/ims
 ENV IMS_HOSTNAME="0.0.0.0"
 ENV IMS_PORT="80"
 ENV IMS_DB_STORE_TYPE="mariadb"
-ENV IMS_DIRECTORY="clubhousedb"
 
 # Use a non-root user to run the server
 USER daemon:daemon

@@ -30,7 +30,7 @@ import (
 
 type GetActionLogs struct {
 	imsDBQ    *store.DBQ
-	userStore *directory.UserStore
+	userStore directory.UserStore
 	imsAdmins []string
 }
 

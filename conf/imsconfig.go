@@ -60,11 +60,6 @@ func DefaultIMS() *IMSConfig {
 			},
 		},
 		Directory: Directory{
-			Directory: DirectoryTypeClubhouseDB,
-			ClubhouseDB: ClubhouseDB{
-				Hostname: "localhost:3306",
-				Database: "rangers",
-			},
 			InMemoryCacheTTL: 5 * time.Minute,
 		},
 		AttachmentsStore: AttachmentsStore{
@@ -83,18 +78,9 @@ func (c *IMSConfig) Validate() error {
 		c.Store.MariaDB = DBStoreMaria{}
 	}
 
-	// User directory
-	errs = append(errs, c.Directory.Directory.Validate())
-	if c.Directory.Directory != DirectoryTypeClubhouseDB {
-		c.Directory.ClubhouseDB = ClubhouseDB{}
-	}
-
 	// Deployment
 	errs = append(errs, c.Core.Deployment.Validate())
 	if c.Core.Deployment != DeploymentTypeDev {
-		if c.Directory.Directory != DirectoryTypeClubhouseDB && c.Directory.Directory != DirectoryTypeLocal {
-			errs = append(errs, errors.New("non-dev environments must use a ClubhouseDB or local directory"))
-		}
 		if c.Store.Type != DBStoreTypeMaria {
 			errs = append(errs, errors.New("non-dev environments must use a MariaDB datastore"))
 		}
@@ -141,8 +127,6 @@ type IMSConfig struct {
 	Directory        Directory
 }
 
-type DirectoryType string
-
 type AttachmentsStoreType string
 type DeploymentType string
 
@@ -150,9 +134,6 @@ type DBStoreType string
 
 // All these consts should have lowercase values to allow case-insensitive matching.
 const (
-	DirectoryTypeClubhouseDB DirectoryType        = "clubhousedb"
-	DirectoryTypeLocal       DirectoryType        = "local"
-	DirectoryTypeNoOp        DirectoryType        = "noop"
 	AttachmentsStoreLocal    AttachmentsStoreType = "local"
 	AttachmentsStoreS3       AttachmentsStoreType = "s3"
 	AttachmentsStoreNone     AttachmentsStoreType = "none"
@@ -170,15 +151,6 @@ func (d DBStoreType) Validate() error {
 		return nil
 	default:
 		return fmt.Errorf("unknown DB store type %v", d)
-	}
-}
-
-func (d DirectoryType) Validate() error {
-	switch d {
-	case DirectoryTypeClubhouseDB, DirectoryTypeLocal, DirectoryTypeNoOp:
-		return nil
-	default:
-		return fmt.Errorf("unknown directory type %v", d)
 	}
 }
 
@@ -248,8 +220,6 @@ type DBStoreMaria struct {
 }
 
 type Directory struct {
-	Directory        DirectoryType
-	ClubhouseDB      ClubhouseDB
 	InMemoryCacheTTL time.Duration
 }
 
@@ -257,15 +227,6 @@ type AttachmentsStore struct {
 	Type  AttachmentsStoreType
 	Local LocalAttachments
 	S3    S3Attachments
-}
-
-type ClubhouseDB struct {
-	Hostname string
-	Database string
-	Username string
-	// #nosec G117 // Exported secret struct field
-	Password     string `redact:"true"`
-	MaxOpenConns int32
 }
 
 type LocalAttachments struct {

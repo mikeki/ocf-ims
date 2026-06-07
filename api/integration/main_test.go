@@ -18,12 +18,9 @@ package integration_test
 
 import (
 	"context"
-	_ "embed"
-	"fmt"
 	"github.com/mikeki/ocf-ims/api"
 	"github.com/mikeki/ocf-ims/conf"
 	"github.com/mikeki/ocf-ims/directory"
-	chqueries "github.com/mikeki/ocf-ims/directory/clubhousedb"
 	_ "github.com/mikeki/ocf-ims/lib/noopdb"
 	"github.com/mikeki/ocf-ims/lib/rand"
 	"github.com/mikeki/ocf-ims/lib/testctr"
@@ -31,7 +28,6 @@ import (
 	"github.com/mikeki/ocf-ims/store/actionlog"
 	"github.com/mikeki/ocf-ims/store/imsdb"
 	"github.com/testcontainers/testcontainers-go"
-	"golang.org/x/sync/errgroup"
 	"log"
 	"net/http/httptest"
 	"net/url"
@@ -39,15 +35,10 @@ import (
 	"testing"
 )
 
-//go:embed clubhousedb_test_seed.sql
-var clubhouseDBTestSeed string
-
 // mainTestInternal contains fields to be used only within main_test.go.
 var mainTestInternal struct {
-	dbCtr                 testcontainers.Container
-	dbCtrCleanup          func()
-	clubhouseDbCtr        testcontainers.Container
-	clubhouseDbCtrCleanup func()
+	dbCtr        testcontainers.Container
+	dbCtrCleanup func()
 }
 
 // shared contains fields that may be used by any test in the integration package.
@@ -55,14 +46,14 @@ var mainTestInternal struct {
 var shared struct {
 	cfg          *conf.IMSConfig
 	imsDBQ       *store.DBQ
-	userStore    *directory.UserStore
+	userStore    directory.UserStore
 	es           *api.EventSourcerer
 	testServer   *httptest.Server
 	serverURL    *url.URL
 	actionLogger *actionlog.Logger
 }
 
-// These values must align with those in clubhousedb_test_seed.sql.
+// These values must align with those in imsPeopleTestSeed.
 const (
 	userAdminHandle   = "AdminTestRanger"
 	userAdminEmail    = "admintestranger@example.com"
@@ -73,14 +64,19 @@ const (
 	userAlicePassword = "password"
 )
 
-// imsPeopleTestSeed mirrors the Clubhouse directory users into the local IMS-DB
-// PERSON table. The ids/nicknames must match clubhousedb_test_seed.sql so that
-// person_id FKs (attachments, report-entry author) resolve and the author join
-// renders the expected handle.
+// imsPeopleTestSeed seeds the local IMS-DB people directory used by the integration
+// suite: the two login users (with argon2id password hashes for userAdminPassword /
+// userAlicePassword), plus a position and team so the positions/teams paths are
+// exercised. The person_id FKs (attachments, report-entry author) resolve against
+// these rows and the author join renders the expected handle.
 const imsPeopleTestSeed = `
-insert into PERSON (ID, HANDLE, EMAIL, STATUS, ON_SITE, CREATED) values
-    (6000, 'AdminTestRanger', 'admintestranger@example.com', 'active', true, 0),
-    (6001, 'AliceTestRanger', 'alicetestranger@example.com', 'active', true, 0);
+insert into PERSON (ID, HANDLE, EMAIL, PASSWORD, STATUS, ON_SITE, CREATED) values
+    (6000, 'AdminTestRanger', 'admintestranger@example.com', '$argon2id$v=19$m=1,t=1,p=1$51uXrZoFRb6O4Tw4TsAJVQ$SedDwp+hPpIJc42QcnFJy6EOtE+b5kyYFpnuRHl/5qs', 'active', true, 0),
+    (6001, 'AliceTestRanger', 'alicetestranger@example.com', '$argon2id$v=19$m=1,t=1,p=1$eg9U8hLotCSmyCph1BQroA$KFfy0uDDpP+cXPnkSQRXt3z0Shd7M39tsrwJZuDrOdU', 'active', true, 0);
+insert into ` + "`POSITION`" + ` (ID, NAME) values (7000, 'Nooperator');
+insert into TEAM (ID, NAME) values (8000, 'Brown Dot');
+insert into PERSON__POSITION (PERSON_ID, POSITION_ID) values (6001, 7000);
+insert into PERSON__TEAM (PERSON_ID, TEAM_ID) values (6000, 8000);
 `
 
 // TestMain does the common setup and teardown for all tests in this package.
@@ -121,77 +117,28 @@ func setup(ctx context.Context, tempDir string) {
 	shared.cfg.Store.MariaDB.Database = "ims-" + rand.NonCryptoText()
 	shared.cfg.Store.MariaDB.Username = "rangers-" + rand.NonCryptoText()
 	shared.cfg.Store.MariaDB.Password = "password-" + rand.NonCryptoText()
-	shared.cfg.Directory.Directory = conf.DirectoryTypeClubhouseDB
-	shared.cfg.Directory.ClubhouseDB.Database = "clubhouse-" + rand.NonCryptoText()
-	shared.cfg.Directory.ClubhouseDB.Username = "rangers-" + rand.NonCryptoText()
-	shared.cfg.Directory.ClubhouseDB.Password = "password-" + rand.NonCryptoText()
 	must(shared.cfg.Validate())
 	shared.es = api.NewEventSourcerer()
 
-	// Do IMS and Clubhouse DB setup in parallel, since the container startup takes a few seconds each
-	g := errgroup.Group{}
-	g.Go(func() error {
-		chCtr, chCleanup, chDbHostPort, err := testctr.MariaDBContainer(
-			ctx,
-			shared.cfg.Directory.ClubhouseDB.Database,
-			shared.cfg.Directory.ClubhouseDB.Username,
-			shared.cfg.Directory.ClubhouseDB.Password,
-		)
-		if err != nil {
-			return err
-		}
-		mainTestInternal.clubhouseDbCtr = chCtr
-		mainTestInternal.clubhouseDbCtrCleanup = chCleanup
-		shared.cfg.Directory.ClubhouseDB.Hostname = fmt.Sprintf(":%d", chDbHostPort)
-		clubhouseDB, err := directory.MariaDB(ctx, shared.cfg.Directory)
-		if err != nil {
-			return err
-		}
-		_, err = clubhouseDB.ExecContext(ctx, directory.CurrentSchema)
-		if err != nil {
-			return err
-		}
-		_, err = clubhouseDB.ExecContext(ctx, clubhouseDBTestSeed)
-		if err != nil {
-			return err
-		}
-		clubhouseDBQ := directory.NewDBQ(
-			clubhouseDB,
-			chqueries.New(),
-			shared.cfg.Directory.InMemoryCacheTTL,
-		)
-		shared.userStore = directory.NewUserStore(clubhouseDBQ, shared.cfg.Directory.InMemoryCacheTTL)
-		return nil
-	})
-	g.Go(func() error {
-		ctr, cleanup, dbHostPort, err := testctr.MariaDBContainer(
-			ctx,
-			shared.cfg.Store.MariaDB.Database,
-			shared.cfg.Store.MariaDB.Username,
-			shared.cfg.Store.MariaDB.Password,
-		)
-		if err != nil {
-			return err
-		}
-		mainTestInternal.dbCtr = ctr
-		mainTestInternal.dbCtrCleanup = cleanup
-		shared.cfg.Store.MariaDB.HostPort = dbHostPort
-		db, err := store.SqlDB(ctx, shared.cfg.Store, true)
-		if err != nil {
-			return err
-		}
-		// Seed the local PERSON table with rows whose ids/nicknames match the
-		// Clubhouse directory users, so attachment/author person_id FKs resolve
-		// and the PERSON->HANDLE join renders the right author. See
-		// docs/plans/31-local-people-directory.md.
-		_, err = db.ExecContext(ctx, imsPeopleTestSeed)
-		if err != nil {
-			return err
-		}
-		shared.imsDBQ = store.NewDBQ(db, imsdb.New())
-		return nil
-	})
-	must(g.Wait())
+	// The user directory and the incident store share a single IMS database.
+	ctr, cleanup, dbHostPort, err := testctr.MariaDBContainer(
+		ctx,
+		shared.cfg.Store.MariaDB.Database,
+		shared.cfg.Store.MariaDB.Username,
+		shared.cfg.Store.MariaDB.Password,
+	)
+	must(err)
+	mainTestInternal.dbCtr = ctr
+	mainTestInternal.dbCtrCleanup = cleanup
+	shared.cfg.Store.MariaDB.HostPort = dbHostPort
+	db, err := store.SqlDB(ctx, shared.cfg.Store, true)
+	must(err)
+	// Seed the local people directory (login users, position, team) before any
+	// request can run. See docs/plans/32-retire-clubhouse.md.
+	_, err = db.ExecContext(ctx, imsPeopleTestSeed)
+	must(err)
+	shared.imsDBQ = store.NewDBQ(db, imsdb.New())
+	shared.userStore = directory.NewLocalUserStore(shared.imsDBQ, shared.cfg.Directory.InMemoryCacheTTL)
 
 	shared.actionLogger = actionlog.NewLogger(ctx, shared.imsDBQ, shared.cfg.Core.ActionLogEnabled, true)
 	shared.testServer = httptest.NewServer(
@@ -217,8 +164,5 @@ func shutdown(ctx context.Context, tempDir string) {
 	}
 	if mainTestInternal.dbCtrCleanup != nil {
 		mainTestInternal.dbCtrCleanup()
-	}
-	if mainTestInternal.clubhouseDbCtrCleanup != nil {
-		mainTestInternal.clubhouseDbCtrCleanup()
 	}
 }

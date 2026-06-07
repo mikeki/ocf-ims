@@ -36,7 +36,7 @@ import (
 
 type GetEventAccesses struct {
 	imsDBQ    *store.DBQ
-	userStore *directory.UserStore
+	userStore directory.UserStore
 	imsAdmins []string
 }
 
@@ -186,7 +186,7 @@ func knownTarget(expression string, allHandles, allPositions, allTeams map[strin
 
 type PostEventAccess struct {
 	imsDBQ    *store.DBQ
-	userStore *directory.UserStore
+	userStore directory.UserStore
 	imsAdmins []string
 }
 

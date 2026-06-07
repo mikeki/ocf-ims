@@ -27,18 +27,18 @@ import (
 // NewLocalUserStore builds a UserStore backed by the local IMS-DB people tables
 // (PERSON/POSITION/TEAM and their membership tables) instead of the external
 // Clubhouse directory. See docs/plans/31-local-people-directory.md.
-func NewLocalUserStore(imsDBQ *store.DBQ, cacheTTL time.Duration) *UserStore {
-	return newUserStore(&localSource{dbq: imsDBQ}, cacheTTL)
+func NewLocalUserStore(imsDBQ *store.DBQ, cacheTTL time.Duration) UserStore {
+	return newUserStore(&localPersonSource{dbq: imsDBQ}, cacheTTL)
 }
 
-// localSource is the local-IMS-DB backend for UserStore.
-type localSource struct {
+// localPersonSource is the local-IMS-DB backend for the cached UserStore.
+type localPersonSource struct {
 	dbq *store.DBQ
 }
 
-var _ personSource = (*localSource)(nil)
+var _ personSource = (*localPersonSource)(nil)
 
-func (s *localSource) users(ctx context.Context) (map[int64]*User, error) {
+func (s *localPersonSource) users(ctx context.Context) (map[int64]*User, error) {
 	people, err := s.dbq.People(ctx, s.dbq)
 	if err != nil {
 		return nil, fmt.Errorf("[People]: %w", err)
@@ -88,7 +88,7 @@ func (s *localSource) users(ctx context.Context) (map[int64]*User, error) {
 	return m, nil
 }
 
-func (s *localSource) positions(ctx context.Context) (map[int64]string, error) {
+func (s *localPersonSource) positions(ctx context.Context) (map[int64]string, error) {
 	rows, err := s.dbq.PeoplePositionsList(ctx, s.dbq)
 	if err != nil {
 		return nil, fmt.Errorf("[PeoplePositionsList]: %w", err)
@@ -100,7 +100,7 @@ func (s *localSource) positions(ctx context.Context) (map[int64]string, error) {
 	return positions, nil
 }
 
-func (s *localSource) teams(ctx context.Context) (map[int64]string, error) {
+func (s *localPersonSource) teams(ctx context.Context) (map[int64]string, error) {
 	rows, err := s.dbq.PeopleTeamsList(ctx, s.dbq)
 	if err != nil {
 		return nil, fmt.Errorf("[PeopleTeamsList]: %w", err)

@@ -39,7 +39,7 @@ import (
 
 type GetReports struct {
 	imsDBQ             *store.DBQ
-	userStore          *directory.UserStore
+	userStore          directory.UserStore
 	imsAdmins          []string
 	attachmentsEnabled bool
 }
@@ -133,7 +133,7 @@ func containsAuthor(entries []imsjson.ReportEntry, author string) bool {
 
 type GetReport struct {
 	imsDBQ             *store.DBQ
-	userStore          *directory.UserStore
+	userStore          directory.UserStore
 	imsAdmins          []string
 	attachmentsEnabled bool
 }
@@ -226,7 +226,7 @@ func fetchReport(ctx context.Context, imsDBQ *store.DBQ, eventID, reportNumber i
 
 type EditReport struct {
 	imsDBQ      *store.DBQ
-	userStore   *directory.UserStore
+	userStore   directory.UserStore
 	eventSource *EventSourcerer
 	imsAdmins   []string
 }
@@ -432,7 +432,7 @@ func (action EditReport) isPreviousAuthor(
 
 type NewReport struct {
 	imsDBQ      *store.DBQ
-	userStore   *directory.UserStore
+	userStore   directory.UserStore
 	eventSource *EventSourcerer
 	imsAdmins   []string
 }

@@ -1,7 +1,6 @@
--- Local people for demo/dev. The 600-602 accounts mirror the fake Clubhouse
--- directory (directory/fakeclubhousedb/seed.sql) so local-directory mode can log
--- in (each password equals the case-sensitive nickname); 603-606 are referenced by
--- the historical incident/report seed data below and need no login.
+-- Local people for demo/dev. The 600-602 accounts are loginable (each password
+-- equals the case-sensitive handle); 603-606 are referenced by the historical
+-- incident/report seed data below and need no login.
 insert into PERSON (ID, HANDLE, EMAIL, PASSWORD, STATUS, ON_SITE, CREATED)
 values  (600, 'Miguel',       'miguel@example.com',       '$argon2id$v=19$m=8192,t=4,p=1$tL68tr5BXPSUKD+2m4fx5A$h+JZLy1t+Ch1NnM+xro0REQrSAfq7Egtc/RgfOfzWYo', 'active', true,  0),
         (601, 'ShadowDancer', 'shadowdancer@example.com', '$argon2id$v=19$m=8192,t=4,p=1$pZevNxeYuILQUIzHBHmEcQ$1tUEWKGlpmEHakHQXoz3UYQ5EyL01qHmlVfBfuq5oj0', 'active', true,  0),

@@ -37,19 +37,19 @@ var serverStartTime = time.Now()
 
 type GetBuildInfo struct {
 	imsDBQ    *store.DBQ
-	userStore *directory.UserStore
+	userStore directory.UserStore
 	imsAdmins []string
 }
 
 type GetRuntimeMetrics struct {
 	imsDBQ    *store.DBQ
-	userStore *directory.UserStore
+	userStore directory.UserStore
 	imsAdmins []string
 }
 
 type PerformGC struct {
 	imsDBQ    *store.DBQ
-	userStore *directory.UserStore
+	userStore directory.UserStore
 	imsAdmins []string
 }
 

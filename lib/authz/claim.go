@@ -135,26 +135,19 @@ func (c IMSClaims) RangerTeams() []int64 {
 	return bitSetToInts(unmarshalBigInt(c.Teams))
 }
 
-// DirectoryID returns the Clubhouse ID for a Ranger.
-// It returns -1 if the ID cannot be determined.
-func (c IMSClaims) DirectoryID() int64 {
-	sub, err := c.GetSubject()
-	if err != nil {
-		return -1
-	}
-	subN, err := conv.ParseInt64(sub)
-	if err != nil {
-		return -1
-	}
-	return subN
-}
-
 // PersonID returns the authenticated person's local id (the JWT subject) as the
 // int32 used by PERSON.ID and its foreign keys. It returns -1 if the subject is
 // missing, unparseable, or out of int32 range; -1 fails safely against the FK
 // rather than silently truncating a 64-bit value.
 func (c IMSClaims) PersonID() int32 {
-	id := c.DirectoryID()
+	sub, err := c.GetSubject()
+	if err != nil {
+		return -1
+	}
+	id, err := conv.ParseInt64(sub)
+	if err != nil {
+		return -1
+	}
 	if id < math.MinInt32 || id > math.MaxInt32 {
 		return -1
 	}

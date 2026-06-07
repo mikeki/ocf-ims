@@ -188,7 +188,10 @@ order (revised 2026-06-06 after the seam investigation):
    DB removes any reason to defer the FK re-key). Detailed plan:
    [`31-local-people-directory.md`](31-local-people-directory.md). JSON wire contract
    stays handle-based; admins stay env-`IMS_ADMINS`; `onduty:` inert for now.
-2. **Retire `directory/` Clubhouse** — delete the dependency and config.
+   **Shipped as PR #16.**
+2. **Retire `directory/` Clubhouse** — delete the dependency and config; migrate API
+   consumers to the `directory.IUserStore` seam; convert `api/integration` to local
+   mode. Detailed plan: [`32-retire-clubhouse.md`](32-retire-clubhouse.md).
 3. **UI / JSON / URL vocabulary rename** — "People Involved", `/people/`,
    `rangers`→`people`, `role`→`involvement`, function/element renames (the 2b UI
    surface inventoried in the exploration); plus deferred bits — `PERSON.is_admin`
@@ -200,8 +203,11 @@ order (revised 2026-06-06 after the seam investigation):
   `onduty:` expressions for the beta until Phase 4 models shifts?
 - **Admins** — `PERSON.is_admin` only, or keep `IMS_ADMINS` env (now nickname-based)
   as an override for break-glass access?
-- **`directory/` package** — delete outright, or keep as a one-shot import tool for
-  the demo seed and remove later?
+- **`directory/` package** — ~~delete outright, or keep as a one-shot import tool for
+  the demo seed and remove later?~~ **Decided 2026-06-06:** the `directory/` package
+  *stays* (it now hosts the local `IUserStore`/`personSource`/`localSource`); only the
+  Clubhouse backend within it is deleted (PR #2, [`32-retire-clubhouse.md`](32-retire-clubhouse.md)).
+  No import tool — demo seed is captured in `store/fakeimsdb/seed.sql`.
 - **`nickname`** — case-insensitive uniqueness? email-based login still supported?
 - **Password reset / set-password UX** — Clubhouse owned this; for the beta, admin
   sets a temp password (full self-service reset can be Phase 4 with invites).

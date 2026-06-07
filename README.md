@@ -47,8 +47,8 @@ make compose/live
 	 -e MARIADB_PASSWORD=${password} \
      -p 3306:3306 mariadb:10.5.27
    ```
-2. Copy `.env.example` as `.env`, and set the various flags. Especially read the part in
-   `.env.example` about `IMS_DIRECTORY` if you want to use TestUsers rather than a Clubhouse DB.
+2. Copy `.env.example` as `.env`, and set the various flags. The user directory is
+   the local IMS-DB people table, seeded for dev from `store/fakeimsdb/seed.sql`.
 3. Run the following to build and launch the server. These *should* work on Windows as well as OSX
    and Linux, but Windows is so far untested.
    ```shell
