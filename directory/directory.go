@@ -110,12 +110,12 @@ func (store *cachedUserStore) GetPeople(ctx context.Context) ([]imsjson.Person, 
 	response := make([]imsjson.Person, 0, len(users))
 	for _, r := range users {
 		response = append(response, imsjson.Person{
-			Handle:      r.Handle,
-			Email:       r.Email,
-			Password:    r.Password,
-			Status:      r.Status,
-			Onsite:      r.Onsite,
-			DirectoryID: r.ID,
+			Handle:   r.Handle,
+			Email:    r.Email,
+			Password: r.Password,
+			Status:   r.Status,
+			Onsite:   r.Onsite,
+			PersonID: r.ID,
 		})
 	}
 

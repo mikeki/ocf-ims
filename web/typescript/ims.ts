@@ -1988,7 +1988,7 @@ export type AuthInfoEventAccess = {
 
 export type Personnel = {
     handle: string;
-    directory_id?: number|null;
+    person_id?: number|null;
     // These are only the statuses that IMS actually reads from Clubhouse.
     // See https://github.com/mikeki/ocf-ims/blob/master/directory/queries.sql
     status: "active"|"alpha"|"auditor"|"inactive extension"|"inactive"|"prospective";

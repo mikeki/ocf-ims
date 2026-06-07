@@ -58,6 +58,11 @@ upstream project's name. The current schema, queries, API, JSON, and UI all use
      (`json:"involvement"`).
    - Field `Rangers *[]IncidentRanger` (`json:"rangers"`) → `People *[]IncidentPerson`
      (`json:"people"`); same for `Visit`.
+   - `json.Person.DirectoryID` (`json:"directory_id"`) → `PersonID`
+     (`json:"person_id"`) — the Clubhouse-era name for what is now literally the local
+     `PERSON.ID` (set from `r.ID` in `directory.go`); TS `Person.directory_id` →
+     `person_id`. Its only frontend consumer (the Clubhouse person link) was removed,
+     so this is a clean vocabulary rename of a now-otherwise-unused field.
 
 3. **API handlers / routes** (`api/`)
    - Handler types: `AttachRangerToIncident`→`AttachPersonToIncident`,

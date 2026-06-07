@@ -68,10 +68,10 @@ func (action GetPersonnel) getPersonnel(req *http.Request) (GetPersonnelResponse
 			Email: "",
 			// Don't send passwords in the API
 			// This is also done as a backstop in imsjson.Person itself, with `json:"-"`
-			Password:    "",
-			Status:      person.Status,
-			Onsite:      person.Onsite,
-			DirectoryID: person.DirectoryID,
+			Password: "",
+			Status:   person.Status,
+			Onsite:   person.Onsite,
+			PersonID: person.PersonID,
 		})
 	}
 
