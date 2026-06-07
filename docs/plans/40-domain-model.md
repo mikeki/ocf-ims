@@ -81,7 +81,8 @@ location-name autocomplete** (`web/typescript/incident.ts` `drawPlacesList()`) �
 | **4b validation fix** | Reject invalid outcome values with **400**, rather than the silent-ignore the `STATE` path uses today (cleaner; applied to the new field only). |
 | **4c location model** | **Structured + validated.** New per-event **`AREA`** table with a self-referential parent (hierarchy); `INCIDENT` gets a nullable **FK** to an area. Location dropdown offers only that event's areas. |
 | **4c free-text detail** | **Keep** a free-text `LOCATION_DESCRIPTION` ("details") alongside the area FK, so spots that aren't a named area can still be pinned. Area FK is **optional** (nullable) — an incident can carry just a description. |
-| **4c per-event** | Areas are **per-event** (keyed `(EVENT, NUMBER)`, like `INCIDENT`/`PLACE`/`REPORT`), satisfying "areas change event to event." |
+| **4c per-event** | Areas are **per-event** (keyed `(EVENT, SLUG)`), satisfying "areas change event to event." |
+| **4c area key** | **`SLUG`** (a per-event-unique string **derived from `NAME`**, e.g. `chela-mela`), *not* the integer `(EVENT, NUMBER)` convention used by `INCIDENT`/`PLACE`/`REPORT`. Deliberate divergence: a human-readable, stable identifier reads better in URLs/API and as the incident FK. The slug is generated once at create-time and is **immutable** thereafter — `NAME` (the display label) can be edited freely without breaking incident references or child→parent links. |
 | **4c area home** | A **dedicated `AREA` table**, *not* an overload of `PLACE` (different concept: `PLACE` is per-event camp/art DMV data with `external_data`). |
 | **`PLACE` fate** (O2) | **Full retire.** `PLACE` is the Burning Man camp/art/mutant-vehicle directory (`enum('camp','art','other','mv')` + `BM*` `external_data`); its only incident-facing role is the location autocomplete that `AREA` replaces. Delete the table (migration), `api/place.go` + routes, both templ pages (`adminplaces`, `places`), both TS files (`admin_places.ts`, `places.ts`), the `BM*` types, and the nav links — a clean teardown like concentric-streets removal. Rides with the location cutover (PR 3). |
 | **4c freeform place box** | The single retained free-text field (`LOCATION_DESCRIPTION`) doubles as the **freeform "place / details"** box, replacing the retired `PLACE` autocomplete. Incident location UI = **[structured Area select] + [freeform place/details text]**. |
@@ -178,42 +179,46 @@ Energy Park, Far Side, Ritz, and camping areas (Miss Piggy, SCOF, South Woods, �
 (**hierarchy**); (2) areas change **event to event** (**per-event**); (3) incident
 location is **structured/validated**, not free text.
 
-**Schema — new per-event `AREA` table with a self-referential parent:**
+**Schema — new per-event `AREA` table keyed on a name-derived slug, with a
+self-referential parent:**
 ```sql
 create table AREA (
-    EVENT         integer      not null,
-    NUMBER        integer      not null,
-    NAME          varchar(255) not null,
-    PARENT_NUMBER integer,                          -- null = top-level; same EVENT
-    SORT_ORDER    integer      not null default 0,
+    EVENT       integer      not null,
+    SLUG        varchar(128) not null,             -- derived from NAME, immutable, e.g. 'chela-mela'
+    NAME        varchar(255) not null,             -- display label, editable
+    PARENT_SLUG varchar(128),                       -- null = top-level; same EVENT
+    SORT_ORDER  integer      not null default 0,
 
-    primary key (EVENT, NUMBER),
+    primary key (EVENT, SLUG),
     foreign key (EVENT) references EVENT(ID),
-    foreign key (EVENT, PARENT_NUMBER) references AREA(EVENT, NUMBER)
+    foreign key (EVENT, PARENT_SLUG) references AREA(EVENT, SLUG)
 ) DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 ```
 **Incident location → validated FK** (+ retire the playa free-text name/address, keep
 detail — see O3):
 ```sql
 alter table INCIDENT
-    add column LOCATION_AREA_NUMBER integer,         -- nullable: area optional
+    add column LOCATION_AREA_SLUG varchar(128),      -- nullable: area optional
     add constraint INCIDENT_TO_AREA
-        foreign key (EVENT, LOCATION_AREA_NUMBER) references AREA(EVENT, NUMBER),
+        foreign key (EVENT, LOCATION_AREA_SLUG) references AREA(EVENT, SLUG),
     drop column LOCATION_NAME,                        -- O3
     drop column LOCATION_ADDRESS;                     -- O3
     -- LOCATION_DESCRIPTION retained as free-text "details"
 ```
-Per-event `NUMBER` allocation mirrors how `PLACE`/`INCIDENT` get their next number. The
-incident location UI becomes **[structured Area select] + [freeform place/details]**,
-where the freeform box is the retained `LOCATION_DESCRIPTION` (O3) standing in for the
-retired `PLACE` autocomplete.
+**Slug generation:** on area create, slugify `NAME` (lowercase, spaces/punctuation →
+hyphens, collapse repeats) in the Go handler; on a per-event collision, suffix `-2`, `-3`,
+… The slug is then **immutable** — renaming an area changes `NAME` only, so incident FKs
+and `PARENT_SLUG` links never break. The incident location UI becomes **[structured Area
+select] + [freeform place/details]**, where the freeform box is the retained
+`LOCATION_DESCRIPTION` (O3) standing in for the retired `PLACE` autocomplete.
 
 **Layers touched:** `store/schema` (migration + current; new table + INCIDENT alter),
 `store/queries.sql` (area CRUD + next-number + incident location read/write),
-sqlc regen (`Area` model + queries), `json/` (new `Area` type; `json.Location` reshaped to
-carry `AreaNumber` + parent context + retained `Description`), `api/` (new area
-handler — list/create/update per event, modelled on `api/place.go`; `api/incident.go`
-location read/write switches to the FK + validates the area belongs to the event),
+sqlc regen (`Area` model + queries), `json/` (new `Area` type keyed by `Slug`;
+`json.Location` reshaped to carry `AreaSlug` + parent context + retained `Description`),
+`api/` (new area handler — list/create/update per event, modelled on `api/place.go`,
+slugifying `NAME` on create; `api/incident.go` location read/write switches to the FK +
+validates the area belongs to the event),
 `api/mux.go` (area routes), `web/template` + `web/typescript` (a per-event **Areas admin
 page** per O4; incident location UI becomes a **grouped strict select** of the event's
 areas + the freeform details box), `store/fakeimsdb/seed.sql` (seed OCF areas + hierarchy;
@@ -261,7 +266,7 @@ shippable, build + `go test ./...` green.
 Migrations (numbers assigned at implementation time, append-only; each adds to
 `current.sql`, bumps `SCHEMA_INFO`, and is replayed by `store/integration`):
 PR 1 → add `INCIDENT_TYPE.GROUP`; PR 2 → add `AREA` table; PR 3 → alter `INCIDENT`
-(add `LOCATION_AREA_NUMBER` FK, drop `LOCATION_NAME`/`LOCATION_ADDRESS`) + `drop table PLACE`;
+(add `LOCATION_AREA_SLUG` FK, drop `LOCATION_NAME`/`LOCATION_ADDRESS`) + `drop table PLACE`;
 PR 4 → add `INCIDENT.OUTCOME`.
 
 > If PR 3 grows unwieldy, the `PLACE` teardown can be peeled into its own PR landing
@@ -295,5 +300,3 @@ PR 4 → add `INCIDENT.OUTCOME`.
 - **Stakeholder-final category/area wording** — seeded from drafts; reseed when OCF
   confirms (tracks alongside the still-open Phase 2 2d terminology).
 - **Map / geo integration** for areas — long-term, not beta.
-```
-
