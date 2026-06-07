@@ -6,7 +6,7 @@ create table SCHEMA_INFO (
 -- This value must be updated when you make a new migration file.
 --
 
-insert into SCHEMA_INFO (VERSION) values (39);
+insert into SCHEMA_INFO (VERSION) values (40);
 
 
 create table `EVENT` (
@@ -64,7 +64,7 @@ insert into INCIDENT_TYPE (ID, NAME, HIDDEN, `GROUP`) values
 
 
 -- Local people model (OCF-owned, replacing the external Clubhouse directory).
--- Defined before REPORT_ENTRY so the author foreign key below resolves on a
+-- Defined before JOURNAL_ENTRY so the author foreign key below resolves on a
 -- fresh create. See docs/plans/31-local-people-directory.md.
 create table PERSON (
     ID          integer      not null auto_increment,
@@ -117,7 +117,7 @@ create table PERSON__TEAM (
 ) DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 
-create table REPORT_ENTRY (
+create table JOURNAL_ENTRY (
     ID              integer         not null auto_increment,
     AUTHOR_PERSON_ID integer        not null,
     TEXT            mediumtext      not null,
@@ -130,7 +130,7 @@ create table REPORT_ENTRY (
     ATTACHED_FILE_MEDIA_TYPE        varchar(128),
 
     primary key (ID),
-    foreign key `RE_TO_AUTHOR` (AUTHOR_PERSON_ID) references PERSON(ID)
+    foreign key `JE_TO_AUTHOR` (AUTHOR_PERSON_ID) references PERSON(ID)
 ) DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 
@@ -211,16 +211,16 @@ create table INCIDENT__INCIDENT_TYPE (
 ) DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 
-create table INCIDENT__REPORT_ENTRY (
+create table INCIDENT__JOURNAL_ENTRY (
     `EVENT`         integer not null,
     INCIDENT_NUMBER integer not null,
-    REPORT_ENTRY    integer not null,
+    JOURNAL_ENTRY    integer not null,
 
     foreign key (`EVENT`) references `EVENT`(ID),
     foreign key (`EVENT`, INCIDENT_NUMBER) references INCIDENT(`EVENT`, NUMBER),
-    foreign key (REPORT_ENTRY) references REPORT_ENTRY(ID),
+    foreign key (JOURNAL_ENTRY) references JOURNAL_ENTRY(ID),
 
-    primary key (`EVENT`, INCIDENT_NUMBER, REPORT_ENTRY)
+    primary key (`EVENT`, INCIDENT_NUMBER, JOURNAL_ENTRY)
 ) DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 
@@ -255,18 +255,18 @@ create table REPORT (
 ) DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 
-create table REPORT__REPORT_ENTRY (
+create table REPORT__JOURNAL_ENTRY (
     `EVENT`                integer not null,
     REPORT_NUMBER          integer not null,
-    REPORT_ENTRY           integer not null,
+    JOURNAL_ENTRY           integer not null,
 
-    foreign key `RRE_TO_EVENT` (`EVENT`) references `EVENT`(ID),
-    foreign key `RRE_TO_REPORT` (`EVENT`, REPORT_NUMBER)
+    foreign key `RJE_TO_EVENT` (`EVENT`) references `EVENT`(ID),
+    foreign key `RJE_TO_REPORT` (`EVENT`, REPORT_NUMBER)
         references REPORT(`EVENT`, NUMBER),
-    foreign key `RRE_TO_REPORT_ENTRY` (REPORT_ENTRY)
-        references REPORT_ENTRY(ID),
+    foreign key `RJE_TO_JOURNAL_ENTRY` (JOURNAL_ENTRY)
+        references JOURNAL_ENTRY(ID),
 
-    primary key (`EVENT`, REPORT_NUMBER, REPORT_ENTRY)
+    primary key (`EVENT`, REPORT_NUMBER, JOURNAL_ENTRY)
 ) DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 
@@ -358,18 +358,18 @@ create table VISIT (
     primary key (`EVENT`, NUMBER)
 ) DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
-create table VISIT__REPORT_ENTRY (
+create table VISIT__JOURNAL_ENTRY (
     `EVENT`             integer not null,
     VISIT_NUMBER        integer not null,
-    REPORT_ENTRY        integer not null,
+    JOURNAL_ENTRY        integer not null,
 
-    foreign key `VRE_TO_EVENT` (`EVENT`) references `EVENT`(ID),
-    foreign key `VRE_TO_GUEST_VISIT` (`EVENT`, VISIT_NUMBER)
+    foreign key `VJE_TO_EVENT` (`EVENT`) references `EVENT`(ID),
+    foreign key `VJE_TO_GUEST_VISIT` (`EVENT`, VISIT_NUMBER)
         references VISIT(`EVENT`, NUMBER),
-    foreign key `VRE_TO_REPORT_ENTRY` (REPORT_ENTRY)
-        references REPORT_ENTRY(ID),
+    foreign key `VJE_TO_JOURNAL_ENTRY` (JOURNAL_ENTRY)
+        references JOURNAL_ENTRY(ID),
 
-    primary key (`EVENT`, VISIT_NUMBER, REPORT_ENTRY)
+    primary key (`EVENT`, VISIT_NUMBER, JOURNAL_ENTRY)
 ) DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 create table VISIT__PERSON (

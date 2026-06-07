@@ -68,27 +68,27 @@ func (action GetVisits) getVisits(req *http.Request) (imsjson.Visits, *herr.HTTP
 	}
 	includeSystemEntries := !strings.EqualFold(req.Form.Get("exclude_system_entries"), "true")
 
-	// The Visits and ReportEntries queries both request a lot of data, and we can query
+	// The Visits and JournalEntries queries both request a lot of data, and we can query
 	// and process those results concurrently.
 	group, groupCtx := errgroup.WithContext(req.Context())
 
-	entriesByVisit := make(map[int32][]imsjson.ReportEntry)
+	entriesByVisit := make(map[int32][]imsjson.JournalEntry)
 	group.Go(func() error {
-		reportEntries, err := action.imsDBQ.Visits_ReportEntries(
+		journalEntries, err := action.imsDBQ.Visits_JournalEntries(
 			groupCtx,
 			action.imsDBQ,
-			imsdb.Visits_ReportEntriesParams{
+			imsdb.Visits_JournalEntriesParams{
 				Event:     event.ID,
 				Generated: includeSystemEntries,
 			},
 		)
 		if err != nil {
-			return herr.InternalServerError("Failed to fetch Visit Report Entries", err).From("[Visits_ReportEntries]")
+			return herr.InternalServerError("Failed to fetch Visit Journal Entries", err).From("[Visits_JournalEntries]")
 		}
-		for _, row := range reportEntries {
+		for _, row := range journalEntries {
 			entriesByVisit[row.VisitNumber] = append(
 				entriesByVisit[row.VisitNumber],
-				reportEntryToJSON(row.ReportEntry, row.Author, action.attachmentsEnabled),
+				journalEntryToJSON(row.JournalEntry, row.Author, action.attachmentsEnabled),
 			)
 		}
 		return nil
@@ -169,7 +169,7 @@ func (action GetVisit) getVisit(req *http.Request) (imsjson.Visit, *herr.HTTPErr
 		return resp, herr.BadRequest("Failed to parse visit number", err)
 	}
 
-	storedRow, reportEntries, errHTTP := fetchVisit(ctx, action.imsDBQ, event.ID, visitNumber, action.attachmentsEnabled)
+	storedRow, journalEntries, errHTTP := fetchVisit(ctx, action.imsDBQ, event.ID, visitNumber, action.attachmentsEnabled)
 	if errHTTP != nil {
 		return resp, errHTTP.From("[fetchVisit]")
 	}
@@ -186,7 +186,7 @@ func (action GetVisit) getVisit(req *http.Request) (imsjson.Visit, *herr.HTTPErr
 		people[i] = imsjson.VisitPerson{Handle: row.Handle, Involvement: conv.SqlToString(row.VisitPerson.Involvement)}
 	}
 
-	resp, errHTTP = visitToJSON(storedRow, people, reportEntries, event, action.attachmentsEnabled)
+	resp, errHTTP = visitToJSON(storedRow, people, journalEntries, event, action.attachmentsEnabled)
 	if errHTTP != nil {
 		return resp, errHTTP.From("[visitToJSON]")
 	}
@@ -194,10 +194,10 @@ func (action GetVisit) getVisit(req *http.Request) (imsjson.Visit, *herr.HTTPErr
 }
 
 func fetchVisit(ctx context.Context, imsDBQ *store.DBQ, eventID, visitNumber int32, attachmentsEnabled bool) (
-	imsdb.VisitRow, []imsjson.ReportEntry, *herr.HTTPError,
+	imsdb.VisitRow, []imsjson.JournalEntry, *herr.HTTPError,
 ) {
 	var empty imsdb.VisitRow
-	var reportEntries []imsjson.ReportEntry
+	var journalEntries []imsjson.JournalEntry
 	visitRow, err := imsDBQ.Visit(ctx, imsDBQ,
 		imsdb.VisitParams{
 			Event:  eventID,
@@ -210,23 +210,23 @@ func fetchVisit(ctx context.Context, imsDBQ *store.DBQ, eventID, visitNumber int
 		}
 		return empty, nil, herr.InternalServerError("Failed to fetch Visit", err).From("[Visit]")
 	}
-	reportEntryRows, err := imsDBQ.Visit_ReportEntries(ctx, imsDBQ,
-		imsdb.Visit_ReportEntriesParams{
+	journalEntryRows, err := imsDBQ.Visit_JournalEntries(ctx, imsDBQ,
+		imsdb.Visit_JournalEntriesParams{
 			Event:       eventID,
 			VisitNumber: visitNumber,
 		},
 	)
 	if err != nil {
-		return empty, nil, herr.InternalServerError("Failed to fetch report entries", err).From("[Visit_ReportEntries]")
+		return empty, nil, herr.InternalServerError("Failed to fetch journal entries", err).From("[Visit_JournalEntries]")
 	}
-	for _, rer := range reportEntryRows {
-		reportEntries = append(reportEntries, reportEntryToJSON(rer.ReportEntry, rer.Author, attachmentsEnabled))
+	for _, rer := range journalEntryRows {
+		journalEntries = append(journalEntries, journalEntryToJSON(rer.JournalEntry, rer.Author, attachmentsEnabled))
 	}
-	return visitRow, reportEntries, nil
+	return visitRow, journalEntries, nil
 }
 
 func visitToJSON(storedRow imsdb.VisitRow, visitPeople []imsjson.VisitPerson,
-	resultEntries []imsjson.ReportEntry, event imsdb.Event, attachmentsEnabled bool,
+	resultEntries []imsjson.JournalEntry, event imsdb.Event, attachmentsEnabled bool,
 ) (imsjson.Visit, *herr.HTTPError) {
 	var resp imsjson.Visit
 
@@ -273,8 +273,8 @@ func visitToJSON(storedRow imsdb.VisitRow, visitPeople []imsjson.VisitPerson,
 		ResourceFoodBev: conv.SqlToString(storedRow.Visit.ResourceFoodBev),
 		ResourceOther:   conv.SqlToString(storedRow.Visit.ResourceOther),
 
-		People:        &peopleJson,
-		ReportEntries: resultEntries,
+		People:         &peopleJson,
+		JournalEntries: resultEntries,
 	}
 	return resp, nil
 }
@@ -528,19 +528,19 @@ func updateVisit(ctx context.Context, imsDBQ *store.DBQ, es *EventSourcerer, new
 	}
 
 	if len(logs) > 0 {
-		_, errHTTP := addVisitReportEntry(ctx, imsDBQ, txn, newVisit.EventID, newVisit.Number, authorPersonID, strings.Join(logs, "\n"), true, "", "", "")
+		_, errHTTP := addVisitJournalEntry(ctx, imsDBQ, txn, newVisit.EventID, newVisit.Number, authorPersonID, strings.Join(logs, "\n"), true, "", "", "")
 		if errHTTP != nil {
-			return errHTTP.From("[addVisitReportEntry]")
+			return errHTTP.From("[addVisitJournalEntry]")
 		}
 	}
 
-	for _, entry := range newVisit.ReportEntries {
+	for _, entry := range newVisit.JournalEntries {
 		if entry.Text == "" {
 			continue
 		}
-		_, errHTTP := addVisitReportEntry(ctx, imsDBQ, txn, newVisit.EventID, newVisit.Number, authorPersonID, entry.Text, false, "", "", "")
+		_, errHTTP := addVisitJournalEntry(ctx, imsDBQ, txn, newVisit.EventID, newVisit.Number, authorPersonID, entry.Text, false, "", "", "")
 		if errHTTP != nil {
-			return errHTTP.From("[addVisitReportEntry]")
+			return errHTTP.From("[addVisitJournalEntry]")
 		}
 	}
 
@@ -555,13 +555,13 @@ func updateVisit(ctx context.Context, imsDBQ *store.DBQ, es *EventSourcerer, new
 	return nil
 }
 
-func addVisitReportEntry(
+func addVisitJournalEntry(
 	ctx context.Context, db *store.DBQ, dbtx imsdb.DBTX,
 	eventID, visitNum int32, authorPersonID int32, text string, generated bool,
 	attachment, attachmentOriginalName, attachmentMediaType string,
 ) (int32, *herr.HTTPError) {
-	reID64, err := db.CreateReportEntry(ctx, dbtx,
-		imsdb.CreateReportEntryParams{
+	reID64, err := db.CreateJournalEntry(ctx, dbtx,
+		imsdb.CreateJournalEntryParams{
 			AuthorPersonID:           authorPersonID,
 			Text:                     text,
 			Created:                  conv.TimeToFloat(time.Now()),
@@ -573,17 +573,17 @@ func addVisitReportEntry(
 		},
 	)
 	if err != nil {
-		return 0, herr.InternalServerError("Failed to create report entry", err).From("[MustInt32]")
+		return 0, herr.InternalServerError("Failed to create journal entry", err).From("[MustInt32]")
 	}
 	// This column is an int32, so this is safe
 	reID := conv.MustInt32(reID64)
-	err = db.AttachReportEntryToVisit(ctx, dbtx, imsdb.AttachReportEntryToVisitParams{
-		Event:       eventID,
-		VisitNumber: visitNum,
-		ReportEntry: reID,
+	err = db.AttachJournalEntryToVisit(ctx, dbtx, imsdb.AttachJournalEntryToVisitParams{
+		Event:        eventID,
+		VisitNumber:  visitNum,
+		JournalEntry: reID,
 	})
 	if err != nil {
-		return 0, herr.InternalServerError("Failed to attach report entry", err).From("[AttachReportEntryToVisit]")
+		return 0, herr.InternalServerError("Failed to attach journal entry", err).From("[AttachJournalEntryToVisit]")
 	}
 	return reID, nil
 }
@@ -705,13 +705,13 @@ func (action AttachPersonToVisit) attachPerson(req *http.Request) *herr.HTTPErro
 		return herr.InternalServerError("Failed to attach person to Visit", err).From("[AttachPersonToVisit]")
 	}
 
-	_, errHTTP = addVisitReportEntry(
+	_, errHTTP = addVisitJournalEntry(
 		ctx, action.imsDBQ, txn, event.ID, visitNumber,
 		jwtCtx.Claims.PersonID(), fmt.Sprintf("Added person: %v", personHandle),
 		true, "", "", "",
 	)
 	if errHTTP != nil {
-		return errHTTP.From("[addVisitReportEntry]")
+		return errHTTP.From("[addVisitJournalEntry]")
 	}
 	err = txn.Commit()
 	if err != nil {
@@ -777,13 +777,13 @@ func (action DetachPersonFromVisit) detachPerson(req *http.Request) *herr.HTTPEr
 	if err != nil {
 		return herr.InternalServerError("Failed to detach person from Visit", err).From("[DetachPersonFromVisit]")
 	}
-	_, errHTTP = addVisitReportEntry(
+	_, errHTTP = addVisitJournalEntry(
 		ctx, action.imsDBQ, txn, event.ID, visitNumber,
 		jwtCtx.Claims.PersonID(), fmt.Sprintf("Removed person: %v", personHandle),
 		true, "", "", "",
 	)
 	if errHTTP != nil {
-		return errHTTP.From("[addVisitReportEntry]")
+		return errHTTP.From("[addVisitJournalEntry]")
 	}
 
 	err = txn.Commit()

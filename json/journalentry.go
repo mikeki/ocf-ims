@@ -18,7 +18,7 @@ package json
 
 import "time"
 
-type ReportEntry struct {
+type JournalEntry struct {
 	ID          int32      `json:"id"`
 	Created     time.Time  `json:"created,omitzero"`
 	Author      string     `json:"author"`

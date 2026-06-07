@@ -31,8 +31,8 @@ func sampleReport1(eventName string) imsjson.Report {
 	return imsjson.Report{
 		Event:   eventName,
 		Summary: new("my summary!"),
-		ReportEntries: []imsjson.ReportEntry{
-			{Text: "This is some report text lol"},
+		JournalEntries: []imsjson.JournalEntry{
+			{Text: "This is some journal text lol"},
 			{Text: ""},
 		},
 	}
@@ -57,7 +57,7 @@ func TestCreateAndGetReport(t *testing.T) {
 
 	// Use normal user to create a new Report
 	reportReq := sampleReport1(eventName)
-	entryReq := reportReq.ReportEntries[0]
+	entryReq := reportReq.JournalEntries[0]
 	num := apisNonAdmin.newReportSuccess(ctx, reportReq)
 	reportReq.Number = num
 
@@ -68,10 +68,10 @@ func TestCreateAndGetReport(t *testing.T) {
 		require.NoError(t, resp.Body.Close())
 		require.NotNil(t, retrievedReport)
 		requireEqualReport(t, reportReq, retrievedReport)
-		require.Len(t, retrievedReport.ReportEntries, 2)
+		require.Len(t, retrievedReport.JournalEntries, 2)
 
-		// The first report entry will be the system entry. The second should be the one we sent in the request
-		retrievedUserEntry := retrievedReport.ReportEntries[1]
+		// The first journal entry will be the system entry. The second should be the one we sent in the request
+		retrievedUserEntry := retrievedReport.JournalEntries[1]
 		retrievedUserEntry.ID = 0
 		require.WithinDuration(t, time.Now(), retrievedUserEntry.Created, 5*time.Minute)
 		retrievedUserEntry.Created = time.Time{}
@@ -88,10 +88,10 @@ func TestCreateAndGetReport(t *testing.T) {
 		require.NotNil(t, retrievedReports)
 		require.Len(t, retrievedReports, 1)
 		requireEqualReport(t, reportReq, retrievedReports[0])
-		require.Len(t, retrievedReports[0].ReportEntries, 2)
+		require.Len(t, retrievedReports[0].JournalEntries, 2)
 
-		// The first report entry will be the system entry. The second should be the one we sent in the request
-		retrievedUserEntry := retrievedReports[0].ReportEntries[1]
+		// The first journal entry will be the system entry. The second should be the one we sent in the request
+		retrievedUserEntry := retrievedReports[0].JournalEntries[1]
 		retrievedUserEntry.ID = 0
 		require.WithinDuration(t, time.Now(), retrievedUserEntry.Created, 5*time.Minute)
 		retrievedUserEntry.Created = time.Time{}
@@ -134,7 +134,7 @@ func TestCreateAndUpdateReport(t *testing.T) {
 		Event:    reportReq.Event,
 		Number:   num,
 		Incident: new(int32(12345)),
-		ReportEntries: []imsjson.ReportEntry{
+		JournalEntries: []imsjson.JournalEntry{
 			{
 				Text: "new details!",
 			},
@@ -155,11 +155,11 @@ func TestCreateAndUpdateReport(t *testing.T) {
 
 	// now let's set all fields to empty
 	updates = imsjson.Report{
-		Event:         reportReq.Event,
-		Number:        num,
-		Summary:       new(""),
-		Incident:      nil,
-		ReportEntries: []imsjson.ReportEntry{},
+		Event:          reportReq.Event,
+		Number:         num,
+		Summary:        new(""),
+		Incident:       nil,
+		JournalEntries: []imsjson.JournalEntry{},
 	}
 	resp = apisAlice.updateReport(ctx, eventName, num, updates)
 	require.Equal(t, http.StatusNoContent, resp.StatusCode)
@@ -274,12 +274,12 @@ func TestCreateAndAttachFileToReport(t *testing.T) {
 }
 
 // requireEqualIncident is a hacky way of checking two incident responses are the same.
-// It does not consider ReportEntries.
+// It does not consider JournalEntries.
 func requireEqualReport(t *testing.T, before, after imsjson.Report) {
 	t.Helper()
 
 	// These will always be different. Check them separately of this function
-	before.ReportEntries, after.ReportEntries = nil, nil
+	before.JournalEntries, after.JournalEntries = nil, nil
 
 	// If the timestamp field was set before, then check it's the same. Otherwise
 	// see if it was set to some reasonable time for when the test was running

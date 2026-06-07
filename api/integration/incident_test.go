@@ -40,8 +40,8 @@ func sampleIncident1(eventName string) imsjson.Incident {
 		Reports:         &[]int32{},
 		Visits:          &[]int32{},
 		People:          &[]imsjson.IncidentPerson{{Handle: userAdminHandle}, {Handle: userAliceHandle}},
-		ReportEntries: []imsjson.ReportEntry{
-			{Text: "This is some report text lol"},
+		JournalEntries: []imsjson.JournalEntry{
+			{Text: "This is some journal text lol"},
 			{Text: ""},
 		},
 		LinkedIncidents: &[]imsjson.LinkedIncident{},
@@ -146,7 +146,7 @@ func TestCreateAndGetIncident(t *testing.T) {
 
 	// Use normal user to create a new Incident
 	incidentReq := sampleIncident1(eventName)
-	entryReq := incidentReq.ReportEntries[0]
+	entryReq := incidentReq.JournalEntries[0]
 	num := apisNonAdmin.newIncidentSuccess(ctx, incidentReq)
 	incidentReq.Number = num
 	for _, r := range *incidentReq.People {
@@ -164,10 +164,10 @@ func TestCreateAndGetIncident(t *testing.T) {
 		require.WithinDuration(t, time.Now(), retrievedIncident.Created, 5*time.Minute)
 		require.WithinDuration(t, time.Now(), retrievedIncident.Started, 5*time.Minute)
 		require.WithinDuration(t, time.Now(), retrievedIncident.LastModified, 5*time.Minute)
-		require.Len(t, retrievedIncident.ReportEntries, 4)
+		require.Len(t, retrievedIncident.JournalEntries, 4)
 
-		// The first report entry will be the system entry. The second should be the one we sent in the request
-		retrievedUserEntry := retrievedIncident.ReportEntries[1]
+		// The first journal entry will be the system entry. The second should be the one we sent in the request
+		retrievedUserEntry := retrievedIncident.JournalEntries[1]
 		retrievedUserEntry.ID = 0
 		require.WithinDuration(t, time.Now(), retrievedUserEntry.Created, 5*time.Minute)
 		retrievedUserEntry.Created = time.Time{}
@@ -185,7 +185,7 @@ func TestCreateAndGetIncident(t *testing.T) {
 		require.Len(t, retrievedIncidents, 1)
 
 		// The first entry will be the system entry. The second should be the one we sent in the request
-		retrievedUserEntry := retrievedIncidents[0].ReportEntries[1]
+		retrievedUserEntry := retrievedIncidents[0].JournalEntries[1]
 		retrievedUserEntry.ID = 0
 		require.WithinDuration(t, time.Now(), retrievedUserEntry.Created, 5*time.Minute)
 		retrievedUserEntry.Created = time.Time{}
@@ -251,7 +251,7 @@ func TestCreateAndUpdateIncident(t *testing.T) {
 		IncidentTypeIDs: &[]int32{},
 		Reports:         &[]int32{},
 		People:          &[]imsjson.IncidentPerson{},
-		ReportEntries:   []imsjson.ReportEntry{},
+		JournalEntries:  []imsjson.JournalEntry{},
 	}
 	resp = apisNonAdmin.updateIncident(ctx, eventName, num, updates)
 	require.Equal(t, http.StatusNoContent, resp.StatusCode)
@@ -573,7 +573,7 @@ func deref[T any](p *T) T {
 }
 
 // requireEqualIncident is a hacky way of checking two incident responses are the same.
-// It does not consider ReportEntries.
+// It does not consider JournalEntries.
 func requireEqualIncident(t *testing.T, before, after imsjson.Incident) {
 	t.Helper()
 
@@ -601,7 +601,7 @@ func requireEqualIncident(t *testing.T, before, after imsjson.Incident) {
 	before.Started, after.Started = time.Time{}, time.Time{}
 	before.Closed, after.Closed = time.Time{}, time.Time{}
 	before.LastModified, after.LastModified = time.Time{}, time.Time{}
-	before.ReportEntries, after.ReportEntries = nil, nil
+	before.JournalEntries, after.JournalEntries = nil, nil
 
 	require.Equal(t, before, after)
 }

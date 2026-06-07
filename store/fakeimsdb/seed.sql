@@ -263,7 +263,7 @@ values  (1, 1, 1748459852.644699, 3, 'dispatched', 1748459852.644699, 'Something
 insert into REPORT (EVENT, NUMBER, CREATED, SUMMARY, INCIDENT_NUMBER)
 values  (1, 1, 1748460231.287398, 'Report from the field', 2);
 
-insert into REPORT_ENTRY (ID, AUTHOR_PERSON_ID, TEXT, CREATED, GENERATED, STRICKEN, ATTACHED_FILE)
+insert into JOURNAL_ENTRY (ID, AUTHOR_PERSON_ID, TEXT, CREATED, GENERATED, STRICKEN, ATTACHED_FILE)
 values  (1, 603, 'Changed priority: 3
 Changed state: new
 Changed summary: Something bad!', 1748459852.649554, 1, 0, null),
@@ -285,7 +285,7 @@ Added Ranger: Abraham', 1748460242.688133, 1, 0, null),
         (16, 603, 'Added Ranger: Loosy', 1748460254.830443, 1, 0, null),
         (17, 603, 'Removed Ranger: Abraham', 1748460256.071517, 1, 0, null);
 
-insert into REPORT__REPORT_ENTRY (EVENT, REPORT_NUMBER, REPORT_ENTRY)
+insert into REPORT__JOURNAL_ENTRY (EVENT, REPORT_NUMBER, JOURNAL_ENTRY)
 values  (1, 1, 12),
         (1, 1, 13),
         (1, 1, 15);
@@ -302,7 +302,7 @@ values  (1, 1, 1, 604),
         (2, 1, 1, 605),
         (4, 1, 2, 606);
 
-insert into INCIDENT__REPORT_ENTRY (EVENT, INCIDENT_NUMBER, REPORT_ENTRY)
+insert into INCIDENT__JOURNAL_ENTRY (EVENT, INCIDENT_NUMBER, JOURNAL_ENTRY)
 values  (1, 1, 1),
         (1, 1, 2),
         (1, 1, 3),

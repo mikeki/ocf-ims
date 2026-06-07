@@ -118,7 +118,7 @@ func TestEventEndpoints_ForNoEventPerms(t *testing.T) {
 	createIncident := MethodURL{http.MethodPost, eventPath + "/incidents"}
 	updateIncident := MethodURL{http.MethodPost, eventPath + "/incidents/1"}
 	postIncidentAttachment := MethodURL{http.MethodPost, eventPath + "/incidents/1/attachments"}
-	postIncidentRE := MethodURL{http.MethodPost, eventPath + "/incidents/1/report_entries/2"}
+	postIncidentRE := MethodURL{http.MethodPost, eventPath + "/incidents/1/journal_entries/2"}
 	postIncidentPerson := MethodURL{http.MethodPost, eventPath + "/incidents/1/people/some_name"}
 	deleteIncidentPerson := MethodURL{http.MethodDelete, eventPath + "/incidents/1/people/some_name"}
 	getReports := MethodURL{http.MethodGet, eventPath + "/reports"}
@@ -127,14 +127,14 @@ func TestEventEndpoints_ForNoEventPerms(t *testing.T) {
 	createReport := MethodURL{http.MethodPost, eventPath + "/reports"}
 	updateReport := MethodURL{http.MethodPost, eventPath + "/reports/9999999"}
 	postReportAttachment := MethodURL{http.MethodPost, eventPath + "/reports/9999999/attachments"}
-	postReportRE := MethodURL{http.MethodPost, eventPath + "/reports/9999999/report_entries/2"}
+	postReportRE := MethodURL{http.MethodPost, eventPath + "/reports/9999999/journal_entries/2"}
 	getVisits := MethodURL{http.MethodGet, eventPath + "/visits"}
 	getVisit := MethodURL{http.MethodGet, eventPath + "/visits/1"}
 	getVisitAttachment := MethodURL{http.MethodGet, eventPath + "/visits/1/attachments/1"}
 	createVisit := MethodURL{http.MethodPost, eventPath + "/visits"}
 	updateVisit := MethodURL{http.MethodPost, eventPath + "/visits/1"}
 	postVisitAttachment := MethodURL{http.MethodPost, eventPath + "/visits/1/attachments"}
-	postVisitRE := MethodURL{http.MethodPost, eventPath + "/visits/9999999/report_entries/2"}
+	postVisitRE := MethodURL{http.MethodPost, eventPath + "/visits/9999999/journal_entries/2"}
 	postVisitPerson := MethodURL{http.MethodPost, eventPath + "/visits/1/people/some_name"}
 	deleteVisitPerson := MethodURL{http.MethodDelete, eventPath + "/visits/1/people/some_name"}
 	getAreas := MethodURL{http.MethodGet, eventPath + "/areas"}

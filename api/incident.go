@@ -69,27 +69,27 @@ func (action GetIncidents) getIncidents(req *http.Request) (imsjson.Incidents, *
 	}
 	includeSystemEntries := !strings.EqualFold(req.Form.Get("exclude_system_entries"), "true")
 
-	// The Incidents and ReportEntries queries both request a lot of data, and we can query
+	// The Incidents and JournalEntries queries both request a lot of data, and we can query
 	// and process those results concurrently.
 	group, groupCtx := errgroup.WithContext(req.Context())
 
-	entriesByIncident := make(map[int32][]imsjson.ReportEntry)
+	entriesByIncident := make(map[int32][]imsjson.JournalEntry)
 	group.Go(func() error {
-		reportEntries, err := action.imsDBQ.Incidents_ReportEntries(
+		journalEntries, err := action.imsDBQ.Incidents_JournalEntries(
 			groupCtx,
 			action.imsDBQ,
-			imsdb.Incidents_ReportEntriesParams{
+			imsdb.Incidents_JournalEntriesParams{
 				Event:     event.ID,
 				Generated: includeSystemEntries,
 			},
 		)
 		if err != nil {
-			return herr.InternalServerError("Failed to fetch Incident Report Entries", err).From("[Incidents_ReportEntries]")
+			return herr.InternalServerError("Failed to fetch Incident Journal Entries", err).From("[Incidents_JournalEntries]")
 		}
-		for _, row := range reportEntries {
+		for _, row := range journalEntries {
 			entriesByIncident[row.IncidentNumber] = append(
 				entriesByIncident[row.IncidentNumber],
-				reportEntryToJSON(row.ReportEntry, row.Author, action.attachmentsEnabled),
+				journalEntryToJSON(row.JournalEntry, row.Author, action.attachmentsEnabled),
 			)
 		}
 		return nil
@@ -175,7 +175,7 @@ func (action GetIncident) getIncident(req *http.Request) (imsjson.Incident, *her
 		return resp, herr.BadRequest("Failed to parse incident number", err)
 	}
 
-	storedRow, reportEntries, errHTTP := fetchIncident(ctx, action.imsDBQ, event.ID, incidentNumber, action.attachmentsEnabled)
+	storedRow, journalEntries, errHTTP := fetchIncident(ctx, action.imsDBQ, event.ID, incidentNumber, action.attachmentsEnabled)
 	if errHTTP != nil {
 		return resp, errHTTP.From("[fetchIncident]")
 	}
@@ -210,7 +210,7 @@ func (action GetIncident) getIncident(req *http.Request) (imsjson.Incident, *her
 		}
 	}
 
-	resp, errHTTP = incidentToJSON(storedRow, people, reportEntries, linkedIncidents, event, action.attachmentsEnabled)
+	resp, errHTTP = incidentToJSON(storedRow, people, journalEntries, linkedIncidents, event, action.attachmentsEnabled)
 	if errHTTP != nil {
 		return resp, errHTTP.From("[incidentToJSON]")
 	}
@@ -218,7 +218,7 @@ func (action GetIncident) getIncident(req *http.Request) (imsjson.Incident, *her
 }
 
 func incidentToJSON(storedRow imsdb.IncidentRow, incidentPeople []imsjson.IncidentPerson,
-	resultEntries []imsjson.ReportEntry, linkedIncidents []imsdb.Incident_LinkedIncidentsRow,
+	resultEntries []imsjson.JournalEntry, linkedIncidents []imsdb.Incident_LinkedIncidentsRow,
 	event imsdb.Event, attachmentsEnabled bool,
 ) (imsjson.Incident, *herr.HTTPError) {
 	var resp imsjson.Incident
@@ -266,17 +266,17 @@ func incidentToJSON(storedRow imsdb.IncidentRow, incidentPeople []imsjson.Incide
 		Reports:         &reportNumbers,
 		Visits:          &visitNumbers,
 		People:          &peopleJson,
-		ReportEntries:   resultEntries,
+		JournalEntries:  resultEntries,
 		LinkedIncidents: &linkedIncidentJson,
 	}
 	return resp, nil
 }
 
 func fetchIncident(ctx context.Context, imsDBQ *store.DBQ, eventID, incidentNumber int32, attachmentsEnabled bool) (
-	imsdb.IncidentRow, []imsjson.ReportEntry, *herr.HTTPError,
+	imsdb.IncidentRow, []imsjson.JournalEntry, *herr.HTTPError,
 ) {
 	var empty imsdb.IncidentRow
-	var reportEntries []imsjson.ReportEntry
+	var journalEntries []imsjson.JournalEntry
 	incidentRow, err := imsDBQ.Incident(ctx, imsDBQ,
 		imsdb.IncidentParams{
 			Event:  eventID,
@@ -289,27 +289,27 @@ func fetchIncident(ctx context.Context, imsDBQ *store.DBQ, eventID, incidentNumb
 		}
 		return empty, nil, herr.InternalServerError("Failed to fetch Incident", err).From("[Incident]")
 	}
-	reportEntryRows, err := imsDBQ.Incident_ReportEntries(ctx, imsDBQ,
-		imsdb.Incident_ReportEntriesParams{
+	journalEntryRows, err := imsDBQ.Incident_JournalEntries(ctx, imsDBQ,
+		imsdb.Incident_JournalEntriesParams{
 			Event:          eventID,
 			IncidentNumber: incidentNumber,
 		},
 	)
 	if err != nil {
-		return empty, nil, herr.InternalServerError("Failed to fetch report entries", err).From("[Incident_ReportEntries]")
+		return empty, nil, herr.InternalServerError("Failed to fetch journal entries", err).From("[Incident_JournalEntries]")
 	}
-	for _, rer := range reportEntryRows {
-		reportEntries = append(reportEntries, reportEntryToJSON(rer.ReportEntry, rer.Author, attachmentsEnabled))
+	for _, rer := range journalEntryRows {
+		journalEntries = append(journalEntries, journalEntryToJSON(rer.JournalEntry, rer.Author, attachmentsEnabled))
 	}
-	return incidentRow, reportEntries, nil
+	return incidentRow, journalEntries, nil
 }
 
-func addIncidentReportEntry(
+func addIncidentJournalEntry(
 	ctx context.Context, db *store.DBQ, dbtx imsdb.DBTX,
 	eventID, incidentNum int32, authorPersonID int32, text string, generated bool,
 	attachment, attachmentOriginalName, attachmentMediaType string,
 ) (int32, *herr.HTTPError) {
-	reID64, err := db.CreateReportEntry(ctx, dbtx, imsdb.CreateReportEntryParams{
+	reID64, err := db.CreateJournalEntry(ctx, dbtx, imsdb.CreateJournalEntryParams{
 		AuthorPersonID:           authorPersonID,
 		Text:                     text,
 		Created:                  conv.TimeToFloat(time.Now()),
@@ -320,17 +320,17 @@ func addIncidentReportEntry(
 		AttachedFileMediaType:    conv.StringToSql(&attachmentMediaType, 128),
 	})
 	if err != nil {
-		return 0, herr.InternalServerError("Failed to create report entry", err).From("[MustInt32]")
+		return 0, herr.InternalServerError("Failed to create journal entry", err).From("[MustInt32]")
 	}
 	// This column is an int32, so this is safe
 	reID := conv.MustInt32(reID64)
-	err = db.AttachReportEntryToIncident(ctx, dbtx, imsdb.AttachReportEntryToIncidentParams{
+	err = db.AttachJournalEntryToIncident(ctx, dbtx, imsdb.AttachJournalEntryToIncidentParams{
 		Event:          eventID,
 		IncidentNumber: incidentNum,
-		ReportEntry:    reID,
+		JournalEntry:   reID,
 	})
 	if err != nil {
-		return 0, herr.InternalServerError("Failed to attach report entry", err).From("[AttachReportEntryToIncident]")
+		return 0, herr.InternalServerError("Failed to attach journal entry", err).From("[AttachJournalEntryToIncident]")
 	}
 	return reID, nil
 }
@@ -725,14 +725,14 @@ func updateIncident(ctx context.Context, imsDBQ *store.DBQ, es *EventSourcerer, 
 				if err != nil {
 					return herr.InternalServerError("Failed to link Incident", err).From("[LinkIncidents]")
 				}
-				_, errHTTP := addIncidentReportEntry(
+				_, errHTTP := addIncidentJournalEntry(
 					ctx, imsDBQ, txn, otherIncident.EventID, otherIncident.Number,
 					authorPersonID, fmt.Sprintf("Incident linked: %v #%v", eventNameById[newIncident.EventID],
 						newIncident.Number,
 					), true, "", "", "",
 				)
 				if errHTTP != nil {
-					return errHTTP.From("[addIncidentReportEntry]")
+					return errHTTP.From("[addIncidentJournalEntry]")
 				}
 			}
 		}
@@ -762,33 +762,33 @@ func updateIncident(ctx context.Context, imsDBQ *store.DBQ, es *EventSourcerer, 
 				if err != nil {
 					return herr.InternalServerError("Failed to unlink Incident", err).From("[UnlinkIncidents]")
 				}
-				_, errHTTP := addIncidentReportEntry(
+				_, errHTTP := addIncidentJournalEntry(
 					ctx, imsDBQ, txn, otherIncident.EventID, otherIncident.Number,
 					authorPersonID, fmt.Sprintf("Incident unlinked: %v #%v", eventNameById[newIncident.EventID],
 						newIncident.Number,
 					), true, "", "", "",
 				)
 				if errHTTP != nil {
-					return errHTTP.From("[addIncidentReportEntry]")
+					return errHTTP.From("[addIncidentJournalEntry]")
 				}
 			}
 		}
 	}
 
 	if len(logs) > 0 {
-		_, errHTTP := addIncidentReportEntry(ctx, imsDBQ, txn, newIncident.EventID, newIncident.Number, authorPersonID, strings.Join(logs, "\n"), true, "", "", "")
+		_, errHTTP := addIncidentJournalEntry(ctx, imsDBQ, txn, newIncident.EventID, newIncident.Number, authorPersonID, strings.Join(logs, "\n"), true, "", "", "")
 		if errHTTP != nil {
-			return errHTTP.From("[addIncidentReportEntry]")
+			return errHTTP.From("[addIncidentJournalEntry]")
 		}
 	}
 
-	for _, entry := range newIncident.ReportEntries {
+	for _, entry := range newIncident.JournalEntries {
 		if entry.Text == "" {
 			continue
 		}
-		_, errHTTP := addIncidentReportEntry(ctx, imsDBQ, txn, newIncident.EventID, newIncident.Number, authorPersonID, entry.Text, false, "", "", "")
+		_, errHTTP := addIncidentJournalEntry(ctx, imsDBQ, txn, newIncident.EventID, newIncident.Number, authorPersonID, entry.Text, false, "", "", "")
 		if errHTTP != nil {
-			return errHTTP.From("[addIncidentReportEntry]")
+			return errHTTP.From("[addIncidentJournalEntry]")
 		}
 	}
 
@@ -956,13 +956,13 @@ func (action AttachPersonToIncident) attachPerson(req *http.Request) *herr.HTTPE
 		return herr.InternalServerError("Failed to attach person to Incident", err).From("[AttachPersonToIncident]")
 	}
 
-	_, errHTTP = addIncidentReportEntry(
+	_, errHTTP = addIncidentJournalEntry(
 		ctx, action.imsDBQ, txn, event.ID, incidentNumber,
 		jwtCtx.Claims.PersonID(), fmt.Sprintf("Added person: %v", personHandle),
 		true, "", "", "",
 	)
 	if errHTTP != nil {
-		return errHTTP.From("[addIncidentReportEntry]")
+		return errHTTP.From("[addIncidentJournalEntry]")
 	}
 	err = txn.Commit()
 	if err != nil {
@@ -1028,13 +1028,13 @@ func (action DetachPersonFromIncident) detachPerson(req *http.Request) *herr.HTT
 	if err != nil {
 		return herr.InternalServerError("Failed to detach person from Incident", err).From("[DetachPersonFromIncident]")
 	}
-	_, errHTTP = addIncidentReportEntry(
+	_, errHTTP = addIncidentJournalEntry(
 		ctx, action.imsDBQ, txn, event.ID, incidentNumber,
 		jwtCtx.Claims.PersonID(), fmt.Sprintf("Removed person: %v", personHandle),
 		true, "", "", "",
 	)
 	if errHTTP != nil {
-		return errHTTP.From("[addIncidentReportEntry]")
+		return errHTTP.From("[addIncidentJournalEntry]")
 	}
 
 	err = txn.Commit()

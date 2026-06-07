@@ -20,10 +20,10 @@ import "time"
 
 type Reports []Report
 type Report struct {
-	Event         string        `json:"event"`
-	Number        int32         `json:"number"`
-	Created       time.Time     `json:"created,omitzero"`
-	Summary       *string       `json:"summary"`
-	Incident      *int32        `json:"incident,omitzero"`
-	ReportEntries []ReportEntry `json:"report_entries"`
+	Event          string         `json:"event"`
+	Number         int32          `json:"number"`
+	Created        time.Time      `json:"created,omitzero"`
+	Summary        *string        `json:"summary"`
+	Incident       *int32         `json:"incident,omitzero"`
+	JournalEntries []JournalEntry `json:"journal_entries"`
 }

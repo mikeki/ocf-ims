@@ -74,7 +74,7 @@ const (
 // imsPeopleTestSeed seeds the local IMS-DB people directory used by the integration
 // suite: the two login users (with argon2id password hashes for userAdminPassword /
 // userAlicePassword), plus a position and team so the positions/teams paths are
-// exercised. The person_id FKs (attachments, report-entry author) resolve against
+// exercised. The person_id FKs (attachments, journal-entry author) resolve against
 // these rows and the author join renders the expected handle.
 const imsPeopleTestSeed = `
 insert into PERSON (ID, HANDLE, EMAIL, PASSWORD, STATUS, ON_SITE, CREATED) values

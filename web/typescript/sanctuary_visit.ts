@@ -52,8 +52,8 @@ declare global {
         setPersonInvolvement: (el: HTMLInputElement)=>void;
 
         toggleShowHistory: () => void;
-        reportEntryEdited: ()=>void;
-        submitReportEntry: ()=>void;
+        journalEntryEdited: ()=>void;
+        submitJournalEntry: ()=>void;
         attachFile: () => void;
     }
 }
@@ -100,7 +100,7 @@ const el = {
     addPerson: ims.typedElement("person_add", HTMLInputElement),
 
     historyCheckbox: ims.typedElement("history_checkbox", HTMLInputElement),
-    reportEntryAdd: ims.typedElement("report_entry_add", HTMLTextAreaElement),
+    journalEntryAdd: ims.typedElement("journal_entry_add", HTMLTextAreaElement),
     attachFile: ims.typedElement("attach_file", HTMLInputElement),
     attachFileInput: ims.typedElement("attach_file_input", HTMLInputElement),
 };
@@ -154,8 +154,8 @@ async function initSanctuaryVisitPage(): Promise<void> {
     window.setPersonInvolvement = setPersonInvolvement;
 
     window.toggleShowHistory = ims.toggleShowHistory;
-    window.reportEntryEdited = ims.reportEntryEdited;
-    window.submitReportEntry = ims.submitReportEntry;
+    window.journalEntryEdited = ims.journalEntryEdited;
+    window.submitJournalEntry = ims.submitJournalEntry;
     window.attachFile = attachFile;
 
     // load everything from the APIs concurrently
@@ -192,7 +192,7 @@ async function initSanctuaryVisitPage(): Promise<void> {
 
     // Warn the user if they're about to navigate away with unsaved text.
     window.addEventListener("beforeunload", function (e: BeforeUnloadEvent): void {
-        if (el.reportEntryAdd.value !== "") {
+        if (el.journalEntryAdd.value !== "") {
             e.preventDefault();
         }
     });
@@ -226,12 +226,12 @@ async function initSanctuaryVisitPage(): Promise<void> {
         if (e.key === "?") {
             helpModal.toggle();
         }
-        // a --> jump to add a new report entry
+        // a --> jump to add a new journal entry
         if (e.key === "a") {
             e.preventDefault();
-            // Scroll to report_entry_add field
-            el.reportEntryAdd.focus();
-            el.reportEntryAdd.scrollIntoView(true);
+            // Scroll to journal_entry_add field
+            el.journalEntryAdd.focus();
+            el.journalEntryAdd.scrollIntoView(true);
         }
         // h --> toggle showing system entries
         if (e.key.toLowerCase() === "h") {
@@ -251,10 +251,10 @@ async function initSanctuaryVisitPage(): Promise<void> {
             e.stopPropagation();
         }
     });
-    el.reportEntryAdd.addEventListener("keydown", function (e: KeyboardEvent): void {
-        const submitEnabled = !document.getElementById("report_entry_submit")!.classList.contains("disabled");
+    el.journalEntryAdd.addEventListener("keydown", function (e: KeyboardEvent): void {
+        const submitEnabled = !document.getElementById("journal_entry_submit")!.classList.contains("disabled");
         if (submitEnabled && (e.ctrlKey || e.altKey) && e.key === "Enter") {
-            ims.submitReportEntry();
+            ims.submitJournalEntry();
         }
     });
 
@@ -310,10 +310,10 @@ function displayVisit(): void {
 
     drawVisitFields();
     ims.toggleShowHistory();
-    ims.drawReportEntries(visit.report_entries??[]);
+    ims.drawJournalEntries(visit.journal_entries??[]);
     ims.clearErrorMessage();
 
-    el.reportEntryAdd.addEventListener("input", ims.reportEntryEdited);
+    el.journalEntryAdd.addEventListener("input", ims.journalEntryEdited);
 
     if (ims.eventAccess?.writeVisits) {
         ims.enableEditing();
@@ -576,7 +576,7 @@ async function editResourceOther(): Promise<void> {
     await ims.editFromElement(el.resourceOther, "resource_other");
 }
 
-// The success callback for a report entry strike call.
+// The success callback for a journal entry strike call.
 async function onStrikeSuccess(): Promise<void> {
     await loadAndDisplayVisit();
     ims.clearErrorMessage();
