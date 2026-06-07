@@ -23,8 +23,7 @@ declare global {
     interface Window {
         editState: ()=>Promise<void>;
         editIncidentSummary: ()=>Promise<void>;
-        editLocationName: ()=>Promise<void>;
-        editLocationAddress: ()=>Promise<void>;
+        editLocationArea: ()=>Promise<void>;
         editLocationDescription: ()=>Promise<void>;
         removePerson: (el: HTMLElement)=>void;
         setPersonInvolvement: (el: HTMLInputElement)=>void;
@@ -49,7 +48,8 @@ let allIncidentTypes: ims.IncidentType[] = [];
 
 let allEvents: ims.EventData[]|null = null;
 
-let places: ims.Places = {};
+// The current event's areas, used to populate the location <select> (Phase 4c).
+let eventAreas: ims.Area[] = [];
 
 //
 // Initialize UI
@@ -62,8 +62,7 @@ const el = {
     startedDatetime: ims.typedElement("started_datetime", HTMLInputElement) as ims.FlatpickrHTMLInputElement,
     startedDatetimeTz: ims.typedElement("started_datetime_tz", HTMLSpanElement),
 
-    locationName: ims.typedElement("incident_location_name", HTMLInputElement),
-    locationAddress: ims.typedElement("incident_location_address", HTMLInputElement),
+    locationArea: ims.typedElement("incident_location_area", HTMLSelectElement),
     locationDescription: ims.typedElement("incident_location_description", HTMLInputElement),
 
     personAdd: ims.typedElement("person_add", HTMLInputElement),
@@ -78,8 +77,6 @@ const el = {
     incidentTypeInfo: ims.typedElement("incident-type-info", HTMLUListElement),
     incidentTypeInfoTemplate: ims.typedElement("incident-type-info-template", HTMLTemplateElement),
     showIncidentTypeInfo: ims.typedElement("show-incident-type-info", HTMLElement),
-
-    placesList: ims.typedElement("places-list", HTMLDataListElement),
 
     attachedReportLiTemplate: ims.typedElement("attached_report_li_template", HTMLTemplateElement),
     attachedReportAddContainer: ims.typedElement("attached_report_add_container", HTMLDivElement),
@@ -115,8 +112,7 @@ async function initIncidentPage(): Promise<void> {
 
     window.editState = editState;
     window.editIncidentSummary = editIncidentSummary;
-    window.editLocationName = editLocationName;
-    window.editLocationAddress = editLocationAddress;
+    window.editLocationArea = editLocationArea;
     window.editLocationDescription = editLocationDescription;
     window.removePerson = removePerson;
     window.setPersonInvolvement = setPersonInvolvement;
@@ -144,7 +140,7 @@ async function initIncidentPage(): Promise<void> {
                 allIncidentTypes = value.types.sort(ims.compareIncidentTypesByGroup);
             },
         ),
-        await loadPlaces(),
+        await loadEventAreas(),
         await loadAllVisits(),
         await loadAllReports(),
     ]);
@@ -162,7 +158,6 @@ async function initIncidentPage(): Promise<void> {
     drawPeopleToAdd();
     drawIncidentTypesToAdd();
     drawIncidentTypeInfo();
-    drawPlacesList();
     renderReportData();
 
     ims.hideLoadingOverlay();
@@ -583,8 +578,7 @@ function drawIncidentFields() {
     drawIncidentSummary();
     drawPeople();
     drawIncidentTypes();
-    drawLocationName();
-    drawLocationAddress();
+    drawLocationArea();
     drawLocationDescription();
     ims.toggleShowHistory();
     drawMergedReportEntries();
@@ -825,72 +819,64 @@ function drawIncidentTypeInfo(): void {
 // Populate location
 //
 
-function drawLocationName() {
-    if (incident?.location?.name) {
-        el.locationName.value = incident.location.name;
-    }
-}
-
-async function loadPlaces(): Promise<void> {
-    const {json, err} = await ims.fetchNoThrow<ims.Places>(
-       `${ims.urlReplace(url_places)}?exclude_external_data=true`,
-        null,
+async function loadEventAreas(): Promise<void> {
+    const {json, err} = await ims.fetchNoThrow<ims.Areas>(
+        ims.urlReplace(url_areas), null,
     );
     if (err != null || json == null) {
-        const message = `Failed to load places: ${err}`;
+        const message = `Failed to load areas: ${err}`;
         console.error(message);
         ims.setErrorMessage(message);
         return;
     }
-    places = json;
+    eventAreas = json;
 }
 
-function drawPlacesList(): void {
-    el.placesList.replaceChildren();
-    el.placesList.append(document.createElement("option"));
-
-    const newOptions: HTMLOptionElement[] = [];
-    for (const d of places.art??[]) {
-        const option: HTMLOptionElement = document.createElement("option");
-        option.value = `${d.name} (Art) (${d.location_string || '??'})`;
-        option.dataset["name"] = d.name??"";
-        option.dataset["address"] = d.location_string??"";
-        option.dataset["type"] = "Art";
-        newOptions.push(option);
+// compareAreas orders areas by sort_order, then by name.
+function compareAreas(a: ims.Area, b: ims.Area): number {
+    const diff = (a.sort_order??0) - (b.sort_order??0);
+    if (diff !== 0) {
+        return diff;
     }
-    for (const d of places.camp??[]) {
-        const option: HTMLOptionElement = document.createElement("option");
-        option.value = `${d.name} (${d.location_string || '??'})`;
-        option.dataset["name"] = d.name??"";
-        option.dataset["address"] = d.location_string??"";
-        option.dataset["type"] = "Camp";
-        newOptions.push(option);
-    }
-    for (const d of places.mv??[]) {
-        const option: HTMLOptionElement = document.createElement("option");
-        option.value = `${d.name} (MV)`;
-        option.dataset["name"] = d.name??"";
-        option.dataset["type"] = "MV";
-        newOptions.push(option);
-    }
-    for (const d of places.other??[]) {
-        const option: HTMLOptionElement = document.createElement("option");
-        option.value = `${d.name} (${d.location_string || '??'})`;
-        option.dataset["name"] = d.name??"";
-        option.dataset["address"] = d.location_string??"";
-        option.dataset["type"] = "Other";
-        newOptions.push(option);
-    }
-    newOptions.sort((a: HTMLOptionElement, b: HTMLOptionElement): number => a.value.localeCompare(b.value));
-    el.placesList.append(...newOptions);
+    return (a.name??"").localeCompare(b.name??"");
 }
 
-function drawLocationAddress() {
-    if (!incident || !incident.location) {
-        el.locationAddress.value = "";
-        return;
+// drawAreaOptions rebuilds the location <select> from the event's areas: each
+// top-level area followed by its children (single-level hierarchy), children
+// indented. The leading "(none)" option clears the area.
+function drawAreaOptions(): void {
+    const select = el.locationArea;
+    select.replaceChildren();
+
+    const none = document.createElement("option");
+    none.value = "";
+    none.textContent = "(none)";
+    select.append(none);
+
+    const topLevel = eventAreas.filter(a => !a.parent_slug).sort(compareAreas);
+    for (const area of topLevel) {
+        select.append(areaOption(area, false));
+        const children = eventAreas
+            .filter(a => a.parent_slug === area.slug)
+            .sort(compareAreas);
+        for (const child of children) {
+            select.append(areaOption(child, true));
+        }
     }
-    el.locationAddress.value = incident.location.address??"";
+}
+
+function areaOption(area: ims.Area, indent: boolean): HTMLOptionElement {
+    const opt = document.createElement("option");
+    opt.value = area.slug??"";
+    opt.textContent = indent ? `  — ${area.name??""}` : (area.name??"");
+    return opt;
+}
+
+// drawLocationArea repopulates the options (the area list is event-scoped and
+// loaded once) and selects the incident's current area, if any.
+function drawLocationArea(): void {
+    drawAreaOptions();
+    el.locationArea.value = incident?.location?.area_slug??"";
 }
 
 function drawLocationDescription() {
@@ -1183,50 +1169,8 @@ async function editIncidentSummary(): Promise<void> {
 }
 
 
-async function editLocationName(): Promise<void> {
-    const place = document.querySelector(`option[value='${CSS.escape(el.locationName.value)}']`) as HTMLOptionElement|null;
-    if (place) {
-        return await setLocationFromPlace(place);
-    }
-    await ims.editFromElement(el.locationName, "location.name");
-}
-
-async function setLocationFromPlace(knownLoc: HTMLOptionElement): Promise<void> {
-    let nameSuffix: string = "";
-    switch (knownLoc.dataset["type"]) {
-        case "Art":
-            nameSuffix = " (Art)";
-            break;
-        case "MV":
-            nameSuffix = " (MV)";
-            break;
-        case "Camp":
-        case "Other":
-        default:
-            break;
-    }
-
-    const edits: ims.Incident = {};
-    edits.location = {};
-    if (knownLoc.dataset["name"]) {
-        edits.location.name = (knownLoc.dataset["name"] + nameSuffix).trim();
-    }
-    if (knownLoc.dataset["address"]) {
-        edits.location.address = knownLoc.dataset["address"].trim();
-    }
-    const {err} = await sendEdits!(edits);
-    if (err != null) {
-        ims.controlHasError(el.locationName);
-    } else {
-        ims.controlHasSuccess(el.locationName);
-        if (edits.location.address) {
-            ims.controlHasSuccess(el.locationAddress);
-        }
-    }
-}
-
-async function editLocationAddress(): Promise<void> {
-    await ims.editFromElement(el.locationAddress, "location.address");
+async function editLocationArea(): Promise<void> {
+    await ims.editFromElement(el.locationArea, "location.area_slug");
 }
 
 async function editLocationDescription(): Promise<void> {

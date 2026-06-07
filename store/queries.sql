@@ -81,9 +81,8 @@ update INCIDENT set
     STARTED = ?,
     CLOSED = ?,
     SUMMARY = ?,
-    LOCATION_NAME = ?,
-    LOCATION_ADDRESS = ?,
-    LOCATION_DESCRIPTION = ?
+    LOCATION_DESCRIPTION = ?,
+    LOCATION_AREA_SLUG = ?
 where
     EVENT = ?
     and NUMBER = ?
@@ -448,34 +447,6 @@ from
 where
     al.CREATED_AT > sqlc.arg(min_time)
     and al.CREATED_AT < sqlc.arg(max_time)
-;
-
--- name: CreatePlace :exec
-insert into PLACE
-    (EVENT, NUMBER, TYPE, NAME, LOCATION_STRING, EXTERNAL_DATA)
-values
-    (?,?,?,?,?,?)
-;
-
--- name: RemovePlaces :exec
-delete from
-    PLACE
-where EVENT = ?
-    and TYPE = ?
-;
-
--- name: Places :many
-select
-    EVENT,
-    TYPE,
-    NUMBER,
-    NAME,
-    LOCATION_STRING,
-    if(sqlc.arg(exclude_external_data), '', EXTERNAL_DATA) as EXTERNAL_DATA
-from
-    PLACE d
-where
-    EVENT = ?
 ;
 
 -- name: Areas :many

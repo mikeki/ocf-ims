@@ -124,18 +124,6 @@ func (a ApiHelper) getTypes(ctx context.Context) (imsjson.IncidentTypes, *http.R
 	return *bod.(*imsjson.IncidentTypes), resp
 }
 
-func (a ApiHelper) editPlaces(ctx context.Context, eventName string, req imsjson.Places) *http.Response {
-	a.t.Helper()
-	return a.imsPost(ctx, req, a.serverURL.JoinPath("/ims/api/events/", eventName, "/places").String())
-}
-
-func (a ApiHelper) getPlaces(ctx context.Context, eventName string) (imsjson.Places, *http.Response) {
-	a.t.Helper()
-	path := a.serverURL.JoinPath("/ims/api/events/", eventName, "/places").String()
-	bod, resp := a.imsGet(ctx, path, &imsjson.Places{})
-	return *bod.(*imsjson.Places), resp
-}
-
 func (a ApiHelper) editArea(ctx context.Context, eventName string, req imsjson.Area) (slug string, resp *http.Response) {
 	a.t.Helper()
 	httpResp := a.imsPost(ctx, req, a.serverURL.JoinPath("/ims/api/events/", eventName, "/areas").String())

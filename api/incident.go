@@ -258,8 +258,7 @@ func incidentToJSON(storedRow imsdb.IncidentRow, incidentPeople []imsjson.Incide
 		Priority:     storedRow.Incident.Priority,
 		Summary:      conv.SqlToString(storedRow.Incident.Summary),
 		Location: imsjson.Location{
-			Name:        conv.SqlToString(storedRow.Incident.LocationName),
-			Address:     conv.SqlToString(storedRow.Incident.LocationAddress),
+			AreaSlug:    conv.SqlToString(storedRow.Incident.LocationAreaSlug),
 			Description: conv.SqlToString(storedRow.Incident.LocationDescription),
 		},
 		IncidentTypeIDs: &incidentTypeIDs,
@@ -486,9 +485,8 @@ func updateIncident(ctx context.Context, imsDBQ *store.DBQ, es *EventSourcerer, 
 		Started:             storedIncident.Started,
 		Closed:              storedIncident.Closed,
 		Summary:             storedIncident.Summary,
-		LocationName:        storedIncident.LocationName,
-		LocationAddress:     storedIncident.LocationAddress,
 		LocationDescription: storedIncident.LocationDescription,
+		LocationAreaSlug:    storedIncident.LocationAreaSlug,
 	}
 
 	var logs []string
@@ -514,17 +512,31 @@ func updateIncident(ctx context.Context, imsDBQ *store.DBQ, es *EventSourcerer, 
 		update.Summary = conv.StringToSql(newIncident.Summary, 0)
 		logs = append(logs, fmt.Sprintf("Changed summary: %v", update.Summary.String))
 	}
-	if newIncident.Location.Name != nil {
-		update.LocationName = conv.StringToSql(newIncident.Location.Name, 0)
-		logs = append(logs, fmt.Sprintf("Changed location name: %v", update.LocationName.String))
-	}
-	if newIncident.Location.Address != nil {
-		update.LocationAddress = conv.StringToSql(newIncident.Location.Address, 0)
-		logs = append(logs, fmt.Sprintf("Changed location address: %v", update.LocationAddress.String))
-	}
 	if newIncident.Location.Description != nil {
 		update.LocationDescription = conv.StringToSql(newIncident.Location.Description, 0)
 		logs = append(logs, fmt.Sprintf("Changed location description: %v", update.LocationDescription.String))
+	}
+	if newIncident.Location.AreaSlug != nil {
+		slug := strings.TrimSpace(*newIncident.Location.AreaSlug)
+		if slug == "" {
+			// Empty string clears the structured area, leaving only the freeform detail.
+			update.LocationAreaSlug = sql.NullString{}
+			logs = append(logs, "Cleared location area")
+		} else {
+			// The area must belong to this incident's event; the FK would also
+			// reject a stray slug, but a 400 is clearer than a 500 on constraint.
+			if _, err = imsDBQ.Area(ctx, imsDBQ, imsdb.AreaParams{
+				Event: storedIncident.Event,
+				Slug:  slug,
+			}); err != nil {
+				if errors.Is(err, sql.ErrNoRows) {
+					return herr.BadRequest(fmt.Sprintf("Unknown area for this event: %v", slug), err)
+				}
+				return herr.InternalServerError("Failed to look up area", err).From("[Area]")
+			}
+			update.LocationAreaSlug = sql.NullString{String: slug, Valid: true}
+			logs = append(logs, fmt.Sprintf("Changed location area: %v", slug))
+		}
 	}
 	err = imsDBQ.UpdateIncident(ctx, txn, update)
 	if err != nil {
