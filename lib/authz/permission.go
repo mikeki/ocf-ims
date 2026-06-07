@@ -79,7 +79,6 @@ const (
 	EventWriteAllReports
 	EventWriteOwnReports
 	EventReadEventName
-	EventReadPlaces
 	EventReadVisits
 	EventWriteVisits
 	EventReadAreas
@@ -93,7 +92,6 @@ const (
 	GlobalReadPersonnel
 	GlobalAdministrateEvents
 	GlobalAdministrateIncidentTypes
-	GlobalAdministratePlaces
 	GlobalAdministrateDebugging
 	// GlobalAdministratePersonnel allows managing people, e.g. setting/resetting a
 	// person's password. Held by Administrators today; a future roles model may grant
@@ -106,14 +104,14 @@ const (
 
 var RolesToGlobalPerms = map[Role]GlobalPermissionMask{
 	AnyAuthenticatedUser: GlobalListEvents | GlobalReadIncidentTypes | GlobalReadPersonnel,
-	Administrator:        GlobalAdministrateEvents | GlobalAdministrateIncidentTypes | GlobalAdministratePlaces | GlobalAdministrateDebugging | GlobalAdministratePersonnel | GlobalAdministrateAreas,
+	Administrator:        GlobalAdministrateEvents | GlobalAdministrateIncidentTypes | GlobalAdministrateDebugging | GlobalAdministratePersonnel | GlobalAdministrateAreas,
 }
 
 var RolesToEventPerms = map[Role]EventPermissionMask{
-	EventReporter:    EventReadEventName | EventReadOwnReports | EventWriteOwnReports | EventReadPlaces | EventReadAreas,
-	EventReader:      EventReadEventName | EventReadIncidents | EventReadOwnReports | EventReadAllReports | EventReadVisits | EventReadPlaces | EventReadAreas,
-	EventWriter:      EventReadEventName | EventReadIncidents | EventWriteIncidents | EventReadAllReports | EventReadOwnReports | EventWriteAllReports | EventWriteOwnReports | EventReadVisits | EventWriteVisits | EventReadPlaces | EventReadAreas,
-	EventVisitWriter: EventReadEventName | EventReadVisits | EventWriteVisits | EventReadPlaces | EventReadAreas,
+	EventReporter:    EventReadEventName | EventReadOwnReports | EventWriteOwnReports | EventReadAreas,
+	EventReader:      EventReadEventName | EventReadIncidents | EventReadOwnReports | EventReadAllReports | EventReadVisits | EventReadAreas,
+	EventWriter:      EventReadEventName | EventReadIncidents | EventWriteIncidents | EventReadAllReports | EventReadOwnReports | EventWriteAllReports | EventWriteOwnReports | EventReadVisits | EventWriteVisits | EventReadAreas,
+	EventVisitWriter: EventReadEventName | EventReadVisits | EventWriteVisits | EventReadAreas,
 }
 
 func EventPermissions(

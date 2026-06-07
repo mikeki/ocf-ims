@@ -26,12 +26,12 @@ import (
 var testAdmins = []string{"AdminCat", "AdminDog"}
 
 const (
-	readerPerm             = EventReadEventName | EventReadIncidents | EventReadOwnReports | EventReadAllReports | EventReadVisits | EventReadPlaces | EventReadAreas
-	writerPerm             = EventReadEventName | EventReadIncidents | EventWriteIncidents | EventReadAllReports | EventReadOwnReports | EventWriteAllReports | EventWriteOwnReports | EventReadVisits | EventWriteVisits | EventReadPlaces | EventReadAreas
-	reporterPerm           = EventReadEventName | EventReadOwnReports | EventWriteOwnReports | EventReadPlaces | EventReadAreas
-	visitWriterPerm        = EventReadEventName | EventReadVisits | EventWriteVisits | EventReadPlaces | EventReadAreas
+	readerPerm             = EventReadEventName | EventReadIncidents | EventReadOwnReports | EventReadAllReports | EventReadVisits | EventReadAreas
+	writerPerm             = EventReadEventName | EventReadIncidents | EventWriteIncidents | EventReadAllReports | EventReadOwnReports | EventWriteAllReports | EventWriteOwnReports | EventReadVisits | EventWriteVisits | EventReadAreas
+	reporterPerm           = EventReadEventName | EventReadOwnReports | EventWriteOwnReports | EventReadAreas
+	visitWriterPerm        = EventReadEventName | EventReadVisits | EventWriteVisits | EventReadAreas
 	authenticatedUserPerms = GlobalListEvents | GlobalReadIncidentTypes | GlobalReadPersonnel
-	adminGlobalPerms       = GlobalAdministrateEvents | GlobalAdministrateIncidentTypes | GlobalAdministrateDebugging | GlobalAdministratePlaces | GlobalAdministratePersonnel | GlobalAdministrateAreas
+	adminGlobalPerms       = GlobalAdministrateEvents | GlobalAdministrateIncidentTypes | GlobalAdministrateDebugging | GlobalAdministratePersonnel | GlobalAdministrateAreas
 )
 
 func addPerm(m map[int32][]imsdb.EventAccess, eventID int32, expr string, mode imsdb.EventAccessMode, validity imsdb.EventAccessValidity) {

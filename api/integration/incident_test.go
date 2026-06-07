@@ -34,8 +34,6 @@ func sampleIncident1(eventName string) imsjson.Incident {
 		Priority: 5,
 		Summary:  new("my summary!"),
 		Location: imsjson.Location{
-			Name:        new("Zeroth Camp"),
-			Address:     new("10:05 & W"),
 			Description: new("unknown"),
 		},
 		IncidentTypeIDs: &[]int32{1, 2},
@@ -247,8 +245,7 @@ func TestCreateAndUpdateIncident(t *testing.T) {
 		Priority: 1,
 		Summary:  new(""),
 		Location: imsjson.Location{
-			Name:        new(""),
-			Address:     new(""),
+			AreaSlug:    new(""),
 			Description: new(""),
 		},
 		IncidentTypeIDs: &[]int32{},
@@ -420,6 +417,94 @@ func TestCreateAndLinkIncidents(t *testing.T) {
 		require.NoError(t, resp.Body.Close())
 		require.Empty(t, *retrievedNewIncident2.LinkedIncidents)
 	}
+}
+
+// TestIncidentLocationArea exercises the structured location FK (Phase 4c):
+// an incident can reference an AREA in its own event, the freeform detail is
+// retained alongside it, and a slug that isn't an area of this event is rejected
+// with a 400 (including an area that exists only in another event).
+func TestIncidentLocationArea(t *testing.T) {
+	t.Parallel()
+	ctx := t.Context()
+
+	admin := ApiHelper{t: t, serverURL: shared.serverURL, jwt: jwtForAdmin(ctx, t)}
+	writer := ApiHelper{t: t, serverURL: shared.serverURL, jwt: jwtForAlice(t, ctx)}
+
+	eventName := makeEvent(ctx, t, admin)
+	resp := admin.addWriter(ctx, eventName, userAliceHandle)
+	require.Equal(t, http.StatusNoContent, resp.StatusCode)
+	require.NoError(t, resp.Body.Close())
+
+	// Admin creates an area in this event.
+	slug, resp := admin.editArea(ctx, eventName, imsjson.Area{Name: new("Chela Mela")})
+	require.Equal(t, http.StatusNoContent, resp.StatusCode)
+	require.NoError(t, resp.Body.Close())
+	require.Equal(t, "chela-mela", slug)
+
+	// Create an incident referencing that area plus a freeform detail.
+	num := writer.newIncidentSuccess(ctx, imsjson.Incident{
+		Event: eventName,
+		Location: imsjson.Location{
+			AreaSlug:    new(slug),
+			Description: new("by the north gate"),
+		},
+	})
+
+	got, resp := writer.getIncident(ctx, eventName, num)
+	require.Equal(t, http.StatusOK, resp.StatusCode)
+	require.NoError(t, resp.Body.Close())
+	require.Equal(t, slug, deref(got.Location.AreaSlug))
+	require.Equal(t, "by the north gate", deref(got.Location.Description))
+
+	// An unknown slug for this event is a 400.
+	resp = writer.updateIncident(ctx, eventName, num, imsjson.Incident{
+		Event:    eventName,
+		Number:   num,
+		Location: imsjson.Location{AreaSlug: new("no-such-area")},
+	})
+	require.Equal(t, http.StatusBadRequest, resp.StatusCode)
+	require.NoError(t, resp.Body.Close())
+
+	// An area that exists only in another event is also rejected (areas are per-event).
+	otherEvent := makeEvent(ctx, t, admin)
+	otherSlug, resp := admin.editArea(ctx, otherEvent, imsjson.Area{Name: new("Far Side")})
+	require.Equal(t, http.StatusNoContent, resp.StatusCode)
+	require.NoError(t, resp.Body.Close())
+	resp = writer.updateIncident(ctx, eventName, num, imsjson.Incident{
+		Event:    eventName,
+		Number:   num,
+		Location: imsjson.Location{AreaSlug: new(otherSlug)},
+	})
+	require.Equal(t, http.StatusBadRequest, resp.StatusCode)
+	require.NoError(t, resp.Body.Close())
+
+	// The original area survived the rejected updates.
+	got, resp = writer.getIncident(ctx, eventName, num)
+	require.Equal(t, http.StatusOK, resp.StatusCode)
+	require.NoError(t, resp.Body.Close())
+	require.Equal(t, slug, deref(got.Location.AreaSlug))
+
+	// Clearing the area (empty slug) leaves the freeform detail intact.
+	resp = writer.updateIncident(ctx, eventName, num, imsjson.Incident{
+		Event:    eventName,
+		Number:   num,
+		Location: imsjson.Location{AreaSlug: new("")},
+	})
+	require.Equal(t, http.StatusNoContent, resp.StatusCode)
+	require.NoError(t, resp.Body.Close())
+	got, resp = writer.getIncident(ctx, eventName, num)
+	require.Equal(t, http.StatusOK, resp.StatusCode)
+	require.NoError(t, resp.Body.Close())
+	require.Nil(t, got.Location.AreaSlug)
+	require.Equal(t, "by the north gate", deref(got.Location.Description))
+}
+
+func deref[T any](p *T) T {
+	var zero T
+	if p == nil {
+		return zero
+	}
+	return *p
 }
 
 // requireEqualIncident is a hacky way of checking two incident responses are the same.

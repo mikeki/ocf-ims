@@ -48,7 +48,7 @@ func TestAdminOnlyEndpoints(t *testing.T) {
 		{http.MethodPost, "/ims/api/events"},
 		// It doesn't matter that this event doesn't exist, because the endpoint will deny access to
 		// a non-admin before it checks whether the event even exists.
-		{http.MethodPost, "/ims/api/events/SomeFakeEvent/places"},
+		{http.MethodPost, "/ims/api/events/SomeFakeEvent/areas"},
 		{http.MethodPost, "/ims/api/incident_types"},
 		{http.MethodGet, "/ims/api/debug/buildinfo"},
 		{http.MethodGet, "/ims/api/debug/runtimemetrics"},
@@ -137,7 +137,7 @@ func TestEventEndpoints_ForNoEventPerms(t *testing.T) {
 	postVisitRE := MethodURL{http.MethodPost, eventPath + "/visits/9999999/report_entries/2"}
 	postVisitPerson := MethodURL{http.MethodPost, eventPath + "/visits/1/people/some_name"}
 	deleteVisitPerson := MethodURL{http.MethodDelete, eventPath + "/visits/1/people/some_name"}
-	getPlaces := MethodURL{http.MethodGet, eventPath + "/places"}
+	getAreas := MethodURL{http.MethodGet, eventPath + "/areas"}
 
 	allPerms := []MethodURL{
 		getIncidents,
@@ -165,7 +165,7 @@ func TestEventEndpoints_ForNoEventPerms(t *testing.T) {
 		postVisitRE,
 		postVisitPerson,
 		deleteVisitPerson,
-		getPlaces,
+		getAreas,
 	}
 	reporter := []MethodURL{
 		getReports,
@@ -174,7 +174,7 @@ func TestEventEndpoints_ForNoEventPerms(t *testing.T) {
 		createReport,
 		postReportAttachment,
 		postReportRE,
-		getPlaces,
+		getAreas,
 	}
 	reader := []MethodURL{
 		getIncidents,
@@ -186,14 +186,14 @@ func TestEventEndpoints_ForNoEventPerms(t *testing.T) {
 		getVisits,
 		getVisit,
 		getVisitAttachment,
-		getPlaces,
+		getAreas,
 	}
 
 	// TODO: section for visit writers?
 
 	// these are per-event endpoints that admins can access by virtue of being admins
 	adminGlobal := []MethodURL{
-		getPlaces,
+		getAreas,
 	}
 	writer := slices.Clone(allPerms)
 

@@ -6,7 +6,7 @@ create table SCHEMA_INFO (
 -- This value must be updated when you make a new migration file.
 --
 
-insert into SCHEMA_INFO (VERSION) values (37);
+insert into SCHEMA_INFO (VERSION) values (38);
 
 
 create table `EVENT` (
@@ -149,9 +149,11 @@ create table INCIDENT (
     CLOSED   double,
     SUMMARY  varchar(1024),
 
-    LOCATION_NAME           varchar(1024),
-    LOCATION_ADDRESS        varchar(1024),
     LOCATION_DESCRIPTION    varchar(1024),
+    -- LOCATION_AREA_SLUG is a nullable FK into AREA(EVENT, SLUG); the constraint
+    -- is added by an ALTER below, after AREA is defined. LOCATION_DESCRIPTION is
+    -- the retained freeform "place / details" box alongside the structured area.
+    LOCATION_AREA_SLUG      varchar(128),
 
     foreign key (`EVENT`) references `EVENT`(ID),
 
@@ -284,19 +286,6 @@ create table `ACTION_LOG` (
 ) DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 
-create table `PLACE` (
-    `EVENT`             integer not null,
-    `TYPE`              enum('camp', 'art', 'other', 'mv') not null,
-    `NUMBER`            integer not null,
-    `NAME`              varchar(1024) not null,
-    `LOCATION_STRING`   varchar(1024) not null,
-    `EXTERNAL_DATA`     json,
-
-    primary key (`EVENT`, `TYPE`, `NUMBER`),
-    foreign key `DEST_EVENT` (`EVENT`) references `EVENT`(ID)
-) default charset=utf8mb4 collate=utf8mb4_unicode_ci;
-
-
 create table AREA (
     `EVENT`         integer      not null,
     -- SLUG is derived from NAME at create time and is immutable thereafter, so
@@ -313,6 +302,12 @@ create table AREA (
     foreign key `AREA_EVENT` (`EVENT`) references `EVENT`(ID),
     foreign key `AREA_PARENT` (`EVENT`, `PARENT_SLUG`) references AREA(`EVENT`, `SLUG`)
 ) DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- INCIDENT's location FK is added here, after AREA exists. Mirrors migration
+-- 38-from-37 so the store/integration replay matches this schema.
+alter table INCIDENT
+    add constraint INCIDENT_TO_AREA
+        foreign key (`EVENT`, LOCATION_AREA_SLUG) references AREA(`EVENT`, `SLUG`);
 
 
 create table VISIT (

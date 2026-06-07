@@ -200,42 +200,20 @@ templ Incident(deployment, versionName, versionRef, eventName string) {
     <div class="row py-1">
       <div class="col-sm-12">
         <div class="card">
-          <label class="control-label card-header">Location
-            <a href="../places" target="_blank" class="link-body-emphasis float-end no-print" title="Camps, art, etc." tabindex="-1">
-              Places
-              <svg fill="currentColor" class="bi">
-                <use href="#box-arrow-up-right"></use>
-              </svg>
-            </a>
-          </label>
+          <label class="control-label card-header">Location</label>
           <div class="card-body">
             <form class="form-horizontal">
               <div class="input-group row align-items-center">
-                <label for="incident_location_name"
-                       class="col-sm-2 col-form-label control-label">Name:</label>
+                <label for="incident_location_area"
+                       class="col-sm-2 col-form-label control-label">Area:</label>
                 <div class="col-sm-10">
-                  <input
-                          id="incident_location_name" class="form-control form-control-sm"
-                          type="text" inputmode="latin-prose" autocomplete="off"
-                          placeholder="Name of location"
-                          list="places-list"
-                          aria-label="Location name"
-                          onchange="editLocationName()"
-                  />
-                  <datalist id="places-list"></datalist>
-                </div>
-              </div>
-              <div class="input-group row align-items-center">
-                <label for="incident_location_address"
-                       class="col-sm-2 col-form-label control-label">Address:</label>
-                <div class="col-sm-10">
-                  <input
-                          id="incident_location_address" class="form-control form-control-sm"
-                          type="text" inputmode="latin-prose" autocomplete="off"
-                          placeholder="Address of location"
-                          aria-label="Location address"
-                          onchange="editLocationAddress();"
-                  />
+                  <select
+                          id="incident_location_area" class="form-select form-select-sm"
+                          aria-label="Location area"
+                          onchange="editLocationArea()"
+                  >
+                    <option value="">(none)</option>
+                  </select>
                 </div>
               </div>
               <div class="input-group row align-items-center">

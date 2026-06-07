@@ -26,8 +26,11 @@ type Location struct {
 	// Various fields here are nilable, because client can set them empty, and the server must be able
 	// to distinguish empty from unset.
 
-	Name        *string `json:"name,omitempty"`
-	Address     *string `json:"address,omitempty"`
+	// AreaSlug references an AREA(EVENT, SLUG) in the incident's event. Empty
+	// string clears the area (back to unset); nil leaves it unchanged on write.
+	AreaSlug *string `json:"area_slug,omitempty"`
+	// Description is the freeform "place / details" box retained alongside the
+	// structured area.
 	Description *string `json:"description,omitempty"`
 }
 

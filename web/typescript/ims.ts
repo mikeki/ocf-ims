@@ -701,23 +701,39 @@ export function reportTextFromIncident(
 }
 
 
+// humanizeAreaSlug turns an area slug ("chela-mela") into a readable label
+// ("Chela Mela") for display. The list view carries only the slug, not the
+// area's editable display name.
+function humanizeAreaSlug(slug: string): string {
+    return slug
+        .split("-")
+        .filter(w => w.length > 0)
+        .map(w => w.charAt(0).toUpperCase() + w.slice(1))
+        .join(" ");
+}
+
 // Return a short description for a given location.
 function safeShortDescribeLocation(location: EventLocation): string {
-    const locName: string = DataTable.render.text().display(location.name??"");
-    let locAddr: string = DataTable.render.text().display(location.address);
-    if (locAddr) {
-        locAddr = `(${locAddr})`;
+    const area: string = location.area_slug ? humanizeAreaSlug(location.area_slug) : "";
+    let detail: string = DataTable.render.text().display(location.description);
+    if (detail) {
+        detail = `(${detail})`;
     }
-    return [locName, locAddr].join(" ");
+    return [area, detail].filter(s => s).join(" ");
 }
 
 // Return a short description for a given location.
 function shortDescribeLocation(location: EventLocation): HTMLSpanElement {
     const sp = document.createElement("span");
-    sp.append(location.name??"");
-    if (location.address) {
-        sp.append(document.createElement("wbr"));
-        sp.append(` (${location.address})`);
+    if (location.area_slug) {
+        sp.append(humanizeAreaSlug(location.area_slug));
+    }
+    if (location.description) {
+        if (location.area_slug) {
+            sp.append(document.createElement("wbr"));
+            sp.append(" ");
+        }
+        sp.append(`(${location.description})`);
     }
     return sp;
 }
@@ -1736,8 +1752,9 @@ export type PageInitResult = {
 }
 
 interface EventLocation {
-    name?: string|null;
-    address?: string|null;
+    // area_slug references a per-event AREA (Phase 4c); description is the
+    // retained freeform "place / details" text.
+    area_slug?: string|null;
     description?: string|null;
 }
 
@@ -1893,19 +1910,6 @@ export function compareIncidentTypesByGroup(a: IncidentType, b: IncidentType): n
     return (a.name??"").localeCompare(b.name??"");
 }
 
-type PlaceType = "art"|"camp"|"other"|"mv";
-
-export type Place = {
-    name?: string|null;
-    location_string?: string|null;
-    external_data?: BMArt|BMCamp|BMMV|OtherDest|null;
-
-    type?: PlaceType|null;
-    description?: string|null;
-}
-
-export type Places = Partial<Record<PlaceType, Place[]|null|undefined>>;
-
 // Area is a per-event location (Phase 4c). slug is server-generated from the
 // name on create and immutable thereafter; send an empty/absent slug to create
 // and a populated slug to edit. parent_slug is null/absent for a top-level area.
@@ -1917,96 +1921,6 @@ export interface Area {
 }
 
 export type Areas = Area[];
-
-export type BMArt = {
-    name: string;
-    location_string: string|null;
-
-    description: string|null;
-    artist: string|null;
-    contact_email: string|null;
-    hometown: string|null;
-    category: string|null;
-    program: string|null;
-    donation_link: string|null;
-    guided_tours: boolean|null;
-    needs_volunteers: boolean|null;
-    self_guided_tour_map: boolean|null;
-    images: BMArtImage[]|null;
-    location: BMArtLocation|null;
-    uid: string;
-    url: string|null;
-
-    // https://api.burningman.org/docs#tag/Art-Installations
-}
-
-export type BMCamp = {
-    name: string;
-    location_string: string|null;
-
-    description: string|null;
-    contact_email: string|null;
-    hometown: string|null;
-    accepting_campers: boolean|null;
-    images: BMCampImage[]|null;
-    landmark: string|null;
-    location: BMCampLocation|null;
-    uid: string;
-    url: string|null;
-    year: number;
-
-    // https://api.burningman.org/docs#tag/Theme-Camps
-}
-
-export type BMMV = {
-    artist: string|null;
-    contact_email: string|null;
-    description: string|null;
-    donation_link: string|null;
-    hometown: string|null;
-    images: BMMVImage[]|null;
-    name: string;
-    tags: string[]|null;
-    uid: string;
-    url: string|null;
-    year: number;
-
-    // https://api.burningman.org/docs#tag/Mutant-Vehicles
-}
-
-export type BMArtLocation = {
-    hour: number|null;
-    minute: number|null;
-    distance: number|null;
-    category: string|null;
-    gps_latitude: number|null;
-    gps_longitude: number|null;
-}
-
-export type BMCampLocation = {
-    frontage: string|null;
-    intersection: string|null;
-    intersection_type: "@"|"&"|null;
-    dimensions: string|null;
-    exact_location: string|null;
-}
-
-export type BMArtImage = {
-    thumbnail_url: string|null;
-}
-
-export type BMCampImage = {
-    thumbnail_url: string|null;
-}
-
-export type BMMVImage = {
-    thumbnail_url: string|null;
-}
-
-export type OtherDest = {
-    name: string;
-    location_string: string|null;
-}
 
 
 export type UnauthenticatedAuthInfo = {
