@@ -478,6 +478,52 @@ where
     EVENT = ?
 ;
 
+-- name: Areas :many
+select
+    `EVENT`,
+    `SLUG`,
+    `NAME`,
+    `PARENT_SLUG`,
+    `SORT_ORDER`
+from
+    AREA
+where
+    `EVENT` = ?
+order by `SORT_ORDER`, `NAME`
+;
+
+-- name: Area :one
+select
+    `EVENT`,
+    `SLUG`,
+    `NAME`,
+    `PARENT_SLUG`,
+    `SORT_ORDER`
+from
+    AREA
+where
+    `EVENT` = ?
+    and `SLUG` = ?
+;
+
+-- name: CreateArea :exec
+insert into AREA
+    (`EVENT`, `SLUG`, `NAME`, `PARENT_SLUG`, `SORT_ORDER`)
+values
+    (?, ?, ?, ?, ?)
+;
+
+-- name: UpdateArea :exec
+update AREA set
+    -- SLUG is immutable, so it is the lookup key, never updated.
+    `NAME` = ?,
+    `PARENT_SLUG` = ?,
+    `SORT_ORDER` = ?
+where
+    `EVENT` = ?
+    and `SLUG` = ?
+;
+
 -- name: CreateVisit :execlastid
 insert into VISIT (`EVENT`, NUMBER, CREATED) values (?, ?, ?);
 

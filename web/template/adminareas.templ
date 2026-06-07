@@ -1,0 +1,98 @@
+//
+// See the file COPYRIGHT for copyright information.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+//
+
+package template
+
+templ AdminAreas(deployment, versionName, versionRef string) {
+<!DOCTYPE html>
+<html lang="en">
+@Head("Event Areas", "admin_areas.js", false, versionRef)
+
+<body>
+<div class="container-fluid">
+@Header(deployment)
+@Nav("")
+<h1 id="doc-title">Event Areas</h1>
+@LoadingOverlay()
+@ErrorInfo()
+
+    <div class="modal no-print" id="editAreaModal" tabindex="-1" aria-labelledby="editAreaModalLabel" aria-hidden="true">
+      <div class="modal-dialog">
+        <div class="modal-content">
+          <div class="modal-header">
+            <p class="modal-title fs-5" id="editAreaModalLabel">Edit Area</p>
+            <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close" />
+          </div>
+          <div class="modal-body row">
+            <div class="input-group mb-3">
+              <label for="edit_area_name" class="control-label input-group-text">Name</label>
+              <input id="edit_area_name" type="text" class="form-control form-control-sm" onchange="setAreaName(this);" />
+            </div>
+            <div class="input-group mb-3">
+              <label for="edit_area_parent" class="control-label input-group-text">Parent</label>
+              <select id="edit_area_parent" class="form-control form-select form-select-sm" onchange="setAreaParent(this);">
+                <option value="">(top level)</option>
+              </select>
+            </div>
+            <div class="input-group mb-3">
+              <label for="edit_area_sort_order" class="control-label input-group-text">Sort order</label>
+              <input id="edit_area_sort_order" type="number" class="form-control form-control-sm" onchange="setAreaSortOrder(this);" />
+            </div>
+            <div class="form-text">The slug is generated from the name when an area is created and never changes, so renaming is safe.</div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+  <div class="mb-3">
+    <label for="event-name" class="form-label">Event name</label>
+    <input id="event-name" type="text" class="form-control auto-width" onchange="loadAreas();">
+  </div>
+
+  <div class="row" id="areas_container">
+    <div id="areas" class="col-sm-12 areas">
+      <div class="card">
+        <label class="card-header">Areas</label>
+        <ul class="list-group list-group-small list-group-flush card-body">
+          <template id="area_li_template">
+            <li class="list-group-item ps-3" data-area-slug="">
+              <button class="show-edit-modal badge btn btn-primary float-end me-2">
+                Edit
+              </button>
+              <span class="area-name"></span>
+              <span class="area-slug text-body-secondary ms-2 font-monospace small"></span>
+            </li>
+          </template>
+        </ul>
+        <div class="card-footer">
+          <label>Add:</label>
+          <input
+              class="form-control input-sm auto-width"
+              type="text" inputmode="verbatim"
+              disabled=""
+              placeholder="Chela Mela"
+              onchange="createArea(this)"
+          />
+        </div>
+      </div>
+    </div>
+  </div>
+@Footer(versionName, versionRef)
+</div>
+</body>
+</html>
+
+}
