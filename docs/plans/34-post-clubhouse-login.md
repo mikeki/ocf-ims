@@ -50,7 +50,8 @@ emailed self-service flow is preserved as a documented future design (appendix b
 | Login-page recovery UI | **Remove** the Clubhouse credentials notice; replace the "Forgot your password?" external link with static text: *"Forgot your password? Ask a crew leader or an admin to reset it."* |
 | argon2id rename | **Fold in** — `ClubhouseParams` → `DefaultParams`, scrub "Clubhouse" comments in `lib/argon2id` + `lib/authn` + `cmd/hashpassword` (identifier/comment only; **existing hashes unaffected**, cost params byte-identical) |
 | Schema change | **None** — `PERSON.PASSWORD` already exists; no migration, no new table |
-| Who can reset | **Admins** (`IMS_ADMINS` / claims `Admin`). "Crew leader" reset powers need the Phase 5 roles model; the login *text* may name crew leaders, but the actual control is admin-gated for now |
+| Gating | **By permission, not a hardcoded admin check** — new `GlobalAdministratePersonnel` global permission gates both the endpoint and the UI control |
+| Who holds the permission (this PR) | **Admins only.** Mapped to the `Administrator` role in `RolesToGlobalPerms`. Non-admin crew-leader delegation is **deferred to the Phase 5 roles model** (the authz layer can't grant a global capability to a non-admin today) |
 | Password not echoed | The set-password response never returns the password/hash (consistent with `api/personnel.go`) |
 
 ## Open decisions (resolve during plan review)
@@ -76,6 +77,27 @@ Defaults are my recommendation; only these remain.
 
 Mirror patterns already in the tree. No new infrastructure, no schema change.
 
+### New authorization: `GlobalAdministratePersonnel` permission
+
+The current model has no middle tier: global permissions are binary
+(`AnyAuthenticatedUser` vs `Administrator`), admin comes only from the `IMS_ADMINS`
+env list (no `PERSON.is_admin`), and the `position:`/`team:` expression engine only
+grants **per-event** roles via `EVENT_ACCESS` — it cannot confer a global capability.
+So gating by a permission that a non-admin could hold needs a new flag.
+
+- Add `GlobalAdministratePersonnel` to `GlobalPermissionMask`
+  (`lib/authz/permission.go`, the global flags block ~line 90).
+- Map it to the `Administrator` role in `RolesToGlobalPerms` (~line 99) so **admins
+  hold it now**. No other role grants it in this PR.
+- Gate **by the permission**, using the canonical pattern (`getGlobalPermissions` →
+  `globalPermissions & authz.GlobalAdministratePersonnel == 0` → `herr.Forbidden`) —
+  **not** a raw `slices.Contains(admins, handle)` check. This makes the gate
+  future-proof: when Phase 5 adds a way to grant global capabilities to non-admin
+  crew leaders, they get password-reset by gaining this permission, no endpoint change.
+- **Deferred to Phase 5** (explicitly out of scope here): the mechanism by which a
+  non-admin crew leader is granted `GlobalAdministratePersonnel` (position/team/role
+  based). Today only env-admins have it.
+
 ### New query (`store/queries.sql`, regenerated via sqlc)
 
 - `SetPersonPassword` — `update PERSON set PASSWORD = ? where ID = ?`
@@ -84,13 +106,13 @@ Mirror patterns already in the tree. No new infrastructure, no schema change.
 
 | Method + path | Auth | Purpose |
 |---|---|---|
-| `POST /ims/api/personnel/{personHandle}/password` | **admin** | `{password}` → resolve handle → person, hash server-side, `SetPersonPassword`. 404 if no such handle; 403 if caller not admin |
+| `POST /ims/api/personnel/{personHandle}/password` | `GlobalAdministratePersonnel` | `{password}` → resolve handle → person, hash server-side, `SetPersonPassword`. 404 if no such handle; 403 if caller lacks the permission |
 
-- Lives in a new `api/password.go` (handler + admin gate + validation), registered in
-  `api/mux.go` next to the personnel route (`api/mux.go:449`).
+- Lives in a new `api/password.go` (handler + permission gate + validation), registered
+  in `api/mux.go` next to the personnel route (`api/mux.go:449`).
 - Hash via `argon2id.CreateHash(pw, argon2id.DefaultParams)` (the renamed prod params).
 - Reuse the long-password guard (>256 → 400) and the new min-length policy.
-- Admin gate via the same `IMS_ADMINS`/claims check `GetAuth`/`GetPersonnel` already use.
+- Gate on `GlobalAdministratePersonnel` via `getGlobalPermissions` (see above).
 
 ### Frontend (`web/`)
 
@@ -103,6 +125,13 @@ Mirror patterns already in the tree. No new infrastructure, no schema change.
   /ims/api/personnel/{handle}/password`. Register `GET /ims/app/admin/people` in
   `web/mux.go`; add a link from `adminroot.templ`. Add the URL to
   `web/typescript/urls.ts`.
+- **UI gating is permission-driven too.** The frontend needs to know whether the user
+  holds `GlobalAdministratePersonnel` to show/hide the "Set password" control and the
+  adminroot link. Expose it in the existing auth/access response (e.g. add a
+  `canManagePersonnel` bool to `GetAuthResponse` in `api/auth.go`, computed from global
+  permissions) rather than gating the UI on `admin` — keeping the front end consistent
+  with the permission-based backend. (The endpoint is the real enforcement; the UI gate
+  is just UX.)
 
 ### argon2id rename (fold-in)
 
@@ -116,7 +145,8 @@ Mirror patterns already in the tree. No new infrastructure, no schema change.
 
 ## Security considerations
 
-- **Admin-only**: the set-password endpoint is admin-gated; non-admins get 403.
+- **Permission-gated**: the set-password endpoint requires `GlobalAdministratePersonnel`;
+  callers without it get 403. (Held by env-admins only in this PR.)
 - **No password in any response** (consistent with `api/personnel.go`).
 - **Server-side hashing** with prod argon2id params; long-password guard retained.
 - **Known limitation**: existing JWT refresh tokens are not server-revocable, so an
@@ -129,10 +159,12 @@ Mirror patterns already in the tree. No new infrastructure, no schema change.
 ## Testing
 
 - **Unit**: argon2id rename compiles + existing hashes still verify; password-policy
-  validation (too-short rejected, >256 rejected); admin-gate (non-admin → 403).
-- **`api/integration`** (real MariaDB): admin sets a user's password → that user logs in
-  with the new password (success) and the old one fails; unknown handle → 404; non-admin
-  caller → 403.
+  validation (too-short rejected, >256 rejected); permission gate (caller lacking
+  `GlobalAdministratePersonnel` → 403); `RolesToGlobalPerms[Administrator]` includes the
+  new flag.
+- **`api/integration`** (real MariaDB): an admin sets a user's password → that user logs
+  in with the new password (success) and the old one fails; unknown handle → 404;
+  non-privileged caller → 403.
 - **`store/integration`**: unaffected (no schema change) but must stay green.
 - **Playwright** (optional, if admin UI lands): admin sets a password, target logs in.
 - Full gate before each push: `go run bin/build/build.go`, `go test ./...`,
@@ -146,6 +178,9 @@ Mirror patterns already in the tree. No new infrastructure, no schema change.
   appendix so it isn't lost. Picking it up later means: `lib/notify` mailer seam, a
   `PASSWORD_RESET` table (schema bump), request/reset endpoints, forgot/reset pages, and
   an OCF email-delivery decision.
+- **Granting `GlobalAdministratePersonnel` to non-admin crew leaders** — the gate exists
+  now, but the mechanism to confer it on non-admins (position/team/role-based) lands with
+  the **Phase 5 roles model**. Until then only env-admins hold it.
 - Logged-in "change my own password" form (small follow-up; reuses `SetPersonPassword`).
 - "Must change password on next login" flag/flow.
 - `PERSON.is_admin` column (admins stay env `IMS_ADMINS`).
@@ -159,8 +194,9 @@ Generated code is not committed, so each commit must compile after `-generate-on
 
 1. **This plan doc** (the PR opener; reviewed first). ✅ committed
 2. **argon2id rename** (self-contained, safe, no behavior change).
-3. **Backend**: `SetPersonPassword` query + `api/password.go` endpoint + admin gate +
-   validation + route. Green build + integration test.
+3. **Backend**: `GlobalAdministratePersonnel` permission (flag + `Administrator` map) +
+   `SetPersonPassword` query + `api/password.go` endpoint (permission gate + validation) +
+   route + `canManagePersonnel` in the auth response. Green build + integration test.
 4. **Frontend**: login.templ cleanup + admin people page (list + set-password) + route +
    urls.ts + adminroot link.
 5. **Docs**: README / CLAUDE.md (admin reset process; note emailed self-service is
@@ -173,7 +209,9 @@ Generated code is not committed, so each commit must compile after `-generate-on
 **New**: `api/password.go` (+ test); `web/template/adminpeople.templ`;
 `web/typescript/adminpeople.ts`.
 
-**Modified**: `store/queries.sql`; `api/mux.go` (route); `lib/argon2id/argon2id.go`,
+**Modified**: `lib/authz/permission.go` (new `GlobalAdministratePersonnel` flag +
+`Administrator` mapping); `api/auth.go` (`canManagePersonnel` in `GetAuthResponse`);
+`store/queries.sql`; `api/mux.go` (route); `lib/argon2id/argon2id.go`,
 `lib/authn/password.go`, `cmd/hashpassword.go`; `web/template/login.templ`,
 `web/template/adminroot.templ`, `web/mux.go`, `web/typescript/urls.ts`; `README.md`,
 `CLAUDE.md`, `CHANGELOG.md`.
@@ -184,10 +222,11 @@ Generated code is not committed, so each commit must compile after `-generate-on
 
 - [ ] Plan reviewed & open decisions resolved
 - [ ] argon2id rename
+- [ ] `GlobalAdministratePersonnel` permission (flag + `Administrator` map) + `canManagePersonnel` in auth response
 - [ ] `SetPersonPassword` query
-- [ ] admin set-password endpoint + admin gate + validation + route
+- [ ] set-password endpoint + permission gate + validation + route
 - [ ] login.templ cleanup (Clubhouse links/notice → "ask a crew leader/admin")
-- [ ] admin people page (list + set-password) + route + adminroot link
+- [ ] admin people page (list + set-password, permission-gated UI) + route + adminroot link
 - [ ] tests green (unit + api integration)
 - [ ] docs updated
 
