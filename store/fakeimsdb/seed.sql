@@ -302,6 +302,28 @@ values  (1, 'camp', 0, 'Ranger Outpost Berlin', '3:00 & C', '{"contact_email":"r
         (1, 'art', 0, 'Temple of the Deep', '12:00 2500\', Open Playa', '{"artist":"Miguel Arraiz","category":"Open Playa","contact_email":null,"description":"The Temple of the Deep is a sanctuary for grief, love, and introspection, formed beneath a massive black stone that appears to hover above participants. This dark, fractured element symbolizes the weight of loss and the strength found in healing, inspired by kintsugi, where brokenness is embraced and honored. Seven narrow entrances guide visitors through the journey of mourning, leading to a central gathering space mirroring BRC\'s layout. Alcoves and chapels offer solitude and remembrance, while the seamless integration with the desert transforms sorrow into connection, grounding participants in shared reflection.","donation_link":null,"guided_tours":false,"hometown":"Valencia, Spain","images":[{"gallery_ref":null,"thumbnail_url":null}],"location":{"category":"Open Playa","distance":2500,"gps_latitude":40.791799176283455,"gps_longitude":-119.19660218660613,"hour":12,"minute":0},"location_string":"12:00 2500\', Open Playa","name":"Temple of the Deep","program":"Honorarium","self_guided_tour_map":true,"uid":"a2IVI000000yWeZ2AU","url":"https://www.2025temple.com/","year":2025}'),
         (1, 'other', 0, 'Ranger Outpost Geneva', '7:20 & H', '{"contact_email":null,"description":"It\'s Ranger Outpost Geneva!","hometown":null,"images":[],"landmark":"A bunch of Rangers","location_string":"7:20 \\u0026 H","name":"Ranger Outpost Geneva","year":2025}');
 
+-- OCF location areas (draft, pending stakeholder sign-off). Slugs are derived
+-- from the name and immutable; parents must be listed before their children.
+insert into AREA (EVENT, SLUG, NAME, PARENT_SLUG, SORT_ORDER)
+values  (1, 'main-camp',        'Main Camp',        null,          0),
+        (1, 'dragon-plaza',     'Dragon Plaza',     null,          1),
+        (1, 'chela-mela',       'Chela Mela',       null,          2),
+        (1, 'xavanadu',         'Xavanadu',         null,          3),
+        (1, 'main-stage-area',  'Main Stage Area',  null,          4),
+        (1, 'white-bird',       'White Bird',       null,          5),
+        (1, 'big-bird',         'Big Bird',         'white-bird',  0),
+        (1, 'little-wing',      'Little Wing',      'white-bird',  1),
+        (1, 'craft-loop',       'Craft Loop',       null,          6),
+        (1, 'food-booth-area',  'Food Booth Area',  null,          7),
+        (1, 'community-village','Community Village',null,          8),
+        (1, 'energy-park',      'Energy Park',      null,          9),
+        (1, 'far-side',         'Far Side',         null,          10),
+        (1, 'ritz',             'Ritz',             null,          11),
+        (1, 'camping',          'Camping',          null,          12),
+        (1, 'miss-piggy',       'Miss Piggy',       'camping',     0),
+        (1, 'scof',             'SCOF',             'camping',     1),
+        (1, 'south-woods',      'South Woods',      'camping',     2);
+
 insert into VISIT (EVENT, NUMBER, CREATED, INCIDENT_NUMBER, GUEST_PREFERRED_NAME, GUEST_LEGAL_NAME, GUEST_DESCRIPTION, GUEST_CAMP_NAME, GUEST_CAMP_ADDRESS, GUEST_CAMP_DESCRIPTION, ARRIVAL_TIME, ARRIVAL_METHOD, ARRIVAL_STATE, ARRIVAL_REASON, ARRIVAL_BELONGINGS, DEPARTURE_TIME, DEPARTURE_METHOD, DEPARTURE_STATE, RESOURCE_REST, RESOURCE_CLOTHES, RESOURCE_POGS, RESOURCE_FOOD_BEV, RESOURCE_OTHER)
 values
         (1, 1, 1787280979.850800, null, 'Cedar', 'Wayne Wilson', 'Pink mohawk, leather jacket, steel-toed boots', 'Camp Unity', '2:30 & A', null, 1787281260.781453, 'Brought in by Ranger patrol', 'Distressed and crying', 'Emotional distress after temple visit', 'Backpack with water bottle and sunscreen', 1787677246.835392, 'Walked out on own', 'Feeling much better', 'Air mattress in tent', 'Fresh socks and underwear', '2 meal pogs', 'PB&J and coconut water', 'Earplugs and eye mask'),

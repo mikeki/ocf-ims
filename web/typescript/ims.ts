@@ -1906,6 +1906,18 @@ export type Place = {
 
 export type Places = Partial<Record<PlaceType, Place[]|null|undefined>>;
 
+// Area is a per-event location (Phase 4c). slug is server-generated from the
+// name on create and immutable thereafter; send an empty/absent slug to create
+// and a populated slug to edit. parent_slug is null/absent for a top-level area.
+export interface Area {
+    slug?: string|null;
+    name?: string|null;
+    parent_slug?: string|null;
+    sort_order?: number|null;
+}
+
+export type Areas = Area[];
+
 export type BMArt = {
     name: string;
     location_string: string|null;
