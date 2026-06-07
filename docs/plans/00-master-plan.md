@@ -100,8 +100,8 @@ contract-break cheaper. The **interface** and **restructure** still wait.
 |---|-------|---------|------|------|
 | 1 | **Preparation & clean-up** | ✅ **Done** — dead/deprecated code removed; baseline green | Low | `10-cleanup-pass.md` ✅ |
 | 2 | **Terminology** | Burning Man terms → OCF terms across code + UI | Med | `20-terminology.md` (2a ✅, 2c ✅; 2b → Phase 3; 2d open) |
-| 3 | **Remove Clubhouse & local People** | Local `Person` identity replaces the external Clubhouse directory; Ranger→Person rename keyed on `person_id` | High | `30-remove-clubhouse.md` (design) |
-| 4 | **Domain model** | OCF incident categories, outcomes, locations | Med–High | `40-domain-model.md` (TODO) |
+| 3 | **Remove Clubhouse & local People** | ✅ **Done** — local `Person` identity replaced Clubhouse; Ranger→Person rename keyed on `person_id`; admin password reset | High | `30-remove-clubhouse.md` ✅ (PRs #16–#19) |
+| 4 | **Domain model** | OCF incident categories, outcomes, locations | Med–High | [`40-domain-model.md`](40-domain-model.md) (plan — for review) |
 | 5 | **Roles & permissions** | OCF crews/titles/roles in authz, built on Phase 3's local People | Med | `50-roles-permissions.md` (TODO) |
 | 6 | **Dashboards & metrics** | Management reporting OCF will use | Med | `60-dashboards.md` (TODO) |
 
@@ -228,6 +228,14 @@ surfaces; tests/build green.
 ---
 
 ## Phase 3 — Remove Clubhouse & Establish Local People
+
+> ✅ **Done 2026-06-07** — shipped as PRs #16–#19. Clubhouse retired; local `PERSON`
+> identity + credentials; Ranger→Person/People + `role`→`involvement` rename; admin
+> password reset + login cleanup. Per-PR design:
+> [`31-local-people-directory.md`](31-local-people-directory.md),
+> [`32-retire-clubhouse.md`](32-retire-clubhouse.md),
+> [`33-people-rename.md`](33-people-rename.md),
+> [`34-post-clubhouse-login.md`](34-post-clubhouse-login.md).
 
 **Objective:** Replace the external Clubhouse directory with a first-class local
 `Person` entity owned by OCF IMS, and complete the Ranger→Person/People +
@@ -364,15 +372,19 @@ Phase 1 (clean-up) ─► Phase 2 (terminology) ─► Phase 3 (remove Clubhouse
                                                                                           └─► Phase 6 (dashboards, after 4)
 ```
 
-**Status (2026-06-06):**
+**Status (2026-06-07):**
 - **Phase 1** ✅ complete (PRs #1–#5).
 - **Phase 2** (terminology): **2a** Field Report→Report ✅ (PR #13), **2c** OCF
   branding ✅ (PR #14). **2b** (Ranger→Person) promoted to **Phase 3**. **2d**
   (small terms: Patrol/HQ/Participant/Camp) still open — blocked on OCF wording.
-- **Phase 3** (remove Clubhouse / local People): design written
-  (`30-remove-clubhouse.md`); **next to implement**.
-- **Phases 4–6**: not yet started; design docs TODO.
+- **Phase 3** (remove Clubhouse / local People) ✅ **complete** — PRs #16
+  (`31-local-people-directory.md`), #17 (`32-retire-clubhouse.md`), #18
+  (`33-people-rename.md`), #19 (`34-post-clubhouse-login.md`, admin password
+  reset + login cleanup). Clubhouse retired; local `PERSON` identity + credentials.
+- **Phase 4** (domain model): plan written (`40-domain-model.md`); **in review** —
+  all three slices (categories / outcomes / locations) are beta must-haves.
+- **Phases 5–6**: not yet started; design docs TODO.
 
-Next action: review `30-remove-clubhouse.md`, then slice Phase 3 into PRs
-(local Person table + login → local authz → re-key attached-people/author →
-retire Clubhouse → UI rename).
+Next action: review `40-domain-model.md`, then implement Phase 4 in slices
+(4a categories + grouping → 4c-model additive → 4c-cutover breaking + PLACE
+retire → 4b outcome).
