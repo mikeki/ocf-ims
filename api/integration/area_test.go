@@ -154,6 +154,30 @@ func TestAreaHierarchy(t *testing.T) {
 	require.NoError(t, resp.Body.Close())
 }
 
+// TestAreaMutationRequiresAdmin verifies that a non-admin authenticated user
+// cannot create or edit areas: the mutating endpoint is gated by
+// GlobalAdministrateAreas, which only Administrators hold.
+func TestAreaMutationRequiresAdmin(t *testing.T) {
+	t.Parallel()
+	ctx := t.Context()
+	admin := ApiHelper{t: t, serverURL: shared.serverURL, jwt: jwtForAdmin(ctx, t)}
+	eventName := makeEvent(ctx, t, admin)
+
+	// Alice is a regular (non-admin) user.
+	alice := ApiHelper{t: t, serverURL: shared.serverURL, jwt: jwtForAlice(t, ctx)}
+	name := "Sneaky Area"
+	slug, resp := alice.editArea(ctx, eventName, imsjson.Area{Name: &name})
+	assert.Equal(t, http.StatusForbidden, resp.StatusCode)
+	require.NoError(t, resp.Body.Close())
+	assert.Empty(t, slug)
+
+	// And nothing was created: the admin sees no areas for the event.
+	areas, resp := admin.getAreas(ctx, eventName)
+	require.Equal(t, http.StatusOK, resp.StatusCode)
+	require.NoError(t, resp.Body.Close())
+	assert.Empty(t, areas)
+}
+
 func TestAreaRequiresNameOnCreate(t *testing.T) {
 	t.Parallel()
 	ctx := t.Context()
