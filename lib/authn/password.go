@@ -25,7 +25,7 @@ import (
 )
 
 // argonLocker is used to disallow concurrent calls into the Argon2id hash algorithm.
-// Our standard Clubhouse parameters for Argon2id require the algorithm to use 8 MiB
+// Our standard parameters for Argon2id require the algorithm to use 8 MiB
 // of memory. If too many logins are attempted at once, it's very easy for the Go
 // program's memory use to go above what's allowed by our AWS ECS container, and then
 // the server gets killed.

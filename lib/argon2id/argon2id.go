@@ -74,8 +74,12 @@ var DevelopmentParams = &Params{
 	KeyLength:   32,
 }
 
-// ClubhouseParams are the parameters used by Clubhouse, last updated 2025-07-25.
-var ClubhouseParams = &Params{
+// DefaultParams are the Argon2id parameters used for password hashing in production.
+// They deliberately match the parameters inherited from the original Clubhouse-hashed
+// passwords, so hashes created before the Clubhouse retirement remain verifiable. The
+// 8 MiB memory cost is intentionally modest to bound concurrent-login memory use (see
+// the note in lib/authn/password.go).
+var DefaultParams = &Params{
 	MemoryKiB:   8 * 1024, // 8 MiB
 	Iterations:  4,
 	Parallelism: 1,
