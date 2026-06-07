@@ -26,14 +26,14 @@ declare global {
         editLocationName: ()=>Promise<void>;
         editLocationAddress: ()=>Promise<void>;
         editLocationDescription: ()=>Promise<void>;
-        removeRanger: (el: HTMLElement)=>void;
-        setRangerRole: (el: HTMLInputElement)=>void;
+        removePerson: (el: HTMLElement)=>void;
+        setPersonInvolvement: (el: HTMLInputElement)=>void;
         removeIncidentType: (el: HTMLElement)=>Promise<void>;
         detachReport: (el: HTMLElement)=>Promise<void>;
         attachReport: ()=>Promise<void>;
         unlinkIncident: (el: HTMLElement)=>Promise<void>;
         linkIncident: (el: HTMLInputElement)=>Promise<void>;
-        addRanger: ()=>void;
+        addPerson: ()=>void;
         addIncidentType: ()=>Promise<void>;
         attachFile: ()=>void;
         drawMergedReportEntries: ()=>void;
@@ -66,10 +66,10 @@ const el = {
     locationAddress: ims.typedElement("incident_location_address", HTMLInputElement),
     locationDescription: ims.typedElement("incident_location_description", HTMLInputElement),
 
-    rangerAdd: ims.typedElement("ranger_add", HTMLInputElement),
-    rangerHandles: ims.typedElement("ranger_handles", HTMLDataListElement),
-    rangersList: ims.typedElement("incident_rangers_list", HTMLElement),
-    rangersLiTemplate: ims.typedElement("incident_rangers_li_template", HTMLTemplateElement),
+    personAdd: ims.typedElement("person_add", HTMLInputElement),
+    personHandles: ims.typedElement("person_handles", HTMLDataListElement),
+    peopleList: ims.typedElement("incident_people_list", HTMLElement),
+    peopleLiTemplate: ims.typedElement("incident_people_li_template", HTMLTemplateElement),
 
     incidentTypeAdd: ims.typedElement("incident_type_add", HTMLInputElement),
     incidentTypes: ims.typedElement("incident_types", HTMLDataListElement),
@@ -118,14 +118,14 @@ async function initIncidentPage(): Promise<void> {
     window.editLocationName = editLocationName;
     window.editLocationAddress = editLocationAddress;
     window.editLocationDescription = editLocationDescription;
-    window.removeRanger = removeRanger;
-    window.setRangerRole = setRangerRole;
+    window.removePerson = removePerson;
+    window.setPersonInvolvement = setPersonInvolvement;
     window.removeIncidentType = removeIncidentType;
     window.detachReport = detachReport;
     window.attachReport = attachReport;
     window.unlinkIncident = unlinkIncident;
     window.linkIncident = linkIncident;
-    window.addRanger = addRanger;
+    window.addPerson = addPerson;
     window.addIncidentType = addIncidentType;
     window.attachFile = attachFile;
     window.drawMergedReportEntries = drawMergedReportEntries;
@@ -156,8 +156,8 @@ async function initIncidentPage(): Promise<void> {
     if (incident == null) {
         return;
     }
-    drawRangers();
-    drawRangersToAdd();
+    drawPeople();
+    drawPeopleToAdd();
     drawIncidentTypesToAdd();
     drawIncidentTypeInfo();
     drawPlacesList();
@@ -579,7 +579,7 @@ function drawIncidentFields() {
     drawStarted();
     drawPriority();
     drawIncidentSummary();
-    drawRangers();
+    drawPeople();
     drawIncidentTypes();
     drawLocationName();
     drawLocationAddress();
@@ -691,72 +691,68 @@ function drawIncidentSummary(): void {
 
 
 //
-// Populate Rangers list
+// Populate people list
 //
 
-function drawRangers() {
-    const rangers: ims.IncidentRanger[] = incident?.rangers??[];
-    rangers.sort((a: ims.IncidentRanger, b: ims.IncidentRanger) => (a.handle??"").localeCompare(b.handle??""));
+function drawPeople() {
+    const people: ims.IncidentPerson[] = incident?.people??[];
+    people.sort((a: ims.IncidentPerson, b: ims.IncidentPerson) => (a.handle??"").localeCompare(b.handle??""));
 
-    el.rangersList.querySelectorAll("li").forEach((li: HTMLElement) => {li.remove()});
+    el.peopleList.querySelectorAll("li").forEach((li: HTMLElement) => {li.remove()});
 
-    for (const ranger of rangers) {
-        if (!ranger.handle) {
+    for (const person of people) {
+        if (!person.handle) {
             continue;
         }
-        const handle = ranger.handle;
+        const handle = person.handle;
 
-        const rangerFragment = el.rangersLiTemplate.content.cloneNode(true) as DocumentFragment;
-        const rangerLi = rangerFragment.querySelector("li")!;
-        rangerLi.classList.remove("hidden");
-        rangerLi.dataset["rangerHandle"] = handle;
+        const personFragment = el.peopleLiTemplate.content.cloneNode(true) as DocumentFragment;
+        const personLi = personFragment.querySelector("li")!;
+        personLi.classList.remove("hidden");
+        personLi.dataset["personHandle"] = handle;
 
-        const rangerName =  rangerLi.querySelector("span")!
+        const personName =  personLi.querySelector("span")!
         if (personnel?.[handle] == null) {
-            rangerName.textContent = handle;
+            personName.textContent = handle;
         } else {
             const person = personnel[handle];
-            const rangerLink = rangerName.querySelector("a")!;
-            rangerLink.textContent = person.handle;
-            if (person.directory_id != null) {
-                rangerLink.href = `${ims.clubhousePersonURL}/${person.directory_id}`;
-                rangerLink.target = "_blank";
-            }
+            const personLink = personName.querySelector("a")!;
+            personLink.textContent = person.handle;
         }
-        const roleInput = rangerLi.querySelector("input")!;
-        roleInput.ariaLabel = `Ranger role for ${handle}`;
-        if (ranger.role) {
-            rangerLi.querySelector("input")!.value = ranger.role;
+        const involvementInput = personLi.querySelector("input")!;
+        involvementInput.ariaLabel = `Involvement for ${handle}`;
+        if (person.involvement) {
+            personLi.querySelector("input")!.value = person.involvement;
         }
 
-        el.rangersList.append(rangerFragment);
+        el.peopleList.append(personFragment);
     }
 }
 
 
-function drawRangersToAdd(): void {
+function drawPeopleToAdd(): void {
     const handles: string[] = [];
     for (const handle in personnel) {
         handles.push(handle);
     }
     handles.sort((a: string, b: string) => a.localeCompare(b));
 
-    el.rangerHandles.replaceChildren();
-    el.rangerHandles.append(document.createElement("option"));
+    el.personHandles.replaceChildren();
+    el.personHandles.append(document.createElement("option"));
 
     if (personnel != null) {
         for (const handle of handles) {
-            const ranger = personnel[handle];
-            if (ranger === undefined) {
+            const person = personnel[handle];
+            if (person === undefined) {
                 console.error(`no record for personnel with handle ${handle}`);
                 continue;
             }
 
             const option: HTMLOptionElement = document.createElement("option");
             option.value = handle;
-            option.text = ranger.handle;
+            option.text = person.handle;
 
-            el.rangerHandles.append(option);
+            el.personHandles.append(option);
         }
     }
 }
@@ -1222,34 +1218,34 @@ async function editLocationDescription(): Promise<void> {
     await ims.editFromElement(el.locationDescription, "location.description");
 }
 
-async function removeRanger(sender: HTMLElement): Promise<void> {
+async function removePerson(sender: HTMLElement): Promise<void> {
     const parent = sender.parentElement as HTMLElement;
-    const rangerHandle = parent.dataset["rangerHandle"];
-    if (!rangerHandle) {
+    const personHandle = parent.dataset["personHandle"];
+    if (!personHandle) {
         return;
     }
 
     const url = (
-        ims.urlReplace(url_incidentRanger)
+        ims.urlReplace(url_incidentPerson)
             .replace("<incident_number>", ims.pathIds.incidentNumber!.toString())
-            .replace("<ranger_name>", encodeURIComponent(rangerHandle))
+            .replace("<person_handle>", encodeURIComponent(personHandle))
     );
     await ims.fetchNoThrow(url, {
         method: "DELETE",
     });
 }
 
-async function setRangerRole(sender: HTMLInputElement): Promise<void> {
-    const handle = sender.closest("li")?.dataset["rangerHandle"];
+async function setPersonInvolvement(sender: HTMLInputElement): Promise<void> {
+    const handle = sender.closest("li")?.dataset["personHandle"];
     if (!handle) {
-        console.log("no Ranger handle for element");
+        console.log("no person handle for element");
         return;
     }
 
     const url = (
-        ims.urlReplace(url_incidentRanger)
+        ims.urlReplace(url_incidentPerson)
             .replace("<incident_number>", ims.pathIds.incidentNumber!.toString())
-            .replace("<ranger_name>", encodeURIComponent(handle))
+            .replace("<person_handle>", encodeURIComponent(handle))
     );
     const {err} = await ims.fetchNoThrow(url, {
         body: JSON.stringify({
@@ -1281,12 +1277,12 @@ function normalize(str: string): string {
     return str.toLowerCase().trim();
 }
 
-async function addRanger(): Promise<void> {
-    let handle: string = el.rangerAdd.value;
+async function addPerson(): Promise<void> {
+    let handle: string = el.personAdd.value;
 
-    // make a copy of the rangers
-    const rangers = (incident!.rangers??[]).slice();
-    const handles = rangers.map(r=>r.handle).filter(handle => handle != null);
+    // make a copy of the people
+    const people = (incident!.people??[]).slice();
+    const handles = people.map(r=>r.handle).filter(handle => handle != null);
 
     // fuzzy-match on handle, to allow case insensitivity and
     // leading/trailing whitespace.
@@ -1301,19 +1297,19 @@ async function addRanger(): Promise<void> {
     }
     if (!(handle in (personnel??[]))) {
         // Not a valid handle
-        el.rangerAdd.value = "";
+        el.personAdd.value = "";
         return;
     }
 
     if (handles.indexOf(handle) !== -1) {
         // Already in the list, so… move along.
-        el.rangerAdd.value = "";
+        el.personAdd.value = "";
         return;
     }
 
-    rangers.push({handle: handle});
+    people.push({handle: handle});
 
-    el.rangerAdd.disabled = true;
+    el.personAdd.disabled = true;
 
     if (ims.pathIds.incidentNumber == null) {
         // Incident doesn't exist yet. Create it first.
@@ -1324,9 +1320,9 @@ async function addRanger(): Promise<void> {
     }
 
     const url = (
-        ims.urlReplace(url_incidentRanger)
+        ims.urlReplace(url_incidentPerson)
             .replace("<incident_number>", ims.pathIds.incidentNumber!.toString())
-            .replace("<ranger_name>", encodeURIComponent(handle))
+            .replace("<person_handle>", encodeURIComponent(handle))
     );
     const {err} = await ims.fetchNoThrow(url, {
         body: JSON.stringify({
@@ -1334,15 +1330,15 @@ async function addRanger(): Promise<void> {
         }),
     });
     if (err !== null) {
-        ims.controlHasError(el.rangerAdd);
-        el.rangerAdd.value = "";
-        el.rangerAdd.disabled = false;
+        ims.controlHasError(el.personAdd);
+        el.personAdd.value = "";
+        el.personAdd.disabled = false;
         return;
     }
-    el.rangerAdd.value = "";
-    el.rangerAdd.disabled = false;
-    ims.controlHasSuccess(el.rangerAdd);
-    el.rangerAdd.focus();
+    el.personAdd.value = "";
+    el.personAdd.disabled = false;
+    ims.controlHasSuccess(el.personAdd);
+    el.personAdd.focus();
 }
 
 

@@ -119,45 +119,39 @@ templ Incident(deployment, versionName, versionRef, eventName string) {
       </div>
     </div>
 
-    <!-- Attached Rangers, incident types -->
+    <!-- Attached people, incident types -->
 
     <div class="row">
       <div class="col-sm-6 py-2">
         <div class="card">
           <label class="control-label card-header">
-          Rangers
-          <a href="https://ranger-clubhouse.burningman.org/reports/on-duty" target="_blank" class="link-body-emphasis float-end no-print" title="On-Duty Report" tabindex="-1">
-            On-Duty
-            <svg fill="currentColor" class="bi">
-              <use href="#box-arrow-up-right"></use>
-            </svg>
-          </a>
+          People
           </label>
-          <ul id="incident_rangers_list" class="list-group list-group-flush list-group-small card-body">
-            <template id="incident_rangers_li_template">
+          <ul id="incident_people_list" class="list-group list-group-flush list-group-small card-body">
+            <template id="incident_people_li_template">
               <li class="list-group-item flex-input-container ps-3 hidden">
                 <span><a href="#" tabindex="-1"></a></span>
-                <input aria-label="Description of Ranger role" type="text" class="form-control form-control-sm short-input auto-width hover-placeholder border-0"
-                    placeholder="Short description of role" onchange="setRangerRole(this)" maxlength="50"
+                <input aria-label="Description of involvement" type="text" class="form-control form-control-sm short-input auto-width hover-placeholder border-0"
+                    placeholder="Short description of involvement" onchange="setPersonInvolvement(this)" maxlength="50"
                 />
-                <button class="badge btn btn-danger remove-badge float-end" onclick="removeRanger(this)" tabindex="-1">
+                <button class="badge btn btn-danger remove-badge float-end" onclick="removePerson(this)" tabindex="-1">
                   X
                 </button>
               </li>
             </template>
           </ul>
           <div class="flex-input-container card-footer no-print">
-            <label for="ranger_add" class="control-label">Add:</label>
+            <label for="person_add" class="control-label">Add:</label>
             <input
                     type="text"
-                    id="ranger_add"
-                    aria-label="Add Ranger Handle"
-                    list="ranger_handles"
+                    id="person_add"
+                    aria-label="Add Person"
+                    list="person_handles"
                     autocomplete="off"
                     class="form-control form-control-sm auto-width"
-                    onchange="addRanger()"
+                    onchange="addPerson()"
             />
-            <datalist id="ranger_handles">
+            <datalist id="person_handles">
               <option value=""></option>
             </datalist>
           </div>

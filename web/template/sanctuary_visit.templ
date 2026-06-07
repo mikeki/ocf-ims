@@ -177,7 +177,7 @@ templ SanctuaryVisit(deployment, versionName, versionRef, eventName string) {
         <div id="collapse-arrival" class="accordion-collapse collapse">
           <div class="accordion-body">
             <form class="form-horizontal">
-              <div title="How the guest arrived at Sanctuary (on foot, by Ranger transport, etc.)"  class="input-group row align-items-center">
+              <div title="How the guest arrived at Sanctuary (on foot, by volunteer transport, etc.)"  class="input-group row align-items-center">
                 <label for="arrival_method" class="col-sm-2 col-form-label control-label">Arrival method:</label>
                 <div class="col-sm-10">
                   <input
@@ -227,7 +227,7 @@ templ SanctuaryVisit(deployment, versionName, versionRef, eventName string) {
                 </div>
               </div>
 
-              <div title="How the guest departed from Sanctuary (on foot, by Ranger transport, etc.)" class="input-group row align-items-center">
+              <div title="How the guest departed from Sanctuary (on foot, by volunteer transport, etc.)" class="input-group row align-items-center">
                 <label for="departure_method" class="col-sm-2 col-form-label control-label">Departure method:</label>
                 <div class="col-sm-10">
                   <input
@@ -350,7 +350,7 @@ templ SanctuaryVisit(deployment, versionName, versionRef, eventName string) {
         <div id="collapse-resources" class="accordion-collapse collapse">
           <div class="accordion-body">
             <form class="form-horizontal">
-              <div title="The most reason Sanctuary Ranger who sat with the guest" class="input-group row align-items-center">
+              <div title="The most reason Sanctuary volunteer who sat with the guest" class="input-group row align-items-center">
                 <label for="resource_sitter" class="col-sm-2 col-form-label control-label">Sanctuary sitter:</label>
                 <div class="col-sm-10">
                   <input
@@ -438,41 +438,41 @@ templ SanctuaryVisit(deployment, versionName, versionRef, eventName string) {
       </div>
       <div class="accordion">
 
-      <!-- Sanctuary Rangers -->
+      <!-- Sanctuary people -->
       <div class="accordion-item">
         <h2 class="accordion-header">
           <button class="accordion-button collapsed" type="button" data-bs-toggle="collapse"
-                  data-bs-target="#collapse-rangers" aria-controls="collapse-rangers">
-            Rangers Involved
+                  data-bs-target="#collapse-people" aria-controls="collapse-people">
+            People Involved
           </button>
         </h2>
-        <div id="collapse-rangers" class="accordion-collapse collapse">
+        <div id="collapse-people" class="accordion-collapse collapse">
             <div class="accordion-body">
-              <ul id="visit_rangers_list" class="list-group list-group-small">
-                <template id="visit_rangers_li_template">
+              <ul id="visit_people_list" class="list-group list-group-small">
+                <template id="visit_people_li_template">
                   <li class="list-group-item flex-input-container ps-3 hidden">
                     <span><a href="#" tabindex="-1"></a></span>
-                    <input aria-label="Description of Ranger role" type="text" class="form-control form-control-sm short-input auto-width hover-placeholder border-0"
-                        placeholder="Short description of role" onchange="setRangerRole(this)" maxlength="50"
+                    <input aria-label="Description of involvement" type="text" class="form-control form-control-sm short-input auto-width hover-placeholder border-0"
+                        placeholder="Short description of involvement" onchange="setPersonInvolvement(this)" maxlength="50"
                     />
-                    <button class="badge btn btn-danger remove-badge float-end" onclick="removeRanger(this)" tabindex="-1">
+                    <button class="badge btn btn-danger remove-badge float-end" onclick="removePerson(this)" tabindex="-1">
                       X
                     </button>
                   </li>
                 </template>
               </ul>
               <div class="flex-input-container no-print">
-                <label for="ranger_add" class="control-label">Add:</label>
+                <label for="person_add" class="control-label">Add:</label>
                 <input
                         type="text"
-                        id="ranger_add"
-                        aria-label="Add Ranger Handle"
-                        list="ranger_handles"
+                        id="person_add"
+                        aria-label="Add Person"
+                        list="person_handles"
                         autocomplete="off"
                         class="form-control form-control-sm auto-width"
-                        onchange="addRanger()"
+                        onchange="addPerson()"
                 />
-                <datalist id="ranger_handles">
+                <datalist id="person_handles">
                   <option value=""></option>
                 </datalist>
               </div>

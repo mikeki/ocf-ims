@@ -189,18 +189,18 @@ func permissionsByEvent(ctx context.Context, jwtCtx JWTContext, imsDBQ *store.DB
 	if err != nil {
 		return nil, herr.InternalServerError("Failed to fetch positions and teams", err).From("[GetPositionsAndTeams]")
 	}
-	userPosIDs := jwtCtx.Claims.RangerPositions()
+	userPosIDs := jwtCtx.Claims.PersonPositions()
 	userPosNames := make([]string, 0, len(userPosIDs))
 	for _, userPosID := range userPosIDs {
 		userPosNames = append(userPosNames, allPositions[userPosID])
 	}
-	userTeamIDs := jwtCtx.Claims.RangerTeams()
+	userTeamIDs := jwtCtx.Claims.PersonTeams()
 	userTeamNames := make([]string, 0, len(userTeamIDs))
 	for _, userTeamID := range userTeamIDs {
 		userTeamNames = append(userTeamNames, allTeams[userTeamID])
 	}
 	onDutyPosition := ""
-	onDutyPositionID := jwtCtx.Claims.RangerOnDutyPosition()
+	onDutyPositionID := jwtCtx.Claims.PersonOnDutyPosition()
 	if onDutyPositionID != nil {
 		onDutyPosition = allPositions[*onDutyPositionID]
 	}
@@ -208,8 +208,8 @@ func permissionsByEvent(ctx context.Context, jwtCtx JWTContext, imsDBQ *store.DB
 	permissionsByEvent, _ := authz.ManyEventPermissions(
 		accessRowByEventID,
 		imsAdmins,
-		jwtCtx.Claims.RangerHandle(),
-		jwtCtx.Claims.RangerOnSite(),
+		jwtCtx.Claims.PersonHandle(),
+		jwtCtx.Claims.PersonOnSite(),
 		userPosNames,
 		userTeamNames,
 		onDutyPosition,

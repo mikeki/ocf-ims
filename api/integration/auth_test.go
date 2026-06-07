@@ -212,7 +212,7 @@ func TestPostAuthMakesRefreshCookie(t *testing.T) {
 	jwter := authz.JWTer{SecretKey: shared.cfg.Core.JWTSecret}
 	claims, err := jwter.AuthenticateJWT(response.Token)
 	require.NoError(t, err)
-	require.Equal(t, userAliceHandle, claims.RangerHandle())
+	require.Equal(t, userAliceHandle, claims.PersonHandle())
 	require.Greater(t, response.ExpiresUnixMs, time.Now().UnixMilli())
 
 	// check that the refresh token was shipped over by cookie
@@ -223,7 +223,7 @@ func TestPostAuthMakesRefreshCookie(t *testing.T) {
 	// and that it's valid
 	claims, err = jwter.AuthenticateRefreshToken(cookie.Value)
 	require.NoError(t, err)
-	require.Equal(t, userAliceHandle, claims.RangerHandle())
+	require.Equal(t, userAliceHandle, claims.PersonHandle())
 
 	// now use the refresh token to get a fresh access token
 	code, refreshResp := apisNotAuthenticated.refreshAccessToken(ctx, cookie)
@@ -231,7 +231,7 @@ func TestPostAuthMakesRefreshCookie(t *testing.T) {
 	// and confirm the new access token's validity
 	claims, err = jwter.AuthenticateJWT(refreshResp.Token)
 	require.NoError(t, err)
-	require.Equal(t, userAliceHandle, claims.RangerHandle())
+	require.Equal(t, userAliceHandle, claims.PersonHandle())
 	// this new token should expire no earlier than the old one
 	require.GreaterOrEqual(t, refreshResp.ExpiresUnixMs, response.ExpiresUnixMs)
 }

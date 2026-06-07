@@ -94,15 +94,15 @@ func (action GetVisits) getVisits(req *http.Request) (imsjson.Visits, *herr.HTTP
 		return nil
 	})
 
-	rangersByVisit := make(map[int32][]imsjson.VisitRanger)
+	peopleByVisit := make(map[int32][]imsjson.VisitPerson)
 	group.Go(func() error {
-		rangersRows, err := action.imsDBQ.Visits_People(groupCtx, action.imsDBQ, event.ID)
+		peopleRows, err := action.imsDBQ.Visits_People(groupCtx, action.imsDBQ, event.ID)
 		if err != nil {
 			return herr.InternalServerError("Failed to fetch people", err).From("[Visits_People]")
 		}
-		for _, row := range rangersRows {
-			rangersByVisit[row.VisitPerson.VisitNumber] = append(rangersByVisit[row.VisitPerson.VisitNumber],
-				imsjson.VisitRanger{Handle: row.Handle, Role: conv.SqlToString(row.VisitPerson.Role)})
+		for _, row := range peopleRows {
+			peopleByVisit[row.VisitPerson.VisitNumber] = append(peopleByVisit[row.VisitPerson.VisitNumber],
+				imsjson.VisitPerson{Handle: row.Handle, Involvement: conv.SqlToString(row.VisitPerson.Involvement)})
 		}
 		return nil
 	})
@@ -126,7 +126,7 @@ func (action GetVisits) getVisits(req *http.Request) (imsjson.Visits, *herr.HTTP
 		// query row structs currently have the same fields in the same order.
 		visitRow := imsdb.VisitRow(r)
 
-		visitJSON, errHTTP := visitToJSON(visitRow, rangersByVisit[r.Visit.Number], entriesByVisit[r.Visit.Number], event, action.attachmentsEnabled)
+		visitJSON, errHTTP := visitToJSON(visitRow, peopleByVisit[r.Visit.Number], entriesByVisit[r.Visit.Number], event, action.attachmentsEnabled)
 		if errHTTP != nil {
 			return resp, errHTTP.From("[visitToJSON]")
 		}
@@ -174,19 +174,19 @@ func (action GetVisit) getVisit(req *http.Request) (imsjson.Visit, *herr.HTTPErr
 		return resp, errHTTP.From("[fetchVisit]")
 	}
 
-	rangersRows, err := action.imsDBQ.Visit_People(ctx, action.imsDBQ, imsdb.Visit_PeopleParams{
+	peopleRows, err := action.imsDBQ.Visit_People(ctx, action.imsDBQ, imsdb.Visit_PeopleParams{
 		Event:       event.ID,
 		VisitNumber: visitNumber,
 	})
 	if err != nil {
 		return resp, herr.InternalServerError("Failed to fetch people", err)
 	}
-	rangers := make([]imsjson.VisitRanger, len(rangersRows))
-	for i, row := range rangersRows {
-		rangers[i] = imsjson.VisitRanger{Handle: row.Handle, Role: conv.SqlToString(row.VisitPerson.Role)}
+	people := make([]imsjson.VisitPerson, len(peopleRows))
+	for i, row := range peopleRows {
+		people[i] = imsjson.VisitPerson{Handle: row.Handle, Involvement: conv.SqlToString(row.VisitPerson.Involvement)}
 	}
 
-	resp, errHTTP = visitToJSON(storedRow, rangers, reportEntries, event, action.attachmentsEnabled)
+	resp, errHTTP = visitToJSON(storedRow, people, reportEntries, event, action.attachmentsEnabled)
 	if errHTTP != nil {
 		return resp, errHTTP.From("[visitToJSON]")
 	}
@@ -225,12 +225,12 @@ func fetchVisit(ctx context.Context, imsDBQ *store.DBQ, eventID, visitNumber int
 	return visitRow, reportEntries, nil
 }
 
-func visitToJSON(storedRow imsdb.VisitRow, visitRangers []imsjson.VisitRanger,
+func visitToJSON(storedRow imsdb.VisitRow, visitPeople []imsjson.VisitPerson,
 	resultEntries []imsjson.ReportEntry, event imsdb.Event, attachmentsEnabled bool,
 ) (imsjson.Visit, *herr.HTTPError) {
 	var resp imsjson.Visit
 
-	rangersJson := visitRangers
+	peopleJson := visitPeople
 
 	lastModified := conv.FloatToTime(storedRow.Visit.Created)
 	for _, re := range resultEntries {
@@ -273,7 +273,7 @@ func visitToJSON(storedRow imsdb.VisitRow, visitRangers []imsjson.VisitRanger,
 		ResourceFoodBev: conv.SqlToString(storedRow.Visit.ResourceFoodBev),
 		ResourceOther:   conv.SqlToString(storedRow.Visit.ResourceOther),
 
-		Rangers:       &rangersJson,
+		People:        &peopleJson,
 		ReportEntries: resultEntries,
 	}
 	return resp, nil
@@ -636,23 +636,23 @@ func (action EditVisit) editVisit(req *http.Request) *herr.HTTPError {
 	return nil
 }
 
-type AttachRangerToVisit struct {
+type AttachPersonToVisit struct {
 	imsDBQ    *store.DBQ
 	userStore directory.UserStore
 	es        *EventSourcerer
 	imsAdmins []string
 }
 
-func (action AttachRangerToVisit) ServeHTTP(w http.ResponseWriter, req *http.Request) {
-	errHTTP := action.attachRanger(req)
+func (action AttachPersonToVisit) ServeHTTP(w http.ResponseWriter, req *http.Request) {
+	errHTTP := action.attachPerson(req)
 	if errHTTP != nil {
-		errHTTP.From("[attachRanger]").WriteResponse(w)
+		errHTTP.From("[attachPerson]").WriteResponse(w)
 		return
 	}
 	herr.WriteNoContentResponse(w, "Success")
 }
 
-func (action AttachRangerToVisit) attachRanger(req *http.Request) *herr.HTTPError {
+func (action AttachPersonToVisit) attachPerson(req *http.Request) *herr.HTTPError {
 	event, jwtCtx, eventPermissions, errHTTP := getEventPermissions(req, action.imsDBQ, action.userStore, action.imsAdmins)
 	if errHTTP != nil {
 		return errHTTP.From("[getEventPermissions]")
@@ -667,16 +667,16 @@ func (action AttachRangerToVisit) attachRanger(req *http.Request) *herr.HTTPErro
 		return herr.BadRequest("Invalid Visit Number", err).From("[ParseInt32]")
 	}
 
-	rangerName := req.PathValue("rangerName")
-	if rangerName == "" {
-		return herr.BadRequest("Empty Ranger Name", nil)
+	personHandle := req.PathValue("personHandle")
+	if personHandle == "" {
+		return herr.BadRequest("Empty person handle", nil)
 	}
-	personID, errHTTP := personIDByHandle(ctx, action.userStore, rangerName)
+	personID, errHTTP := personIDByHandle(ctx, action.userStore, personHandle)
 	if errHTTP != nil {
 		return errHTTP.From("[personIDByHandle]")
 	}
 
-	body, errHTTP := readBodyAs[imsjson.VisitRanger](req)
+	body, errHTTP := readBodyAs[imsjson.VisitPerson](req)
 	if errHTTP != nil {
 		return errHTTP.From("[readBodyAs]")
 	}
@@ -699,7 +699,7 @@ func (action AttachRangerToVisit) attachRanger(req *http.Request) *herr.HTTPErro
 		Event:       event.ID,
 		VisitNumber: visitNumber,
 		PersonID:    personID,
-		Role:        conv.StringToSql(body.Role, 128),
+		Involvement: conv.StringToSql(body.Involvement, 128),
 	})
 	if err != nil {
 		return herr.InternalServerError("Failed to attach person to Visit", err).From("[AttachPersonToVisit]")
@@ -707,7 +707,7 @@ func (action AttachRangerToVisit) attachRanger(req *http.Request) *herr.HTTPErro
 
 	_, errHTTP = addVisitReportEntry(
 		ctx, action.imsDBQ, txn, event.ID, visitNumber,
-		jwtCtx.Claims.PersonID(), fmt.Sprintf("Added Ranger: %v", rangerName),
+		jwtCtx.Claims.PersonID(), fmt.Sprintf("Added person: %v", personHandle),
 		true, "", "", "",
 	)
 	if errHTTP != nil {
@@ -723,23 +723,23 @@ func (action AttachRangerToVisit) attachRanger(req *http.Request) *herr.HTTPErro
 	return nil
 }
 
-type DetachRangerFromVisit struct {
+type DetachPersonFromVisit struct {
 	imsDBQ    *store.DBQ
 	userStore directory.UserStore
 	es        *EventSourcerer
 	imsAdmins []string
 }
 
-func (action DetachRangerFromVisit) ServeHTTP(w http.ResponseWriter, req *http.Request) {
-	errHTTP := action.detachRanger(req)
+func (action DetachPersonFromVisit) ServeHTTP(w http.ResponseWriter, req *http.Request) {
+	errHTTP := action.detachPerson(req)
 	if errHTTP != nil {
-		errHTTP.From("[detachRanger]").WriteResponse(w)
+		errHTTP.From("[detachPerson]").WriteResponse(w)
 		return
 	}
 	herr.WriteNoContentResponse(w, "Success")
 }
 
-func (action DetachRangerFromVisit) detachRanger(req *http.Request) *herr.HTTPError {
+func (action DetachPersonFromVisit) detachPerson(req *http.Request) *herr.HTTPError {
 	event, jwtCtx, eventPermissions, errHTTP := getEventPermissions(req, action.imsDBQ, action.userStore, action.imsAdmins)
 	if errHTTP != nil {
 		return errHTTP.From("[getEventPermissions]")
@@ -754,11 +754,11 @@ func (action DetachRangerFromVisit) detachRanger(req *http.Request) *herr.HTTPEr
 		return herr.BadRequest("Invalid Visit Number", err).From("[ParseInt32]")
 	}
 
-	rangerName := req.PathValue("rangerName")
-	if rangerName == "" {
-		return herr.BadRequest("Empty Ranger Name", nil)
+	personHandle := req.PathValue("personHandle")
+	if personHandle == "" {
+		return herr.BadRequest("Empty person handle", nil)
 	}
-	personID, errHTTP := personIDByHandle(ctx, action.userStore, rangerName)
+	personID, errHTTP := personIDByHandle(ctx, action.userStore, personHandle)
 	if errHTTP != nil {
 		return errHTTP.From("[personIDByHandle]")
 	}
@@ -779,7 +779,7 @@ func (action DetachRangerFromVisit) detachRanger(req *http.Request) *herr.HTTPEr
 	}
 	_, errHTTP = addVisitReportEntry(
 		ctx, action.imsDBQ, txn, event.ID, visitNumber,
-		jwtCtx.Claims.PersonID(), fmt.Sprintf("Removed Ranger: %v", rangerName),
+		jwtCtx.Claims.PersonID(), fmt.Sprintf("Removed person: %v", personHandle),
 		true, "", "", "",
 	)
 	if errHTTP != nil {

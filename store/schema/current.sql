@@ -6,7 +6,7 @@ create table SCHEMA_INFO (
 -- This value must be updated when you make a new migration file.
 --
 
-insert into SCHEMA_INFO (VERSION) values (34);
+insert into SCHEMA_INFO (VERSION) values (35);
 
 
 create table `EVENT` (
@@ -137,7 +137,7 @@ create table INCIDENT__PERSON (
     `EVENT`         integer     not null,
     INCIDENT_NUMBER integer     not null,
     PERSON_ID       integer     not null,
-    ROLE            varchar(128),
+    INVOLVEMENT     varchar(128),
 
     primary key (ID),
     -- Declared inline (and before the PERSON_ID FK) so the index order matches
@@ -328,7 +328,7 @@ create table VISIT__PERSON (
     `EVENT`             integer     not null,
     VISIT_NUMBER        integer     not null,
     PERSON_ID           integer     not null,
-    ROLE                varchar(128),
+    INVOLVEMENT         varchar(128),
 
     foreign key (`EVENT`) references `EVENT` (ID),
     foreign key (`EVENT`, VISIT_NUMBER) references VISIT (`EVENT`, NUMBER),

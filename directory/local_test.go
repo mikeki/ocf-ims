@@ -94,7 +94,7 @@ func TestLocalUserStore(t *testing.T) {
 	require.Equal(t, map[int64]string{10: "Driver", 11: "Dancer"}, positions)
 	require.Equal(t, map[int64]string{20: "Green Team"}, teams)
 
-	people, err := us.GetRangers(ctx)
+	people, err := us.GetPeople(ctx)
 	require.NoError(t, err)
 	require.Len(t, people, 2)
 }

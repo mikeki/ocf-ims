@@ -98,7 +98,7 @@ func (action GetReports) getReports(req *http.Request) (imsjson.Reports, *herr.H
 	if limitedAccess {
 		for _, storedReport := range storedReports {
 			entries := entriesByReport[storedReport.Report.Number]
-			if containsAuthor(entries, jwtCtx.Claims.RangerHandle()) {
+			if containsAuthor(entries, jwtCtx.Claims.PersonHandle()) {
 				authorizedReports = append(authorizedReports, storedReport)
 			}
 		}
@@ -173,7 +173,7 @@ func (action GetReport) getReport(req *http.Request) (imsjson.Report, *herr.HTTP
 	}
 
 	if limitedAccess {
-		if !containsAuthor(reportEntries, jwtCtx.Claims.RangerHandle()) {
+		if !containsAuthor(reportEntries, jwtCtx.Claims.PersonHandle()) {
 			return response, herr.Forbidden("The requestor does not have permission to access this particular Report", nil)
 		}
 	}
@@ -259,7 +259,7 @@ func (action EditReport) editReport(req *http.Request) *herr.HTTPError {
 	if err != nil {
 		return herr.BadRequest("Invalid report number", err).From("[ParseInt32]")
 	}
-	author := jwt.Claims.RangerHandle()
+	author := jwt.Claims.PersonHandle()
 	authorPersonID := jwt.Claims.PersonID()
 	if limitedAccess {
 		isPrevAuthor, errHTTP := action.isPreviousAuthor(req, event.ID, reportNumber, author)

@@ -43,7 +43,6 @@ const incidentsPreferredStateKey = "preferred_incidents_state";
 const preferredTableRowsPerPageKey = "preferred_table_rows_per_page";
 const visitsPreferredStatusKey = "preferred_visits_status";
 
-export const clubhousePersonURL = "https://ranger-clubhouse.burningman.org/person";
 
 //
 // HTML encoding
@@ -535,7 +534,7 @@ function stateSortKeyFromID(stateID: IncidentState): number|undefined {
     }
 }
 
-// key is Ranger handle
+// key is person handle
 export type PersonnelMap = Record<string, Personnel>;
 
 export async function fetchPersonnel(): Promise<{personnel: PersonnelMap|null, err: string|null}> {
@@ -933,7 +932,7 @@ export function renderLocation(data: EventLocation|null, type: RenderType, _inci
     }
 }
 
-export function renderRangerHandles(data: IncidentRanger[]|null, type: RenderType, _incident: Incident): RenderValue {
+export function renderPersonHandles(data: IncidentPerson[]|null, type: RenderType, _incident: Incident): RenderValue {
     if (data == null) {
         return undefined;
     }
@@ -1140,7 +1139,7 @@ function reportEntryElement(entry: ReportEntry): HTMLDivElement {
 
                 // Preview mode: open a preview in a new window.
                 // We'd use window.open with target _blank, but Safari iOS doesn't support that,
-                // and a lot of Rangers use iPhones.
+                // and a lot of people use iPhones.
                 tmpLink.target = "_blank";
                 tmpLink.href = blobUrl;
                 document.body.appendChild(tmpLink);
@@ -1749,14 +1748,14 @@ export type LinkedIncident = {
     summary?: string|null;
 }
 
-export type IncidentRanger = {
+export type IncidentPerson = {
     handle?: string|null;
-    role?: string|null;
+    involvement?: string|null;
 }
 
-export type VisitRanger = {
+export type VisitPerson = {
     handle?: string|null;
-    role?: string|null;
+    involvement?: string|null;
 }
 
 export type IncidentState = 'new'|'on_hold'|'dispatched'|'on_scene'|'closed'|'null';
@@ -1770,7 +1769,7 @@ export type Incident = {
     created?: string|null;
     started?: string|null;
     last_modified?: string|null;
-    rangers?: IncidentRanger[]|null;
+    people?: IncidentPerson[]|null;
     incident_type_ids?: number[]|null;
     location?: EventLocation|null;
     report_entries?: ReportEntry[]|null;
@@ -1825,7 +1824,7 @@ export type Visit = {
     resource_food_bev?: string|null;
     resource_other?: string|null;
 
-    rangers?: VisitRanger[]|null;
+    people?: VisitPerson[]|null;
     report_entries?: ReportEntry[]|null;
 }
 
@@ -1989,7 +1988,7 @@ export type AuthInfoEventAccess = {
 
 export type Personnel = {
     handle: string;
-    directory_id?: number|null;
+    person_id?: number|null;
     // These are only the statuses that IMS actually reads from Clubhouse.
     // See https://github.com/mikeki/ocf-ims/blob/master/directory/queries.sql
     status: "active"|"alpha"|"auditor"|"inactive extension"|"inactive"|"prospective";

@@ -32,7 +32,7 @@ import (
 // unit-tested with an in-memory fake. See docs/plans/32-retire-clubhouse.md.
 type UserStore interface {
 	GetAllUsers(ctx context.Context) (map[int64]*User, error)
-	GetRangers(ctx context.Context) ([]imsjson.Person, error)
+	GetPeople(ctx context.Context) ([]imsjson.Person, error)
 	GetPositionsAndTeams(ctx context.Context) (positions, teams map[int64]string, err error)
 }
 
@@ -100,7 +100,7 @@ func (store *cachedUserStore) GetAllUsers(ctx context.Context) (map[int64]*User,
 	return *users, nil
 }
 
-func (store *cachedUserStore) GetRangers(ctx context.Context) ([]imsjson.Person, error) {
+func (store *cachedUserStore) GetPeople(ctx context.Context) ([]imsjson.Person, error) {
 	usersPtr, err := store.userCache.Get(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("[userCache.Get] %w", err)
@@ -110,12 +110,12 @@ func (store *cachedUserStore) GetRangers(ctx context.Context) ([]imsjson.Person,
 	response := make([]imsjson.Person, 0, len(users))
 	for _, r := range users {
 		response = append(response, imsjson.Person{
-			Handle:      r.Handle,
-			Email:       r.Email,
-			Password:    r.Password,
-			Status:      r.Status,
-			Onsite:      r.Onsite,
-			DirectoryID: r.ID,
+			Handle:   r.Handle,
+			Email:    r.Email,
+			Password: r.Password,
+			Status:   r.Status,
+			Onsite:   r.Onsite,
+			PersonID: r.ID,
 		})
 	}
 

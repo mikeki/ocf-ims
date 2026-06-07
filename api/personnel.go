@@ -55,23 +55,23 @@ func (action GetPersonnel) getPersonnel(req *http.Request) (GetPersonnelResponse
 		return response, herr.Forbidden("The requestor does not have GlobalReadPersonnel permission", nil)
 	}
 
-	rangers, err := action.userStore.GetRangers(req.Context())
+	people, err := action.userStore.GetPeople(req.Context())
 	if err != nil {
-		return response, herr.InternalServerError("Failed to get personnel", err).From("[GetRangers]")
+		return response, herr.InternalServerError("Failed to get personnel", err).From("[GetPeople]")
 	}
 
-	for _, ranger := range rangers {
+	for _, person := range people {
 		response = append(response, imsjson.Person{
-			Handle: ranger.Handle,
+			Handle: person.Handle,
 			// Don't send email addresses in the API.
 			// This is also done as a backstop in imsjson.Person itself, with `json:"-"`
 			Email: "",
 			// Don't send passwords in the API
 			// This is also done as a backstop in imsjson.Person itself, with `json:"-"`
-			Password:    "",
-			Status:      ranger.Status,
-			Onsite:      ranger.Onsite,
-			DirectoryID: ranger.DirectoryID,
+			Password: "",
+			Status:   person.Status,
+			Onsite:   person.Onsite,
+			PersonID: person.PersonID,
 		})
 	}
 

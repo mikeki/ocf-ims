@@ -87,7 +87,7 @@ async function initReportPage(): Promise<void> {
 
     // for a new report
     if (report.number == null) {
-        // assume that Rangers without Incident access ought to see the instructions by default
+        // assume that people without Incident access ought to see the instructions by default
         if (!ims.eventAccess?.readIncidents && !ims.eventAccess?.writeIncidents) {
             document.getElementById("fr-instructions")!.click();
         }
