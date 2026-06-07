@@ -253,6 +253,7 @@ func incidentToJSON(storedRow imsdb.IncidentRow, incidentPeople []imsjson.Incide
 		Created:      conv.FloatToTime(storedRow.Incident.Created),
 		LastModified: lastModified,
 		State:        string(storedRow.Incident.State),
+		Outcome:      outcomeToString(storedRow.Incident.Outcome),
 		Started:      conv.FloatToTime(storedRow.Incident.Started),
 		Closed:       conv.NullFloatToTime(storedRow.Incident.Closed),
 		Priority:     storedRow.Incident.Priority,
@@ -482,6 +483,7 @@ func updateIncident(ctx context.Context, imsDBQ *store.DBQ, es *EventSourcerer, 
 		Number:              storedIncident.Number,
 		Priority:            storedIncident.Priority,
 		State:               storedIncident.State,
+		Outcome:             storedIncident.Outcome,
 		Started:             storedIncident.Started,
 		Closed:              storedIncident.Closed,
 		Summary:             storedIncident.Summary,
@@ -502,6 +504,23 @@ func updateIncident(ctx context.Context, imsDBQ *store.DBQ, es *EventSourcerer, 
 			update.Closed = conv.TimeToNullFloat(time.Now())
 		} else {
 			update.Closed = sql.NullFloat64{}
+		}
+	}
+	// OUTCOME is orthogonal to STATE. Unlike STATE (which silently ignores
+	// unknown values), an invalid outcome is rejected with 400. nil leaves the
+	// existing outcome unchanged; an empty string clears it.
+	if newIncident.Outcome != nil {
+		outcome := strings.TrimSpace(*newIncident.Outcome)
+		if outcome == "" {
+			update.Outcome = imsdb.NullIncidentOutcome{}
+			logs = append(logs, "Cleared outcome")
+		} else {
+			parsed := imsdb.IncidentOutcome(outcome)
+			if !parsed.Valid() {
+				return herr.BadRequest(fmt.Sprintf("Invalid outcome: %v", outcome), nil)
+			}
+			update.Outcome = imsdb.NullIncidentOutcome{IncidentOutcome: parsed, Valid: true}
+			logs = append(logs, fmt.Sprintf("Changed outcome: %v", parsed))
 		}
 	}
 	if !newIncident.Started.IsZero() {
@@ -1026,4 +1045,13 @@ func (action DetachPersonFromIncident) detachPerson(req *http.Request) *herr.HTT
 	action.es.notifyIncidentUpdate(event.ID, incidentNumber)
 
 	return nil
+}
+
+// outcomeToString converts the nullable sqlc incident-outcome enum to a
+// JSON-friendly *string, returning nil when the outcome is NULL.
+func outcomeToString(outcome imsdb.NullIncidentOutcome) *string {
+	if !outcome.Valid {
+		return nil
+	}
+	return new(string(outcome.IncidentOutcome))
 }

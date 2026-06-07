@@ -78,6 +78,7 @@ update INCIDENT set
     -- CREATED should be immutable, so it's not present in this UPDATE query
     PRIORITY = ?,
     STATE = ?,
+    OUTCOME = ?,
     STARTED = ?,
     CLOSED = ?,
     SUMMARY = ?,

@@ -6,7 +6,7 @@ create table SCHEMA_INFO (
 -- This value must be updated when you make a new migration file.
 --
 
-insert into SCHEMA_INFO (VERSION) values (38);
+insert into SCHEMA_INFO (VERSION) values (39);
 
 
 create table `EVENT` (
@@ -154,6 +154,15 @@ create table INCIDENT (
     -- is added by an ALTER below, after AREA is defined. LOCATION_DESCRIPTION is
     -- the retained freeform "place / details" box alongside the structured area.
     LOCATION_AREA_SLUG      varchar(128),
+
+    -- OUTCOME is the incident disposition, orthogonal to STATE (no coupling).
+    -- Nullable: an incident may have no recorded disposition yet. Added last so
+    -- the column order matches the ALTER ... ADD COLUMN in migration 39-from-38.
+    OUTCOME enum(
+        'information_only', 'resolved_on_scene', 'referred_to_coordinator',
+        'referred_to_management', 'referred_to_community_support',
+        'referred_to_mediation', 'follow_up_required', 'no_action_needed'
+    ),
 
     foreign key (`EVENT`) references `EVENT`(ID),
 

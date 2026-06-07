@@ -534,6 +534,25 @@ function stateSortKeyFromID(stateID: IncidentState): number|undefined {
     }
 }
 
+// Look up an outcome's display name given its ID. "" (no outcome recorded)
+// renders blank.
+export function outcomeNameFromID(outcomeID: IncidentOutcome): string {
+    switch (outcomeID) {
+        case ""                            : return "";
+        case "information_only"            : return "Information Only";
+        case "resolved_on_scene"           : return "Resolved On Scene";
+        case "referred_to_coordinator"     : return "Referred to Coordinator";
+        case "referred_to_management"      : return "Referred to Management";
+        case "referred_to_community_support": return "Referred to Community Support";
+        case "referred_to_mediation"       : return "Referred to Mediation";
+        case "follow_up_required"          : return "Follow-Up Required";
+        case "no_action_needed"            : return "No Action Needed";
+        default:
+            console.warn(`Unknown incident outcome ID: ${outcomeID satisfies never}`);
+            return "Unknown";
+    }
+}
+
 // key is person handle
 export type PersonnelMap = Record<string, Personnel>;
 
@@ -1777,10 +1796,18 @@ export type VisitPerson = {
 
 export type IncidentState = 'new'|'on_hold'|'dispatched'|'on_scene'|'closed'|'null';
 
+// IncidentOutcome is the disposition classification, orthogonal to IncidentState.
+// An empty string means "no outcome recorded" (clears it on the server).
+export type IncidentOutcome =
+    ''|'information_only'|'resolved_on_scene'|'referred_to_coordinator'|
+    'referred_to_management'|'referred_to_community_support'|
+    'referred_to_mediation'|'follow_up_required'|'no_action_needed';
+
 export type Incident = {
     number?: number|null;
     event?: string|null;
     state?: IncidentState|null;
+    outcome?: IncidentOutcome|null;
     priority?: number|null;
     summary?: string|null;
     created?: string|null;

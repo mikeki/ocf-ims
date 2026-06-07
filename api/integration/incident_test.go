@@ -499,6 +499,71 @@ func TestIncidentLocationArea(t *testing.T) {
 	require.Equal(t, "by the north gate", deref(got.Location.Description))
 }
 
+func TestIncidentOutcome(t *testing.T) {
+	t.Parallel()
+	ctx := t.Context()
+
+	admin := ApiHelper{t: t, serverURL: shared.serverURL, jwt: jwtForAdmin(ctx, t)}
+	writer := ApiHelper{t: t, serverURL: shared.serverURL, jwt: jwtForAlice(t, ctx)}
+
+	eventName := makeEvent(ctx, t, admin)
+	resp := admin.addWriter(ctx, eventName, userAliceHandle)
+	require.Equal(t, http.StatusNoContent, resp.StatusCode)
+	require.NoError(t, resp.Body.Close())
+
+	// Create an incident carrying a disposition.
+	num := writer.newIncidentSuccess(ctx, imsjson.Incident{
+		Event:   eventName,
+		Outcome: new("resolved_on_scene"),
+	})
+
+	got, resp := writer.getIncident(ctx, eventName, num)
+	require.Equal(t, http.StatusOK, resp.StatusCode)
+	require.NoError(t, resp.Body.Close())
+	require.Equal(t, "resolved_on_scene", deref(got.Outcome))
+
+	// Outcome is orthogonal to state: it survives a state change.
+	resp = writer.updateIncident(ctx, eventName, num, imsjson.Incident{
+		Event:  eventName,
+		Number: num,
+		State:  "on_scene",
+	})
+	require.Equal(t, http.StatusNoContent, resp.StatusCode)
+	require.NoError(t, resp.Body.Close())
+	got, resp = writer.getIncident(ctx, eventName, num)
+	require.Equal(t, http.StatusOK, resp.StatusCode)
+	require.NoError(t, resp.Body.Close())
+	require.Equal(t, "resolved_on_scene", deref(got.Outcome))
+
+	// An unknown outcome is rejected with 400 (stricter than STATE's silent ignore).
+	resp = writer.updateIncident(ctx, eventName, num, imsjson.Incident{
+		Event:   eventName,
+		Number:  num,
+		Outcome: new("not_a_real_outcome"),
+	})
+	require.Equal(t, http.StatusBadRequest, resp.StatusCode)
+	require.NoError(t, resp.Body.Close())
+
+	// The original outcome survived the rejected update.
+	got, resp = writer.getIncident(ctx, eventName, num)
+	require.Equal(t, http.StatusOK, resp.StatusCode)
+	require.NoError(t, resp.Body.Close())
+	require.Equal(t, "resolved_on_scene", deref(got.Outcome))
+
+	// An empty string clears the outcome back to unset (null).
+	resp = writer.updateIncident(ctx, eventName, num, imsjson.Incident{
+		Event:   eventName,
+		Number:  num,
+		Outcome: new(""),
+	})
+	require.Equal(t, http.StatusNoContent, resp.StatusCode)
+	require.NoError(t, resp.Body.Close())
+	got, resp = writer.getIncident(ctx, eventName, num)
+	require.Equal(t, http.StatusOK, resp.StatusCode)
+	require.NoError(t, resp.Body.Close())
+	require.Nil(t, got.Outcome)
+}
+
 func deref[T any](p *T) T {
 	var zero T
 	if p == nil {
