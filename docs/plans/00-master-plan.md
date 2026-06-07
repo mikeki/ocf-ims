@@ -101,7 +101,7 @@ contract-break cheaper. The **interface** and **restructure** still wait.
 | 1 | **Preparation & clean-up** | ✅ **Done** — dead/deprecated code removed; baseline green | Low | `10-cleanup-pass.md` ✅ |
 | 2 | **Terminology** | Burning Man terms → OCF terms across code + UI | Med | `20-terminology.md` (2a ✅, 2c ✅; 2b → Phase 3; 2d open) |
 | 3 | **Remove Clubhouse & local People** | Local `Person` identity replaces the external Clubhouse directory; Ranger→Person rename keyed on `person_id` | High | `30-remove-clubhouse.md` (design) |
-| 4 | **Domain model** | OCF incident categories, outcomes, locations | Med–High | `40-domain-model.md` (TODO) |
+| 4 | **Domain model** | OCF incident categories, outcomes, locations | Med–High | [`40-domain-model.md`](40-domain-model.md) (plan — for review) |
 | 5 | **Roles & permissions** | OCF crews/titles/roles in authz, built on Phase 3's local People | Med | `50-roles-permissions.md` (TODO) |
 | 6 | **Dashboards & metrics** | Management reporting OCF will use | Med | `60-dashboards.md` (TODO) |
 
