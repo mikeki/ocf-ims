@@ -1,16 +1,17 @@
-# Phase 3 · PR #4 — Post-Clubhouse login: password management & self-service reset
+# Phase 3 · PR #4 — Post-Clubhouse login: admin password reset + login cleanup
 
-**Status: PLAN — for review (drafted 2026-06-06).** No code yet. This document is the
-plan; once approved it is implemented **on this same branch** (`phase3-password-reset`)
-and the PR grows from plan-only into the full feature.
+**Status: PLAN — for review (drafted 2026-06-06; scope revised 2026-06-06 to defer
+self-service email reset).** No code yet. This document is the plan; once approved it is
+implemented **on this same branch** (`phase3-password-reset`) and the PR grows from
+plan-only into the feature.
 
 Parent plan: [`30-remove-clubhouse.md`](30-remove-clubhouse.md). Follows
 [`31-local-people-directory.md`](31-local-people-directory.md) (#16),
 [`32-retire-clubhouse.md`](32-retire-clubhouse.md) (#17), and
-[`33-people-rename.md`](33-people-rename.md) (#18). Those three retired the external
-Clubhouse directory and stood up a local `PERSON` identity + credential store. This PR
-closes the **last functional gap Clubhouse left behind: there is no way to set, change,
-or recover a password from inside IMS.**
+[`33-people-rename.md`](33-people-rename.md) (#18). Those retired the external Clubhouse
+directory and stood up a local `PERSON` identity + credential store. This PR closes the
+**last functional gap Clubhouse left behind: there is no way to set, change, or recover a
+password from inside IMS.**
 
 ---
 
@@ -23,19 +24,20 @@ time. But Clubhouse used to own everything *around* the password:
 1. **Recovery.** The "Forgot your password?" link on the login page
    (`web/template/login.templ:76-85`) points at `ranger-clubhouse*.burningman.org` —
    now dead. A locked-out OCF user has no path back in.
-2. **Setting / changing.** There is **no** password-set or password-change endpoint
-   anywhere. The only way to set a password today is for an operator to run
-   `cmd/hashpassword` and hand-write the hash into `PERSON.PASSWORD` via SQL.
+2. **Setting / changing.** There is **no** password-set endpoint anywhere. The only way
+   to set a password today is for an operator to run `cmd/hashpassword` and hand-write
+   the hash into `PERSON.PASSWORD` via SQL.
 3. **Onboarding copy.** `credentialsNotice()` (`login.templ:87-105`) still tells users
    to use their "Clubhouse Production / Staging server" credentials.
 4. **Naming residue.** The argon2id cost params are still called `ClubhouseParams`
    (`lib/argon2id/argon2id.go:77`) with a "standard Clubhouse parameters" comment in
    `lib/authn/password.go:28`, referenced from `cmd/hashpassword.go:44`.
 
-This PR delivers the **full self-service password story** (scope chosen 2026-06-06):
-admins can set/reset any user's password, and users can recover their own password via
-an emailed reset link. It removes the dead Clubhouse UI and folds in the argon2id
-rename.
+**Scope decision (2026-06-06):** full self-service *emailed* reset is **deferred** (email
+delivery is the heaviest dependency and OCF's mail story isn't settled). Instead, this PR
+makes recovery work **operationally**: an admin can reset any user's password from inside
+IMS, and the login page tells a locked-out user to ask a crew leader or an admin. The
+emailed self-service flow is preserved as a documented future design (appendix below).
 
 ---
 
@@ -43,136 +45,64 @@ rename.
 
 | Decision | Choice |
 |---|---|
-| Overall scope | **Full self-service reset** — cleanup + admin set-password + emailed forgot-password flow |
-| Login-page recovery UI | Rewire to a **local** flow; **remove** the Clubhouse credentials notice; keep a working "Forgot your password?" link pointing at the new local page |
+| Recovery model | **Admin-assisted** — admin resets the user's password in-app; **self-service emailed reset DEFERRED** |
+| Admin reset mechanism | **In-app admin set-password** (endpoint + minimal admin UI), not manual CLI+SQL |
+| Login-page recovery UI | **Remove** the Clubhouse credentials notice; replace the "Forgot your password?" external link with static text: *"Forgot your password? Ask a crew leader or an admin to reset it."* |
 | argon2id rename | **Fold in** — `ClubhouseParams` → `DefaultParams`, scrub "Clubhouse" comments in `lib/argon2id` + `lib/authn` + `cmd/hashpassword` (identifier/comment only; **existing hashes unaffected**, cost params byte-identical) |
-| Admin set-password works without email | **Yes** — the admin path has no email dependency, so it is usable even before email infra is configured (de-risks the email long-pole) |
-| Reset-token storage | Store only a **SHA-256 hash** of a high-entropy random token in a new `PASSWORD_RESET` table; single-use; short TTL. A DB leak must not yield usable reset links |
-| Enumeration safety | The "request reset" endpoint **always returns 200** regardless of whether the email exists |
+| Schema change | **None** — `PERSON.PASSWORD` already exists; no migration, no new table |
+| Who can reset | **Admins** (`IMS_ADMINS` / claims `Admin`). "Crew leader" reset powers need the Phase 5 roles model; the login *text* may name crew leaders, but the actual control is admin-gated for now |
+| Password not echoed | The set-password response never returns the password/hash (consistent with `api/personnel.go`) |
 
 ## Open decisions (resolve during plan review)
 
-These are the questions the review of this PR should settle before/along with coding.
-Defaults are my recommendation.
+Defaults are my recommendation; only these remain.
 
-1. **Email delivery mechanism (the long pole).** Self-service reset needs to send mail.
-   Options, behind a pluggable `lib/notify` mailer seam that mirrors the existing
-   `AttachmentsStore` (`none`/`local`/`s3`) config pattern:
-   - **(A — recommended) SMTP** (`IMS_EMAIL_TYPE=smtp`). Most portable: works with
-     Google Workspace / Gmail app passwords, Mailgun/SES SMTP creds, etc. One small
-     dependency or stdlib `net/smtp` + STARTTLS. OCF almost certainly has a mailbox we
-     can relay through.
-   - **(B) AWS SES** (`IMS_EMAIL_TYPE=ses`). Natural fit since attachments already use
-     AWS S3 — same SDK/creds story. Requires an AWS account + verified sender domain.
-   - **(C) Transactional HTTP API** (SendGrid/Postmark/Mailgun). Best deliverability,
-     adds a vendor + API key.
-   - **Default dev/test sender (`IMS_EMAIL_TYPE=none`/`log`)**: writes the reset link
-     to the server log instead of sending — lets the whole flow be built, tested, and
-     demoed with **zero external infra**, and is what CI/integration tests use.
-
-   > Recommendation: build the `log` sender + **SMTP** sender now; leave SES/HTTP as
-   > future senders behind the same interface. **Which mechanism does OCF want in
-   > production, and is there an SMTP relay/mailbox available?**
-
-2. **Admin set-password surface.** Wire the admin "set this user's password" action
-   into the existing personnel admin page (`/ims/app/admin/...`), or ship it
-   API-only for this PR and add UI later? *Recommendation: API endpoint now + a minimal
-   admin UI hook, since the API alone still requires curl.*
-
-3. **Password policy.** Minimum length / complexity. *Recommendation: min 12 chars, max
-   256 (max already enforced at login, `auth.go:101`), no composition rules (NIST-style:
-   length over complexity). Confirm the minimum.*
-
-4. **Reset token TTL & rate limiting.** *Recommendation: 1-hour TTL, single-use,
-   invalidate all of a user's outstanding tokens when a new one is requested or a reset
-   completes; basic per-email/per-IP rate limit on the request endpoint.*
-
-5. **Should a successful reset/admin-set invalidate existing sessions?** Refresh tokens
-   are JWTs with no server-side revocation list today. *Recommendation: out of scope —
-   note it as a known limitation; full session revocation is its own effort.*
+1. **Password policy** — minimum length for an admin-set password. *Recommendation: min
+   8, max 256 (max already enforced at login, `auth.go:101`), no composition rules
+   (NIST-style: length over complexity). Note: dev seeds in `store/fakeimsdb/seed.sql`
+   are inserted via SQL, not this endpoint, so a minimum here doesn't affect them.*
+2. **Admin UI placement** — there is no admin people-management page today (admin pages
+   are root / actionlogs / events / types / debug / places). *Recommendation: add a
+   small new `GET /ims/app/admin/people` page that lists personnel via the existing
+   `GET /ims/api/personnel` and offers a per-person "Set password" control, linked from
+   `adminroot.templ`.* Alternative: bolt the control onto an existing page. Confirm.
+3. **Force-change-on-next-login** for admin-set temp passwords — nice-to-have. *Recommendation:
+   out of scope for this PR (no "must change password" flag/flow yet); revisit with the
+   logged-in "change my password" follow-up.*
 
 ---
 
 ## Architecture
 
-Mirror the patterns already in the tree. Nothing exotic.
+Mirror patterns already in the tree. No new infrastructure, no schema change.
 
-### New `lib/notify` mailer seam (pattern: `AttachmentsStore`)
+### New query (`store/queries.sql`, regenerated via sqlc)
 
-```
-lib/notify/
-  notify.go     // Mailer interface { Send(ctx, to, subject, body) error }
-  log.go        // logMailer — writes the message to slog (dev/test/default)
-  smtp.go       // smtpMailer — net/smtp + STARTTLS (production option A)
-  // (future) ses.go, http.go behind the same interface
-```
+- `SetPersonPassword` — `update PERSON set PASSWORD = ? where ID = ?`
 
-Config block in `conf/imsconfig.go` alongside `AttachmentsStore`:
-
-```go
-type EmailConfig struct {
-    Type     EmailType // "none"/"log" | "smtp" | (future) "ses"
-    From     string    // e.g. "ims@oregoncountryfair.org"
-    BaseURL  string    // public origin for building reset links, e.g. https://ims.…
-    SMTP     SMTPConfig
-}
-```
-
-Read from env in `cmd/serveconfig.go` (`IMS_EMAIL_TYPE`, `IMS_EMAIL_FROM`,
-`IMS_PUBLIC_URL`, `IMS_SMTP_HOST/PORT/USER/PASSWORD`). `Validate()` requires
-`From`+`BaseURL` when type != none and SMTP creds when type == smtp.
-
-### New schema (migration v36 — `store/schema/36-from-35.sql` + `current.sql`)
-
-```sql
-create table PASSWORD_RESET (
-    TOKEN_HASH  binary(32)  not null,   -- SHA-256 of the random reset token
-    PERSON_ID   integer     not null,
-    EXPIRES     double      not null,   -- unix seconds, matches existing time cols
-    USED        boolean     not null default false,
-    CREATED     double      not null,
-    primary key (TOKEN_HASH),
-    foreign key `PR_TO_PERSON` (PERSON_ID) references PERSON(ID)
-) DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
--- update SCHEMA_INFO VERSION = 36
-```
-
-Append-only: add `36-from-35.sql`, bump `current.sql` to 36, never touch old
-migrations or frozen fixtures. `store/integration` byte-identical check must pass.
-
-### New queries (`store/queries.sql`, regenerated via sqlc)
-
-- `CreatePasswordReset` (insert)
-- `GetPasswordResetByTokenHash` (select, for validation)
-- `MarkPasswordResetUsed` / `DeletePasswordResetsForPerson` (invalidate)
-- `SetPersonPassword` (`update PERSON set PASSWORD = ? where ID = ?`)
-
-### New backend endpoints (`api/`)
+### New backend endpoint (`api/`)
 
 | Method + path | Auth | Purpose |
 |---|---|---|
-| `POST /ims/api/auth/password-reset-request` | none | `{email}` → always 200; if a person matches, mint token, store hash, email link |
-| `POST /ims/api/auth/password-reset` | none | `{token, new_password}` → validate (exists/unexpired/unused), set password, mark used |
-| `POST /ims/api/people/{personHandle}/password` | admin | `{new_password}` → admin sets a user's password directly (no email) |
+| `POST /ims/api/personnel/{personHandle}/password` | **admin** | `{password}` → resolve handle → person, hash server-side, `SetPersonPassword`. 404 if no such handle; 403 if caller not admin |
 
-All hashing server-side via `argon2id.CreateHash(pw, argon2id.DefaultParams)`. Reuse the
-`auth.go` long-password guard (>256 → 400) and the new min-length policy. Token compare
-is constant-time on the hash.
+- Lives in a new `api/password.go` (handler + admin gate + validation), registered in
+  `api/mux.go` next to the personnel route (`api/mux.go:449`).
+- Hash via `argon2id.CreateHash(pw, argon2id.DefaultParams)` (the renamed prod params).
+- Reuse the long-password guard (>256 → 400) and the new min-length policy.
+- Admin gate via the same `IMS_ADMINS`/claims check `GetAuth`/`GetPersonnel` already use.
 
 ### Frontend (`web/`)
 
-- `login.templ`: drop `credentialsNotice()`; replace `passwordResetLink()` Clubhouse
-  URLs with a link to the new local `/ims/auth/forgot` page. Keep the "Please log in
-  with your IMS credentials." line.
-- New templ pages + TS:
-  - `/ims/auth/forgot` — enter email, POST to request endpoint, show a neutral
-    "if that address exists, a reset link was sent" confirmation.
-  - `/ims/auth/reset` — reads `?token=…`, enter+confirm new password, POST to reset
-    endpoint, on success redirect to login.
-- Register both in `web/mux.go` next to the existing `GET /ims/auth/login`
-  (`web/mux.go:162`).
-- (If open-decision #2 = yes) minimal admin set-password control on the personnel admin
-  page.
+- `login.templ`: delete `credentialsNotice()`; replace `passwordResetLink()` Clubhouse
+  URLs with static text *"Forgot your password? Ask a crew leader or an admin to reset
+  it."* Keep "Please log in with your IMS credentials." `deployment` param may become
+  unused in those helpers — clean up accordingly.
+- New `web/template/adminpeople.templ` + `web/typescript/adminpeople.ts`: list personnel
+  (existing `GET /ims/api/personnel`), per-person "Set password" control → `POST
+  /ims/api/personnel/{handle}/password`. Register `GET /ims/app/admin/people` in
+  `web/mux.go`; add a link from `adminroot.templ`. Add the URL to
+  `web/typescript/urls.ts`.
 
 ### argon2id rename (fold-in)
 
@@ -186,32 +116,25 @@ is constant-time on the hash.
 
 ## Security considerations
 
-- **Token**: ≥32 bytes from `crypto/rand`, URL-safe base64; **only its SHA-256 is
-  stored**. Lookup by hash; constant-time. Single-use + short TTL.
-- **Enumeration**: request endpoint returns the same 200 + same body whether or not the
-  email exists; do the work (or a dummy delay) either way.
-- **No password in any response** (consistent with `api/personnel.go` which already
-  strips it).
-- **Admin endpoint** is admin-gated via the existing `IMS_ADMINS`/claims check used by
-  `GetAuth`/personnel.
-- **Rate limiting** on the request endpoint (open-decision #4).
-- **Known limitation**: existing JWT refresh tokens are not server-revocable, so a reset
-  does not kill live sessions (open-decision #5).
+- **Admin-only**: the set-password endpoint is admin-gated; non-admins get 403.
+- **No password in any response** (consistent with `api/personnel.go`).
+- **Server-side hashing** with prod argon2id params; long-password guard retained.
+- **Known limitation**: existing JWT refresh tokens are not server-revocable, so an
+  admin reset does not kill the target user's live sessions. Out of scope; noted.
+- No reset tokens / no email in this PR, so the token-handling attack surface from the
+  deferred design does not exist yet.
 
 ---
 
 ## Testing
 
 - **Unit**: argon2id rename compiles + existing hashes still verify; password-policy
-  validation; token hashing/expiry logic; `logMailer` captured output.
-- **`api/integration`** (real MariaDB): full happy path — request → (capture link from
-  `logMailer`) → reset → login with new password succeeds, old fails; expired token
-  rejected; used token rejected; admin set-password path; enumeration returns 200 for
-  unknown email.
-- **`store/integration`**: v36 migration replays clean and is byte-identical to
-  `current.sql`.
-- **Playwright** (optional, if UI lands): forgot → reset → login round-trip against the
-  `log` mailer.
+  validation (too-short rejected, >256 rejected); admin-gate (non-admin → 403).
+- **`api/integration`** (real MariaDB): admin sets a user's password → that user logs in
+  with the new password (success) and the old one fails; unknown handle → 404; non-admin
+  caller → 403.
+- **`store/integration`**: unaffected (no schema change) but must stay green.
+- **Playwright** (optional, if admin UI lands): admin sets a password, target logs in.
 - Full gate before each push: `go run bin/build/build.go`, `go test ./...`,
   `go test ./store/integration ./api/integration`, `go vet`, golangci-lint (0 issues).
 
@@ -219,47 +142,41 @@ is constant-time on the hash.
 
 ## Out of scope (deferred, noted for the record)
 
-- `PERSON.is_admin` column (admins stay env `IMS_ADMINS` on handle).
-- Local `onduty:` modeling (no timesheet source).
-- Server-side session/refresh-token revocation.
-- Self-service *change* password while logged in (this PR covers set-by-admin + reset;
-  a logged-in "change my password" form can be a tiny follow-up reusing
-  `SetPersonPassword`).
-- Email templates beyond a plain-text reset message.
-- SES / transactional-HTTP mailers (interface left open for them).
+- **Self-service emailed password reset** — deferred this PR; design preserved in the
+  appendix so it isn't lost. Picking it up later means: `lib/notify` mailer seam, a
+  `PASSWORD_RESET` table (schema bump), request/reset endpoints, forgot/reset pages, and
+  an OCF email-delivery decision.
+- Logged-in "change my own password" form (small follow-up; reuses `SetPersonPassword`).
+- "Must change password on next login" flag/flow.
+- `PERSON.is_admin` column (admins stay env `IMS_ADMINS`).
+- Local `onduty:` modeling; server-side session/refresh-token revocation.
 
 ---
 
 ## Build sequence (buildable commits on this branch)
 
-Because generated code is not committed, each commit must compile after `-generate-only`.
+Generated code is not committed, so each commit must compile after `-generate-only`.
 
-1. **This plan doc** (the PR opener; what gets reviewed first).
+1. **This plan doc** (the PR opener; reviewed first). ✅ committed
 2. **argon2id rename** (self-contained, safe, no behavior change).
-3. **Backend core**: schema v36 + queries + `lib/notify` (log+smtp) + config + the three
-   endpoints + admin set-password. Green build + integration tests.
-4. **Frontend**: login.templ cleanup + forgot/reset pages + TS + routes (+ optional
-   admin UI hook).
-5. **Docs**: `.env.example`, README, CLAUDE.md (email config + interim/admin password
-   process), CHANGELOG.
-
-Admin set-password (no email dependency) is usable after commit 3 even if production
-email is still being decided — that is the intentional de-risking.
+3. **Backend**: `SetPersonPassword` query + `api/password.go` endpoint + admin gate +
+   validation + route. Green build + integration test.
+4. **Frontend**: login.templ cleanup + admin people page (list + set-password) + route +
+   urls.ts + adminroot link.
+5. **Docs**: README / CLAUDE.md (admin reset process; note emailed self-service is
+   future), CHANGELOG, `.env.example` if any new knob (none expected).
 
 ---
 
 ## Files to touch (anticipated)
 
-**New**: `store/schema/36-from-35.sql`; `lib/notify/{notify,log,smtp}.go`;
-`api/password.go` (+ test); `web/template/forgot.templ`, `web/template/reset.templ`;
-`web/typescript/forgot.ts`, `web/typescript/reset.ts`; `web/typescript/urls.ts` entries.
+**New**: `api/password.go` (+ test); `web/template/adminpeople.templ`;
+`web/typescript/adminpeople.ts`.
 
-**Modified**: `store/schema/current.sql`, `store/queries.sql`; `conf/imsconfig.go`,
-`cmd/serveconfig.go`; `api/mux.go` (routes), `api/auth.go` (maybe shared helpers);
-`lib/argon2id/argon2id.go`, `lib/authn/password.go`, `cmd/hashpassword.go`;
-`web/template/login.templ`, `web/mux.go`; `.env.example`, `README.md`, `CLAUDE.md`,
-`CHANGELOG.md`. Possibly `api/personnel.go` + a personnel admin templ/TS for the admin
-UI hook.
+**Modified**: `store/queries.sql`; `api/mux.go` (route); `lib/argon2id/argon2id.go`,
+`lib/authn/password.go`, `cmd/hashpassword.go`; `web/template/login.templ`,
+`web/template/adminroot.templ`, `web/mux.go`, `web/typescript/urls.ts`; `README.md`,
+`CLAUDE.md`, `CHANGELOG.md`.
 
 ---
 
@@ -267,10 +184,32 @@ UI hook.
 
 - [ ] Plan reviewed & open decisions resolved
 - [ ] argon2id rename
-- [ ] schema v36 + queries
-- [ ] `lib/notify` mailer (log + smtp)
-- [ ] config + env wiring
-- [ ] reset-request / reset / admin-set endpoints
-- [ ] frontend pages + login.templ cleanup
-- [ ] tests green (unit + integration)
+- [ ] `SetPersonPassword` query
+- [ ] admin set-password endpoint + admin gate + validation + route
+- [ ] login.templ cleanup (Clubhouse links/notice → "ask a crew leader/admin")
+- [ ] admin people page (list + set-password) + route + adminroot link
+- [ ] tests green (unit + api integration)
 - [ ] docs updated
+
+---
+
+## Appendix — deferred design: self-service emailed reset
+
+Preserved so the work isn't re-derived when OCF's email story is ready. Pick up as a
+later PR.
+
+- **Mailer seam** `lib/notify/{notify,log,smtp}.go` — `Mailer` interface mirroring the
+  `AttachmentsStore` config pattern; `log` sender (dev/CI), `smtp` sender (prod), SES/HTTP
+  future. Config block `EmailConfig{Type, From, BaseURL, SMTP}` in `conf/imsconfig.go`,
+  env `IMS_EMAIL_*` / `IMS_PUBLIC_URL` in `cmd/serveconfig.go`.
+- **Schema** `PASSWORD_RESET(TOKEN_HASH binary(32) pk, PERSON_ID fk, EXPIRES double,
+  USED bool, CREATED double)` — store only the **SHA-256** of a ≥32-byte `crypto/rand`
+  token; single-use; short TTL (≈1h).
+- **Endpoints** `POST /ims/api/auth/password-reset-request` (`{email}`; **always 200** to
+  avoid enumeration; mint token, store hash, email link) and `POST
+  /ims/api/auth/password-reset` (`{token, new_password}`; validate exists/unexpired/unused
+  → set password → mark used).
+- **Frontend** `/ims/auth/forgot` (enter email) + `/ims/auth/reset` (reads `?token=`, set
+  new password); login page's recovery link would then point at `/ims/auth/forgot`.
+- **Security** constant-time hash lookup, rate-limiting on request, invalidate
+  outstanding tokens on new request / completion.
