@@ -30,9 +30,19 @@ import (
 	"github.com/testcontainers/testcontainers-go"
 	"golang.org/x/sync/errgroup"
 	"io"
+	"regexp"
 	"slices"
 	"testing"
 )
+
+// autoIncrementRE matches the AUTO_INCREMENT counter that `show create table`
+// emits for tables with an auto-increment key. It is a runtime row-count
+// artifact, not part of the schema structure, so it is stripped before
+// comparing the migrated and fresh schemas: the two paths legitimately seed
+// different numbers of rows (e.g. current.sql seeds the full OCF incident-type
+// taxonomy while the migration chain carries only the historical placeholder
+// rows). See docs/plans/40-domain-model.md (migrations are schema-only).
+var autoIncrementRE = regexp.MustCompile(` AUTO_INCREMENT=\d+`)
 
 //go:embed 06.sql
 var schema06 string
@@ -121,6 +131,10 @@ func TestMigrateSameAsCurrentSchema(t *testing.T) {
 		var createTable2 string
 		require.NoError(t, row2.Scan(&tableName, &createTable2))
 
+		// Compare schema structure only; the AUTO_INCREMENT counter reflects
+		// seed-row counts, which differ by design between the two paths.
+		createTable1 = autoIncrementRE.ReplaceAllString(createTable1, "")
+		createTable2 = autoIncrementRE.ReplaceAllString(createTable2, "")
 		assert.Equal(t, createTable1, createTable2)
 	}
 }

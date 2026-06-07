@@ -73,6 +73,7 @@ func (action GetIncidentTypes) getIncidentTypes(req *http.Request) (imsjson.Inci
 			Name:        new(t.Name),
 			Description: conv.SqlToString(t.Description),
 			Hidden:      new(t.Hidden),
+			Group:       groupToString(t.Group),
 		})
 	}
 	slices.SortFunc(response, func(a, b imsjson.IncidentType) int {
@@ -116,10 +117,15 @@ func (action EditIncidentTypes) editIncidentTypes(req *http.Request) (newTypeID 
 		if typeReq.Name == nil {
 			return nil, herr.BadRequest("Incident Type name is required for a new Incident Type", nil)
 		}
+		group, errHTTP := groupToSQL(typeReq.Group)
+		if errHTTP != nil {
+			return nil, errHTTP.From("[groupToSQL]")
+		}
 		id, err := action.imsDBQ.CreateIncidentType(ctx, action.imsDBQ,
 			imsdb.CreateIncidentTypeParams{
 				Name:   *typeReq.Name,
 				Hidden: typeReq.Hidden != nil && *typeReq.Hidden,
+				Group:  group,
 			},
 		)
 		if err != nil {
@@ -142,15 +148,48 @@ func (action EditIncidentTypes) editIncidentTypes(req *http.Request) (newTypeID 
 	if typeReq.Description != nil {
 		typeRow.IncidentType.Description = conv.StringToSql(typeReq.Description, 1023)
 	}
+	// A provided group ("" clears it); omitted/null leaves the existing group.
+	if typeReq.Group != nil {
+		group, errHTTP := groupToSQL(typeReq.Group)
+		if errHTTP != nil {
+			return nil, errHTTP.From("[groupToSQL]")
+		}
+		typeRow.IncidentType.Group = group
+	}
 	err = action.imsDBQ.UpdateIncidentType(ctx, action.imsDBQ, imsdb.UpdateIncidentTypeParams{
 		Hidden:      typeRow.IncidentType.Hidden,
 		Name:        typeRow.IncidentType.Name,
 		ID:          typeRow.IncidentType.ID,
 		Description: typeRow.IncidentType.Description,
+		Group:       typeRow.IncidentType.Group,
 	})
 	if err != nil {
 		return nil, herr.InternalServerError("Failed to update incident type", nil).From("[UpdateIncidentType]")
 	}
 
 	return nil, nil
+}
+
+// groupToSQL validates an optional incident-type group string and converts it to
+// the nullable sqlc enum. A nil or empty pointer means "ungrouped" (NULL); an
+// unrecognized value is rejected with 400.
+func groupToSQL(group *string) (imsdb.NullIncidentTypeGroup, *herr.HTTPError) {
+	if group == nil || *group == "" {
+		return imsdb.NullIncidentTypeGroup{}, nil
+	}
+	g := imsdb.IncidentTypeGroup(*group)
+	if !g.Valid() {
+		return imsdb.NullIncidentTypeGroup{}, herr.BadRequest(
+			fmt.Sprintf("Invalid incident type group: %q", *group), nil)
+	}
+	return imsdb.NullIncidentTypeGroup{IncidentTypeGroup: g, Valid: true}, nil
+}
+
+// groupToString converts the nullable sqlc group enum to a JSON-friendly
+// *string, returning nil when the group is NULL.
+func groupToString(group imsdb.NullIncidentTypeGroup) *string {
+	if !group.Valid {
+		return nil
+	}
+	return new(string(group.IncidentTypeGroup))
 }

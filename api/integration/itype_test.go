@@ -75,3 +75,44 @@ func TestCreateIncidentTypes(t *testing.T) {
 	require.Contains(t, typesResp, imsjson.IncidentType{ID: *typeBID, Name: &typeB, Hidden: new(false)})
 	require.Contains(t, typesResp, imsjson.IncidentType{ID: *typeCID, Name: &typeC, Hidden: new(false)})
 }
+
+// TestIncidentTypeGroup exercises the Phase 4a OCF category (group) field:
+// set on create, change on update, clear with "", and reject invalid values.
+func TestIncidentTypeGroup(t *testing.T) {
+	t.Parallel()
+	ctx := t.Context()
+
+	apis := ApiHelper{t: t, serverURL: shared.serverURL, jwt: jwtForAdmin(ctx, t)}
+
+	// Create a type with a group.
+	name := rand.NonCryptoText()
+	safety, operations, empty := "safety", "operations", ""
+	id, resp := apis.editType(ctx, imsjson.IncidentType{Name: &name, Group: &safety})
+	require.NoError(t, resp.Body.Close())
+	require.NotNil(t, id)
+
+	types, resp := apis.getTypes(ctx)
+	require.Equal(t, http.StatusOK, resp.StatusCode)
+	require.NoError(t, resp.Body.Close())
+	require.Contains(t, types, imsjson.IncidentType{ID: *id, Name: &name, Hidden: new(false), Group: &safety})
+
+	// Change the group.
+	_, resp = apis.editType(ctx, imsjson.IncidentType{ID: *id, Group: &operations})
+	require.NoError(t, resp.Body.Close())
+	types, resp = apis.getTypes(ctx)
+	require.NoError(t, resp.Body.Close())
+	require.Contains(t, types, imsjson.IncidentType{ID: *id, Name: &name, Hidden: new(false), Group: &operations})
+
+	// An empty string clears the group (ungrouped).
+	_, resp = apis.editType(ctx, imsjson.IncidentType{ID: *id, Group: &empty})
+	require.NoError(t, resp.Body.Close())
+	types, resp = apis.getTypes(ctx)
+	require.NoError(t, resp.Body.Close())
+	require.Contains(t, types, imsjson.IncidentType{ID: *id, Name: &name, Hidden: new(false)})
+
+	// An unrecognized group is rejected with 400.
+	badName, badGroup := rand.NonCryptoText(), "nonsense"
+	_, resp = apis.editType(ctx, imsjson.IncidentType{Name: &badName, Group: &badGroup})
+	require.Equal(t, http.StatusBadRequest, resp.StatusCode)
+	require.NoError(t, resp.Body.Close())
+}

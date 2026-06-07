@@ -6,7 +6,7 @@ create table SCHEMA_INFO (
 -- This value must be updated when you make a new migration file.
 --
 
-insert into SCHEMA_INFO (VERSION) values (35);
+insert into SCHEMA_INFO (VERSION) values (36);
 
 
 create table `EVENT` (
@@ -27,13 +27,40 @@ create table INCIDENT_TYPE (
     NAME        varchar(128) not null,
     HIDDEN      boolean      not null,
     DESCRIPTION varchar(1024),
+    `GROUP`     enum('safety', 'conduct', 'operations', 'compliance'),
 
     primary key (ID),
     unique key (NAME)
 ) DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
-insert into INCIDENT_TYPE (ID, NAME, HIDDEN) values (1, 'Admin', 0);
-insert into INCIDENT_TYPE (ID, NAME, HIDDEN) values (2, 'Junk' , 0);
+/* OCF incident taxonomy (Phase 4a). Draft list pending OCF stakeholder
+   confirmation; grouped into Safety / Conduct / Operations / Compliance. */
+insert into INCIDENT_TYPE (ID, NAME, HIDDEN, `GROUP`) values
+    ( 1, 'Medical',                   0, 'safety'),
+    ( 2, 'Fire',                      0, 'safety'),
+    ( 3, 'Traffic/Vehicle',           0, 'safety'),
+    ( 4, 'Child Welfare',             0, 'safety'),
+    ( 5, 'Missing Person',            0, 'safety'),
+    ( 6, 'Lost Child',                0, 'safety'),
+    ( 7, 'Environmental Hazard',      0, 'safety'),
+    ( 8, 'Personal Violation',        0, 'conduct'),
+    ( 9, 'Harassment',                0, 'conduct'),
+    (10, 'Threatening Behavior',      0, 'conduct'),
+    (11, 'Intoxication',              0, 'conduct'),
+    (12, 'Participant Conflict',      0, 'conduct'),
+    (13, 'Volunteer Conflict',        0, 'conduct'),
+    (14, 'Construction Issue',        0, 'operations'),
+    (15, 'Water Issue',               0, 'operations'),
+    (16, 'Electrical Issue',          0, 'operations'),
+    (17, 'Sound Complaint',           0, 'operations'),
+    (18, 'Booth Issue',               0, 'operations'),
+    (19, 'Camping Issue',             0, 'operations'),
+    (20, 'Site Damage',               0, 'operations'),
+    (21, 'Guideline Violation',       0, 'compliance'),
+    (22, 'Permit Violation',          0, 'compliance'),
+    (23, 'Amplified Sound Violation', 0, 'compliance'),
+    (24, 'Unauthorized Vehicle',      0, 'compliance'),
+    (25, 'Wristband/Credential Issue',0, 'compliance');
 
 
 -- Local people model (OCF-owned, replacing the external Clubhouse directory).

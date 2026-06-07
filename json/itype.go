@@ -21,6 +21,9 @@ type IncidentType struct {
 	Name        *string `json:"name"`
 	Description *string `json:"description,omitempty"`
 	Hidden      *bool   `json:"hidden"`
+	// Group is the OCF category an incident type belongs to (Phase 4a):
+	// "safety", "conduct", "operations", or "compliance". Nil when ungrouped.
+	Group *string `json:"group,omitempty"`
 }
 
 type IncidentTypes []IncidentType

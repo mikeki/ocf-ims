@@ -139,7 +139,9 @@ async function initIncidentPage(): Promise<void> {
         await loadPersonnel(),
         await ims.loadIncidentTypes().then(
             value=> {
-                allIncidentTypes = value.types;
+                // Cluster by OCF category so the add-dropdown and info modal
+                // group types together (Phase 4a).
+                allIncidentTypes = value.types.sort(ims.compareIncidentTypesByGroup);
             },
         ),
         await loadPlaces(),
@@ -794,9 +796,22 @@ function drawIncidentTypesToAdd() {
 }
 
 function drawIncidentTypeInfo(): void {
+    // allIncidentTypes is pre-sorted by group, so emit a heading whenever the
+    // group changes to show the OCF category structure (Phase 4a).
+    let lastGroup: ims.IncidentTypeGroup|null|undefined;
+    let first = true;
     for (const incidentType of allIncidentTypes) {
         if (incidentType.hidden) {
             continue;
+        }
+        const group = incidentType.group??null;
+        if (first || group !== lastGroup) {
+            const header = document.createElement("li");
+            header.classList.add("fw-bold", "mt-2");
+            header.textContent = ims.incidentTypeGroupName(group);
+            el.incidentTypeInfo.append(header);
+            lastGroup = group;
+            first = false;
         }
         const frag = el.incidentTypeInfoTemplate.content.cloneNode(true) as DocumentFragment;
         frag.querySelector(".type-name")!.textContent = incidentType.name??"";

@@ -268,14 +268,9 @@ values  (1, 1, 12),
         (1, 1, 13),
         (1, 1, 15);
 
-insert into INCIDENT_TYPE (ID, NAME, HIDDEN)
-values  (3, 'Sound Complaint', 0),
-        (4, 'Found Child', 0),
-        (5, 'Lost Child', 0),
-        (6, 'MOOP', 0),
-        (7, 'Medical', 0),
-        (8, 'Transport', 0);
-
+/* Incident types are seeded by current.sql (the OCF taxonomy, Phase 4a), so the
+   demo seed no longer defines its own. The join rows below reference current.sql
+   type IDs: 1 = Medical, 6 = Lost Child. */
 insert into INCIDENT__INCIDENT_TYPE (EVENT, INCIDENT_NUMBER, INCIDENT_TYPE)
 values  (1, 1, 1),
         (1, 1, 6);

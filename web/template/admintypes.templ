@@ -45,6 +45,16 @@ templ AdminTypes(deployment, versionName, versionRef string) {
               <label for="edit_incident_type_description" class="control-label input-group-text">Description</label>
               <textarea id="edit_incident_type_description" type="text" class="form-control form-control-sm" onchange="setIncidentTypeDescription(this);"></textarea>
             </div>
+            <div class="input-group mb-3">
+              <label for="edit_incident_type_group" class="control-label input-group-text">Group</label>
+              <select id="edit_incident_type_group" class="form-control form-select form-select-sm" onchange="setIncidentTypeGroup(this);">
+                <option value="">Ungrouped</option>
+                <option value="safety">Safety</option>
+                <option value="conduct">Conduct</option>
+                <option value="operations">Operations</option>
+                <option value="compliance">Compliance</option>
+              </select>
+            </div>
           </div>
         </div>
       </div>
