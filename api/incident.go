@@ -525,10 +525,11 @@ func updateIncident(ctx context.Context, imsDBQ *store.DBQ, es *EventSourcerer, 
 		} else {
 			// The area must belong to this incident's event; the FK would also
 			// reject a stray slug, but a 400 is clearer than a 500 on constraint.
-			if _, err = imsDBQ.Area(ctx, imsDBQ, imsdb.AreaParams{
+			_, err = imsDBQ.Area(ctx, imsDBQ, imsdb.AreaParams{
 				Event: storedIncident.Event,
 				Slug:  slug,
-			}); err != nil {
+			})
+			if err != nil {
 				if errors.Is(err, sql.ErrNoRows) {
 					return herr.BadRequest(fmt.Sprintf("Unknown area for this event: %v", slug), err)
 				}
