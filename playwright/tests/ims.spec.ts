@@ -237,8 +237,8 @@ test("incidents", async ({ page, browser }) => {
         await expect(page.getByLabel("Add Incident Type")).toHaveValue("");
       }
 
-      await addType(incidentPage, "Admin");
-      await addType(incidentPage, "Junk");
+      await addType(incidentPage, "Medical");
+      await addType(incidentPage, "Fire");
     }
 
     // add several people to the incident

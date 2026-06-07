@@ -1857,6 +1857,40 @@ export interface IncidentType {
     name?: string|null;
     hidden?: boolean|null;
     description?: string|null;
+    // OCF category (Phase 4a). Null/absent means ungrouped.
+    group?: IncidentTypeGroup|null;
+}
+
+// OCF incident-type categories, in canonical display order.
+export type IncidentTypeGroup = "safety"|"conduct"|"operations"|"compliance";
+
+export const incidentTypeGroups: IncidentTypeGroup[] = [
+    "safety", "conduct", "operations", "compliance",
+];
+
+// incidentTypeGroupName returns the human-readable label for a group id, or
+// "Ungrouped" for a null/absent/unknown group.
+export function incidentTypeGroupName(group: string|null|undefined): string {
+    switch (group) {
+        case "safety": return "Safety";
+        case "conduct": return "Conduct";
+        case "operations": return "Operations";
+        case "compliance": return "Compliance";
+        default: return "Ungrouped";
+    }
+}
+
+// compareIncidentTypesByGroup orders incident types by their group's canonical
+// position (ungrouped last), then alphabetically by name. Useful for clustering
+// type lists/dropdowns by category.
+export function compareIncidentTypesByGroup(a: IncidentType, b: IncidentType): number {
+    const rank = (g: IncidentTypeGroup|null|undefined): number =>
+        g ? incidentTypeGroups.indexOf(g) : incidentTypeGroups.length;
+    const diff = rank(a.group) - rank(b.group);
+    if (diff !== 0) {
+        return diff;
+    }
+    return (a.name??"").localeCompare(b.name??"");
 }
 
 type PlaceType = "art"|"camp"|"other"|"mv";

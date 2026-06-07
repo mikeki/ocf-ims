@@ -26,6 +26,7 @@ declare global {
         hideIncidentType: (el: HTMLElement)=>Promise<void>;
         setIncidentTypeName: (el: HTMLInputElement)=>Promise<void>;
         setIncidentTypeDescription: (el: HTMLTextAreaElement)=>Promise<void>;
+        setIncidentTypeGroup: (el: HTMLSelectElement)=>Promise<void>;
     }
 }
 
@@ -39,6 +40,7 @@ const el = {
     editIncidentTypeModal: ims.typedElement("editIncidentTypeModal", HTMLElement),
     editIncidentTypeName: ims.typedElement("edit_incident_type_name", HTMLInputElement),
     editIncidentTypeDescription: ims.typedElement("edit_incident_type_description", HTMLTextAreaElement),
+    editIncidentTypeGroup: ims.typedElement("edit_incident_type_group", HTMLSelectElement),
 };
 
 initAdminTypesPage();
@@ -56,6 +58,7 @@ async function initAdminTypesPage(): Promise<void> {
     window.hideIncidentType = hideIncidentType;
     window.setIncidentTypeName = setIncidentTypeName;
     window.setIncidentTypeDescription = setIncidentTypeDescription;
+    window.setIncidentTypeGroup = setIncidentTypeGroup;
 
     await loadAndDrawIncidentTypes();
     ims.hideLoadingOverlay();
@@ -97,35 +100,52 @@ function updateIncidentTypes(): void {
 
     const editIncidentTypeModal = ims.bsModal(el.editIncidentTypeModal);
 
-    for (const incidentType of adminIncidentTypes??[]) {
-        const entryItemFrag = el.typeLiTemplate.content.cloneNode(true) as DocumentFragment;
-        const entryItem = entryItemFrag.querySelector("li")!;
-
-        if (incidentType.hidden) {
-            entryItem.classList.add("item-hidden");
-        } else {
-            entryItem.classList.add("item-visible");
+    // Render types grouped by OCF category (in canonical order), with any
+    // ungrouped types collected under a trailing "Ungrouped" heading.
+    const groupOrder: (ims.IncidentTypeGroup|null)[] = [...ims.incidentTypeGroups, null];
+    for (const group of groupOrder) {
+        const typesInGroup = (adminIncidentTypes??[]).filter(
+            t => (t.group??null) === group);
+        if (typesInGroup.length === 0) {
+            continue;
         }
 
-        const typeSpan = entryItem.getElementsByClassName("type-name")[0]!;
-        typeSpan.textContent = incidentType.name??null;
+        const header = document.createElement("li");
+        header.classList.add("list-group-item", "fw-bold", "bg-body-secondary");
+        header.textContent = ims.incidentTypeGroupName(group);
+        entryContainer.append(header);
 
-        const descriptionSpan = entryItem.getElementsByClassName("type-description")[0]!;
-        descriptionSpan.textContent = `${incidentType.description??""}`;
+        for (const incidentType of typesInGroup) {
+            const entryItemFrag = el.typeLiTemplate.content.cloneNode(true) as DocumentFragment;
+            const entryItem = entryItemFrag.querySelector("li")!;
 
-        entryItem.dataset["incidentTypeId"] = incidentType.id?.toString();
+            if (incidentType.hidden) {
+                entryItem.classList.add("item-hidden");
+            } else {
+                entryItem.classList.add("item-visible");
+            }
 
-        const showEditModal: HTMLElement = entryItem.querySelector(".show-edit-modal")!;
-        showEditModal.addEventListener("click",
-            function (_e: MouseEvent): void  {
-                el.editIncidentTypeModal.dataset["incidentTypeId"] = incidentType.id?.toString();
-                el.editIncidentTypeName.value = incidentType.name??"";
-                el.editIncidentTypeDescription.value = incidentType.description??"";
-                editIncidentTypeModal.show();
-            },
-        );
+            const typeSpan = entryItem.getElementsByClassName("type-name")[0]!;
+            typeSpan.textContent = incidentType.name??null;
 
-        entryContainer.append(entryItemFrag);
+            const descriptionSpan = entryItem.getElementsByClassName("type-description")[0]!;
+            descriptionSpan.textContent = `${incidentType.description??""}`;
+
+            entryItem.dataset["incidentTypeId"] = incidentType.id?.toString();
+
+            const showEditModal: HTMLElement = entryItem.querySelector(".show-edit-modal")!;
+            showEditModal.addEventListener("click",
+                function (_e: MouseEvent): void  {
+                    el.editIncidentTypeModal.dataset["incidentTypeId"] = incidentType.id?.toString();
+                    el.editIncidentTypeName.value = incidentType.name??"";
+                    el.editIncidentTypeDescription.value = incidentType.description??"";
+                    el.editIncidentTypeGroup.value = incidentType.group??"";
+                    editIncidentTypeModal.show();
+                },
+            );
+
+            entryContainer.append(entryItemFrag);
+        }
     }
 }
 
@@ -194,6 +214,25 @@ async function setIncidentTypeDescription(sender: HTMLTextAreaElement): Promise<
     const {err} = await sendIncidentTypes({
         "id": id,
         "description": sender.value,
+    });
+    if (err != null) {
+        ims.controlHasError(sender);
+        return;
+    }
+    ims.controlHasSuccess(sender);
+    await loadAndDrawIncidentTypes();
+}
+
+async function setIncidentTypeGroup(sender: HTMLSelectElement): Promise<void> {
+    const id = ims.parseInt10(el.editIncidentTypeModal.dataset["incidentTypeId"]);
+    if (id == null) {
+        return;
+    }
+    // Send the raw select value: "" explicitly clears the group (ungrouped),
+    // whereas an omitted/null group would leave it unchanged on the server.
+    const {err} = await sendIncidentTypes({
+        "id": id,
+        "group": sender.value as ims.IncidentTypeGroup|null,
     });
     if (err != null) {
         ims.controlHasError(sender);

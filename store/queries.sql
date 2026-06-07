@@ -421,15 +421,16 @@ where
 
 
 -- name: CreateIncidentType :execlastid
-insert into INCIDENT_TYPE (NAME, HIDDEN)
-values (?, ?)
+insert into INCIDENT_TYPE (NAME, HIDDEN, `GROUP`)
+values (?, ?, ?)
 ;
 
 -- name: UpdateIncidentType :exec
 update INCIDENT_TYPE
 set HIDDEN = ?,
     NAME = ?,
-    DESCRIPTION = ?
+    DESCRIPTION = ?,
+    `GROUP` = ?
 where ID = ?;
 
 -- name: AddActionLog :execlastid
