@@ -22,6 +22,7 @@ import {fetchPersonnel} from "./ims.ts";
 declare global {
     interface Window {
         editState: ()=>Promise<void>;
+        editOutcome: ()=>Promise<void>;
         editIncidentSummary: ()=>Promise<void>;
         editLocationArea: ()=>Promise<void>;
         editLocationDescription: ()=>Promise<void>;
@@ -59,6 +60,7 @@ const el = {
     incidentNumber: ims.typedElement("incident_number", HTMLInputElement),
     incidentSummary: ims.typedElement("incident_summary", HTMLInputElement),
     incidentState: ims.typedElement("incident_state", HTMLSelectElement),
+    incidentOutcome: ims.typedElement("incident_outcome", HTMLSelectElement),
     startedDatetime: ims.typedElement("started_datetime", HTMLInputElement) as ims.FlatpickrHTMLInputElement,
     startedDatetimeTz: ims.typedElement("started_datetime_tz", HTMLSpanElement),
 
@@ -111,6 +113,7 @@ async function initIncidentPage(): Promise<void> {
     }
 
     window.editState = editState;
+    window.editOutcome = editOutcome;
     window.editIncidentSummary = editIncidentSummary;
     window.editLocationArea = editLocationArea;
     window.editLocationDescription = editLocationDescription;
@@ -573,6 +576,7 @@ function drawIncidentFields() {
     drawIncidentTitle("for_display");
     drawIncidentNumber();
     drawState();
+    drawOutcome();
     drawStarted();
     drawPriority();
     drawIncidentSummary();
@@ -631,6 +635,18 @@ function drawState(): void {
     ims.selectOptionWithValue(
         el.incidentState,
         ims.stateForIncident(incident!)
+    );
+}
+
+
+//
+// Populate incident outcome (disposition; orthogonal to state)
+//
+
+function drawOutcome(): void {
+    ims.selectOptionWithValue(
+        el.incidentOutcome,
+        incident?.outcome??"",
     );
 }
 
@@ -1149,6 +1165,10 @@ async function editState(): Promise<void> {
     }
 
     await ims.editFromElement(el.incidentState, "state");
+}
+
+async function editOutcome(): Promise<void> {
+    await ims.editFromElement(el.incidentOutcome, "outcome");
 }
 
 async function setStartDatetime(selectedDates: Date[], _dateStr: string, sender: ims.Flatpickr): Promise<void> {

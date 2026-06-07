@@ -106,6 +106,31 @@ templ Incident(deployment, versionName, versionRef, eventName string) {
       </div>
     </div>
 
+    <!-- Outcome (disposition; orthogonal to state) -->
+
+    <div class="row py-1">
+      <div class="col-sm-6 py-1">
+        <div class="input-group">
+          <label for="incident_outcome" class="control-label input-group-text">Outcome</label>
+          <select
+                  id="incident_outcome"
+                  class="form-control form-select form-select-sm auto-width"
+                  onchange="editOutcome()"
+          >
+            <option value="">(none)</option>
+            <option value="information_only">Information Only</option>
+            <option value="resolved_on_scene">Resolved On Scene</option>
+            <option value="referred_to_coordinator">Referred to Coordinator</option>
+            <option value="referred_to_management">Referred to Management</option>
+            <option value="referred_to_community_support">Referred to Community Support</option>
+            <option value="referred_to_mediation">Referred to Mediation</option>
+            <option value="follow_up_required">Follow-Up Required</option>
+            <option value="no_action_needed">No Action Needed</option>
+          </select>
+        </div>
+      </div>
+    </div>
+
     <!-- Summary -->
 
     <div class="row">
