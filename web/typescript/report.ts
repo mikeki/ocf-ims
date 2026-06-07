@@ -23,8 +23,8 @@ declare global {
         makeIncident: ()=>Promise<void>;
         editSummary: ()=>Promise<void>;
         toggleShowHistory: ()=>void;
-        reportEntryEdited: ()=>void;
-        submitReportEntry: ()=>void;
+        journalEntryEdited: ()=>void;
+        submitJournalEntry: ()=>void;
         attachFile: ()=>void;
         updateIncident: (el: HTMLInputElement) => void;
     }
@@ -44,8 +44,8 @@ const el = {
     createIncident: ims.typedElement("create_incident", HTMLElement),
 
     historyCheckbox: ims.typedElement("history_checkbox", HTMLInputElement),
-    reportEntryAdd: ims.typedElement("report_entry_add", HTMLTextAreaElement),
-    reportEntrySubmit: ims.typedElement("report_entry_submit", HTMLElement),
+    journalEntryAdd: ims.typedElement("journal_entry_add", HTMLTextAreaElement),
+    journalEntrySubmit: ims.typedElement("journal_entry_submit", HTMLElement),
     attachFile: ims.typedElement("attach_file", HTMLInputElement),
     attachFileInput: ims.typedElement("attach_file_input", HTMLInputElement),
 
@@ -72,8 +72,8 @@ async function initReportPage(): Promise<void> {
     window.makeIncident = makeIncident;
     window.editSummary = editSummary;
     window.toggleShowHistory = ims.toggleShowHistory;
-    window.reportEntryEdited = ims.reportEntryEdited;
-    window.submitReportEntry = ims.submitReportEntry;
+    window.journalEntryEdited = ims.journalEntryEdited;
+    window.submitJournalEntry = ims.submitJournalEntry;
     window.attachFile = attachFile;
     window.updateIncident = updateIncident;
 
@@ -96,7 +96,7 @@ async function initReportPage(): Promise<void> {
 
     // Warn the user if they're about to navigate away with unsaved text.
     window.addEventListener("beforeunload", function (e: BeforeUnloadEvent): void {
-        if (el.reportEntryAdd.value !== "") {
+        if (el.journalEntryAdd.value !== "") {
             e.preventDefault();
         }
     });
@@ -131,12 +131,12 @@ async function initReportPage(): Promise<void> {
         if (e.key === "?") {
             helpModal.toggle();
         }
-        // a --> jump to add a new report entry
+        // a --> jump to add a new journal entry
         if (e.key === "a") {
             e.preventDefault();
-            // Scroll to report_entry_add field
-            el.reportEntryAdd.focus();
-            el.reportEntryAdd.scrollIntoView(true);
+            // Scroll to journal_entry_add field
+            el.journalEntryAdd.focus();
+            el.journalEntryAdd.scrollIntoView(true);
         }
         // h --> toggle showing system entries
         if (e.key.toLowerCase() === "h") {
@@ -156,10 +156,10 @@ async function initReportPage(): Promise<void> {
             e.stopPropagation();
         }
     });
-    el.reportEntryAdd.addEventListener("keydown", function (e: KeyboardEvent): void {
-        const submitEnabled = !el.reportEntrySubmit.classList.contains("disabled");
+    el.journalEntryAdd.addEventListener("keydown", function (e: KeyboardEvent): void {
+        const submitEnabled = !el.journalEntrySubmit.classList.contains("disabled");
         if (submitEnabled && (e.ctrlKey || e.altKey) && e.key === "Enter") {
-            ims.submitReportEntry();
+            ims.submitJournalEntry();
         }
     });
 }
@@ -213,10 +213,10 @@ async function loadAndDisplayReport(): Promise<void> {
     drawIncident();
     drawSummary();
     ims.toggleShowHistory();
-    ims.drawReportEntries(report.report_entries??[]);
+    ims.drawJournalEntries(report.journal_entries??[]);
     ims.clearErrorMessage();
 
-    el.reportEntryAdd.addEventListener("input", ims.reportEntryEdited);
+    el.journalEntryAdd.addEventListener("input", ims.journalEntryEdited);
 
     if (ims.eventAccess?.writeReports) {
         ims.enableEditing();
@@ -419,8 +419,8 @@ async function makeIncident(): Promise<void> {
     }
 
     const authors: string[] = [];
-    if (report.report_entries) {
-        authors.push(report.report_entries[0]!.author??"null");
+    if (report.journal_entries) {
+        authors.push(report.journal_entries[0]!.author??"null");
     }
     const {resp, err} = await ims.fetchNoThrow(incidentsURL, {
         body:JSON.stringify({
@@ -458,7 +458,7 @@ async function makeIncident(): Promise<void> {
 }
 
 
-// The success callback for a report entry strike call.
+// The success callback for a journal entry strike call.
 async function reportOnStrikeSuccess(): Promise<void> {
     await loadAndDisplayReport();
     ims.clearErrorMessage();

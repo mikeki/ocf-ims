@@ -58,7 +58,7 @@ type Incident struct {
 	Visits          *[]int32          `json:"visits"`
 	People          *[]IncidentPerson `json:"people"`
 	LinkedIncidents *[]LinkedIncident `json:"linked_incidents,omitzero"`
-	ReportEntries   []ReportEntry     `json:"report_entries"`
+	JournalEntries  []JournalEntry    `json:"journal_entries"`
 }
 
 type IncidentPerson struct {

@@ -115,7 +115,7 @@ export function range(start: number, end: number, step?: number|null): number[] 
 }
 
 
-export function compareReportEntries(a: ReportEntry, b: ReportEntry): number {
+export function compareJournalEntries(a: JournalEntry, b: JournalEntry): number {
     if (a.created! < b.created!) { return -1; }
     if (a.created! > b.created!) { return  1; }
 
@@ -604,14 +604,14 @@ export function summarizeIncidentOrReport(ifr: Incident|Report): string {
         return ifr.summary;
     }
 
-    // Get the first line of the first report entry.
-    for (const reportEntry of ifr.report_entries??[]) {
-        if (reportEntry.system_entry) {
+    // Get the first line of the first journal entry.
+    for (const journalEntry of ifr.journal_entries??[]) {
+        if (journalEntry.system_entry) {
             // Don't use a system-generated entry in the summary
             continue;
         }
 
-        const lines = reportEntry.text!.split("\n");
+        const lines = journalEntry.text!.split("\n");
         for (const line of lines) {
             if (line) {
                 return line;
@@ -624,7 +624,7 @@ export function summarizeIncidentOrReport(ifr: Incident|Report): string {
 
 // Get author for incident
 function incidentAuthor(incident: Incident): string {
-    for (const entry of incident.report_entries??[]) {
+    for (const entry of incident.journal_entries??[]) {
         if (entry.author) {
             return entry.author;
         }
@@ -664,7 +664,7 @@ export function visitAsString(s: Visit): string {
     return `VS #${s.number}: ${s.guest_preferred_name || s.guest_legal_name || ""}`;
 }
 
-// Return all user-entered report text for a given incident as a single string.
+// Return all user-entered journal text for a given incident as a single string.
 export function reportTextFromIncident(
     incidentFROrVisit: Incident|Report|Visit,
     eventReports?: ReportsByNumber,
@@ -685,15 +685,15 @@ export function reportTextFromIncident(
         texts.push(incidentFROrVisit.guest_description||"");
     }
 
-    for (const reportEntry of incidentFROrVisit.report_entries??[]) {
+    for (const journalEntry of incidentFROrVisit.journal_entries??[]) {
 
         // Skip system entries
-        if (reportEntry.system_entry) {
+        if (journalEntry.system_entry) {
             continue;
         }
 
-        if (reportEntry.text != null) {
-            texts.push(reportEntry.text);
+        if (journalEntry.text != null) {
+            texts.push(journalEntry.text);
         }
     }
 
@@ -986,33 +986,33 @@ export function renderPersonHandles(data: IncidentPerson[]|null, type: RenderTyp
 }
 
 //
-// Populate report entry text
+// Populate journal entry text
 //
 
-function reportEntryElement(entry: ReportEntry): HTMLDivElement {
+function journalEntryElement(entry: JournalEntry): HTMLDivElement {
     // Build a container for the entry
 
     const entryContainer: HTMLDivElement = document.createElement("div");
-    entryContainer.classList.add("report_entry");
+    entryContainer.classList.add("journal_entry");
 
     const strikable: boolean = !entry.system_entry;
 
     if (entry.system_entry) {
-        entryContainer.classList.add("report_entry_system");
+        entryContainer.classList.add("journal_entry_system");
     } else if (entry.stricken) {
-        entryContainer.classList.add("report_entry_stricken");
+        entryContainer.classList.add("journal_entry_stricken");
     } else {
-        entryContainer.classList.add("report_entry_user");
+        entryContainer.classList.add("journal_entry_user");
     }
 
     if (entry.reportNum || entry.visitNum) {
-        entryContainer.classList.add("report_entry_merged");
+        entryContainer.classList.add("journal_entry_merged");
     }
 
     // Add the timestamp and author, with a Strike/Unstrike button
 
     const metaDataContainer: HTMLParagraphElement = document.createElement("p");
-    metaDataContainer.classList.add("report_entry_metadata");
+    metaDataContainer.classList.add("journal_entry_metadata");
 
     if (strikable) {
         const strikeContainer: HTMLButtonElement = document.createElement("button");
@@ -1024,7 +1024,7 @@ function reportEntryElement(entry: ReportEntry): HTMLDivElement {
                 const entryMerged = entry.reportNum;
                 // this is an entry from a report, as shown on the incident page
                 strikeContainer.onclick = async (_e: MouseEvent): Promise<void> => {
-                    await setStrikeReportEntry(entryMerged, entryId, !entryStricken);
+                    await setStrikeJournalEntry(entryMerged, entryId, !entryStricken);
                 }
             } else if (entry.visitNum) {
                 const entryMerged = entry.visitNum;
@@ -1043,7 +1043,7 @@ function reportEntryElement(entry: ReportEntry): HTMLDivElement {
             // we're on the report page
             const reportNum = pathIds.reportNumber;
             strikeContainer.onclick = async (_e: MouseEvent): Promise<void> => {
-                await setStrikeReportEntry(reportNum, entryId, !entryStricken);
+                await setStrikeJournalEntry(reportNum, entryId, !entryStricken);
             }
         } else if (pathIds.visitNumber != null) {
             // we're on the visit page
@@ -1059,13 +1059,13 @@ function reportEntryElement(entry: ReportEntry): HTMLDivElement {
     }
 
     const timeStampContainer = timeElement(new Date(entry.created!));
-    timeStampContainer.classList.add("report_entry_timestamp");
+    timeStampContainer.classList.add("journal_entry_timestamp");
 
     metaDataContainer.append(timeStampContainer, ", ");
 
     const authorContainer: HTMLSpanElement = document.createElement("span");
     authorContainer.textContent = entry.author??"(unknown)";
-    authorContainer.classList.add("report_entry_author");
+    authorContainer.classList.add("journal_entry_author");
 
     metaDataContainer.append(authorContainer);
 
@@ -1077,7 +1077,7 @@ function reportEntryElement(entry: ReportEntry): HTMLDivElement {
         link.href = `${urlReplace(url_viewReports)}/${entry.reportNum}`;
 
         metaDataContainer.append("(via ", link, ")");
-        metaDataContainer.classList.add("report_entry_source");
+        metaDataContainer.classList.add("journal_entry_source");
     } else if (entry.visitNum) {
         metaDataContainer.append(" ");
 
@@ -1086,20 +1086,20 @@ function reportEntryElement(entry: ReportEntry): HTMLDivElement {
         link.href = `${urlReplace(url_viewVisits)}/${entry.visitNum}`;
 
         metaDataContainer.append("(via ", link, ")");
-        metaDataContainer.classList.add("report_entry_source");
+        metaDataContainer.classList.add("journal_entry_source");
     }
 
     metaDataContainer.append(":");
 
     entryContainer.append(metaDataContainer);
 
-    // Add report text
+    // Add journal text
     const paragraphs: string[] = entry.text!.split(/\n\s*\n/);
     for (const paragraph of paragraphs) {
         const textContainer: HTMLParagraphElement = document.createElement("p");
         // Don't collapse whitespace; leave it how the user entered it.
         textContainer.style.whiteSpace = "pre-wrap";
-        textContainer.classList.add("report_entry_text");
+        textContainer.classList.add("journal_entry_text");
         textContainer.textContent = paragraph;
         entryContainer.append(textContainer);
     }
@@ -1212,18 +1212,18 @@ function createSvgTextButton(svgID: string, text: string): HTMLButtonElement {
     return buttonFrag.querySelector("button")!;
 }
 
-export function drawReportEntries(entries: ReportEntry[]): void {
-    const container: HTMLElement = document.getElementById("report_entries")!;
+export function drawJournalEntries(entries: JournalEntry[]): void {
+    const container: HTMLElement = document.getElementById("journal_entries")!;
     container.replaceChildren();
 
     for (const entry of entries) {
-        container.append(reportEntryElement(entry));
+        container.append(journalEntryElement(entry));
     }
 }
 
-export function reportEntryEdited(): void {
-    const text = (document.getElementById("report_entry_add")! as HTMLTextAreaElement).value.trim();
-    const submitButton = document.getElementById("report_entry_submit")!;
+export function journalEntryEdited(): void {
+    const text = (document.getElementById("journal_entry_add")! as HTMLTextAreaElement).value.trim();
+    const submitButton = document.getElementById("journal_entry_submit")!;
 
     submitButton.classList.remove("btn-default");
     submitButton.classList.remove("btn-warning");
@@ -1238,16 +1238,16 @@ export function reportEntryEdited(): void {
     }
 }
 
-// The error callback for a report entry strike call.
+// The error callback for a journal entry strike call.
 // This function is designed to work from either the incident
 // or the report page.
 function onStrikeError(err: string): void {
-    const message = `Failed to set report entry strike status: ${err}`;
+    const message = `Failed to set journal entry strike status: ${err}`;
     console.log(message);
     setErrorMessage(message);
 }
 
-// This is the function to call when a report entry is successfully stricken.
+// This is the function to call when a journal entry is successfully stricken.
 // We need to be able to call either the incident.ts version or the report.ts
 // version, depending on the current page in scope. The ims.ts TypeScript file should
 // not depend on those files (lest there be a circular dependency), so we let those
@@ -1257,10 +1257,10 @@ export function setOnStrikeSuccess(func: (() => Promise<void>)): void {
     strikeSuccessFunc = func;
 }
 
-async function setStrikeIncidentEntry(incidentNumber: number, reportEntryId: number, strike: boolean): Promise<void> {
-    const url = urlReplace(url_incident_reportEntry)
+async function setStrikeIncidentEntry(incidentNumber: number, journalEntryId: number, strike: boolean): Promise<void> {
+    const url = urlReplace(url_incident_journalEntry)
         .replace("<incident_number>", incidentNumber.toString())
-        .replace("<report_entry_id>", reportEntryId.toString());
+        .replace("<journal_entry_id>", journalEntryId.toString());
     const {err} = await fetchNoThrow(url, {
         body: JSON.stringify({"stricken": strike}),
     });
@@ -1271,10 +1271,10 @@ async function setStrikeIncidentEntry(incidentNumber: number, reportEntryId: num
     }
 }
 
-async function setStrikeReportEntry(reportNumber: number, reportEntryId: number, strike: boolean): Promise<void> {
-    const url = urlReplace(url_report_reportEntry)
+async function setStrikeJournalEntry(reportNumber: number, journalEntryId: number, strike: boolean): Promise<void> {
+    const url = urlReplace(url_report_journalEntry)
         .replace("<report_number>", reportNumber.toString())
-        .replace("<report_entry_id>", reportEntryId.toString());
+        .replace("<journal_entry_id>", journalEntryId.toString());
     const {err} = await fetchNoThrow(url, {
         body: JSON.stringify({"stricken": strike}),
     });
@@ -1285,10 +1285,10 @@ async function setStrikeReportEntry(reportNumber: number, reportEntryId: number,
     }
 }
 
-async function setStrikeVisitEntry(visitNumber: number, reportEntryId: number, strike: boolean): Promise<void> {
-    const url = urlReplace(url_visit_reportEntry)
+async function setStrikeVisitEntry(visitNumber: number, journalEntryId: number, strike: boolean): Promise<void> {
+    const url = urlReplace(url_visit_journalEntry)
         .replace("<visit_number>", visitNumber.toString())
-        .replace("<report_entry_id>", reportEntryId.toString());
+        .replace("<journal_entry_id>", journalEntryId.toString());
     const {err} = await fetchNoThrow(url, {
         body: JSON.stringify({"stricken": strike}),
     });
@@ -1309,33 +1309,33 @@ export function setSendEdits(func: ((edits: Incident|Report)=>Promise<{err:strin
     sendEditsFunc = func;
 }
 
-export async function submitReportEntry(): Promise<void> {
-    const text = (document.getElementById("report_entry_add") as HTMLTextAreaElement).value;
+export async function submitJournalEntry(): Promise<void> {
+    const text = (document.getElementById("journal_entry_add") as HTMLTextAreaElement).value;
 
     if (!text) {
         return;
     }
 
-    console.log("New report entry:\n" + text);
+    console.log("New journal entry:\n" + text);
 
     // Disable the submit button to prevent repeat submissions
-    document.getElementById("report_entry_submit")!.classList.add("disabled");
+    document.getElementById("journal_entry_submit")!.classList.add("disabled");
     // send a dummy ID to appease the JSON parser in the server
-    const {err} = await sendEditsFunc!({"report_entries": [{"text": text, "id": -1}]});
+    const {err} = await sendEditsFunc!({"journal_entries": [{"text": text, "id": -1}]});
     if (err != null) {
-        const submitButton = document.getElementById("report_entry_submit")!;
+        const submitButton = document.getElementById("journal_entry_submit")!;
         submitButton.classList.remove("disabled");
         submitButton.classList.remove("btn-default");
         submitButton.classList.remove("btn-warning");
         submitButton.classList.add("btn-danger");
-        controlHasError(document.getElementById("report_entry_add")!);
+        controlHasError(document.getElementById("journal_entry_add")!);
         return;
     }
-    const textArea = document.getElementById("report_entry_add") as HTMLTextAreaElement;
-    // Clear the report entry
+    const textArea = document.getElementById("journal_entry_add") as HTMLTextAreaElement;
+    // Clear the journal entry
     textArea.value = "";
     // Reset the submit button and its "disabled" status
-    reportEntryEdited();
+    journalEntryEdited();
 }
 
 //
@@ -1344,9 +1344,9 @@ export async function submitReportEntry(): Promise<void> {
 
 export function toggleShowHistory(): void {
     if ((document.getElementById("history_checkbox") as HTMLInputElement).checked) {
-        document.getElementById("report_entries")!.classList.remove("hide-history");
+        document.getElementById("journal_entries")!.classList.remove("hide-history");
     } else {
-        document.getElementById("report_entries")!.classList.add("hide-history");
+        document.getElementById("journal_entries")!.classList.add("hide-history");
     }
 }
 
@@ -1816,7 +1816,7 @@ export type Incident = {
     people?: IncidentPerson[]|null;
     incident_type_ids?: number[]|null;
     location?: EventLocation|null;
-    report_entries?: ReportEntry[]|null;
+    journal_entries?: JournalEntry[]|null;
     reports?: number[]|null;
     visits?: number[]|null;
     linked_incidents?: LinkedIncident[]|null;
@@ -1828,7 +1828,7 @@ export type Report = {
     created?: string|null;
     summary?: string|null;
     incident?: number|null;
-    report_entries?: ReportEntry[]|null;
+    journal_entries?: JournalEntry[]|null;
 }
 
 export type ReportsByNumber = Record<number, Report>;
@@ -1869,7 +1869,7 @@ export type Visit = {
     resource_other?: string|null;
 
     people?: VisitPerson[]|null;
-    report_entries?: ReportEntry[]|null;
+    journal_entries?: JournalEntry[]|null;
 }
 
 export type EventData = {
@@ -1884,7 +1884,7 @@ export interface Attachment {
     previewable?: boolean|null;
 }
 
-export interface ReportEntry {
+export interface JournalEntry {
     id?: number|null;
     created?: string|null;
     author?: string|null;

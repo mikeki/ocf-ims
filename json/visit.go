@@ -55,8 +55,8 @@ type Visit struct {
 	ResourceFoodBev *string `json:"resource_food_bev,omitzero"`
 	ResourceOther   *string `json:"resource_other,omitzero"`
 
-	People        *[]VisitPerson `json:"people"`
-	ReportEntries []ReportEntry  `json:"report_entries"`
+	People         *[]VisitPerson `json:"people"`
+	JournalEntries []JournalEntry `json:"journal_entries"`
 }
 
 type VisitPerson struct {

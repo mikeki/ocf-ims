@@ -36,10 +36,10 @@ declare global {
         addPerson: ()=>void;
         addIncidentType: ()=>Promise<void>;
         attachFile: ()=>void;
-        drawMergedReportEntries: ()=>void;
+        drawMergedJournalEntries: ()=>void;
         toggleShowHistory: ()=>void;
-        reportEntryEdited: ()=>void;
-        submitReportEntry: ()=>void;
+        journalEntryEdited: ()=>void;
+        submitJournalEntry: ()=>void;
     }
 }
 
@@ -88,8 +88,8 @@ const el = {
     linkedIncidents: ims.typedElement("linked_incidents", HTMLElement),
 
     historyCheckbox: ims.typedElement("history_checkbox", HTMLInputElement),
-    reportEntryAdd: ims.typedElement("report_entry_add", HTMLTextAreaElement),
-    reportEntrySubmit: ims.typedElement("report_entry_submit", HTMLElement),
+    journalEntryAdd: ims.typedElement("journal_entry_add", HTMLTextAreaElement),
+    journalEntrySubmit: ims.typedElement("journal_entry_submit", HTMLElement),
     attachFile: ims.typedElement("attach_file", HTMLInputElement),
     attachFileInput: ims.typedElement("attach_file_input", HTMLInputElement),
 
@@ -127,10 +127,10 @@ async function initIncidentPage(): Promise<void> {
     window.addPerson = addPerson;
     window.addIncidentType = addIncidentType;
     window.attachFile = attachFile;
-    window.drawMergedReportEntries = drawMergedReportEntries;
+    window.drawMergedJournalEntries = drawMergedJournalEntries;
     window.toggleShowHistory = ims.toggleShowHistory;
-    window.reportEntryEdited= ims.reportEntryEdited;
-    window.submitReportEntry = ims.submitReportEntry;
+    window.journalEntryEdited= ims.journalEntryEdited;
+    window.submitJournalEntry = ims.submitJournalEntry;
 
     // load everything from the APIs concurrently
     await Promise.all([
@@ -172,7 +172,7 @@ async function initIncidentPage(): Promise<void> {
 
     // Warn the user if they're about to navigate away with unsaved text.
     window.addEventListener("beforeunload", function (e: BeforeUnloadEvent): void {
-        if (el.reportEntryAdd.value !== "") {
+        if (el.journalEntryAdd.value !== "") {
             e.preventDefault();
         }
     });
@@ -249,12 +249,12 @@ async function initIncidentPage(): Promise<void> {
         if (e.key === "?") {
             helpModal.toggle();
         }
-        // a --> jump to add a new report entry
+        // a --> jump to add a new journal entry
         if (e.key === "a") {
             e.preventDefault();
-            // Scroll to report_entry_add field
-            el.reportEntryAdd.focus();
-            el.reportEntryAdd.scrollIntoView(true);
+            // Scroll to journal_entry_add field
+            el.journalEntryAdd.focus();
+            el.journalEntryAdd.scrollIntoView(true);
         }
         // h --> toggle showing system entries
         if (e.key.toLowerCase() === "h") {
@@ -274,10 +274,10 @@ async function initIncidentPage(): Promise<void> {
             e.stopPropagation();
         }
     });
-    el.reportEntryAdd.addEventListener("keydown", function (e: KeyboardEvent): void {
-        const submitEnabled = !el.reportEntrySubmit.classList.contains("disabled");
+    el.journalEntryAdd.addEventListener("keydown", function (e: KeyboardEvent): void {
+        const submitEnabled = !el.journalEntrySubmit.classList.contains("disabled");
         if (submitEnabled && (e.ctrlKey || e.altKey) && e.key === "Enter") {
-            ims.submitReportEntry();
+            ims.submitJournalEntry();
         }
     });
     el.showIncidentTypeInfo.addEventListener(
@@ -363,7 +363,7 @@ function renderReportData(): void {
     loadAttachedReports();
     loadAttachedVisits();
     drawReportsToAttach();
-    drawMergedReportEntries();
+    drawMergedJournalEntries();
     drawAttachedReportsVisits();
     drawLinkedIncidents();
 }
@@ -585,9 +585,9 @@ function drawIncidentFields() {
     drawLocationArea();
     drawLocationDescription();
     ims.toggleShowHistory();
-    drawMergedReportEntries();
+    drawMergedJournalEntries();
 
-    el.reportEntryAdd.addEventListener("input", ims.reportEntryEdited);
+    el.journalEntryAdd.addEventListener("input", ims.journalEntryEdited);
 }
 
 
@@ -903,29 +903,29 @@ function drawLocationDescription() {
 
 
 //
-// Draw report entries
+// Draw journal entries
 //
 
-function drawMergedReportEntries(): void {
-    const entries: ims.ReportEntry[] = (incident!.report_entries??[]).slice()
+function drawMergedJournalEntries(): void {
+    const entries: ims.JournalEntry[] = (incident!.journal_entries??[]).slice()
 
     for (const report of (attachedReports??[])) {
-        for (const entry of report.report_entries??[]) {
+        for (const entry of report.journal_entries??[]) {
             entry.reportNum = report.number??null;
             entries.push(entry);
         }
     }
 
     for (const visit of (attachedVisits??[])) {
-        for (const entry of visit.report_entries??[]) {
+        for (const entry of visit.journal_entries??[]) {
             entry.visitNum = visit.number??null;
             entries.push(entry);
         }
     }
 
-    entries.sort(ims.compareReportEntries);
+    entries.sort(ims.compareJournalEntries);
 
-    ims.drawReportEntries(entries);
+    ims.drawJournalEntries(entries);
 }
 
 function drawAttachedReportsVisits() {
@@ -1549,7 +1549,7 @@ async function linkIncident(input: HTMLInputElement): Promise<void> {
 }
 
 
-// The success callback for a report entry strike call.
+// The success callback for a journal entry strike call.
 async function onStrikeSuccess(): Promise<void> {
     await loadAndDisplayIncident();
     await loadAllVisits();

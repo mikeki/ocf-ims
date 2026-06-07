@@ -144,26 +144,26 @@ h1, h2, h3, h4, h5, h6 {
   display: inline;
 }
 
-.report_entry_system {
+.journal_entry_system {
   font-size: var(--font-size-smaller);
   filter: opacity(75%);
 }
 
-.report_entry_system > .report_entry_text {
+.journal_entry_system > .journal_entry_text {
   margin: 0 0 0 0.5rem;
 }
 
-.report_entry_stricken {
+.journal_entry_stricken {
   font-size: var(--font-size-smaller);
   filter: opacity(75%);
   text-decoration: line-through;
 }
 
-.report_entry_text {
+.journal_entry_text {
   font-size: var(--font-size-smaller);
 }
 
-.report_entry_metadata {
+.journal_entry_metadata {
   font-size: var(--font-size-smallest);
   font-weight: bold;
   text-decoration: underline;
@@ -213,7 +213,7 @@ h1 {
 .no-touch .list-group-item:hover .remove-badge {
   display: inline-block;
 }
-.no-touch .report_entry:hover .remove-badge {
+.no-touch .journal_entry:hover .remove-badge {
   display: inline-block;
 }
 
@@ -226,7 +226,7 @@ h1 {
 .no-edit .list-group-item:hover .remove-badge {
   display: none;
 }
-.no-edit .report_entry:hover .remove-badge {
+.no-edit .journal_entry:hover .remove-badge {
   display: none;
 }
 
@@ -238,11 +238,11 @@ h1 {
   display: none;
 }
 
-#report_entry_well > .panel {
+#journal_entry_well > .panel {
   margin-bottom: 0.5rem;
 }
 
-#report_entry_add {
+#journal_entry_add {
   resize: vertical;
   min-height: 8rem;
   field-sizing: content;
@@ -264,11 +264,11 @@ h1 {
   float: right !important;
 }
 
-.hide-history .report_entry_system {
+.hide-history .journal_entry_system {
   display: none;
 }
 
-.hide-history .report_entry_stricken {
+.hide-history .journal_entry_stricken {
   display: none;
 }
 

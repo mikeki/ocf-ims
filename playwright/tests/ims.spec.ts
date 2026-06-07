@@ -298,30 +298,30 @@ test("incidents", async ({ page, browser }) => {
       await incidentPage.getByLabel("Additional location description").fill("other there");
       await incidentPage.getByLabel("Additional location description").press("Tab");
     }
-    // add a report entry
-    const reportEntry = `This is some text - ${randomName("text")}`;
+    // add a journal entry
+    const journalEntry = `This is some text - ${randomName("text")}`;
     {
-      await incidentPage.getByLabel("New report entry text").fill(reportEntry);
-      await incidentPage.getByLabel("Submit report entry").click();
-      await expect(incidentPage.getByText(reportEntry)).toBeVisible();
+      await incidentPage.getByLabel("New journal entry text").fill(journalEntry);
+      await incidentPage.getByLabel("Submit journal entry").click();
+      await expect(incidentPage.getByText(journalEntry)).toBeVisible();
     }
     // strike the entry, verified it's stricken
     {
-      await incidentPage.getByText(reportEntry).hover();
+      await incidentPage.getByText(journalEntry).hover();
       await incidentPage.getByRole("button", {name: "Strike"}).click();
-      await expect(incidentPage.getByText(reportEntry)).toBeHidden();
+      await expect(incidentPage.getByText(journalEntry)).toBeHidden();
     }
     // but the entry is shown when the right checkbox is ticked
     {
       await incidentPage.getByLabel("Show history and stricken").check();
-      await expect(incidentPage.getByText(reportEntry)).toBeVisible();
+      await expect(incidentPage.getByText(journalEntry)).toBeVisible();
     }
     // unstrike the entry and see it return to the default view
     {
-      await incidentPage.getByText(reportEntry).hover();
+      await incidentPage.getByText(journalEntry).hover();
       await incidentPage.getByRole("button", {name: "Unstrike"}).click();
       await incidentPage.getByLabel("Show history and stricken").uncheck();
-      await expect(incidentPage.getByText(reportEntry)).toBeVisible();
+      await expect(incidentPage.getByText(journalEntry)).toBeVisible();
     }
 
     // link the incident to another incident
@@ -347,9 +347,9 @@ test("incidents", async ({ page, browser }) => {
       }
     }
 
-    // try searching for the incident by its report text
+    // try searching for the incident by its journal text
     {
-      await incidentsPage.getByRole("searchbox").fill(reportEntry);
+      await incidentsPage.getByRole("searchbox").fill(journalEntry);
       await incidentsPage.getByRole("searchbox").press("Enter");
       await expect(incidentsPage.getByText(newIncidentSummary)).toBeVisible();
       await incidentsPage.getByRole("searchbox").fill("The wrong text!");
@@ -423,36 +423,36 @@ test("reports", async ({ page, browser }) => {
       // check that the BroadcastChannel update to the first page worked
       await expect(tablePage.getByText(newSummary)).toBeVisible();
 
-      // add a report entry
-      const reportEntry = `This is some text - ${randomName("text")}`;
+      // add a journal entry
+      const journalEntry = `This is some text - ${randomName("text")}`;
       {
-        await reportPage.getByLabel("New report entry text").fill(reportEntry);
-        await reportPage.getByLabel("Submit report entry").click();
-        await expect(reportPage.getByLabel("New report entry text")).toBeEmpty();
-        await expect(reportPage.getByText(reportEntry)).toBeVisible();
+        await reportPage.getByLabel("New journal entry text").fill(journalEntry);
+        await reportPage.getByLabel("Submit journal entry").click();
+        await expect(reportPage.getByLabel("New journal entry text")).toBeEmpty();
+        await expect(reportPage.getByText(journalEntry)).toBeVisible();
       }
       // strike the entry, verified it's stricken
       {
-        await reportPage.getByText(reportEntry).hover();
+        await reportPage.getByText(journalEntry).hover();
         await reportPage.getByRole("button", {name: "Strike"}).click({force: true});
-        await expect(reportPage.getByText(reportEntry)).toBeHidden();
+        await expect(reportPage.getByText(journalEntry)).toBeHidden();
       }
       // but the entry is shown when the right checkbox is ticked
       {
         await reportPage.getByLabel("Show history and stricken").check();
-        await expect(reportPage.getByText(reportEntry)).toBeVisible();
+        await expect(reportPage.getByText(journalEntry)).toBeVisible();
       }
       // unstrike the entry and see it return to the default view
       {
-        await reportPage.getByText(reportEntry).hover();
+        await reportPage.getByText(journalEntry).hover();
         await reportPage.getByRole("button", {name: "Unstrike"}).click({force: true});
         await reportPage.getByLabel("Show history and stricken").uncheck();
-        await expect(reportPage.getByText(reportEntry)).toBeVisible();
+        await expect(reportPage.getByText(journalEntry)).toBeVisible();
       }
 
-      // try searching for the incident by its report text
+      // try searching for the incident by its journal text
       {
-        await tablePage.getByRole("searchbox").fill(reportEntry);
+        await tablePage.getByRole("searchbox").fill(journalEntry);
         await tablePage.getByRole("searchbox").press("Enter");
         await expect(tablePage.getByText(newSummary)).toBeVisible();
         await tablePage.getByRole("searchbox").fill("The wrong text!");

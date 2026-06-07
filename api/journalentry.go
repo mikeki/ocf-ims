@@ -30,23 +30,23 @@ import (
 	"github.com/mikeki/ocf-ims/store/imsdb"
 )
 
-type EditReportReportEntry struct {
+type EditReportJournalEntry struct {
 	imsDBQ      *store.DBQ
 	userStore   directory.UserStore
 	eventSource *EventSourcerer
 	imsAdmins   []string
 }
 
-func (action EditReportReportEntry) ServeHTTP(w http.ResponseWriter, req *http.Request) {
-	errHTTP := action.editReportEntry(req)
+func (action EditReportJournalEntry) ServeHTTP(w http.ResponseWriter, req *http.Request) {
+	errHTTP := action.editJournalEntry(req)
 	if errHTTP != nil {
-		errHTTP.From("[editReportEntry]").WriteResponse(w)
+		errHTTP.From("[editJournalEntry]").WriteResponse(w)
 		return
 	}
 	herr.WriteNoContentResponse(w, "Success")
 }
 
-func (action EditReportReportEntry) editReportEntry(req *http.Request) *herr.HTTPError {
+func (action EditReportJournalEntry) editJournalEntry(req *http.Request) *herr.HTTPError {
 	event, jwtCtx, eventPermissions, errHTTP := getEventPermissions(req, action.imsDBQ, action.userStore, action.imsAdmins)
 	if errHTTP != nil {
 		return errHTTP.From("[getEventPermissions]")
@@ -62,12 +62,12 @@ func (action EditReportReportEntry) editReportEntry(req *http.Request) *herr.HTT
 	if err != nil {
 		return herr.BadRequest("Failed to parse reportNumber", err).From("[ParseInt32]")
 	}
-	reportEntryId, err := conv.ParseInt32(req.PathValue("reportEntryId"))
+	journalEntryId, err := conv.ParseInt32(req.PathValue("journalEntryId"))
 	if err != nil {
-		return herr.BadRequest("Failed to parse reportEntryId", err).From("[ParseInt32]")
+		return herr.BadRequest("Failed to parse journalEntryId", err).From("[ParseInt32]")
 	}
 
-	re, errHTTP := readBodyAs[imsjson.ReportEntry](req)
+	re, errHTTP := readBodyAs[imsjson.JournalEntry](req)
 	if errHTTP != nil {
 		return errHTTP.From("[readBodyAs]")
 	}
@@ -91,24 +91,24 @@ func (action EditReportReportEntry) editReportEntry(req *http.Request) *herr.HTT
 	}
 	defer rollback(txn)
 
-	err = action.imsDBQ.SetReportReportEntryStricken(ctx, txn,
-		imsdb.SetReportReportEntryStrickenParams{
+	err = action.imsDBQ.SetReportJournalEntryStricken(ctx, txn,
+		imsdb.SetReportJournalEntryStrickenParams{
 			Stricken:     *re.Stricken,
 			Event:        event.ID,
 			ReportNumber: reportNumber,
-			ReportEntry:  reportEntryId,
+			JournalEntry: journalEntryId,
 		},
 	)
 	if err != nil {
-		return herr.InternalServerError("Error setting report entry", err).From("[SetReportReportEntryStricken]")
+		return herr.InternalServerError("Error setting journal entry", err).From("[SetReportJournalEntryStricken]")
 	}
 	struckVerb := "Struck"
 	if !*re.Stricken {
 		struckVerb = "Unstruck"
 	}
-	_, errHTTP = addReportEntry(ctx, action.imsDBQ, txn, event.ID, reportNumber, authorPersonID, fmt.Sprintf("%v reportEntry %v", struckVerb, reportEntryId), true, "", "", "")
+	_, errHTTP = addJournalEntry(ctx, action.imsDBQ, txn, event.ID, reportNumber, authorPersonID, fmt.Sprintf("%v journalEntry %v", struckVerb, journalEntryId), true, "", "", "")
 	if errHTTP != nil {
-		return errHTTP.From("[addReportEntry]")
+		return errHTTP.From("[addJournalEntry]")
 	}
 	err = txn.Commit()
 	if err != nil {
@@ -120,29 +120,29 @@ func (action EditReportReportEntry) editReportEntry(req *http.Request) *herr.HTT
 	return nil
 }
 
-type EditIncidentReportEntry struct {
+type EditIncidentJournalEntry struct {
 	imsDBQ      *store.DBQ
 	userStore   directory.UserStore
 	eventSource *EventSourcerer
 	imsAdmins   []string
 }
 
-func (action EditIncidentReportEntry) ServeHTTP(w http.ResponseWriter, req *http.Request) {
-	errHTTP := action.editIncidentReportEntry(req)
+func (action EditIncidentJournalEntry) ServeHTTP(w http.ResponseWriter, req *http.Request) {
+	errHTTP := action.editIncidentJournalEntry(req)
 	if errHTTP != nil {
-		errHTTP.From("[editIncidentReportEntry]").WriteResponse(w)
+		errHTTP.From("[editIncidentJournalEntry]").WriteResponse(w)
 		return
 	}
 	herr.WriteNoContentResponse(w, "Success")
 }
 
-func (action EditIncidentReportEntry) editIncidentReportEntry(req *http.Request) *herr.HTTPError {
+func (action EditIncidentJournalEntry) editIncidentJournalEntry(req *http.Request) *herr.HTTPError {
 	event, jwtCtx, eventPermissions, errHTTP := getEventPermissions(req, action.imsDBQ, action.userStore, action.imsAdmins)
 	if errHTTP != nil {
 		return errHTTP.From("[getEventPermissions]")
 	}
 	if eventPermissions&(authz.EventWriteIncidents) == 0 {
-		return herr.Forbidden("The requestor does not have permission to write Report Entries on this Event", nil)
+		return herr.Forbidden("The requestor does not have permission to write Journal Entries on this Event", nil)
 	}
 	ctx := req.Context()
 
@@ -152,12 +152,12 @@ func (action EditIncidentReportEntry) editIncidentReportEntry(req *http.Request)
 	if err != nil {
 		return herr.BadRequest("Failed to parse incidentNumber", err).From("[ParseInt32]")
 	}
-	reportEntryId, err := conv.ParseInt32(req.PathValue("reportEntryId"))
+	journalEntryId, err := conv.ParseInt32(req.PathValue("journalEntryId"))
 	if err != nil {
-		return herr.BadRequest("Failed to parse reportEntryId", err).From("[ParseInt32]")
+		return herr.BadRequest("Failed to parse journalEntryId", err).From("[ParseInt32]")
 	}
 
-	re, errHTTP := readBodyAs[imsjson.ReportEntry](req)
+	re, errHTTP := readBodyAs[imsjson.JournalEntry](req)
 	if errHTTP != nil {
 		return errHTTP.From("[readBodyAs]")
 	}
@@ -173,24 +173,24 @@ func (action EditIncidentReportEntry) editIncidentReportEntry(req *http.Request)
 	}
 	defer rollback(txn)
 
-	err = action.imsDBQ.SetIncidentReportEntryStricken(ctx, txn,
-		imsdb.SetIncidentReportEntryStrickenParams{
+	err = action.imsDBQ.SetIncidentJournalEntryStricken(ctx, txn,
+		imsdb.SetIncidentJournalEntryStrickenParams{
 			Stricken:       *re.Stricken,
 			Event:          event.ID,
 			IncidentNumber: incidentNumber,
-			ReportEntry:    reportEntryId,
+			JournalEntry:   journalEntryId,
 		},
 	)
 	if err != nil {
-		return herr.InternalServerError("Error setting incident report entry", err).From("[SetIncidentReportEntryStricken]")
+		return herr.InternalServerError("Error setting incident journal entry", err).From("[SetIncidentJournalEntryStricken]")
 	}
 	struckVerb := "Struck"
 	if !*re.Stricken {
 		struckVerb = "Unstruck"
 	}
-	_, errHTTP = addIncidentReportEntry(ctx, action.imsDBQ, txn, event.ID, incidentNumber, authorPersonID, fmt.Sprintf("%v reportEntry %v", struckVerb, reportEntryId), true, "", "", "")
+	_, errHTTP = addIncidentJournalEntry(ctx, action.imsDBQ, txn, event.ID, incidentNumber, authorPersonID, fmt.Sprintf("%v journalEntry %v", struckVerb, journalEntryId), true, "", "", "")
 	if errHTTP != nil {
-		return errHTTP.From("[addIncidentReportEntry]")
+		return errHTTP.From("[addIncidentJournalEntry]")
 	}
 	err = txn.Commit()
 	if err != nil {
@@ -201,23 +201,23 @@ func (action EditIncidentReportEntry) editIncidentReportEntry(req *http.Request)
 	return nil
 }
 
-type EditVisitReportEntry struct {
+type EditVisitJournalEntry struct {
 	imsDBQ      *store.DBQ
 	userStore   directory.UserStore
 	eventSource *EventSourcerer
 	imsAdmins   []string
 }
 
-func (action EditVisitReportEntry) ServeHTTP(w http.ResponseWriter, req *http.Request) {
-	errHTTP := action.editVisitReportEntry(req)
+func (action EditVisitJournalEntry) ServeHTTP(w http.ResponseWriter, req *http.Request) {
+	errHTTP := action.editVisitJournalEntry(req)
 	if errHTTP != nil {
-		errHTTP.From("[editVisitReportEntry]").WriteResponse(w)
+		errHTTP.From("[editVisitJournalEntry]").WriteResponse(w)
 		return
 	}
 	herr.WriteNoContentResponse(w, "Success")
 }
 
-func (action EditVisitReportEntry) editVisitReportEntry(req *http.Request) *herr.HTTPError {
+func (action EditVisitJournalEntry) editVisitJournalEntry(req *http.Request) *herr.HTTPError {
 	event, jwtCtx, eventPermissions, errHTTP := getEventPermissions(req, action.imsDBQ, action.userStore, action.imsAdmins)
 	if errHTTP != nil {
 		return errHTTP.From("[getEventPermissions]")
@@ -233,12 +233,12 @@ func (action EditVisitReportEntry) editVisitReportEntry(req *http.Request) *herr
 	if err != nil {
 		return herr.BadRequest("Failed to parse visitNumber", err).From("[ParseInt32]")
 	}
-	reportEntryId, err := conv.ParseInt32(req.PathValue("reportEntryId"))
+	journalEntryId, err := conv.ParseInt32(req.PathValue("journalEntryId"))
 	if err != nil {
-		return herr.BadRequest("Failed to parse reportEntryId", err).From("[ParseInt32]")
+		return herr.BadRequest("Failed to parse journalEntryId", err).From("[ParseInt32]")
 	}
 
-	re, errHTTP := readBodyAs[imsjson.ReportEntry](req)
+	re, errHTTP := readBodyAs[imsjson.JournalEntry](req)
 	if errHTTP != nil {
 		return errHTTP.From("[readBodyAs]")
 	}
@@ -262,24 +262,24 @@ func (action EditVisitReportEntry) editVisitReportEntry(req *http.Request) *herr
 	}
 	defer rollback(txn)
 
-	err = action.imsDBQ.SetVisitReportEntryStricken(ctx, txn,
-		imsdb.SetVisitReportEntryStrickenParams{
-			Stricken:    *re.Stricken,
-			Event:       event.ID,
-			VisitNumber: visitNumber,
-			ReportEntry: reportEntryId,
+	err = action.imsDBQ.SetVisitJournalEntryStricken(ctx, txn,
+		imsdb.SetVisitJournalEntryStrickenParams{
+			Stricken:     *re.Stricken,
+			Event:        event.ID,
+			VisitNumber:  visitNumber,
+			JournalEntry: journalEntryId,
 		},
 	)
 	if err != nil {
-		return herr.InternalServerError("Error setting visit report entry", err).From("[SetVisitReportEntryStricken]")
+		return herr.InternalServerError("Error setting visit journal entry", err).From("[SetVisitJournalEntryStricken]")
 	}
 	struckVerb := "Struck"
 	if !*re.Stricken {
 		struckVerb = "Unstruck"
 	}
-	_, errHTTP = addVisitReportEntry(ctx, action.imsDBQ, txn, event.ID, visitNumber, authorPersonID, fmt.Sprintf("%v reportEntry %v", struckVerb, reportEntryId), true, "", "", "")
+	_, errHTTP = addVisitJournalEntry(ctx, action.imsDBQ, txn, event.ID, visitNumber, authorPersonID, fmt.Sprintf("%v journalEntry %v", struckVerb, journalEntryId), true, "", "", "")
 	if errHTTP != nil {
-		return errHTTP.From("[addVisitReportEntry]")
+		return errHTTP.From("[addVisitJournalEntry]")
 	}
 	err = txn.Commit()
 	if err != nil {
@@ -291,16 +291,16 @@ func (action EditVisitReportEntry) editVisitReportEntry(req *http.Request) *herr
 	return nil
 }
 
-// reportEntryToJSON builds the JSON view of a report entry. The author nickname
+// journalEntryToJSON builds the JSON view of a journal entry. The author nickname
 // is supplied separately (resolved from AUTHOR_PERSON_ID via a PERSON join in the
 // fetching query) since the stored row now keys the author on person_id.
-func reportEntryToJSON(re imsdb.ReportEntry, author string, attachmentsEnabled bool) imsjson.ReportEntry {
+func journalEntryToJSON(re imsdb.JournalEntry, author string, attachmentsEnabled bool) imsjson.JournalEntry {
 	var attachment imsjson.Attachment
 	if attachmentsEnabled && re.AttachedFileOriginalName.Valid {
 		attachment.Name = re.AttachedFileOriginalName.String
 		attachment.Previewable = previewableContentType(re.AttachedFileMediaType.String)
 	}
-	return imsjson.ReportEntry{
+	return imsjson.JournalEntry{
 		ID:          re.ID,
 		Created:     time.Unix(int64(re.Created), 0),
 		Author:      author,

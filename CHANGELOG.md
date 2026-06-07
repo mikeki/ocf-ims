@@ -28,6 +28,7 @@ https://github.com/burningmantech/ranger-ims-go/pull/528
 
 ### Changed
 
+- Renamed "report entry" to "journal entry" throughout, for clearer semantics and to disambiguate it from a (field) Report. This is a breaking API change: the incident/report/visit JSON now carries a `journal_entries` array (was `report_entries`), and the entry endpoints moved from `…/report_entries/{id}` to `…/journal_entries/{id}`. The underlying `REPORT_ENTRY` table and its join tables were likewise renamed to `JOURNAL_ENTRY` (schema v40).
 - The login page's "Forgot your password?" now directs users to ask a crew leader or an admin to reset it, rather than linking to the retired Clubhouse reset pages. (Self-service / emailed reset is deferred.)
 
 ### Removed

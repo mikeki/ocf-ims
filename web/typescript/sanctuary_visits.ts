@@ -447,7 +447,7 @@ function initSearch() {
             return true;
         }
         // needs to use native comparison
-        for (const entry of visit.report_entries??[]) {
+        for (const entry of visit.journal_entries??[]) {
             if (timestamp < new Date(Date.parse(entry.created!))) {
                 return true;
             }

@@ -25,7 +25,7 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func TestEditIncidentReportEntry(t *testing.T) {
+func TestEditIncidentJournalEntry(t *testing.T) {
 	t.Parallel()
 	ctx := t.Context()
 
@@ -44,7 +44,7 @@ func TestEditIncidentReportEntry(t *testing.T) {
 
 	// Use normal user to create a new Incident
 	incidentReq := sampleIncident1(eventName)
-	entryReq := incidentReq.ReportEntries[0]
+	entryReq := incidentReq.JournalEntries[0]
 	num := apisNonAdmin.newIncidentSuccess(ctx, incidentReq)
 	incidentReq.Number = num
 
@@ -53,13 +53,13 @@ func TestEditIncidentReportEntry(t *testing.T) {
 	require.Equal(t, http.StatusOK, resp.StatusCode)
 	require.NoError(t, resp.Body.Close())
 	require.NotNil(t, retrievedIncident)
-	require.Len(t, retrievedIncident.ReportEntries, 2)
-	reportEntry := retrievedIncident.ReportEntries[1]
-	require.Equal(t, entryReq.Text, reportEntry.Text)
+	require.Len(t, retrievedIncident.JournalEntries, 2)
+	journalEntry := retrievedIncident.JournalEntries[1]
+	require.Equal(t, entryReq.Text, journalEntry.Text)
 
-	// Strike that report entry
-	reportEntry.Stricken = new(true)
-	resp = apisNonAdmin.updateIncidentReportEntry(ctx, eventName, num, reportEntry)
+	// Strike that journal entry
+	journalEntry.Stricken = new(true)
+	resp = apisNonAdmin.updateIncidentJournalEntry(ctx, eventName, num, journalEntry)
 	require.Equal(t, http.StatusNoContent, resp.StatusCode)
 	require.NoError(t, resp.Body.Close())
 
@@ -68,12 +68,12 @@ func TestEditIncidentReportEntry(t *testing.T) {
 	require.Equal(t, http.StatusOK, resp.StatusCode)
 	require.NoError(t, resp.Body.Close())
 	require.NotNil(t, retrievedIncident)
-	reportEntry = retrievedIncident.ReportEntries[1]
-	require.True(t, *reportEntry.Stricken)
+	journalEntry = retrievedIncident.JournalEntries[1]
+	require.True(t, *journalEntry.Stricken)
 
-	// Unstrike that report entry
-	reportEntry.Stricken = new(false)
-	resp = apisNonAdmin.updateIncidentReportEntry(ctx, eventName, num, reportEntry)
+	// Unstrike that journal entry
+	journalEntry.Stricken = new(false)
+	resp = apisNonAdmin.updateIncidentJournalEntry(ctx, eventName, num, journalEntry)
 	require.Equal(t, http.StatusNoContent, resp.StatusCode)
 	require.NoError(t, resp.Body.Close())
 
@@ -82,17 +82,17 @@ func TestEditIncidentReportEntry(t *testing.T) {
 	require.Equal(t, http.StatusOK, resp.StatusCode)
 	require.NoError(t, resp.Body.Close())
 	require.NotNil(t, retrievedIncident)
-	reportEntry = retrievedIncident.ReportEntries[1]
-	require.False(t, *reportEntry.Stricken)
+	journalEntry = retrievedIncident.JournalEntries[1]
+	require.False(t, *journalEntry.Stricken)
 
 	// If no Stricken value is provided, nothing happens
-	reportEntry.Stricken = nil
-	resp = apisNonAdmin.updateIncidentReportEntry(ctx, eventName, num, reportEntry)
+	journalEntry.Stricken = nil
+	resp = apisNonAdmin.updateIncidentJournalEntry(ctx, eventName, num, journalEntry)
 	require.Equal(t, http.StatusNoContent, resp.StatusCode)
 	require.NoError(t, resp.Body.Close())
 }
 
-func TestEditReportReportEntry(t *testing.T) {
+func TestEditReportJournalEntry(t *testing.T) {
 	t.Parallel()
 	ctx := t.Context()
 
@@ -111,7 +111,7 @@ func TestEditReportReportEntry(t *testing.T) {
 
 	// Use normal user to create a new FR
 	reportReq := sampleReport1(eventName)
-	entryReq := reportReq.ReportEntries[0]
+	entryReq := reportReq.JournalEntries[0]
 	num := apisNonAdmin.newReportSuccess(ctx, reportReq)
 	reportReq.Number = num
 
@@ -120,13 +120,13 @@ func TestEditReportReportEntry(t *testing.T) {
 	require.Equal(t, http.StatusOK, resp.StatusCode)
 	require.NoError(t, resp.Body.Close())
 	require.NotNil(t, retrievedFR)
-	require.Len(t, retrievedFR.ReportEntries, 2)
-	reportEntry := retrievedFR.ReportEntries[1]
-	require.Equal(t, entryReq.Text, reportEntry.Text)
+	require.Len(t, retrievedFR.JournalEntries, 2)
+	journalEntry := retrievedFR.JournalEntries[1]
+	require.Equal(t, entryReq.Text, journalEntry.Text)
 
-	// Strike that report entry
-	reportEntry.Stricken = new(true)
-	resp = apisNonAdmin.updateReportReportEntry(ctx, eventName, num, reportEntry)
+	// Strike that journal entry
+	journalEntry.Stricken = new(true)
+	resp = apisNonAdmin.updateReportJournalEntry(ctx, eventName, num, journalEntry)
 	require.Equal(t, http.StatusNoContent, resp.StatusCode)
 	require.NoError(t, resp.Body.Close())
 
@@ -135,12 +135,12 @@ func TestEditReportReportEntry(t *testing.T) {
 	require.Equal(t, http.StatusOK, resp.StatusCode)
 	require.NoError(t, resp.Body.Close())
 	require.NotNil(t, retrievedFR)
-	reportEntry = retrievedFR.ReportEntries[1]
-	require.True(t, *reportEntry.Stricken)
+	journalEntry = retrievedFR.JournalEntries[1]
+	require.True(t, *journalEntry.Stricken)
 
-	// Unstrike that report entry
-	reportEntry.Stricken = new(false)
-	resp = apisNonAdmin.updateReportReportEntry(ctx, eventName, num, reportEntry)
+	// Unstrike that journal entry
+	journalEntry.Stricken = new(false)
+	resp = apisNonAdmin.updateReportJournalEntry(ctx, eventName, num, journalEntry)
 	require.Equal(t, http.StatusNoContent, resp.StatusCode)
 	require.NoError(t, resp.Body.Close())
 
@@ -149,12 +149,12 @@ func TestEditReportReportEntry(t *testing.T) {
 	require.Equal(t, http.StatusOK, resp.StatusCode)
 	require.NoError(t, resp.Body.Close())
 	require.NotNil(t, retrievedFR)
-	reportEntry = retrievedFR.ReportEntries[1]
-	require.False(t, *reportEntry.Stricken)
+	journalEntry = retrievedFR.JournalEntries[1]
+	require.False(t, *journalEntry.Stricken)
 
 	// If no Stricken value is provided, nothing happens
-	reportEntry.Stricken = nil
-	resp = apisNonAdmin.updateReportReportEntry(ctx, eventName, num, reportEntry)
+	journalEntry.Stricken = nil
+	resp = apisNonAdmin.updateReportJournalEntry(ctx, eventName, num, journalEntry)
 	require.Equal(t, http.StatusNoContent, resp.StatusCode)
 	require.NoError(t, resp.Body.Close())
 }

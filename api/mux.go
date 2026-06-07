@@ -216,9 +216,9 @@ func AddToMux(
 		),
 	)
 
-	mux.Handle("POST /ims/api/events/{eventName}/incidents/{incidentNumber}/report_entries/{reportEntryId}",
+	mux.Handle("POST /ims/api/events/{eventName}/incidents/{incidentNumber}/journal_entries/{journalEntryId}",
 		Adapt(
-			EditIncidentReportEntry{db, userStore, es, cfg.Core.Admins},
+			EditIncidentJournalEntry{db, userStore, es, cfg.Core.Admins},
 			RecoverFromPanic(),
 			RequireAuthN(jwter),
 			LogRequest(true, actionLogger, userStore),
@@ -286,9 +286,9 @@ func AddToMux(
 		),
 	)
 
-	mux.Handle("POST /ims/api/events/{eventName}/reports/{reportNumber}/report_entries/{reportEntryId}",
+	mux.Handle("POST /ims/api/events/{eventName}/reports/{reportNumber}/journal_entries/{journalEntryId}",
 		Adapt(
-			EditReportReportEntry{db, userStore, es, cfg.Core.Admins},
+			EditReportJournalEntry{db, userStore, es, cfg.Core.Admins},
 			RecoverFromPanic(),
 			RequireAuthN(jwter),
 			LogRequest(true, actionLogger, userStore),
@@ -376,9 +376,9 @@ func AddToMux(
 		),
 	)
 
-	mux.Handle("POST /ims/api/events/{eventName}/visits/{visitNumber}/report_entries/{reportEntryId}",
+	mux.Handle("POST /ims/api/events/{eventName}/visits/{visitNumber}/journal_entries/{journalEntryId}",
 		Adapt(
-			EditVisitReportEntry{db, userStore, es, cfg.Core.Admins},
+			EditVisitJournalEntry{db, userStore, es, cfg.Core.Admins},
 			RecoverFromPanic(),
 			RequireAuthN(jwter),
 			LogRequest(true, actionLogger, userStore),

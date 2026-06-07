@@ -136,19 +136,19 @@ func (action GetIncidentAttachment) getIncidentAttachment(
 	}
 
 	// The internal attached-file name lives only on the stored row, not the JSON
-	// view, so look it up from the raw report-entry rows.
-	reportEntryRows, err := action.imsDBQ.Incident_ReportEntries(ctx, action.imsDBQ, imsdb.Incident_ReportEntriesParams{
+	// view, so look it up from the raw journal-entry rows.
+	journalEntryRows, err := action.imsDBQ.Incident_JournalEntries(ctx, action.imsDBQ, imsdb.Incident_JournalEntriesParams{
 		Event:          event.ID,
 		IncidentNumber: incidentNumber,
 	})
 	if err != nil {
-		return nil, "", herr.InternalServerError("Failed to fetch report entries", err).From("[Incident_ReportEntries]")
+		return nil, "", herr.InternalServerError("Failed to fetch journal entries", err).From("[Incident_JournalEntries]")
 	}
 
 	var filename string
-	for _, row := range reportEntryRows {
-		if row.ReportEntry.ID == attachmentNumber {
-			filename = row.ReportEntry.AttachedFile.String
+	for _, row := range journalEntryRows {
+		if row.JournalEntry.ID == attachmentNumber {
+			filename = row.JournalEntry.AttachedFile.String
 			break
 		}
 	}
@@ -284,30 +284,30 @@ func (action GetReportAttachment) getReportAttachment(
 		return nil, "", herr.BadRequest("Failed to parse attachment number", err).From("[ParseInt32]")
 	}
 
-	_, reportEntries, errHTTP := fetchReport(ctx, action.imsDBQ, event.ID, reportNumber, action.attachmentsStore.Type != conf.AttachmentsStoreNone)
+	_, journalEntries, errHTTP := fetchReport(ctx, action.imsDBQ, event.ID, reportNumber, action.attachmentsStore.Type != conf.AttachmentsStoreNone)
 	if errHTTP != nil {
 		return nil, "", errHTTP.From("[fetchReport]")
 	}
 
 	if limitedAccess {
-		if !containsAuthor(reportEntries, jwtCtx.Claims.PersonHandle()) {
+		if !containsAuthor(journalEntries, jwtCtx.Claims.PersonHandle()) {
 			return nil, "", herr.Forbidden("The requestor does not have permission to read this particular Report", nil)
 		}
 	}
 
 	// The internal attached-file name lives only on the stored row, not the JSON
-	// view, so look it up from the raw report-entry rows.
-	reportEntryRows, err := action.imsDBQ.Report_ReportEntries(ctx, action.imsDBQ, imsdb.Report_ReportEntriesParams{
+	// view, so look it up from the raw journal-entry rows.
+	journalEntryRows, err := action.imsDBQ.Report_JournalEntries(ctx, action.imsDBQ, imsdb.Report_JournalEntriesParams{
 		Event:        event.ID,
 		ReportNumber: reportNumber,
 	})
 	if err != nil {
-		return nil, "", herr.InternalServerError("Failed to fetch report entries", err).From("[Report_ReportEntries]")
+		return nil, "", herr.InternalServerError("Failed to fetch journal entries", err).From("[Report_JournalEntries]")
 	}
 	var filename string
-	for _, row := range reportEntryRows {
-		if row.ReportEntry.ID == attachmentNumber {
-			filename = row.ReportEntry.AttachedFile.String
+	for _, row := range journalEntryRows {
+		if row.JournalEntry.ID == attachmentNumber {
+			filename = row.JournalEntry.AttachedFile.String
 			break
 		}
 	}
@@ -333,7 +333,7 @@ func (action AttachToIncident) ServeHTTP(w http.ResponseWriter, req *http.Reques
 		return
 	}
 	slog.Info("Saved Incident attachment")
-	w.Header().Set("IMS-Report-Entry-Number", conv.FormatInt(reID))
+	w.Header().Set("IMS-Journal-Entry-Number", conv.FormatInt(reID))
 	herr.WriteNoContentResponse(w, "Saved Incident attachment")
 }
 
@@ -388,12 +388,12 @@ func (action AttachToIncident) attachToIncident(req *http.Request) (int32, *herr
 
 	reText := fmt.Sprintf("File Name: %v, Size: %v, Type:%v",
 		fiHead.Filename, format.HumanByteSize(fiHead.Size), mtype.String())
-	reID, errHTTP := addIncidentReportEntry(
+	reID, errHTTP := addIncidentJournalEntry(
 		ctx, action.imsDBQ, action.imsDBQ, event.ID, incidentNumber, jwtCtx.Claims.PersonID(),
 		reText, false, newFileName, fiHead.Filename, mtype.String(),
 	)
 	if errHTTP != nil {
-		return 0, errHTTP.From("[addIncidentReportEntry]")
+		return 0, errHTTP.From("[addIncidentJournalEntry]")
 	}
 
 	action.es.notifyIncidentUpdate(event.ID, incidentNumber)
@@ -434,7 +434,7 @@ func (action AttachToReport) ServeHTTP(w http.ResponseWriter, req *http.Request)
 		return
 	}
 	slog.Info("Saved Report attachment")
-	w.Header().Set("IMS-Report-Entry-Number", conv.FormatInt(reID))
+	w.Header().Set("IMS-Journal-Entry-Number", conv.FormatInt(reID))
 	herr.WriteNoContentResponse(w, "Saved Report attachment")
 }
 func (action AttachToReport) attachToReport(req *http.Request) (int32, *herr.HTTPError) {
@@ -500,13 +500,13 @@ func (action AttachToReport) attachToReport(req *http.Request) (int32, *herr.HTT
 
 	reText := fmt.Sprintf("File Name: %v, Size: %v, Type: %v",
 		fiHead.Filename, format.HumanByteSize(fiHead.Size), mtype.String())
-	reID, errHTTP := addReportEntry(
+	reID, errHTTP := addJournalEntry(
 		ctx, action.imsDBQ, action.imsDBQ, event.ID, reportNumber,
 		jwtCtx.Claims.PersonID(), reText, false,
 		newFileName, fiHead.Filename, mtype.String(),
 	)
 	if errHTTP != nil {
-		return 0, errHTTP.From("[addReportEntry]")
+		return 0, errHTTP.From("[addJournalEntry]")
 	}
 
 	action.es.notifyReportUpdate(event.ID, reportNumber)
@@ -553,19 +553,19 @@ func (action GetVisitAttachment) getVisitAttachment(
 	}
 
 	// The internal attached-file name lives only on the stored row, not the JSON
-	// view, so look it up from the raw report-entry rows.
-	reportEntryRows, err := action.imsDBQ.Visit_ReportEntries(ctx, action.imsDBQ, imsdb.Visit_ReportEntriesParams{
+	// view, so look it up from the raw journal-entry rows.
+	journalEntryRows, err := action.imsDBQ.Visit_JournalEntries(ctx, action.imsDBQ, imsdb.Visit_JournalEntriesParams{
 		Event:       event.ID,
 		VisitNumber: visitNumber,
 	})
 	if err != nil {
-		return nil, "", herr.InternalServerError("Failed to fetch report entries", err).From("[Visit_ReportEntries]")
+		return nil, "", herr.InternalServerError("Failed to fetch journal entries", err).From("[Visit_JournalEntries]")
 	}
 
 	var filename string
-	for _, row := range reportEntryRows {
-		if row.ReportEntry.ID == attachmentNumber {
-			filename = row.ReportEntry.AttachedFile.String
+	for _, row := range journalEntryRows {
+		if row.JournalEntry.ID == attachmentNumber {
+			filename = row.JournalEntry.AttachedFile.String
 			break
 		}
 	}
@@ -591,7 +591,7 @@ func (action AttachToVisit) ServeHTTP(w http.ResponseWriter, req *http.Request) 
 		return
 	}
 	slog.Info("Saved Visit attachment")
-	w.Header().Set("IMS-Report-Entry-Number", conv.FormatInt(reID))
+	w.Header().Set("IMS-Journal-Entry-Number", conv.FormatInt(reID))
 	herr.WriteNoContentResponse(w, "Saved Visit attachment")
 }
 
@@ -646,12 +646,12 @@ func (action AttachToVisit) attachToVisit(req *http.Request) (int32, *herr.HTTPE
 
 	reText := fmt.Sprintf("File Name: %v, Size: %v, Type:%v",
 		fiHead.Filename, format.HumanByteSize(fiHead.Size), mtype.String())
-	reID, errHTTP := addVisitReportEntry(
+	reID, errHTTP := addVisitJournalEntry(
 		ctx, action.imsDBQ, action.imsDBQ, event.ID, visitNumber, jwtCtx.Claims.PersonID(),
 		reText, false, newFileName, fiHead.Filename, mtype.String(),
 	)
 	if errHTTP != nil {
-		return 0, errHTTP.From("[addVisitReportEntry]")
+		return 0, errHTTP.From("[addVisitJournalEntry]")
 	}
 
 	action.es.notifyVisitUpdate(event.ID, visitNumber)

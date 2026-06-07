@@ -181,15 +181,15 @@ where
     and ili.INCIDENT_NUMBER_1 = ?
 ;
 
--- name: Incidents_ReportEntries :many
+-- name: Incidents_JournalEntries :many
 select
     ire.INCIDENT_NUMBER,
     sqlc.embed(re),
     p.HANDLE as AUTHOR
 from
-    INCIDENT__REPORT_ENTRY ire
-        join REPORT_ENTRY re
-             on re.ID = ire.REPORT_ENTRY
+    INCIDENT__JOURNAL_ENTRY ire
+        join JOURNAL_ENTRY re
+             on re.ID = ire.JOURNAL_ENTRY
         join PERSON p
              on p.ID = re.AUTHOR_PERSON_ID
 where
@@ -197,15 +197,15 @@ where
     and re.GENERATED <= ?
 ;
 
--- name: Incident_ReportEntries :many
+-- name: Incident_JournalEntries :many
 select
     ire.INCIDENT_NUMBER,
     sqlc.embed(re),
     p.HANDLE as AUTHOR
 from
-    INCIDENT__REPORT_ENTRY ire
-        join REPORT_ENTRY re
-             on re.ID = ire.REPORT_ENTRY
+    INCIDENT__JOURNAL_ENTRY ire
+        join JOURNAL_ENTRY re
+             on re.ID = ire.JOURNAL_ENTRY
         join PERSON p
              on p.ID = re.AUTHOR_PERSON_ID
 where
@@ -233,15 +233,15 @@ from REPORT fr
 where fr.EVENT = ?
     and fr.NUMBER = ?;
 
--- name: Reports_ReportEntries :many
+-- name: Reports_JournalEntries :many
 select
     irre.REPORT_NUMBER,
     sqlc.embed(re),
     p.HANDLE as AUTHOR
 from
-    REPORT__REPORT_ENTRY irre
-        join REPORT_ENTRY re
-             on irre.REPORT_ENTRY = re.ID
+    REPORT__JOURNAL_ENTRY irre
+        join JOURNAL_ENTRY re
+             on irre.JOURNAL_ENTRY = re.ID
         join PERSON p
              on p.ID = re.AUTHOR_PERSON_ID
 where
@@ -249,14 +249,14 @@ where
     and re.GENERATED <= ?
 ;
 
--- name: Report_ReportEntries :many
+-- name: Report_JournalEntries :many
 select
     sqlc.embed(re),
     p.HANDLE as AUTHOR
 from
-    REPORT__REPORT_ENTRY irre
-        join REPORT_ENTRY re
-             on irre.REPORT_ENTRY = re.ID
+    REPORT__JOURNAL_ENTRY irre
+        join JOURNAL_ENTRY re
+             on irre.JOURNAL_ENTRY = re.ID
         join PERSON p
              on p.ID = re.AUTHOR_PERSON_ID
 where
@@ -301,31 +301,31 @@ update REPORT
 set SUMMARY = ?, INCIDENT_NUMBER = ?
 where EVENT = ? and NUMBER = ?;
 
--- name: CreateReportEntry :execlastid
-insert into REPORT_ENTRY (
+-- name: CreateJournalEntry :execlastid
+insert into JOURNAL_ENTRY (
     AUTHOR_PERSON_ID, TEXT, CREATED, `GENERATED`, STRICKEN,
     ATTACHED_FILE, ATTACHED_FILE_ORIGINAL_NAME, ATTACHED_FILE_MEDIA_TYPE
 ) values (
    ?, ?, ?, ?, ?, ?, ?, ?
 );
 
--- name: AttachReportEntryToReport :exec
-insert into REPORT__REPORT_ENTRY (
-    EVENT, REPORT_NUMBER, REPORT_ENTRY
+-- name: AttachJournalEntryToReport :exec
+insert into REPORT__JOURNAL_ENTRY (
+    EVENT, REPORT_NUMBER, JOURNAL_ENTRY
 ) values (
     ?, ?, ?
 );
 
--- name: AttachReportEntryToIncident :exec
-insert into INCIDENT__REPORT_ENTRY (
-    EVENT, INCIDENT_NUMBER, REPORT_ENTRY
+-- name: AttachJournalEntryToIncident :exec
+insert into INCIDENT__JOURNAL_ENTRY (
+    EVENT, INCIDENT_NUMBER, JOURNAL_ENTRY
 ) values (
     ?, ?, ?
 );
 
--- name: AttachReportEntryToVisit :exec
-insert into VISIT__REPORT_ENTRY (
-    EVENT, VISIT_NUMBER, REPORT_ENTRY
+-- name: AttachJournalEntryToVisit :exec
+insert into VISIT__JOURNAL_ENTRY (
+    EVENT, VISIT_NUMBER, JOURNAL_ENTRY
 ) values (
     ?, ?, ?
 );
@@ -340,40 +340,40 @@ where EVENT = ? and NUMBER = ?
 -- The "stricken" queries seem bloated at first blush, because the whole
 -- "where ID in (..." could just be "where ID =". What it's doing though is
 -- ensuring that the provided eventID and incidentNumber actually align with
--- the reportEntryID in question, and that's important for authorization purposes.
+-- the journalEntryID in question, and that's important for authorization purposes.
 --
 
--- name: SetIncidentReportEntryStricken :exec
-update REPORT_ENTRY
+-- name: SetIncidentJournalEntryStricken :exec
+update JOURNAL_ENTRY
 set STRICKEN = ?
 where ID IN (
-    select REPORT_ENTRY
-    from INCIDENT__REPORT_ENTRY
+    select JOURNAL_ENTRY
+    from INCIDENT__JOURNAL_ENTRY
     where EVENT = ?
         and INCIDENT_NUMBER = ?
-        and REPORT_ENTRY = ?
+        and JOURNAL_ENTRY = ?
 );
 
--- name: SetReportReportEntryStricken :exec
-update REPORT_ENTRY
+-- name: SetReportJournalEntryStricken :exec
+update JOURNAL_ENTRY
 set STRICKEN = ?
 where ID IN (
-    select REPORT_ENTRY
-    from REPORT__REPORT_ENTRY
+    select JOURNAL_ENTRY
+    from REPORT__JOURNAL_ENTRY
     where EVENT = ?
       and REPORT_NUMBER = ?
-      and REPORT_ENTRY = ?
+      and JOURNAL_ENTRY = ?
 );
 
--- name: SetVisitReportEntryStricken :exec
-update REPORT_ENTRY
+-- name: SetVisitJournalEntryStricken :exec
+update JOURNAL_ENTRY
 set STRICKEN = ?
 where ID IN (
-    select REPORT_ENTRY
-    from VISIT__REPORT_ENTRY
+    select JOURNAL_ENTRY
+    from VISIT__JOURNAL_ENTRY
     where EVENT = ?
       and VISIT_NUMBER = ?
-      and REPORT_ENTRY = ?
+      and JOURNAL_ENTRY = ?
 );
 
 -- name: AttachPersonToIncident :exec
@@ -586,15 +586,15 @@ where
     and PERSON_ID = ?
 ;
 
--- name: Visit_ReportEntries :many
+-- name: Visit_JournalEntries :many
 select
     sre.VISIT_NUMBER,
     sqlc.embed(re),
     p.HANDLE as AUTHOR
 from
-    VISIT__REPORT_ENTRY sre
-        join REPORT_ENTRY re
-             on re.ID = sre.REPORT_ENTRY
+    VISIT__JOURNAL_ENTRY sre
+        join JOURNAL_ENTRY re
+             on re.ID = sre.JOURNAL_ENTRY
         join PERSON p
              on p.ID = re.AUTHOR_PERSON_ID
 where
@@ -602,15 +602,15 @@ where
     and sre.VISIT_NUMBER = ?
 ;
 
--- name: Visits_ReportEntries :many
+-- name: Visits_JournalEntries :many
 select
     sre.VISIT_NUMBER,
     sqlc.embed(re),
     p.HANDLE as AUTHOR
 from
-    VISIT__REPORT_ENTRY sre
-        join REPORT_ENTRY re
-             on re.ID = sre.REPORT_ENTRY
+    VISIT__JOURNAL_ENTRY sre
+        join JOURNAL_ENTRY re
+             on re.ID = sre.JOURNAL_ENTRY
         join PERSON p
              on p.ID = re.AUTHOR_PERSON_ID
 where

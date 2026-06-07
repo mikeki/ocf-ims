@@ -290,14 +290,14 @@ func (a ApiHelper) getVisits(ctx context.Context, eventName string) (imsjson.Vis
 	return *bod.(*imsjson.Visits), resp
 }
 
-func (a ApiHelper) updateIncidentReportEntry(ctx context.Context, eventName string, incident int32, req imsjson.ReportEntry) *http.Response {
+func (a ApiHelper) updateIncidentJournalEntry(ctx context.Context, eventName string, incident int32, req imsjson.JournalEntry) *http.Response {
 	a.t.Helper()
-	return a.imsPost(ctx, req, a.serverURL.JoinPath("/ims/api/events/", eventName, "/incidents/", conv.FormatInt(incident), "/report_entries/", conv.FormatInt(req.ID)).String())
+	return a.imsPost(ctx, req, a.serverURL.JoinPath("/ims/api/events/", eventName, "/incidents/", conv.FormatInt(incident), "/journal_entries/", conv.FormatInt(req.ID)).String())
 }
 
-func (a ApiHelper) updateReportReportEntry(ctx context.Context, eventName string, report int32, req imsjson.ReportEntry) *http.Response {
+func (a ApiHelper) updateReportJournalEntry(ctx context.Context, eventName string, report int32, req imsjson.JournalEntry) *http.Response {
 	a.t.Helper()
-	return a.imsPost(ctx, req, a.serverURL.JoinPath("/ims/api/events/", eventName, "/reports/", conv.FormatInt(report), "/report_entries/", conv.FormatInt(req.ID)).String())
+	return a.imsPost(ctx, req, a.serverURL.JoinPath("/ims/api/events/", eventName, "/reports/", conv.FormatInt(report), "/journal_entries/", conv.FormatInt(req.ID)).String())
 }
 
 func (a ApiHelper) editEvent(ctx context.Context, req imsjson.Event) *http.Response {
@@ -394,7 +394,7 @@ func (a ApiHelper) attachFileToIncident(ctx context.Context, eventName string, i
 	resp, err := client.Do(httpPost)
 	require.NoError(a.t, err)
 
-	reID, _ := conv.ParseInt32(resp.Header.Get("IMS-Report-Entry-Number"))
+	reID, _ := conv.ParseInt32(resp.Header.Get("IMS-Journal-Entry-Number"))
 
 	return reID, resp
 }
@@ -426,7 +426,7 @@ func (a ApiHelper) attachFileToVisit(ctx context.Context, eventName string, visi
 	resp, err := client.Do(httpPost)
 	require.NoError(a.t, err)
 
-	reID, _ := conv.ParseInt32(resp.Header.Get("IMS-Report-Entry-Number"))
+	reID, _ := conv.ParseInt32(resp.Header.Get("IMS-Journal-Entry-Number"))
 
 	return reID, resp
 }
@@ -470,7 +470,7 @@ func (a ApiHelper) attachFileToReport(ctx context.Context, eventName string, rep
 	resp, err := client.Do(httpPost)
 	require.NoError(a.t, err)
 
-	reID, _ := conv.ParseInt32(resp.Header.Get("IMS-Report-Entry-Number"))
+	reID, _ := conv.ParseInt32(resp.Header.Get("IMS-Journal-Entry-Number"))
 
 	return reID, resp
 }

@@ -41,7 +41,7 @@ templ SanctuaryVisit(deployment, versionName, versionRef, eventName string) {
           </div>
           <div class="modal-body">
             <code>n</code>: create (n)ew Sanctuary Visit<br/>
-            <code>a</code>: jump to (a)dd new report text<br/>
+            <code>a</code>: jump to (a)dd new journal text<br/>
             <code>h</code>: toggle showing system-generated (h)istory <br/>
           </div>
         </div>
@@ -474,35 +474,35 @@ templ SanctuaryVisit(deployment, versionName, versionRef, eventName string) {
       </div>
       <div class="accordion">
 
-      <!-- Report Entries -->
+      <!-- Journal Entries -->
       <div class="accordion-item">
         <h2 class="accordion-header">
           <button class="accordion-button" type="button" data-bs-toggle="collapse"
                   data-bs-target="#collapse-notes" aria-expanded="true" aria-controls="collapse-notes">
-            Visit Notes &amp; Report Entries
+            Visit Notes &amp; Journal Entries
           </button>
         </h2>
         <div id="collapse-notes" class="accordion-collapse collapse show">
-          <div id="report_entry_well" class="accordion-body">
+          <div id="journal_entry_well" class="accordion-body">
             <label class="control-label">
               <input id="history_checkbox" type="checkbox" onchange="toggleShowHistory()"/>
               Show history and stricken
             </label>
-          <div id="report_entries"></div>
+          <div id="journal_entries"></div>
             <textarea
-                    id="report_entry_add"
-                    aria-label="New report entry text"
+                    id="journal_entry_add"
+                    aria-label="New journal entry text"
                     class="form-control no-print"
-                    placeholder="Press &quot;a&quot; to add report text"
-                    onchange="reportEntryEdited()"
+                    placeholder="Press &quot;a&quot; to add journal text"
+                    onchange="journalEntryEdited()"
             ></textarea>
             <div class="d-flex justify-content-between">
               <button
-                      id="report_entry_submit"
-                      aria-label="Submit report entry"
+                      id="journal_entry_submit"
+                      aria-label="Submit journal entry"
                       type="submit"
                       class="btn btn-default btn-sm btn-block my-1 disabled no-print float-start"
-                      onclick="submitReportEntry()"
+                      onclick="submitJournalEntry()"
               >
                 Add Entry (Control &#9166;)
               </button>

@@ -71,22 +71,22 @@ func (action GetReports) getReports(req *http.Request) (imsjson.Reports, *herr.H
 
 	includeSystemEntries := !strings.EqualFold(req.Form.Get("exclude_system_entries"), "true")
 
-	reportEntries, err := action.imsDBQ.Reports_ReportEntries(
+	journalEntries, err := action.imsDBQ.Reports_JournalEntries(
 		req.Context(),
 		action.imsDBQ,
-		imsdb.Reports_ReportEntriesParams{
+		imsdb.Reports_JournalEntriesParams{
 			Event:     event.ID,
 			Generated: includeSystemEntries,
 		},
 	)
 	if err != nil {
-		return resp, herr.InternalServerError("Failed to get FR report entries", err).From("[Reports_ReportEntries]")
+		return resp, herr.InternalServerError("Failed to get FR journal entries", err).From("[Reports_JournalEntries]")
 	}
 
-	entriesByReport := make(map[int32][]imsjson.ReportEntry)
-	for _, row := range reportEntries {
+	entriesByReport := make(map[int32][]imsjson.JournalEntry)
+	for _, row := range journalEntries {
 		entriesByReport[row.ReportNumber] = append(entriesByReport[row.ReportNumber],
-			reportEntryToJSON(row.ReportEntry, row.Author, action.attachmentsEnabled))
+			journalEntryToJSON(row.JournalEntry, row.Author, action.attachmentsEnabled))
 	}
 
 	storedReports, err := action.imsDBQ.Reports(req.Context(), action.imsDBQ, event.ID)
@@ -122,7 +122,7 @@ func (action GetReports) getReports(req *http.Request) (imsjson.Reports, *herr.H
 	return resp, nil
 }
 
-func containsAuthor(entries []imsjson.ReportEntry, author string) bool {
+func containsAuthor(entries []imsjson.JournalEntry, author string) bool {
 	for _, e := range entries {
 		if e.Author == author {
 			return true
@@ -167,35 +167,35 @@ func (action GetReport) getReport(req *http.Request) (imsjson.Report, *herr.HTTP
 		return response, herr.BadRequest("Invalid report number", err).From("[ParseInt32]")
 	}
 
-	report, reportEntries, errHTTP := fetchReport(ctx, action.imsDBQ, event.ID, reportNumber, action.attachmentsEnabled)
+	report, journalEntries, errHTTP := fetchReport(ctx, action.imsDBQ, event.ID, reportNumber, action.attachmentsEnabled)
 	if errHTTP != nil {
 		return response, errHTTP.From("[fetchReport]")
 	}
 
 	if limitedAccess {
-		if !containsAuthor(reportEntries, jwtCtx.Claims.PersonHandle()) {
+		if !containsAuthor(journalEntries, jwtCtx.Claims.PersonHandle()) {
 			return response, herr.Forbidden("The requestor does not have permission to access this particular Report", nil)
 		}
 	}
 
-	return reportToJSON(report, reportEntries, event, action.attachmentsEnabled), nil
+	return reportToJSON(report, journalEntries, event, action.attachmentsEnabled), nil
 }
 
 func reportToJSON(
-	report imsdb.Report, reportEntries []imsjson.ReportEntry, event imsdb.Event, attachmentsEnabled bool,
+	report imsdb.Report, journalEntries []imsjson.JournalEntry, event imsdb.Event, attachmentsEnabled bool,
 ) imsjson.Report {
 	return imsjson.Report{
-		Event:         event.Name,
-		Number:        report.Number,
-		Created:       conv.FloatToTime(report.Created),
-		Summary:       conv.SqlToString(report.Summary),
-		Incident:      conv.SqlToInt32(report.IncidentNumber),
-		ReportEntries: reportEntries,
+		Event:          event.Name,
+		Number:         report.Number,
+		Created:        conv.FloatToTime(report.Created),
+		Summary:        conv.SqlToString(report.Summary),
+		Incident:       conv.SqlToInt32(report.IncidentNumber),
+		JournalEntries: journalEntries,
 	}
 }
 
 func fetchReport(ctx context.Context, imsDBQ *store.DBQ, eventID, reportNumber int32, attachmentsEnabled bool) (
-	imsdb.Report, []imsjson.ReportEntry, *herr.HTTPError,
+	imsdb.Report, []imsjson.JournalEntry, *herr.HTTPError,
 ) {
 	reportRow, err := imsDBQ.Report(ctx, imsDBQ,
 		imsdb.ReportParams{
@@ -209,19 +209,19 @@ func fetchReport(ctx context.Context, imsDBQ *store.DBQ, eventID, reportNumber i
 		}
 		return imsdb.Report{}, nil, herr.InternalServerError("Failed to fetch Report", err).From("[Report]")
 	}
-	reportEntryRows, err := imsDBQ.Report_ReportEntries(ctx, imsDBQ,
-		imsdb.Report_ReportEntriesParams{
+	journalEntryRows, err := imsDBQ.Report_JournalEntries(ctx, imsDBQ,
+		imsdb.Report_JournalEntriesParams{
 			Event:        eventID,
 			ReportNumber: reportNumber,
 		})
 	if err != nil {
-		return imsdb.Report{}, nil, herr.InternalServerError("Failed to fetch Report Entries", err).From("[Report_ReportEntries]")
+		return imsdb.Report{}, nil, herr.InternalServerError("Failed to fetch Journal Entries", err).From("[Report_JournalEntries]")
 	}
-	var reportEntries []imsjson.ReportEntry
-	for _, rer := range reportEntryRows {
-		reportEntries = append(reportEntries, reportEntryToJSON(rer.ReportEntry, rer.Author, attachmentsEnabled))
+	var journalEntries []imsjson.JournalEntry
+	for _, rer := range journalEntryRows {
+		journalEntries = append(journalEntries, journalEntryToJSON(rer.JournalEntry, rer.Author, attachmentsEnabled))
 	}
-	return reportRow.Report, reportEntries, nil
+	return reportRow.Report, journalEntries, nil
 }
 
 type EditReport struct {
@@ -312,9 +312,9 @@ func (action EditReport) editReport(req *http.Request) *herr.HTTPError {
 	if requestReport.Summary != nil {
 		storedReport.Summary = conv.StringToSql(requestReport.Summary, 0)
 		text := "Changed summary to: " + *requestReport.Summary
-		_, errHTTP := addReportEntry(ctx, action.imsDBQ, txn, event.ID, storedReport.Number, authorPersonID, text, true, "", "", "")
+		_, errHTTP := addJournalEntry(ctx, action.imsDBQ, txn, event.ID, storedReport.Number, authorPersonID, text, true, "", "", "")
 		if errHTTP != nil {
-			return errHTTP.From("[addReportEntry]")
+			return errHTTP.From("[addJournalEntry]")
 		}
 	}
 	err = action.imsDBQ.UpdateReport(ctx, txn,
@@ -328,13 +328,13 @@ func (action EditReport) editReport(req *http.Request) *herr.HTTPError {
 	if err != nil {
 		return herr.InternalServerError("Failed to update Report", err).From("[UpdateReport]")
 	}
-	for _, entry := range requestReport.ReportEntries {
+	for _, entry := range requestReport.JournalEntries {
 		if entry.Text == "" {
 			continue
 		}
-		_, errHTTP := addReportEntry(ctx, action.imsDBQ, txn, event.ID, storedReport.Number, authorPersonID, entry.Text, false, "", "", "")
+		_, errHTTP := addJournalEntry(ctx, action.imsDBQ, txn, event.ID, storedReport.Number, authorPersonID, entry.Text, false, "", "", "")
 		if errHTTP != nil {
-			return errHTTP.From("[addReportEntry]")
+			return errHTTP.From("[addJournalEntry]")
 		}
 	}
 
@@ -389,9 +389,9 @@ func (action EditReport) handleLinkToIncident(
 		}
 		return herr.InternalServerError("Failed to attach Report to incident", err).From("[AttachReportToIncident]")
 	}
-	_, errHTTP := addReportEntry(ctx, action.imsDBQ, action.imsDBQ, event.ID, reportNumber, actorPersonID, entryText, true, "", "", "")
+	_, errHTTP := addJournalEntry(ctx, action.imsDBQ, action.imsDBQ, event.ID, reportNumber, actorPersonID, entryText, true, "", "", "")
 	if errHTTP != nil {
-		return errHTTP.From("[addReportEntry]")
+		return errHTTP.From("[addJournalEntry]")
 	}
 	defer action.eventSource.notifyReportUpdate(event.ID, reportNumber)
 	defer action.eventSource.notifyIncidentUpdates(event.ID, previousIncident.Int32, newIncident.Int32)
@@ -411,14 +411,14 @@ func (action EditReport) isPreviousAuthor(
 	reportNumber int32,
 	author string,
 ) (isPreviousAuthor bool, errHTTP *herr.HTTPError) {
-	entries, err := action.imsDBQ.Report_ReportEntries(req.Context(), action.imsDBQ,
-		imsdb.Report_ReportEntriesParams{
+	entries, err := action.imsDBQ.Report_JournalEntries(req.Context(), action.imsDBQ,
+		imsdb.Report_JournalEntriesParams{
 			Event:        eventID,
 			ReportNumber: reportNumber,
 		},
 	)
 	if err != nil {
-		return false, herr.InternalServerError("Failed to fetch Report ReportEntries", err).From("[Report_ReportEntries]")
+		return false, herr.InternalServerError("Failed to fetch Report JournalEntries", err).From("[Report_JournalEntries]")
 	}
 	authorMatch := false
 	for _, entry := range entries {
@@ -497,19 +497,19 @@ func (action NewReport) newReport(req *http.Request) (reportNumber int32, locati
 
 	if report.Summary != nil {
 		text := "Changed summary to: " + *report.Summary
-		_, errHTTP := addReportEntry(ctx, action.imsDBQ, txn, event.ID, report.Number, authorPersonID, text, true, "", "", "")
+		_, errHTTP := addJournalEntry(ctx, action.imsDBQ, txn, event.ID, report.Number, authorPersonID, text, true, "", "", "")
 		if errHTTP != nil {
-			return 0, "", errHTTP.From("[addReportEntry]")
+			return 0, "", errHTTP.From("[addJournalEntry]")
 		}
 	}
 
-	for _, entry := range report.ReportEntries {
+	for _, entry := range report.JournalEntries {
 		if entry.Text == "" {
 			continue
 		}
-		_, errHTTP := addReportEntry(ctx, action.imsDBQ, txn, event.ID, report.Number, authorPersonID, entry.Text, false, "", "", "")
+		_, errHTTP := addJournalEntry(ctx, action.imsDBQ, txn, event.ID, report.Number, authorPersonID, entry.Text, false, "", "", "")
 		if errHTTP != nil {
-			return 0, "", errHTTP.From("[addReportEntry]")
+			return 0, "", errHTTP.From("[addJournalEntry]")
 		}
 	}
 
@@ -523,14 +523,14 @@ func (action NewReport) newReport(req *http.Request) (reportNumber int32, locati
 	return report.Number, loc, nil
 }
 
-func addReportEntry(
+func addJournalEntry(
 	ctx context.Context, imsDBQ *store.DBQ, dbtx imsdb.DBTX, eventID, reportNum int32,
 	authorPersonID int32, text string, generated bool,
 	attachment, attachmentOriginalName, attachmentMediaType string,
 ) (int32, *herr.HTTPError) {
-	reID64, err := imsDBQ.CreateReportEntry(ctx,
+	reID64, err := imsDBQ.CreateJournalEntry(ctx,
 		dbtx,
-		imsdb.CreateReportEntryParams{
+		imsdb.CreateJournalEntryParams{
 			AuthorPersonID:           authorPersonID,
 			Text:                     text,
 			Created:                  conv.TimeToFloat(time.Now()),
@@ -542,19 +542,19 @@ func addReportEntry(
 		},
 	)
 	if err != nil {
-		return 0, herr.InternalServerError("Failed to create report entry", err).From("[CreateReportEntry]")
+		return 0, herr.InternalServerError("Failed to create journal entry", err).From("[CreateJournalEntry]")
 	}
 	// This column is an int32, so this is always safe
 	reID := conv.MustInt32(reID64)
-	err = imsDBQ.AttachReportEntryToReport(ctx, dbtx,
-		imsdb.AttachReportEntryToReportParams{
+	err = imsDBQ.AttachJournalEntryToReport(ctx, dbtx,
+		imsdb.AttachJournalEntryToReportParams{
 			Event:        eventID,
 			ReportNumber: reportNum,
-			ReportEntry:  reID,
+			JournalEntry: reID,
 		},
 	)
 	if err != nil {
-		return 0, herr.InternalServerError("Failed to attach report entry", err).From("[AttachReportEntryToReport]")
+		return 0, herr.InternalServerError("Failed to attach journal entry", err).From("[AttachJournalEntryToReport]")
 	}
 	return reID, nil
 }
