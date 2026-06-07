@@ -456,6 +456,17 @@ func AddToMux(
 		),
 	)
 
+	mux.Handle("POST /ims/api/personnel/{personHandle}/password",
+		Adapt(
+			SetPersonPassword{db, userStore, cfg.Core.Admins},
+			RecoverFromPanic(),
+			RequireAuthN(jwter),
+			// Do not log the request body: it contains a plaintext password.
+			LogRequest(false, actionLogger, userStore),
+			LimitRequestBytes(cfg.Core.MaxRequestBytes),
+		),
+	)
+
 	mux.Handle("GET /ims/api/eventsource",
 		Adapt(
 			es.Server.Handler(EventSourceChannel),

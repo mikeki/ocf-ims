@@ -94,11 +94,15 @@ const (
 	GlobalAdministrateIncidentTypes
 	GlobalAdministratePlaces
 	GlobalAdministrateDebugging
+	// GlobalAdministratePersonnel allows managing people, e.g. setting/resetting a
+	// person's password. Held by Administrators today; a future roles model may grant
+	// it to non-admin crew leaders without changing the endpoints that check it.
+	GlobalAdministratePersonnel
 )
 
 var RolesToGlobalPerms = map[Role]GlobalPermissionMask{
 	AnyAuthenticatedUser: GlobalListEvents | GlobalReadIncidentTypes | GlobalReadPersonnel,
-	Administrator:        GlobalAdministrateEvents | GlobalAdministrateIncidentTypes | GlobalAdministratePlaces | GlobalAdministrateDebugging,
+	Administrator:        GlobalAdministrateEvents | GlobalAdministrateIncidentTypes | GlobalAdministratePlaces | GlobalAdministrateDebugging | GlobalAdministratePersonnel,
 }
 
 var RolesToEventPerms = map[Role]EventPermissionMask{

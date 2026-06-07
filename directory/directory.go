@@ -34,6 +34,10 @@ type UserStore interface {
 	GetAllUsers(ctx context.Context) (map[int64]*User, error)
 	GetPeople(ctx context.Context) ([]imsjson.Person, error)
 	GetPositionsAndTeams(ctx context.Context) (positions, teams map[int64]string, err error)
+	// InvalidateUsers drops the cached user data so the next read reflects writes
+	// made directly to the underlying people tables (e.g. a password reset). Without
+	// this, a changed password would not take effect until the cache TTL expired.
+	InvalidateUsers()
 }
 
 // personSource is the pluggable data backend behind the caching UserStore
@@ -133,6 +137,10 @@ func (store *cachedUserStore) GetPositionsAndTeams(ctx context.Context) (positio
 		return nil, nil, fmt.Errorf("[GetPositionsAndTeams] %w", err)
 	}
 	return *posMap, *teamMap, nil
+}
+
+func (store *cachedUserStore) InvalidateUsers() {
+	store.userCache.Invalidate()
 }
 
 func (store *cachedUserStore) refreshUserCache(ctx context.Context) (map[int64]*User, error) {

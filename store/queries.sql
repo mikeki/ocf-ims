@@ -622,6 +622,11 @@ select ID, HANDLE, EMAIL, STATUS, ON_SITE, PASSWORD
 from PERSON
 where STATUS = 'active';
 
+-- name: SetPersonPassword :exec
+update PERSON
+set PASSWORD = ?
+where ID = ?;
+
 -- name: PeoplePositions :many
 select PERSON_ID, POSITION_ID
 from PERSON__POSITION;
