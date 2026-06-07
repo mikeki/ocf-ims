@@ -20,6 +20,20 @@ This page accounts for changes up until:
 https://github.com/burningmantech/ranger-ims-go/pull/528
 -->
 
+## 2026-06
+
+### Added
+
+- Admins can set or reset a person's password from inside IMS, via **Admin → People & Passwords** (`/ims/app/admin/people`) or `POST /ims/api/personnel/{handle}/password`. The action is gated on a new `GlobalAdministratePersonnel` permission (held by admins today).
+
+### Changed
+
+- The login page's "Forgot your password?" now directs users to ask a crew leader or an admin to reset it, rather than linking to the retired Clubhouse reset pages. (Self-service / emailed reset is deferred.)
+
+### Removed
+
+- Removed the dead Clubhouse credentials notice and password-reset links from the login page.
+
 ## 2026-02
 
 ## 2026-01

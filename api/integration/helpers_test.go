@@ -98,6 +98,12 @@ func (a ApiHelper) getAuth(ctx context.Context, eventName string) (api.GetAuthRe
 	return *bod.(*api.GetAuthResponse), resp
 }
 
+func (a ApiHelper) setPersonPassword(ctx context.Context, handle, password string) *http.Response {
+	a.t.Helper()
+	path := a.serverURL.JoinPath("/ims/api/personnel", handle, "password").String()
+	return a.imsPost(ctx, api.SetPersonPasswordRequest{Password: password}, path)
+}
+
 func (a ApiHelper) editType(ctx context.Context, req imsjson.IncidentType) (*int32, *http.Response) {
 	a.t.Helper()
 	httpResp := a.imsPost(ctx, req, a.serverURL.JoinPath("/ims/api/incident_types").String())

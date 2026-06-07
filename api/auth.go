@@ -180,10 +180,14 @@ type GetAuth struct {
 }
 
 type GetAuthResponse struct {
-	Authenticated bool                      `json:"authenticated"`
-	User          string                    `json:"user,omitzero"`
-	Admin         bool                      `json:"admin"`
-	EventAccess   map[string]AccessForEvent `json:"event_access"`
+	Authenticated bool   `json:"authenticated"`
+	User          string `json:"user,omitzero"`
+	Admin         bool   `json:"admin"`
+	// CanManagePersonnel reports whether the user holds GlobalAdministratePersonnel
+	// (e.g. may set/reset another person's password). Drives UI gating; the endpoints
+	// themselves remain the authoritative check.
+	CanManagePersonnel bool                      `json:"canManagePersonnel"`
+	EventAccess        map[string]AccessForEvent `json:"event_access"`
 }
 
 type AccessForEvent struct {
@@ -217,14 +221,17 @@ func (action GetAuth) getAuth(req *http.Request) (GetAuthResponse, *herr.HTTPErr
 	}
 	claims := jwtCtx.Claims
 	handle := claims.PersonHandle()
-	var roles []authz.Role
-	if slices.Contains(action.admins, handle) {
-		roles = append(roles, authz.Administrator)
+	// Compute global permissions via the shared path so UI-gating flags stay in step
+	// with the authoritative endpoint checks (and with any future non-admin grants).
+	_, globalPermissions, err := authz.EventPermissions(req.Context(), nil, action.imsDBQ, action.userStore, action.admins, *claims)
+	if err != nil {
+		return resp, herr.InternalServerError("Failed to fetch permissions", err).From("[EventPermissions]")
 	}
 	resp = GetAuthResponse{
-		Authenticated: true,
-		User:          handle,
-		Admin:         slices.Contains(roles, authz.Administrator),
+		Authenticated:      true,
+		User:               handle,
+		Admin:              slices.Contains(action.admins, handle),
+		CanManagePersonnel: globalPermissions&authz.GlobalAdministratePersonnel != 0,
 	}
 	// event_id is an optional query param for this endpoint
 	eventName := req.FormValue("event_id")
