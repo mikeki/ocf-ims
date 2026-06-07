@@ -41,11 +41,11 @@ func TestCreateAndGetValidJWT(t *testing.T) {
 	require.NoError(t, err)
 	sub, err := claims.GetSubject()
 	require.NoError(t, err)
-	require.Equal(t, "Hardware", claims.RangerHandle())
+	require.Equal(t, "Hardware", claims.PersonHandle())
 	require.Equal(t, "12345", sub)
-	require.Equal(t, []int64{10, 20, 40, 150}, claims.RangerPositions())
-	require.Equal(t, []int64{15, 25, 45, 155}, claims.RangerTeams())
-	require.True(t, claims.RangerOnSite())
+	require.Equal(t, []int64{10, 20, 40, 150}, claims.PersonPositions())
+	require.Equal(t, []int64{15, 25, 45, 155}, claims.PersonTeams())
+	require.True(t, claims.PersonOnSite())
 }
 
 func TestCreateAndGetInvalidJWTs(t *testing.T) {
@@ -83,8 +83,8 @@ func TestCreateAndGetInvalidJWTs(t *testing.T) {
 		require.Contains(t, err.Error(), "signature is invalid")
 	}
 	{
-		hasNoRangerHandleJWT, err := jwter.CreateAccessToken(
-			// empty RangerName
+		hasNoPersonHandleJWT, err := jwter.CreateAccessToken(
+			// empty PersonHandle
 			"",
 			12345,
 			nil,
@@ -94,8 +94,8 @@ func TestCreateAndGetInvalidJWTs(t *testing.T) {
 			time.Now().Add(1*time.Hour),
 		)
 		require.NoError(t, err)
-		_, err = jwter.AuthenticateJWT(hasNoRangerHandleJWT)
+		_, err = jwter.AuthenticateJWT(hasNoPersonHandleJWT)
 		require.Error(t, err)
-		require.Contains(t, err.Error(), "ranger handle is required")
+		require.Contains(t, err.Error(), "person handle is required")
 	}
 }

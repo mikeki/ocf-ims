@@ -377,7 +377,7 @@ where ID IN (
 );
 
 -- name: AttachPersonToIncident :exec
-insert into INCIDENT__PERSON (EVENT, INCIDENT_NUMBER, PERSON_ID, ROLE)
+insert into INCIDENT__PERSON (EVENT, INCIDENT_NUMBER, PERSON_ID, INVOLVEMENT)
 values (?, ?, ?, ?);
 
 -- name: DetachPersonFromIncident :exec
@@ -556,7 +556,7 @@ where
     and vp.VISIT_NUMBER = ?;
 
 -- name: AttachPersonToVisit :exec
-insert into VISIT__PERSON (EVENT, VISIT_NUMBER, PERSON_ID, ROLE)
+insert into VISIT__PERSON (EVENT, VISIT_NUMBER, PERSON_ID, INVOLVEMENT)
 values (?, ?, ?, ?);
 
 -- name: DetachPersonFromVisit :exec

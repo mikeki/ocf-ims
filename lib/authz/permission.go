@@ -134,18 +134,18 @@ func EventPermissions(
 		return nil, GlobalNoPermissions, fmt.Errorf("[GetPositionsAndTeams]: %w", err)
 	}
 
-	userPosIDs := claims.RangerPositions()
+	userPosIDs := claims.PersonPositions()
 	userPosNames := make([]string, 0, len(userPosIDs))
 	for _, userPosID := range userPosIDs {
 		userPosNames = append(userPosNames, allPositions[userPosID])
 	}
-	userTeamIDs := claims.RangerTeams()
+	userTeamIDs := claims.PersonTeams()
 	userTeamNames := make([]string, 0, len(userTeamIDs))
 	for _, userTeamID := range userTeamIDs {
 		userTeamNames = append(userTeamNames, allTeams[userTeamID])
 	}
 	onDutyPosition := ""
-	onDutyPositionID := claims.RangerOnDutyPosition()
+	onDutyPositionID := claims.PersonOnDutyPosition()
 	if onDutyPositionID != nil {
 		onDutyPosition = allPositions[*onDutyPositionID]
 	}
@@ -153,8 +153,8 @@ func EventPermissions(
 	eventPermissions, globalPermissions = ManyEventPermissions(
 		accessByEvent,
 		imsAdmins,
-		claims.RangerHandle(),
-		claims.RangerOnSite(),
+		claims.PersonHandle(),
+		claims.PersonOnSite(),
 		userPosNames,
 		userTeamNames,
 		onDutyPosition,

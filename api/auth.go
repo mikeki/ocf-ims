@@ -79,12 +79,12 @@ func (action PostAuth) postAuth(req *http.Request) (PostAuthResponse, *http.Cook
 		return empty, nil, errHTTP.From("[readBodyAs]")
 	}
 
-	rangers, err := action.userStore.GetAllUsers(req.Context())
+	people, err := action.userStore.GetAllUsers(req.Context())
 	if err != nil {
-		return empty, nil, herr.InternalServerError("Failed to fetch personnel", err).From("[GetRangers]")
+		return empty, nil, herr.InternalServerError("Failed to fetch personnel", err).From("[GetPeople]")
 	}
 	var matchedPerson *directory.User
-	for _, person := range rangers {
+	for _, person := range people {
 		callsignMatch := person.Handle != "" && strings.EqualFold(person.Handle, vals.Identification)
 		if callsignMatch {
 			matchedPerson = person
@@ -128,7 +128,7 @@ func (action PostAuth) postAuth(req *http.Request) (PostAuthResponse, *http.Cook
 		)
 	}
 
-	slog.Info("Successful login for Ranger", "identification", matchedPerson.Handle)
+	slog.Info("Successful login for person", "identification", matchedPerson.Handle)
 
 	accessTokenExpiration := time.Now().Add(action.accessTokenDuration)
 	jwt, err := authz.JWTer{SecretKey: action.jwtSecret}.
@@ -216,7 +216,7 @@ func (action GetAuth) getAuth(req *http.Request) (GetAuthResponse, *herr.HTTPErr
 		return resp, nil //lint:ignore nilerr since the jwtCtx.Error is irrelevant
 	}
 	claims := jwtCtx.Claims
-	handle := claims.RangerHandle()
+	handle := claims.PersonHandle()
 	var roles []authz.Role
 	if slices.Contains(action.admins, handle) {
 		roles = append(roles, authz.Administrator)
@@ -306,15 +306,15 @@ func (action RefreshAccessToken) refreshAccessToken(req *http.Request) (RefreshA
 	}
 
 	// #nosec G706 // log injection
-	slog.Info("Refreshing access token", "ranger", jwt.RangerHandle())
-	rangers, err := action.userStore.GetAllUsers(req.Context())
+	slog.Info("Refreshing access token", "person", jwt.PersonHandle())
+	people, err := action.userStore.GetAllUsers(req.Context())
 	if err != nil {
-		return empty, herr.InternalServerError("Failed to fetch personnel", err).From("[GetRangers]")
+		return empty, herr.InternalServerError("Failed to fetch personnel", err).From("[GetPeople]")
 	}
 	var matchedPerson *directory.User
-	for _, ranger := range rangers {
-		if ranger.Handle == jwt.RangerHandle() && ranger.ID == int64(jwt.PersonID()) {
-			matchedPerson = ranger
+	for _, person := range people {
+		if person.Handle == jwt.PersonHandle() && person.ID == int64(jwt.PersonID()) {
+			matchedPerson = person
 			break
 		}
 	}
@@ -324,7 +324,7 @@ func (action RefreshAccessToken) refreshAccessToken(req *http.Request) (RefreshA
 	accessTokenExpiration := time.Now().Add(action.accessTokenDuration)
 	accessToken, err := authz.JWTer{SecretKey: action.jwtSecret}.
 		CreateAccessToken(
-			jwt.RangerHandle(),
+			jwt.PersonHandle(),
 			matchedPerson.ID,
 			matchedPerson.PositionIDs,
 			matchedPerson.TeamIDs,

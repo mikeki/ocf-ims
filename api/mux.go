@@ -196,9 +196,9 @@ func AddToMux(
 		),
 	)
 
-	mux.Handle("POST /ims/api/events/{eventName}/incidents/{incidentNumber}/rangers/{rangerName}",
+	mux.Handle("POST /ims/api/events/{eventName}/incidents/{incidentNumber}/people/{personHandle}",
 		Adapt(
-			AttachRangerToIncident{db, userStore, es, cfg.Core.Admins},
+			AttachPersonToIncident{db, userStore, es, cfg.Core.Admins},
 			RecoverFromPanic(),
 			RequireAuthN(jwter),
 			LogRequest(true, actionLogger, userStore),
@@ -206,9 +206,9 @@ func AddToMux(
 		),
 	)
 
-	mux.Handle("DELETE /ims/api/events/{eventName}/incidents/{incidentNumber}/rangers/{rangerName}",
+	mux.Handle("DELETE /ims/api/events/{eventName}/incidents/{incidentNumber}/people/{personHandle}",
 		Adapt(
-			DetachRangerFromIncident{db, userStore, es, cfg.Core.Admins},
+			DetachPersonFromIncident{db, userStore, es, cfg.Core.Admins},
 			RecoverFromPanic(),
 			RequireAuthN(jwter),
 			LogRequest(true, actionLogger, userStore),
@@ -336,9 +336,9 @@ func AddToMux(
 		),
 	)
 
-	mux.Handle("POST /ims/api/events/{eventName}/visits/{visitNumber}/rangers/{rangerName}",
+	mux.Handle("POST /ims/api/events/{eventName}/visits/{visitNumber}/people/{personHandle}",
 		Adapt(
-			AttachRangerToVisit{db, userStore, es, cfg.Core.Admins},
+			AttachPersonToVisit{db, userStore, es, cfg.Core.Admins},
 			RecoverFromPanic(),
 			RequireAuthN(jwter),
 			LogRequest(true, actionLogger, userStore),
@@ -346,9 +346,9 @@ func AddToMux(
 		),
 	)
 
-	mux.Handle("DELETE /ims/api/events/{eventName}/visits/{visitNumber}/rangers/{rangerName}",
+	mux.Handle("DELETE /ims/api/events/{eventName}/visits/{visitNumber}/people/{personHandle}",
 		Adapt(
-			DetachRangerFromVisit{db, userStore, es, cfg.Core.Admins},
+			DetachPersonFromVisit{db, userStore, es, cfg.Core.Admins},
 			RecoverFromPanic(),
 			RequireAuthN(jwter),
 			LogRequest(true, actionLogger, userStore),
@@ -579,9 +579,9 @@ func LogRequest(enable bool, actionLogger *actionlog.Logger, userStore directory
 			var positionName sql.NullString
 			jwtCtx, _ := r.Context().Value(JWTContextKey).(JWTContext)
 			if jwtCtx.Claims != nil {
-				username = conv.StringToSql(new(jwtCtx.Claims.RangerHandle()), 128)
+				username = conv.StringToSql(new(jwtCtx.Claims.PersonHandle()), 128)
 				userID = sql.NullInt64{Int64: int64(jwtCtx.Claims.PersonID()), Valid: true}
-				if posID := jwtCtx.Claims.RangerOnDutyPosition(); posID != nil {
+				if posID := jwtCtx.Claims.PersonOnDutyPosition(); posID != nil {
 					positionID = sql.NullInt64{Int64: *posID, Valid: true}
 					positions, _, _ := userStore.GetPositionsAndTeams(r.Context())
 					if positions != nil {

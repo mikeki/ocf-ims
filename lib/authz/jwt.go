@@ -52,8 +52,8 @@ func (j JWTer) authenticateJWT(jwtStr string) (*IMSClaims, error) {
 	if !tok.Valid {
 		return nil, errors.New("token is invalid")
 	}
-	if claims.RangerHandle() == "" {
-		return nil, errors.New("ranger handle is required")
+	if claims.PersonHandle() == "" {
+		return nil, errors.New("person handle is required")
 	}
 	return &claims, nil
 }

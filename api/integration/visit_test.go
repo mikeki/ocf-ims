@@ -58,7 +58,7 @@ func sampleVisit1(eventName string) imsjson.Visit {
 		ResourcePogs:    new("no, wasn't hungry"),
 		ResourceFoodBev: new("ate a lot of our grass"),
 		ResourceOther:   new("nothing else"),
-		Rangers:         &[]imsjson.VisitRanger{{Handle: userAdminHandle}, {Handle: userAliceHandle}},
+		People:          &[]imsjson.VisitPerson{{Handle: userAdminHandle}, {Handle: userAliceHandle}},
 		ReportEntries: []imsjson.ReportEntry{
 			{Text: "This is some visit report text"},
 			{Text: ""},
@@ -167,8 +167,8 @@ func TestCreateAndGetVisit(t *testing.T) {
 	entryReq := visitReq.ReportEntries[0]
 	num := apisNonAdmin.newVisitSuccess(ctx, visitReq)
 	visitReq.Number = num
-	for _, r := range *visitReq.Rangers {
-		resp = apisNonAdmin.attachRangerToVisit(ctx, eventName, num, r.Handle)
+	for _, r := range *visitReq.People {
+		resp = apisNonAdmin.attachPersonToVisit(ctx, eventName, num, r.Handle)
 		require.Equal(t, http.StatusNoContent, resp.StatusCode)
 		require.NoError(t, resp.Body.Close())
 	}
@@ -283,7 +283,7 @@ func TestCreateAndUpdateVisit(t *testing.T) {
 		ResourcePogs:         new(""),
 		ResourceFoodBev:      new(""),
 		ResourceOther:        new(""),
-		Rangers:              nil,
+		People:               nil,
 		ReportEntries:        nil,
 	}
 	resp = apisNonAdmin.updateVisit(ctx, eventName, num, updates)
@@ -294,9 +294,9 @@ func TestCreateAndUpdateVisit(t *testing.T) {
 	require.Equal(t, http.StatusOK, resp.StatusCode)
 	require.NoError(t, resp.Body.Close())
 	expected := imsjson.Visit{
-		Event:   eventName,
-		Number:  num,
-		Rangers: &[]imsjson.VisitRanger{},
+		Event:  eventName,
+		Number: num,
+		People: &[]imsjson.VisitPerson{},
 	}
 	requireEqualVisit(t, expected, retrievedVisitAfterUpdate)
 
@@ -333,24 +333,24 @@ func TestCreateAndUpdateVisit(t *testing.T) {
 	require.NoError(t, resp.Body.Close())
 	require.Nil(t, visitAfterDetach.Incident)
 
-	// attach a Ranger
-	resp = apisNonAdmin.attachRangerToVisit(ctx, eventName, num, userAliceHandle)
+	// attach a person
+	resp = apisNonAdmin.attachPersonToVisit(ctx, eventName, num, userAliceHandle)
 	require.Equal(t, http.StatusNoContent, resp.StatusCode)
 	require.NoError(t, resp.Body.Close())
 	retrievedVisitAfterUpdate, resp = apisNonAdmin.getVisit(ctx, eventName, num)
 	require.Equal(t, http.StatusOK, resp.StatusCode)
 	require.NoError(t, resp.Body.Close())
-	require.Len(t, *retrievedVisitAfterUpdate.Rangers, 1)
-	require.Equal(t, userAliceHandle, (*retrievedVisitAfterUpdate.Rangers)[0].Handle)
+	require.Len(t, *retrievedVisitAfterUpdate.People, 1)
+	require.Equal(t, userAliceHandle, (*retrievedVisitAfterUpdate.People)[0].Handle)
 
-	// detach that Ranger
-	resp = apisNonAdmin.detachRangerFromVisit(ctx, eventName, num, userAliceHandle)
+	// detach that person
+	resp = apisNonAdmin.detachPersonFromVisit(ctx, eventName, num, userAliceHandle)
 	require.Equal(t, http.StatusNoContent, resp.StatusCode)
 	require.NoError(t, resp.Body.Close())
 	retrievedVisitAfterUpdate, resp = apisNonAdmin.getVisit(ctx, eventName, num)
 	require.Equal(t, http.StatusOK, resp.StatusCode)
 	require.NoError(t, resp.Body.Close())
-	require.Empty(t, *retrievedVisitAfterUpdate.Rangers)
+	require.Empty(t, *retrievedVisitAfterUpdate.People)
 }
 
 func TestCreateAndAttachFileToVisit(t *testing.T) {

@@ -28,7 +28,7 @@ import (
 const SuggestedEarlyAccessTokenRefresh time.Duration = -10 * time.Second
 
 func (j JWTer) CreateAccessToken(
-	rangerName string,
+	personHandle string,
 	personID int64,
 	positionIDs []int64,
 	teamIDs []int64,
@@ -41,11 +41,11 @@ func (j JWTer) CreateAccessToken(
 			WithIssuedAt(time.Now()).
 			WithExpiration(expiration).
 			WithIssuer("ims").
-			WithRangerHandle(rangerName).
-			WithRangerOnSite(onsite).
-			WithRangerOnDutyPosition(onDutyPositionID).
-			WithRangerPositions(positionIDs...).
-			WithRangerTeams(teamIDs...).
+			WithPersonHandle(personHandle).
+			WithPersonOnSite(onsite).
+			WithPersonOnDutyPosition(onDutyPositionID).
+			WithPersonPositions(positionIDs...).
+			WithPersonTeams(teamIDs...).
 			WithSubject(strconv.FormatInt(personID, 10)),
 	)
 }

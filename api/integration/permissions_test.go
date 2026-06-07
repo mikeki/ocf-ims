@@ -119,8 +119,8 @@ func TestEventEndpoints_ForNoEventPerms(t *testing.T) {
 	updateIncident := MethodURL{http.MethodPost, eventPath + "/incidents/1"}
 	postIncidentAttachment := MethodURL{http.MethodPost, eventPath + "/incidents/1/attachments"}
 	postIncidentRE := MethodURL{http.MethodPost, eventPath + "/incidents/1/report_entries/2"}
-	postIncidentRanger := MethodURL{http.MethodPost, eventPath + "/incidents/1/rangers/some_name"}
-	deleteIncidentRanger := MethodURL{http.MethodDelete, eventPath + "/incidents/1/rangers/some_name"}
+	postIncidentPerson := MethodURL{http.MethodPost, eventPath + "/incidents/1/people/some_name"}
+	deleteIncidentPerson := MethodURL{http.MethodDelete, eventPath + "/incidents/1/people/some_name"}
 	getReports := MethodURL{http.MethodGet, eventPath + "/reports"}
 	getReport := MethodURL{http.MethodGet, eventPath + "/reports/1"}
 	getReportAttachment := MethodURL{http.MethodGet, eventPath + "/reports/1/attachments/1"}
@@ -135,8 +135,8 @@ func TestEventEndpoints_ForNoEventPerms(t *testing.T) {
 	updateVisit := MethodURL{http.MethodPost, eventPath + "/visits/1"}
 	postVisitAttachment := MethodURL{http.MethodPost, eventPath + "/visits/1/attachments"}
 	postVisitRE := MethodURL{http.MethodPost, eventPath + "/visits/9999999/report_entries/2"}
-	postVisitRanger := MethodURL{http.MethodPost, eventPath + "/visits/1/rangers/some_name"}
-	deleteVisitRanger := MethodURL{http.MethodDelete, eventPath + "/visits/1/rangers/some_name"}
+	postVisitPerson := MethodURL{http.MethodPost, eventPath + "/visits/1/people/some_name"}
+	deleteVisitPerson := MethodURL{http.MethodDelete, eventPath + "/visits/1/people/some_name"}
 	getPlaces := MethodURL{http.MethodGet, eventPath + "/places"}
 
 	allPerms := []MethodURL{
@@ -147,8 +147,8 @@ func TestEventEndpoints_ForNoEventPerms(t *testing.T) {
 		updateIncident,
 		postIncidentAttachment,
 		postIncidentRE,
-		postIncidentRanger,
-		deleteIncidentRanger,
+		postIncidentPerson,
+		deleteIncidentPerson,
 		getReports,
 		getReport,
 		getReportAttachment,
@@ -163,8 +163,8 @@ func TestEventEndpoints_ForNoEventPerms(t *testing.T) {
 		updateVisit,
 		postVisitAttachment,
 		postVisitRE,
-		postVisitRanger,
-		deleteVisitRanger,
+		postVisitPerson,
+		deleteVisitPerson,
 		getPlaces,
 	}
 	reporter := []MethodURL{

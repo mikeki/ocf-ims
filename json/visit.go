@@ -55,11 +55,11 @@ type Visit struct {
 	ResourceFoodBev *string `json:"resource_food_bev,omitzero"`
 	ResourceOther   *string `json:"resource_other,omitzero"`
 
-	Rangers       *[]VisitRanger `json:"rangers"`
+	People        *[]VisitPerson `json:"people"`
 	ReportEntries []ReportEntry  `json:"report_entries"`
 }
 
-type VisitRanger struct {
-	Handle string  `json:"handle,omitempty"`
-	Role   *string `json:"role,omitempty"`
+type VisitPerson struct {
+	Handle      string  `json:"handle,omitempty"`
+	Involvement *string `json:"involvement,omitempty"`
 }

@@ -94,44 +94,44 @@ func (c IMSClaims) WithSubject(s string) IMSClaims {
 	return c
 }
 
-func (c IMSClaims) WithRangerHandle(s string) IMSClaims {
+func (c IMSClaims) WithPersonHandle(s string) IMSClaims {
 	c.Handle = s
 	return c
 }
 
-func (c IMSClaims) WithRangerOnSite(onsite bool) IMSClaims {
+func (c IMSClaims) WithPersonOnSite(onsite bool) IMSClaims {
 	c.Onsite = onsite
 	return c
 }
 
-func (c IMSClaims) WithRangerPositions(pos ...int64) IMSClaims {
+func (c IMSClaims) WithPersonPositions(pos ...int64) IMSClaims {
 	c.Positions = marshalBigInt(intsToBitSet(pos))
 	return c
 }
 
-func (c IMSClaims) WithRangerTeams(teams ...int64) IMSClaims {
+func (c IMSClaims) WithPersonTeams(teams ...int64) IMSClaims {
 	c.Teams = marshalBigInt(intsToBitSet(teams))
 	return c
 }
 
-func (c IMSClaims) WithRangerOnDutyPosition(pos *int64) IMSClaims {
+func (c IMSClaims) WithPersonOnDutyPosition(pos *int64) IMSClaims {
 	c.OnDutyPosition = pos
 	return c
 }
 
-func (c IMSClaims) RangerHandle() string {
+func (c IMSClaims) PersonHandle() string {
 	return c.Handle
 }
 
-func (c IMSClaims) RangerOnSite() bool {
+func (c IMSClaims) PersonOnSite() bool {
 	return c.Onsite
 }
 
-func (c IMSClaims) RangerPositions() []int64 {
+func (c IMSClaims) PersonPositions() []int64 {
 	return bitSetToInts(unmarshalBigInt(c.Positions))
 }
 
-func (c IMSClaims) RangerTeams() []int64 {
+func (c IMSClaims) PersonTeams() []int64 {
 	return bitSetToInts(unmarshalBigInt(c.Teams))
 }
 
@@ -154,6 +154,6 @@ func (c IMSClaims) PersonID() int32 {
 	return int32(id)
 }
 
-func (c IMSClaims) RangerOnDutyPosition() *int64 {
+func (c IMSClaims) PersonOnDutyPosition() *int64 {
 	return c.OnDutyPosition
 }

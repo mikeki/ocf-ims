@@ -245,27 +245,27 @@ func (a ApiHelper) updateVisit(ctx context.Context, eventName string, visit int3
 	return a.imsPost(ctx, req, a.serverURL.JoinPath("/ims/api/events/", eventName, "/visits/", strconv.Itoa(int(visit))).String())
 }
 
-func (a ApiHelper) attachRangerToIncident(ctx context.Context, eventName string, incident int32, handle string) *http.Response {
+func (a ApiHelper) attachPersonToIncident(ctx context.Context, eventName string, incident int32, handle string) *http.Response {
 	a.t.Helper()
-	req := imsjson.IncidentRanger{Handle: handle}
-	return a.imsPost(ctx, req, a.serverURL.JoinPath("/ims/api/events/", eventName, "/incidents/", strconv.Itoa(int(incident)), "/rangers/", handle).String())
+	req := imsjson.IncidentPerson{Handle: handle}
+	return a.imsPost(ctx, req, a.serverURL.JoinPath("/ims/api/events/", eventName, "/incidents/", strconv.Itoa(int(incident)), "/people/", handle).String())
 }
 
-func (a ApiHelper) attachRangerToVisit(ctx context.Context, eventName string, visit int32, handle string) *http.Response {
+func (a ApiHelper) attachPersonToVisit(ctx context.Context, eventName string, visit int32, handle string) *http.Response {
 	a.t.Helper()
-	req := imsjson.VisitRanger{Handle: handle}
-	return a.imsPost(ctx, req, a.serverURL.JoinPath("/ims/api/events/", eventName, "/visits/", strconv.Itoa(int(visit)), "/rangers/", handle).String())
+	req := imsjson.VisitPerson{Handle: handle}
+	return a.imsPost(ctx, req, a.serverURL.JoinPath("/ims/api/events/", eventName, "/visits/", strconv.Itoa(int(visit)), "/people/", handle).String())
 }
 
-func (a ApiHelper) detachRangerFromIncident(ctx context.Context, eventName string, incident int32, handle string) *http.Response {
+func (a ApiHelper) detachPersonFromIncident(ctx context.Context, eventName string, incident int32, handle string) *http.Response {
 	a.t.Helper()
-	_, resp := a.imsDelete(ctx, a.serverURL.JoinPath("/ims/api/events/", eventName, "/incidents/", strconv.Itoa(int(incident)), "/rangers/", handle).String(), nil)
+	_, resp := a.imsDelete(ctx, a.serverURL.JoinPath("/ims/api/events/", eventName, "/incidents/", strconv.Itoa(int(incident)), "/people/", handle).String(), nil)
 	return resp
 }
 
-func (a ApiHelper) detachRangerFromVisit(ctx context.Context, eventName string, visit int32, handle string) *http.Response {
+func (a ApiHelper) detachPersonFromVisit(ctx context.Context, eventName string, visit int32, handle string) *http.Response {
 	a.t.Helper()
-	_, resp := a.imsDelete(ctx, a.serverURL.JoinPath("/ims/api/events/", eventName, "/visits/", strconv.Itoa(int(visit)), "/rangers/", handle).String(), nil)
+	_, resp := a.imsDelete(ctx, a.serverURL.JoinPath("/ims/api/events/", eventName, "/visits/", strconv.Itoa(int(visit)), "/people/", handle).String(), nil)
 	return resp
 }
 

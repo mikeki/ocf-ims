@@ -41,7 +41,7 @@ func sampleIncident1(eventName string) imsjson.Incident {
 		IncidentTypeIDs: &[]int32{1, 2},
 		Reports:         &[]int32{},
 		Visits:          &[]int32{},
-		Rangers:         &[]imsjson.IncidentRanger{{Handle: userAdminHandle}, {Handle: userAliceHandle}},
+		People:          &[]imsjson.IncidentPerson{{Handle: userAdminHandle}, {Handle: userAliceHandle}},
 		ReportEntries: []imsjson.ReportEntry{
 			{Text: "This is some report text lol"},
 			{Text: ""},
@@ -151,8 +151,8 @@ func TestCreateAndGetIncident(t *testing.T) {
 	entryReq := incidentReq.ReportEntries[0]
 	num := apisNonAdmin.newIncidentSuccess(ctx, incidentReq)
 	incidentReq.Number = num
-	for _, r := range *incidentReq.Rangers {
-		resp = apisNonAdmin.attachRangerToIncident(ctx, eventName, num, r.Handle)
+	for _, r := range *incidentReq.People {
+		resp = apisNonAdmin.attachPersonToIncident(ctx, eventName, num, r.Handle)
 		require.Equal(t, http.StatusNoContent, resp.StatusCode)
 		require.NoError(t, resp.Body.Close())
 	}
@@ -253,7 +253,7 @@ func TestCreateAndUpdateIncident(t *testing.T) {
 		},
 		IncidentTypeIDs: &[]int32{},
 		Reports:         &[]int32{},
-		Rangers:         &[]imsjson.IncidentRanger{},
+		People:          &[]imsjson.IncidentPerson{},
 		ReportEntries:   []imsjson.ReportEntry{},
 	}
 	resp = apisNonAdmin.updateIncident(ctx, eventName, num, updates)
@@ -274,29 +274,29 @@ func TestCreateAndUpdateIncident(t *testing.T) {
 		IncidentTypeIDs: &[]int32{},
 		Reports:         &[]int32{},
 		Visits:          &[]int32{},
-		Rangers:         &[]imsjson.IncidentRanger{},
+		People:          &[]imsjson.IncidentPerson{},
 		LinkedIncidents: &[]imsjson.LinkedIncident{},
 	}
 	requireEqualIncident(t, expected, retrievedIncidentAfterUpdate)
 
-	// attach a Ranger
-	resp = apisNonAdmin.attachRangerToIncident(ctx, eventName, num, userAliceHandle)
+	// attach a person
+	resp = apisNonAdmin.attachPersonToIncident(ctx, eventName, num, userAliceHandle)
 	require.Equal(t, http.StatusNoContent, resp.StatusCode)
 	require.NoError(t, resp.Body.Close())
 	retrievedIncidentAfterUpdate, resp = apisNonAdmin.getIncident(ctx, eventName, num)
 	require.Equal(t, http.StatusOK, resp.StatusCode)
 	require.NoError(t, resp.Body.Close())
-	require.Len(t, *retrievedIncidentAfterUpdate.Rangers, 1)
-	require.Equal(t, userAliceHandle, (*retrievedIncidentAfterUpdate.Rangers)[0].Handle)
+	require.Len(t, *retrievedIncidentAfterUpdate.People, 1)
+	require.Equal(t, userAliceHandle, (*retrievedIncidentAfterUpdate.People)[0].Handle)
 
-	// detach that Ranger
-	resp = apisNonAdmin.detachRangerFromIncident(ctx, eventName, num, userAliceHandle)
+	// detach that person
+	resp = apisNonAdmin.detachPersonFromIncident(ctx, eventName, num, userAliceHandle)
 	require.Equal(t, http.StatusNoContent, resp.StatusCode)
 	require.NoError(t, resp.Body.Close())
 	retrievedIncidentAfterUpdate, resp = apisNonAdmin.getIncident(ctx, eventName, num)
 	require.Equal(t, http.StatusOK, resp.StatusCode)
 	require.NoError(t, resp.Body.Close())
-	require.Empty(t, *retrievedIncidentAfterUpdate.Rangers)
+	require.Empty(t, *retrievedIncidentAfterUpdate.People)
 }
 
 func TestCreateAndAttachFileToIncident(t *testing.T) {
