@@ -241,25 +241,25 @@ test("incidents", async ({ page, browser }) => {
       await addType(incidentPage, "Junk");
     }
 
-    // add several Rangers to the incident
+    // add several people to the incident
     {
-      async function addRanger(page: Page, rangerName: string): Promise<void> {
-        await page.getByLabel("Add Ranger Handle").fill("");
-        await page.getByLabel("Add Ranger Handle").press("Tab");
-        await page.getByLabel("Add Ranger Handle").fill(rangerName);
-        await page.getByLabel("Add Ranger Handle").press("Tab");
-        await expect(page.locator("li", {hasText: rangerName})).toBeVisible({timeout: 5000});
-        await expect(page.getByLabel("Add Ranger Handle")).toHaveValue("");
-        const roleField = page.locator("li", {hasText: rangerName}).getByRole("textbox");
-        await roleField.fill(`${rangerName} Role`);
-        await roleField.press("Tab");
-        // The value of the roleField is checked later on in this test
+      async function addPerson(page: Page, personName: string): Promise<void> {
+        await page.getByLabel("Add Person").fill("");
+        await page.getByLabel("Add Person").press("Tab");
+        await page.getByLabel("Add Person").fill(personName);
+        await page.getByLabel("Add Person").press("Tab");
+        await expect(page.locator("li", {hasText: personName})).toBeVisible({timeout: 5000});
+        await expect(page.getByLabel("Add Person")).toHaveValue("");
+        const involvementField = page.locator("li", {hasText: personName}).getByRole("textbox");
+        await involvementField.fill(`${personName} Involvement`);
+        await involvementField.press("Tab");
+        // The value of the involvementField is checked later on in this test
       }
 
-      await addRanger(incidentPage, "Doggy");
-      await addRanger(incidentPage, "Runner");
-      await addRanger(incidentPage, "Loosy");
-      await addRanger(incidentPage, "TheMan");
+      await addPerson(incidentPage, "Doggy");
+      await addPerson(incidentPage, "Runner");
+      await addPerson(incidentPage, "Loosy");
+      await addPerson(incidentPage, "TheMan");
     }
 
     // override start time
@@ -337,10 +337,10 @@ test("incidents", async ({ page, browser }) => {
     // reload the page, make sure some data loads again
     {
       await incidentPage.reload();
-      const runnerRanger = incidentPage.getByLabel("Runner");
-      await expect(runnerRanger).toBeVisible();
-      const runnerRow = incidentPage.getByRole("listitem").filter({has: runnerRanger}).getByRole("textbox");
-      await expect(runnerRow).toHaveValue("Runner Role");
+      const runnerPerson = incidentPage.getByLabel("Runner");
+      await expect(runnerPerson).toBeVisible();
+      const runnerRow = incidentPage.getByRole("listitem").filter({has: runnerPerson}).getByRole("textbox");
+      await expect(runnerRow).toHaveValue("Runner Involvement");
       if (!ignoreDatetimeCheck) {
         await expect(altStartedDatetime).toBeVisible();
         await expect(altStartedDatetime).toHaveValue(altStartedDateTimeStr);
