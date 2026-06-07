@@ -171,14 +171,22 @@ To modify the IMS database schema:
 7. Fix any broken Go code and run `go test ./...`
 
 **Migrations are append-only history.** Each `XX-from-YY.sql` file represents
-the exact transformation applied to real databases at that version, so existing
-files are never edited or deleted — the integration test (`store/integration`)
-replays the full chain from a frozen historical snapshot to verify the upgrade
-path. Old migrations (versions 1–N) are intentionally retained, even ones that
-predate large refactors. Only `current.sql` describes the present-day schema for
-fresh installs. When in doubt, add a new migration rather than touching an old
-one. Frozen historical fixtures (e.g. `store/integration/06.sql`) must likewise
-be left as-is.
+the exact transformation applied to a database at that version, so existing
+files are never edited or deleted. Add a new migration rather than touching an
+old one. Only `current.sql` describes the present-day schema for fresh installs,
+and migrations are **schema-only** — they don't seed or transform domain data
+(OCF launches on a fresh DB seeded from `current.sql`, so there's no production
+data to migrate; see `docs/plans/40-domain-model.md`).
+
+**Migration test (re-baselined at v36).** `store/integration` verifies that
+*future* migrations stay consistent with `current.sql`: `TestMigrateSameAsCurrentSchema`
+loads the frozen OCF baseline (`store/integration/36.sql`, a snapshot of the
+schema OCF launched on), applies every migration from v37 onward, and checks the
+result still matches `current.sql`. The pre-OCF Burning Man upgrade chain is
+**not** replayed — OCF starts fresh from `current.sql` and never runs that legacy
+path, so the old `06.sql` fixture was retired. The baseline `36.sql` is itself a
+frozen fixture: leave it as-is. (When the schema diverges far enough that a fresh
+baseline is useful, freeze a new `NN.sql` snapshot and re-point the test.)
 
 ### Configuration
 

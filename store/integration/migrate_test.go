@@ -30,36 +30,29 @@ import (
 	"github.com/testcontainers/testcontainers-go"
 	"golang.org/x/sync/errgroup"
 	"io"
-	"regexp"
 	"slices"
 	"testing"
 )
 
-// autoIncrementRE matches the AUTO_INCREMENT counter that `show create table`
-// emits for tables with an auto-increment key. It is a runtime row-count
-// artifact, not part of the schema structure, so it is stripped before
-// comparing the migrated and fresh schemas: the two paths legitimately seed
-// different numbers of rows (e.g. current.sql seeds the full OCF incident-type
-// taxonomy while the migration chain carries only the historical placeholder
-// rows). See docs/plans/40-domain-model.md (migrations are schema-only).
-var autoIncrementRE = regexp.MustCompile(` AUTO_INCREMENT=\d+`)
+//go:embed 36.sql
+var schemaBaseline string
 
-//go:embed 06.sql
-var schema06 string
-
-// TestMigrateSameAsCurrentSchema checks the migration path for an
-// old version of an IMS database.
+// TestMigrateSameAsCurrentSchema verifies that OCF's migrations stay consistent
+// with current.sql.
 //
-// It brings up two MariaDB databases, one from IMS schema version 6
-// (in this dir, as 06.sql), and one from the current version of the
-// schema (in current.sql). It then migrates the version 06 database
-// all the way up to current, using the same num-from-num.sql files
-// that are used to migrate real IMS databases. At the end of those
-// migrations, we expect both databases to have identical sets of
-// tables, and for each table, we expect them to have the same
-// "CREATE TABLE" SQL. If the "CREATE TABLE" statements are different
-// from one side to the other, presumably a new migration should be
-// created that gets them back in sync.
+// It brings up two MariaDB databases: one loaded from the frozen OCF baseline
+// (36.sql, the schema at the version OCF launched on), and one empty. It then
+// migrates the baseline database up to the latest version using the same
+// num-from-num.sql files used on real databases, and migrates the empty
+// database by running current.sql. At the end we expect both databases to have
+// identical sets of tables, and identical "CREATE TABLE" SQL for each. A
+// mismatch means a new migration drifted from current.sql and should be fixed.
+//
+// Today the baseline is at the current version, so this is a sanity check; it
+// gains teeth as soon as a v37+ migration is added (the baseline + that
+// migration must reproduce current.sql). The pre-OCF Burning Man upgrade chain
+// is intentionally NOT exercised — OCF starts fresh from current.sql and never
+// replays it. See CLAUDE.md (Database Migrations).
 func TestMigrateSameAsCurrentSchema(t *testing.T) {
 	t.Parallel()
 	ctx := t.Context()
@@ -83,11 +76,11 @@ func TestMigrateSameAsCurrentSchema(t *testing.T) {
 	defer shut(db1)
 	defer shut(db2)
 
-	// DB 1 start with schema version 6, then gets migrated to the latest
-	// DB 2 starts with no tables, then gets migrated to the latest
+	// DB1 starts at the frozen OCF baseline (v36), then gets migrated to latest
+	// DB2 starts with no tables, then gets migrated to the latest
 
-	// DB1: Run the version 6 migration
-	err := runScript(ctx, db1, schema06)
+	// DB1: load the frozen OCF baseline schema
+	err := runScript(ctx, db1, schemaBaseline)
 	require.NoError(t, err)
 	// DB1: Now migrate to current schema version
 	err = store.MigrateDB(ctx, db1)
@@ -131,10 +124,6 @@ func TestMigrateSameAsCurrentSchema(t *testing.T) {
 		var createTable2 string
 		require.NoError(t, row2.Scan(&tableName, &createTable2))
 
-		// Compare schema structure only; the AUTO_INCREMENT counter reflects
-		// seed-row counts, which differ by design between the two paths.
-		createTable1 = autoIncrementRE.ReplaceAllString(createTable1, "")
-		createTable2 = autoIncrementRE.ReplaceAllString(createTable2, "")
 		assert.Equal(t, createTable1, createTable2)
 	}
 }
