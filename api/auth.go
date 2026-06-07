@@ -180,9 +180,9 @@ type GetAuth struct {
 }
 
 type GetAuthResponse struct {
-	Authenticated bool                      `json:"authenticated"`
-	User          string                    `json:"user,omitzero"`
-	Admin         bool                      `json:"admin"`
+	Authenticated bool   `json:"authenticated"`
+	User          string `json:"user,omitzero"`
+	Admin         bool   `json:"admin"`
 	// CanManagePersonnel reports whether the user holds GlobalAdministratePersonnel
 	// (e.g. may set/reset another person's password). Drives UI gating; the endpoints
 	// themselves remain the authoritative check.
