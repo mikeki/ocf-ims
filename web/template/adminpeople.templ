@@ -1,0 +1,80 @@
+//
+// See the file COPYRIGHT for copyright information.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+//
+
+package template
+
+templ AdminPeople(deployment, versionName, versionRef string) {
+<!DOCTYPE html>
+<html lang="en">
+@Head("Manage People", "admin_people.js", false, versionRef)
+
+<body>
+<div class="container-fluid">
+@Header(deployment)
+@Nav("")
+<h1 id="doc-title">People</h1>
+@LoadingOverlay()
+@ErrorInfo()
+
+    <div class="modal no-print" id="setPasswordModal" tabindex="-1" aria-labelledby="setPasswordModalLabel" aria-hidden="true">
+      <div class="modal-dialog">
+        <div class="modal-content">
+          <div class="modal-header">
+            <p class="modal-title fs-5" id="setPasswordModalLabel">Set Password</p>
+            <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close" />
+          </div>
+          <div class="modal-body row">
+            <p>Set a new password for <strong id="set_password_handle"></strong>.</p>
+            <div class="form-floating mb-3">
+              <input id="set_password_input" type="password" class="form-control" autocomplete="new-password" placeholder="New password" />
+              <label for="set_password_input">New password</label>
+            </div>
+            <div class="form-floating mb-3">
+              <input id="set_password_confirm" type="password" class="form-control" autocomplete="new-password" placeholder="Confirm password" />
+              <label for="set_password_confirm">Confirm password</label>
+            </div>
+          </div>
+          <div class="modal-footer">
+            <button type="button" class="btn btn-primary" id="set_password_submit" onclick="submitSetPassword()">Set password</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+  <div class="row" id="people_container">
+    <div id="people" class="col-sm-12">
+      <div class="card">
+        <label class="card-header">People</label>
+        <ul class="list-group list-group-small list-group-flush card-body">
+          <template id="person_li_template">
+            <li class="list-group-item ps-3" data-person-handle="">
+              <button class="show-set-password-modal badge btn btn-primary float-end">
+                Set password
+              </button>
+              <div class="person-handle"></div>
+              <div class="person-status text-body-secondary ms-3"></div>
+            </li>
+          </template>
+        </ul>
+      </div>
+    </div>
+  </div>
+@Footer(versionName, versionRef)
+</div>
+</body>
+</html>
+
+}

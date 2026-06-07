@@ -1971,6 +1971,9 @@ export type AuthenticatedAuthInfo = {
     authenticated: true,
     user: string,
     admin: boolean,
+    // Whether the user may manage people (e.g. set/reset passwords). Held by
+    // admins today; gates the admin people UI.
+    canManagePersonnel: boolean,
     event_access?: Record<string, AuthInfoEventAccess>,
 }
 
@@ -1989,8 +1992,7 @@ export type AuthInfoEventAccess = {
 export type Personnel = {
     handle: string;
     person_id?: number|null;
-    // These are only the statuses that IMS actually reads from Clubhouse.
-    // See https://github.com/mikeki/ocf-ims/blob/master/directory/queries.sql
+    // These are the person statuses IMS recognizes (from the local PERSON table).
     status: "active"|"alpha"|"auditor"|"inactive extension"|"inactive"|"prospective";
 }
 
