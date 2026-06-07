@@ -218,17 +218,19 @@ Generated code is not committed, so each commit must compile after `-generate-on
 
 ---
 
-## Status — to be updated as work lands
+## Status — implementation complete (2026-06-06)
 
-- [ ] Plan reviewed & open decisions resolved
-- [ ] argon2id rename
-- [ ] `GlobalAdministratePersonnel` permission (flag + `Administrator` map) + `canManagePersonnel` in auth response
-- [ ] `SetPersonPassword` query
-- [ ] set-password endpoint + permission gate + validation + route
-- [ ] login.templ cleanup (Clubhouse links/notice → "ask a crew leader/admin")
-- [ ] admin people page (list + set-password, permission-gated UI) + route + adminroot link
-- [ ] tests green (unit + api integration)
-- [ ] docs updated
+- [x] Plan reviewed & open decisions resolved (min 8 / max 256 no-composition policy; new `/ims/app/admin/people` page; force-change-on-login out of scope)
+- [x] argon2id rename
+- [x] `GlobalAdministratePersonnel` permission (flag + `Administrator` map) + `canManagePersonnel` in auth response
+- [x] `SetPersonPassword` query
+- [x] set-password endpoint + permission gate + validation + route (`POST /ims/api/personnel/{personHandle}/password`)
+- [x] login.templ cleanup (Clubhouse links/notice → "ask a crew leader/admin")
+- [x] admin people page (list + set-password, permission-gated UI) + route + adminroot link
+- [x] tests green (unit + api integration: `TestSetPersonPassword`, updated `TestGetAuth*`)
+- [x] docs updated (CLAUDE.md, CHANGELOG)
+
+Verified: `go run bin/build/build.go`, `go test ./...`, `go test ./api/integration ./store/integration`, `go vet`, golangci-lint (0 issues) all green.
 
 ---
 

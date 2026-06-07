@@ -240,11 +240,24 @@ JWT-based authentication with separate access and refresh tokens:
 - Refresh tokens: Long-lived (default 7 days)
 - Tokens signed with `IMS_JWT_SECRET`
 
+Passwords are stored locally (argon2id hash in `PERSON.PASSWORD`); there is no
+external credential provider (Clubhouse was retired). There is no self-service /
+emailed password reset yet — a locked-out user asks a crew leader or an admin to
+reset it. A privileged user resets a password from **Admin → People & Passwords**
+(`/ims/app/admin/people`), which calls `POST /ims/api/personnel/{handle}/password`.
+For seeding/scripts, the `hash_password` CLI prints an argon2id hash to write into
+`PERSON.PASSWORD` directly.
+
 ### Authorization
 
 Event-based access control defined in `lib/authz/`:
 - Users have specific access modes per event (read, write, report)
 - Admins (defined in `IMS_ADMINS`) have unrestricted access
+- Global permissions (e.g. `GlobalAdministratePersonnel`, which gates password
+  resets) are granted via roles in `RolesToGlobalPerms`. Today only the
+  `Administrator` role holds the admin-level globals; a future roles model may grant
+  individual globals to non-admins (e.g. crew leaders) without changing the handlers
+  that check them.
 
 ### Action Logging
 

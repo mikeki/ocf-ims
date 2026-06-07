@@ -62,6 +62,13 @@ const (
 	userAliceHandle   = "AliceTestRanger"
 	userAliceEmail    = "alicetestranger@example.com"
 	userAlicePassword = "password"
+
+	// Bob is a dedicated non-admin user for the password-reset test, so that test
+	// can mutate his password without contaminating other (parallel) tests that log
+	// in as Admin/Alice. His seeded hash is Alice's, so his initial password matches.
+	userBobHandle          = "BobTestRanger"
+	userBobEmail           = "bobtestranger@example.com"
+	userBobInitialPassword = "password"
 )
 
 // imsPeopleTestSeed seeds the local IMS-DB people directory used by the integration
@@ -72,7 +79,8 @@ const (
 const imsPeopleTestSeed = `
 insert into PERSON (ID, HANDLE, EMAIL, PASSWORD, STATUS, ON_SITE, CREATED) values
     (6000, 'AdminTestRanger', 'admintestranger@example.com', '$argon2id$v=19$m=1,t=1,p=1$51uXrZoFRb6O4Tw4TsAJVQ$SedDwp+hPpIJc42QcnFJy6EOtE+b5kyYFpnuRHl/5qs', 'active', true, 0),
-    (6001, 'AliceTestRanger', 'alicetestranger@example.com', '$argon2id$v=19$m=1,t=1,p=1$eg9U8hLotCSmyCph1BQroA$KFfy0uDDpP+cXPnkSQRXt3z0Shd7M39tsrwJZuDrOdU', 'active', true, 0);
+    (6001, 'AliceTestRanger', 'alicetestranger@example.com', '$argon2id$v=19$m=1,t=1,p=1$eg9U8hLotCSmyCph1BQroA$KFfy0uDDpP+cXPnkSQRXt3z0Shd7M39tsrwJZuDrOdU', 'active', true, 0),
+    (6002, 'BobTestRanger', 'bobtestranger@example.com', '$argon2id$v=19$m=1,t=1,p=1$eg9U8hLotCSmyCph1BQroA$KFfy0uDDpP+cXPnkSQRXt3z0Shd7M39tsrwJZuDrOdU', 'active', true, 0);
 insert into ` + "`POSITION`" + ` (ID, NAME) values (7000, 'Nooperator');
 insert into TEAM (ID, NAME) values (8000, 'Brown Dot');
 insert into PERSON__POSITION (PERSON_ID, POSITION_ID) values (6001, 7000);
