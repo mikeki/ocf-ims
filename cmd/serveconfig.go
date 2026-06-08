@@ -90,9 +90,6 @@ func mustApplyEnvConfig(baseCfg *conf.IMSConfig, envFileName string) *conf.IMSCo
 	if v, ok := lookupEnv("IMS_ACTION_LOG_ENABLED"); ok {
 		baseCfg.Core.ActionLogEnabled = strings.EqualFold(v, "true")
 	}
-	if v, ok := lookupEnv("IMS_ADMINS"); ok {
-		baseCfg.Core.Admins = strings.Split(v, ",")
-	}
 	if v, ok := lookupEnv("IMS_JWT_SECRET"); ok {
 		baseCfg.Core.JWTSecret = v
 	}

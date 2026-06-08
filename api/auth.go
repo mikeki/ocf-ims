@@ -21,7 +21,6 @@ import (
 	"fmt"
 	"log/slog"
 	"net/http"
-	"slices"
 	"strings"
 	"time"
 
@@ -176,7 +175,6 @@ type GetAuth struct {
 	imsDBQ             *store.DBQ
 	userStore          directory.UserStore
 	jwtSecret          string
-	admins             []string
 	attachmentsEnabled bool
 }
 
@@ -224,14 +222,14 @@ func (action GetAuth) getAuth(req *http.Request) (GetAuthResponse, *herr.HTTPErr
 	handle := claims.PersonHandle()
 	// Compute global permissions via the shared path so UI-gating flags stay in step
 	// with the authoritative endpoint checks (and with any future non-admin grants).
-	_, globalPermissions, err := authz.EventPermissions(req.Context(), nil, action.imsDBQ, action.userStore, action.admins, *claims)
+	_, globalPermissions, err := authz.EventPermissions(req.Context(), nil, action.imsDBQ, action.userStore, *claims)
 	if err != nil {
 		return resp, herr.InternalServerError("Failed to fetch permissions", err).From("[EventPermissions]")
 	}
 	resp = GetAuthResponse{
 		Authenticated:      true,
 		User:               handle,
-		Admin:              claims.PersonAdmin() || slices.Contains(action.admins, handle),
+		Admin:              claims.PersonAdmin(),
 		CanManagePersonnel: globalPermissions&authz.GlobalAdministratePersonnel != 0,
 	}
 	// event_id is an optional query param for this endpoint
@@ -259,7 +257,7 @@ func (action GetAuth) getAuth(req *http.Request) (GetAuthResponse, *herr.HTTPErr
 			}
 		}
 
-		eventPermissions, _, err := authz.EventPermissions(req.Context(), &event.ID, action.imsDBQ, action.userStore, action.admins, *claims)
+		eventPermissions, _, err := authz.EventPermissions(req.Context(), &event.ID, action.imsDBQ, action.userStore, *claims)
 		if err != nil {
 			return resp, herr.InternalServerError("Failed to fetch event permissions", err).From("[EventPermissions]")
 		}

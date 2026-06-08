@@ -41,7 +41,6 @@ import (
 type GetIncidents struct {
 	imsDBQ             *store.DBQ
 	userStore          directory.UserStore
-	imsAdmins          []string
 	attachmentsEnabled bool
 }
 
@@ -56,7 +55,7 @@ func (action GetIncidents) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 
 func (action GetIncidents) getIncidents(req *http.Request) (imsjson.Incidents, *herr.HTTPError) {
 	resp := make(imsjson.Incidents, 0)
-	event, _, eventPermissions, errHTTP := getEventPermissions(req, action.imsDBQ, action.userStore, action.imsAdmins)
+	event, _, eventPermissions, errHTTP := getEventPermissions(req, action.imsDBQ, action.userStore)
 	if errHTTP != nil {
 		return resp, errHTTP.From("[getEventPermissions]")
 	}
@@ -145,7 +144,6 @@ func (action GetIncidents) getIncidents(req *http.Request) (imsjson.Incidents, *
 type GetIncident struct {
 	imsDBQ             *store.DBQ
 	userStore          directory.UserStore
-	imsAdmins          []string
 	attachmentsEnabled bool
 }
 
@@ -161,7 +159,7 @@ func (action GetIncident) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 func (action GetIncident) getIncident(req *http.Request) (imsjson.Incident, *herr.HTTPError) {
 	var resp imsjson.Incident
 
-	event, jwt, eventPermissions, errHTTP := getEventPermissions(req, action.imsDBQ, action.userStore, action.imsAdmins)
+	event, jwt, eventPermissions, errHTTP := getEventPermissions(req, action.imsDBQ, action.userStore)
 	if errHTTP != nil {
 		return resp, errHTTP.From("[getEventPermissions]")
 	}
@@ -180,7 +178,7 @@ func (action GetIncident) getIncident(req *http.Request) (imsjson.Incident, *her
 		return resp, errHTTP.From("[fetchIncident]")
 	}
 
-	permsByEvent, errHTTP := permissionsByEvent(req.Context(), jwt, action.imsDBQ, action.userStore, action.imsAdmins)
+	permsByEvent, errHTTP := permissionsByEvent(req.Context(), jwt, action.imsDBQ, action.userStore)
 	if errHTTP != nil {
 		return resp, errHTTP.From("[permissionsByEvent]")
 	}
@@ -339,7 +337,6 @@ type NewIncident struct {
 	imsDBQ    *store.DBQ
 	userStore directory.UserStore
 	es        *EventSourcerer
-	imsAdmins []string
 }
 
 func (action NewIncident) ServeHTTP(w http.ResponseWriter, req *http.Request) {
@@ -354,7 +351,7 @@ func (action NewIncident) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 	herr.WriteCreatedResponse(w, http.StatusText(http.StatusCreated))
 }
 func (action NewIncident) newIncident(req *http.Request) (incidentNumber int32, location string, errHTTP *herr.HTTPError) {
-	event, jwtCtx, eventPermissions, errHTTP := getEventPermissions(req, action.imsDBQ, action.userStore, action.imsAdmins)
+	event, jwtCtx, eventPermissions, errHTTP := getEventPermissions(req, action.imsDBQ, action.userStore)
 	if errHTTP != nil {
 		return 0, "", errHTTP.From("[getEventPermissions]")
 	}
@@ -843,7 +840,6 @@ type EditIncident struct {
 	imsDBQ    *store.DBQ
 	userStore directory.UserStore
 	es        *EventSourcerer
-	imsAdmins []string
 }
 
 func (action EditIncident) ServeHTTP(w http.ResponseWriter, req *http.Request) {
@@ -856,7 +852,7 @@ func (action EditIncident) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 }
 
 func (action EditIncident) editIncident(req *http.Request) *herr.HTTPError {
-	event, jwtCtx, eventPermissions, errHTTP := getEventPermissions(req, action.imsDBQ, action.userStore, action.imsAdmins)
+	event, jwtCtx, eventPermissions, errHTTP := getEventPermissions(req, action.imsDBQ, action.userStore)
 	if errHTTP != nil {
 		return errHTTP.From("[getEventPermissions]")
 	}
@@ -891,7 +887,6 @@ type AttachPersonToIncident struct {
 	imsDBQ    *store.DBQ
 	userStore directory.UserStore
 	es        *EventSourcerer
-	imsAdmins []string
 }
 
 func (action AttachPersonToIncident) ServeHTTP(w http.ResponseWriter, req *http.Request) {
@@ -904,7 +899,7 @@ func (action AttachPersonToIncident) ServeHTTP(w http.ResponseWriter, req *http.
 }
 
 func (action AttachPersonToIncident) attachPerson(req *http.Request) *herr.HTTPError {
-	event, jwtCtx, eventPermissions, errHTTP := getEventPermissions(req, action.imsDBQ, action.userStore, action.imsAdmins)
+	event, jwtCtx, eventPermissions, errHTTP := getEventPermissions(req, action.imsDBQ, action.userStore)
 	if errHTTP != nil {
 		return errHTTP.From("[getEventPermissions]")
 	}
@@ -978,7 +973,6 @@ type DetachPersonFromIncident struct {
 	imsDBQ    *store.DBQ
 	userStore directory.UserStore
 	es        *EventSourcerer
-	imsAdmins []string
 }
 
 func (action DetachPersonFromIncident) ServeHTTP(w http.ResponseWriter, req *http.Request) {
@@ -991,7 +985,7 @@ func (action DetachPersonFromIncident) ServeHTTP(w http.ResponseWriter, req *htt
 }
 
 func (action DetachPersonFromIncident) detachPerson(req *http.Request) *herr.HTTPError {
-	event, jwtCtx, eventPermissions, errHTTP := getEventPermissions(req, action.imsDBQ, action.userStore, action.imsAdmins)
+	event, jwtCtx, eventPermissions, errHTTP := getEventPermissions(req, action.imsDBQ, action.userStore)
 	if errHTTP != nil {
 		return errHTTP.From("[getEventPermissions]")
 	}

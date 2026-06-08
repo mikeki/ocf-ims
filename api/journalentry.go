@@ -34,7 +34,6 @@ type EditReportJournalEntry struct {
 	imsDBQ      *store.DBQ
 	userStore   directory.UserStore
 	eventSource *EventSourcerer
-	imsAdmins   []string
 }
 
 func (action EditReportJournalEntry) ServeHTTP(w http.ResponseWriter, req *http.Request) {
@@ -47,7 +46,7 @@ func (action EditReportJournalEntry) ServeHTTP(w http.ResponseWriter, req *http.
 }
 
 func (action EditReportJournalEntry) editJournalEntry(req *http.Request) *herr.HTTPError {
-	event, jwtCtx, eventPermissions, errHTTP := getEventPermissions(req, action.imsDBQ, action.userStore, action.imsAdmins)
+	event, jwtCtx, eventPermissions, errHTTP := getEventPermissions(req, action.imsDBQ, action.userStore)
 	if errHTTP != nil {
 		return errHTTP.From("[getEventPermissions]")
 	}
@@ -124,7 +123,6 @@ type EditIncidentJournalEntry struct {
 	imsDBQ      *store.DBQ
 	userStore   directory.UserStore
 	eventSource *EventSourcerer
-	imsAdmins   []string
 }
 
 func (action EditIncidentJournalEntry) ServeHTTP(w http.ResponseWriter, req *http.Request) {
@@ -137,7 +135,7 @@ func (action EditIncidentJournalEntry) ServeHTTP(w http.ResponseWriter, req *htt
 }
 
 func (action EditIncidentJournalEntry) editIncidentJournalEntry(req *http.Request) *herr.HTTPError {
-	event, jwtCtx, eventPermissions, errHTTP := getEventPermissions(req, action.imsDBQ, action.userStore, action.imsAdmins)
+	event, jwtCtx, eventPermissions, errHTTP := getEventPermissions(req, action.imsDBQ, action.userStore)
 	if errHTTP != nil {
 		return errHTTP.From("[getEventPermissions]")
 	}
@@ -205,7 +203,6 @@ type EditVisitJournalEntry struct {
 	imsDBQ      *store.DBQ
 	userStore   directory.UserStore
 	eventSource *EventSourcerer
-	imsAdmins   []string
 }
 
 func (action EditVisitJournalEntry) ServeHTTP(w http.ResponseWriter, req *http.Request) {
@@ -218,7 +215,7 @@ func (action EditVisitJournalEntry) ServeHTTP(w http.ResponseWriter, req *http.R
 }
 
 func (action EditVisitJournalEntry) editVisitJournalEntry(req *http.Request) *herr.HTTPError {
-	event, jwtCtx, eventPermissions, errHTTP := getEventPermissions(req, action.imsDBQ, action.userStore, action.imsAdmins)
+	event, jwtCtx, eventPermissions, errHTTP := getEventPermissions(req, action.imsDBQ, action.userStore)
 	if errHTTP != nil {
 		return errHTTP.From("[getEventPermissions]")
 	}

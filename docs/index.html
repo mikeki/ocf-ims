@@ -1089,7 +1089,7 @@ sequenceDiagram
     <thead><tr><th>Role</th><th>Granted by</th><th>Gets</th></tr></thead>
     <tbody>
       <tr><td><code>AnyAuthenticatedUser</code></td><td>Successful login</td><td>List events · read incident types · read personnel · read streets</td></tr>
-      <tr><td><code>Administrator</code></td><td>Callsign appears in <code>IMS_ADMINS</code> env var</td><td>Administer events · streets · incident types · places · debugging</td></tr>
+      <tr><td><code>Administrator</code></td><td>Person's <code>PERSON.IS_ADMIN</code> flag is set</td><td>Administer events · streets · incident types · places · debugging</td></tr>
     </tbody>
   </table>
 
@@ -1129,7 +1129,7 @@ flowchart TD
   load --> matchExpr[For each row,<br/>check EXPRESSION + VALIDITY]
   matchExpr --> aggregate[OR perms together]
   aggregate --> globals
-  globals --> adminCheck{handle in<br/>IMS_ADMINS?}
+  globals --> adminCheck{PERSON.IS_ADMIN<br/>set?}
   adminCheck -- yes --> orAdmin[+ Administrator perms]
   adminCheck -- no --> check
   orAdmin --> check{Required<br/>perm satisfied?}
@@ -1138,7 +1138,7 @@ flowchart TD
   </div>
 
   <div class="callout warn">
-    <strong>For your demo:</strong> all <code>EVENT_ACCESS</code> rows in <code>store/fakeimsdb/seed.sql</code> use <code>EXPRESSION = '*'</code>, so every logged-in user gets the same event permissions. Differentiation is purely "Miguel and ShadowDancer are admins (in <code>IMS_ADMINS</code>); TeamMember is not". To showcase the matcher system, rewrite those access rows with scoped expressions like <code>person:Miguel</code>, <code>position:Dancer</code>, etc.
+    <strong>For your demo:</strong> all <code>EVENT_ACCESS</code> rows in <code>store/fakeimsdb/seed.sql</code> use <code>EXPRESSION = '*'</code>, so every logged-in user gets the same event permissions. Differentiation is purely "Miguel is an admin (<code>PERSON.IS_ADMIN</code> set); ShadowDancer and TeamMember are not". To showcase the matcher system, rewrite those access rows with scoped expressions like <code>person:Miguel</code>, <code>position:Dancer</code>, etc.
   </div>
 </section>
 
@@ -1215,7 +1215,7 @@ flowchart TD
     </tbody>
   </table>
 
-  <p class="small">Permission badges are illustrative — the source-of-truth check happens inside each handler via <code>lib/authz</code>. For event-scoped endpoints, "EventReader" / "EventWriter" / "EventReporter" / "EventVisitWriter" correspond to the modes in <code>EVENT_ACCESS.MODE</code>. Endpoints marked <span class="badge gray">admin</span> require the user's callsign to be in <code>IMS_ADMINS</code>.</p>
+  <p class="small">Permission badges are illustrative — the source-of-truth check happens inside each handler via <code>lib/authz</code>. For event-scoped endpoints, "EventReader" / "EventWriter" / "EventReporter" / "EventVisitWriter" correspond to the modes in <code>EVENT_ACCESS.MODE</code>. Endpoints marked <span class="badge gray">admin</span> require the user's <code>PERSON.IS_ADMIN</code> flag to be set.</p>
 </section>
 
 <section id="devprod">
@@ -1229,7 +1229,7 @@ flowchart TD
       <tr><td>Clubhouse directory</td><td>MariaDB container seeded from <code>directory/fakeclubhousedb/seed.sql</code></td><td>Live Clubhouse DB managed by a separate Rails/Laravel app</td></tr>
       <tr><td>Personnel lifecycle</td><td>Edit SQL or re-seed (no UI)</td><td>Managed in the real Clubhouse (signup, training, callsign approval, status changes)</td></tr>
       <tr><td>Password resets</td><td>None — edit <code>password</code> column directly</td><td>Clubhouse-side; IMS login page links out for reset</td></tr>
-      <tr><td>Admins</td><td><code>IMS_ADMINS=Miguel,ShadowDancer</code> in <code>.env</code></td><td>Same mechanism, real callsigns</td></tr>
+      <tr><td>Admins</td><td><code>PERSON.IS_ADMIN</code> flag (Miguel, in the seed); toggle via Admin → People &amp; Passwords</td><td>Same mechanism, managed in-app</td></tr>
       <tr><td>Attachments</td><td>Local filesystem (<code>./ims-attachments</code>)</td><td>S3 bucket, signed URLs</td></tr>
       <tr><td>JWT secret</td><td>Random hex in <code>.env</code> (or regenerated each restart)</td><td>Long-lived secret in secrets manager</td></tr>
       <tr><td>TLS</td><td>Caddy auto-cert via Let's Encrypt</td><td>Same pattern in our setup; ranger-side may differ in production</td></tr>
@@ -1262,7 +1262,6 @@ flowchart TD
       <tr><td><code>IMS_DIRECTORY</code></td><td><code>clubhousedb</code> (default) or <code>noop</code></td></tr>
       <tr><td><code>IMS_DB_*</code></td><td>IMS database connection (host, port, user, password, database)</td></tr>
       <tr><td><code>IMS_DMS_*</code></td><td>Clubhouse database connection — note the historic "DMS" prefix</td></tr>
-      <tr><td><code>IMS_ADMINS</code></td><td>Comma-separated list of callsigns that get Administrator role</td></tr>
       <tr><td><code>IMS_JWT_SECRET</code></td><td>Hex string used to sign JWTs. Unset = regenerated at startup (login lost on restart)</td></tr>
       <tr><td><code>IMS_ATTACHMENTS_STORE</code></td><td><code>local</code> · <code>s3</code> · empty (none)</td></tr>
       <tr><td><code>IMS_TOKEN_LIFETIME</code></td><td>Refresh token lifetime in seconds (default 7 days)</td></tr>

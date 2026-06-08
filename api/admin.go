@@ -22,7 +22,6 @@ import (
 	"strings"
 
 	"github.com/mikeki/ocf-ims/directory"
-	"github.com/mikeki/ocf-ims/lib/authz"
 	"github.com/mikeki/ocf-ims/lib/herr"
 	"github.com/mikeki/ocf-ims/store"
 	"github.com/mikeki/ocf-ims/store/imsdb"
@@ -33,12 +32,10 @@ import (
 // future roles model can let crew leaders reset passwords), this endpoint
 // requires the CALLER to themselves be an administrator. Only admins may create
 // or remove admins: delegating personnel management must never implicitly confer
-// the power to mint admins (a confused-deputy escalation). The IMS_ADMINS
-// environment list is a separate bootstrap path and is not affected here.
+// the power to mint admins (a confused-deputy escalation).
 type SetPersonAdmin struct {
 	imsDBQ    *store.DBQ
 	userStore directory.UserStore
-	imsAdmins []string
 }
 
 type SetPersonAdminRequest struct {
@@ -60,10 +57,10 @@ func (action SetPersonAdmin) setPersonAdmin(req *http.Request) *herr.HTTPError {
 		return errHTTP.From("[getJwtCtx]")
 	}
 	// Only an administrator may change administrator status. Gate on the caller
-	// actually being an admin (their own IS_ADMIN flag or the env bootstrap), not
-	// on a delegatable permission, so that delegating personnel management never
-	// implies the power to mint admins.
-	if !authz.IsAdministrator(jwtCtx.Claims.PersonHandle(), jwtCtx.Claims.PersonAdmin(), action.imsAdmins) {
+	// actually being an admin (their own IS_ADMIN flag), not on a delegatable
+	// permission, so that delegating personnel management never implies the power
+	// to mint admins.
+	if !jwtCtx.Claims.PersonAdmin() {
 		return herr.Forbidden("Only administrators may change administrator status", nil)
 	}
 
@@ -95,7 +92,7 @@ func (action SetPersonAdmin) setPersonAdmin(req *http.Request) *herr.HTTPError {
 	}
 
 	// Guard against removing the last flagged administrator, which would leave the
-	// instance with no in-app admin (recoverable only via the IMS_ADMINS bootstrap).
+	// instance with no admin (recoverable only by a direct DB write).
 	// Clearing a non-admin, or one of several admins, is fine.
 	if !body.IsAdmin && target.IsAdmin {
 		adminCount, err := action.imsDBQ.CountAdmins(req.Context(), action.imsDBQ)

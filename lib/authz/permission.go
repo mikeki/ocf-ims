@@ -119,7 +119,6 @@ func EventPermissions(
 	eventID *int32, // nil for no event
 	imsDBQ *store.DBQ,
 	userStore directory.UserStore,
-	imsAdmins []string,
 	claims IMSClaims,
 ) (eventPermissions map[int32]EventPermissionMask, globalPermissions GlobalPermissionMask, err error) {
 	accessByEvent := make(map[int32][]imsdb.EventAccess)
@@ -158,7 +157,6 @@ func EventPermissions(
 
 	eventPermissions, globalPermissions = ManyEventPermissions(
 		accessByEvent,
-		imsAdmins,
 		claims.PersonHandle(),
 		claims.PersonOnSite(),
 		claims.PersonAdmin(),
@@ -169,22 +167,8 @@ func EventPermissions(
 	return eventPermissions, globalPermissions, nil
 }
 
-// IsAdministrator reports whether a person is a full administrator. A person is
-// an administrator if their local IS_ADMIN flag is set (managed in-app) or their
-// handle is in the IMS_ADMINS bootstrap list — the two are a union, so a fresh
-// database with no flagged admins is still recoverable via the env list.
-//
-// This is the single source of truth for admin status. It is deliberately NOT a
-// delegatable GlobalPermissionMask bit: granting an individual global (e.g.
-// GlobalAdministratePersonnel to a crew leader) must never imply the ability to
-// mint other admins. Endpoints that create/destroy admins gate on this directly.
-func IsAdministrator(handle string, hasAdminFlag bool, imsAdmins []string) bool {
-	return hasAdminFlag || slices.Contains(imsAdmins, handle)
-}
-
 func ManyEventPermissions(
 	accessByEvent map[int32][]imsdb.EventAccess, // eventID as key
-	imsAdmins []string,
 	handle string,
 	onsite bool,
 	isAdmin bool,
@@ -199,7 +183,12 @@ func ManyEventPermissions(
 		globalPermissions |= RolesToGlobalPerms[AnyAuthenticatedUser]
 	}
 
-	if IsAdministrator(handle, isAdmin, imsAdmins) {
+	// Admin status is solely the local PERSON.IS_ADMIN flag (carried in the JWT
+	// claim). It is deliberately NOT a delegatable GlobalPermissionMask bit:
+	// granting an individual global (e.g. GlobalAdministratePersonnel to a future
+	// crew leader) must never imply the ability to mint other admins. Endpoints
+	// that create/destroy admins gate on this flag directly.
+	if isAdmin {
 		globalPermissions |= RolesToGlobalPerms[Administrator]
 	}
 

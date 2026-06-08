@@ -102,29 +102,33 @@ Make "who is an admin" data-driven and manageable in-app, instead of (only) the
 - **Schema** (migration `41-from-40.sql`, v41): add
   `PERSON.IS_ADMIN boolean not null default false`. Append the column last in
   `current.sql` to match the replay test's `SHOW CREATE TABLE` ordering.
-- **Authz**: a single `authz.IsAdministrator(handle, hasAdminFlag, imsAdmins)`
-  helper is the source of truth — a person is an admin when their `IS_ADMIN` is set
-  **or** their handle is in `imsAdmins`. The env list stays as a **bootstrap** (so a
-  fresh DB with no admins is still recoverable) — it's a union, not a replacement.
-  `ManyEventPermissions` OR-s in the `Administrator` global perms via that helper.
-  Plumb `is_admin` into the JWT claims (mirror `PersonOnSite`/`PersonPositions`) so
-  the permission calc needs no extra DB read.
+- **Authz**: admin status is **solely** the local `IS_ADMIN` flag (carried in the
+  JWT claim `Admin`). `ManyEventPermissions` OR-s in the `Administrator` global
+  perms when the claim is set. The `IMS_ADMINS` env list is **removed** (see D2) —
+  there is no parallel env mechanism. Plumb `is_admin` into the JWT claims (mirror
+  `PersonOnSite`/`PersonPositions`) so the permission calc needs no extra DB read.
 - **API/UI**: extend the existing People admin page (`/ims/app/admin/people`) with
   an admin toggle → `POST /ims/api/personnel/{handle}/admin`. **Gate: the caller
-  must themselves be an admin** (`authz.IsAdministrator`), *not* merely hold the
+  must themselves be an admin** (`claims.PersonAdmin()`), *not* merely hold the
   delegatable `GlobalAdministratePersonnel`. Only admins create admins — otherwise,
   once 5b/D-decisions let a crew leader hold `GlobalAdministratePersonnel` (for
   password resets), that leader could self-promote to full admin (a confused-deputy
-  escalation). Last-admin guard: refuse to clear the last remaining flagged admin
-  (avoid lockout); surface as 409.
-- **Seed**: mark the dev admin user `IS_ADMIN = true` in `fakeimsdb/seed.sql`.
+  escalation). Last-admin guard: refuse to clear the last remaining admin (avoid
+  lockout); surface as 409.
+- **Bootstrap**: OCF launches on a fresh DB, so the first admin is seeded by
+  inserting a `PERSON` row with `IS_ADMIN = true` (password hashed via the
+  `hash_password` CLI) — the same operator step that already creates the initial
+  people. The dev seed marks the demo admin (`fakeimsdb/seed.sql`).
 - **Tests**: `is_admin`-grants-Administrator unit test in
-  `lib/authz/permission_test.go`; an integration test that a flagged non-env
-  person gets admin and a cleared one loses it; last-admin guard test.
+  `lib/authz/permission_test.go`; an integration test that a flagged person gets
+  admin and a cleared one loses it; last-admin guard test.
 
-> **Decision needed (D2): keep `IMS_ADMINS` env as a bootstrap, or migrate it
-> away entirely?** Recommendation: **keep as bootstrap** (belt-and-suspenders for
-> a fresh DB / locked-out instance), documented as such.
+> **Decision (D2, settled 2026-06-07): remove `IMS_ADMINS` entirely.** Post-Clubhouse
+> all people are local DB rows, and the operator who seeds the initial people can set
+> `IS_ADMIN = true` on the bootstrap insert — so the env list adds no bootstrap power
+> that DB access doesn't already give. Recovery from a zero-admin state is a direct DB
+> write, and the last-admin guard prevents reaching zero through the UI. Removing it
+> deletes the parallel admin mechanism and its plumbing.
 
 ### 5b — Role tiers (Basic Reporter / Coordinator / Management)
 
@@ -230,7 +234,7 @@ keep `TestMigrateSameAsCurrentSchema` green.
 | # | Decision | Recommendation |
 |---|---|---|
 | D1 | Rename `TEAM`/`POSITION` → `CREW`/`TITLE` tables? | **No** — UI relabel only, keep DB/API names |
-| D2 | Keep `IMS_ADMINS` env as bootstrap? | **Yes** — union with `IS_ADMIN`, documented |
+| D2 | Keep `IMS_ADMINS` env as bootstrap? | **No (settled)** — removed; bootstrap by seeding an `IS_ADMIN = true` row |
 | D3 | Include a read-only "Reviewer" tier? | Optional; maps to existing `read` mode |
 | D4 | Parent-crew leadership cascades to sub-crews? | **Parked** with invites (post-fair) |
 | D5 | What can a crew leader *do*? | **Parked** with invites (post-fair) |
@@ -238,7 +242,7 @@ keep `TestMigrateSameAsCurrentSchema` green.
 
 ## 8. Exit criteria
 
-- In-app admin management works; `IMS_ADMINS` is bootstrap-only.
+- In-app admin management works; `IMS_ADMINS` is removed (admin = `IS_ADMIN` flag only).
 - Role tiers are documented and surfaced in the access-grant UI.
 - Crews nest (one level) and carry leader edges; titles manage locally.
 - Admin UI covers crew/title CRUD + person assignment, gated and 403-tested.

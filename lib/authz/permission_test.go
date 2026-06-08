@@ -23,8 +23,6 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-var testAdmins = []string{"AdminCat", "AdminDog"}
-
 const (
 	readerPerm             = EventReadEventName | EventReadIncidents | EventReadOwnReports | EventReadAllReports | EventReadVisits | EventReadAreas
 	writerPerm             = EventReadEventName | EventReadIncidents | EventWriteIncidents | EventReadAllReports | EventReadOwnReports | EventWriteAllReports | EventWriteOwnReports | EventReadVisits | EventWriteVisits | EventReadAreas
@@ -45,16 +43,6 @@ func addPerm(m map[int32][]imsdb.EventAccess, eventID int32, expr string, mode i
 	)
 }
 
-func TestIsAdministrator(t *testing.T) {
-	t.Parallel()
-	// Env bootstrap list grants admin.
-	require.True(t, IsAdministrator("AdminCat", false, testAdmins))
-	// Local IS_ADMIN flag grants admin even off the env list.
-	require.True(t, IsAdministrator("SomeoneElse", true, testAdmins))
-	// Neither flag nor env membership → not an admin.
-	require.False(t, IsAdministrator("SomeoneElse", false, testAdmins))
-}
-
 func TestManyEventPermissions_personRules(t *testing.T) {
 	t.Parallel()
 	accessByEvent := make(map[int32][]imsdb.EventAccess)
@@ -66,7 +54,6 @@ func TestManyEventPermissions_personRules(t *testing.T) {
 
 	permissions, globalPermissions := ManyEventPermissions(
 		accessByEvent,
-		testAdmins,
 		"EventReaderGuy",
 		true,
 		false,
@@ -80,7 +67,6 @@ func TestManyEventPermissions_personRules(t *testing.T) {
 
 	permissions, globalPermissions = ManyEventPermissions(
 		accessByEvent,
-		testAdmins,
 		"EventWriterGal",
 		true,
 		false,
@@ -94,7 +80,6 @@ func TestManyEventPermissions_personRules(t *testing.T) {
 
 	permissions, globalPermissions = ManyEventPermissions(
 		accessByEvent,
-		testAdmins,
 		"EventReporterPerson",
 		true,
 		false,
@@ -108,7 +93,6 @@ func TestManyEventPermissions_personRules(t *testing.T) {
 
 	permissions, globalPermissions = ManyEventPermissions(
 		accessByEvent,
-		testAdmins,
 		"EventVisitWriterPerson",
 		true,
 		false,
@@ -120,12 +104,13 @@ func TestManyEventPermissions_personRules(t *testing.T) {
 	require.Equal(t, visitWriterPerm, permissions[123])
 	require.Equal(t, authenticatedUserPerms, globalPermissions)
 
+	// A flagged admin (isAdmin=true) gets the Administrator global perms even with
+	// no matching event-access rows.
 	permissions, globalPermissions = ManyEventPermissions(
 		accessByEvent,
-		testAdmins,
-		"AdminCat",
+		"FlaggedAdmin",
 		true,
-		false,
+		true,
 		[]string{},
 		[]string{},
 		"",
@@ -145,7 +130,6 @@ func TestManyEventPermissions_positionRules(t *testing.T) {
 	// this user matches both a person and a position rule on event 123
 	permissions, globalPermissions := ManyEventPermissions(
 		accessByEvent,
-		testAdmins,
 		"Running Ranger",
 		true,
 		false,
@@ -168,7 +152,6 @@ func TestManyEventPermissions_teamRules(t *testing.T) {
 	// this user matches both a team and position rule on event 123
 	permissions, globalPermissions := ManyEventPermissions(
 		accessByEvent,
-		testAdmins,
 		"Running Ranger",
 		true,
 		false,
@@ -191,7 +174,6 @@ func TestManyEventPermissions_onDutyRules(t *testing.T) {
 	// this user matches both a person and an onduty rule on event 123
 	permissions, globalPermissions := ManyEventPermissions(
 		accessByEvent,
-		testAdmins,
 		"Running Ranger",
 		true,
 		false,
@@ -211,7 +193,6 @@ func TestManyEventPermissions_wildcardValidity(t *testing.T) {
 
 	permissions, globalPermissions := ManyEventPermissions(
 		accessByEvent,
-		testAdmins,
 		"Onsite Ranger",
 		true,
 		false,
@@ -224,7 +205,6 @@ func TestManyEventPermissions_wildcardValidity(t *testing.T) {
 
 	permissions, globalPermissions = ManyEventPermissions(
 		accessByEvent,
-		testAdmins,
 		"Offsite Ranger",
 		false,
 		false,
@@ -236,18 +216,16 @@ func TestManyEventPermissions_wildcardValidity(t *testing.T) {
 	require.Equal(t, authenticatedUserPerms, globalPermissions)
 }
 
-// TestManyEventPermissions_isAdminRules verifies the local IS_ADMIN flag grants
-// the Administrator global permissions even for a handle that is not in the
-// IMS_ADMINS bootstrap list, and that a non-flagged, non-env user does not get
-// them.
+// TestManyEventPermissions_isAdminRules verifies the local IS_ADMIN flag is what
+// grants the Administrator global permissions, and that a non-flagged user does
+// not get them.
 func TestManyEventPermissions_isAdminRules(t *testing.T) {
 	t.Parallel()
 	accessByEvent := make(map[int32][]imsdb.EventAccess)
 
-	// Flagged local admin, NOT in testAdmins → still gets admin global perms.
+	// Flagged local admin → gets admin global perms.
 	_, globalPermissions := ManyEventPermissions(
 		accessByEvent,
-		testAdmins,
 		"LocalAdmin",
 		true,
 		true,
@@ -260,7 +238,6 @@ func TestManyEventPermissions_isAdminRules(t *testing.T) {
 	// Same handle without the flag → ordinary authenticated user only.
 	_, globalPermissions = ManyEventPermissions(
 		accessByEvent,
-		testAdmins,
 		"LocalAdmin",
 		true,
 		false,

@@ -44,7 +44,6 @@ const minPasswordLength = 8
 type SetPersonPassword struct {
 	imsDBQ    *store.DBQ
 	userStore directory.UserStore
-	imsAdmins []string
 }
 
 type SetPersonPasswordRequest struct {
@@ -62,7 +61,7 @@ func (action SetPersonPassword) ServeHTTP(w http.ResponseWriter, req *http.Reque
 }
 
 func (action SetPersonPassword) setPersonPassword(req *http.Request) *herr.HTTPError {
-	_, globalPermissions, errHTTP := getGlobalPermissions(req, action.imsDBQ, action.userStore, action.imsAdmins)
+	_, globalPermissions, errHTTP := getGlobalPermissions(req, action.imsDBQ, action.userStore)
 	if errHTTP != nil {
 		return errHTTP.From("[getGlobalPermissions]")
 	}

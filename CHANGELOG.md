@@ -24,7 +24,7 @@ https://github.com/burningmantech/ranger-ims-go/pull/528
 
 ### Added
 
-- Administrators can now be managed in-app: each person has an `IS_ADMIN` flag (schema v41), toggled from **Admin → People & Passwords** (`/ims/app/admin/people`) or `POST /ims/api/personnel/{handle}/admin`. A flagged person gets the same unrestricted access as before; the `IMS_ADMINS` environment list is kept as a bootstrap (the two are a union). Only an administrator may change admin status (the endpoint requires the caller to be an admin, not merely to hold the delegatable personnel-management permission), and it refuses to clear the last remaining flagged admin.
+- Administrators are now managed in-app via a `PERSON.IS_ADMIN` flag (schema v41), toggled from **Admin → People & Passwords** (`/ims/app/admin/people`) or `POST /ims/api/personnel/{handle}/admin`. This **replaces the `IMS_ADMINS` environment list**, which has been removed — admin status is now solely the database flag. Only an administrator may change admin status (the endpoint requires the caller to be an admin, not merely to hold the delegatable personnel-management permission), and it refuses to clear the last remaining admin. A fresh deployment seeds its first admin by inserting a `PERSON` row with `IS_ADMIN = true`.
 - Admins can set or reset a person's password from inside IMS, via **Admin → People & Passwords** (`/ims/app/admin/people`) or `POST /ims/api/personnel/{handle}/password`. The action is gated on a new `GlobalAdministratePersonnel` permission (held by admins today).
 
 ### Changed
@@ -34,6 +34,7 @@ https://github.com/burningmantech/ranger-ims-go/pull/528
 
 ### Removed
 
+- Removed the `IMS_ADMINS` environment variable. Administrators are now defined solely by the `PERSON.IS_ADMIN` database flag (see Added), removing the parallel env-based admin mechanism and its plumbing.
 - Removed the dead Clubhouse credentials notice and password-reset links from the login page.
 
 ## 2026-02

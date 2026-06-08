@@ -70,15 +70,12 @@ const (
 	userBobEmail           = "bobtestranger@example.com"
 	userBobInitialPassword = "password"
 
-	// Carol and Dave are dedicated to the IS_ADMIN toggle test, so it can flag/unflag
-	// them (and exercise the last-admin guard) without touching admins that other
-	// parallel tests rely on. Both share Alice's seeded password hash.
+	// Carol is dedicated to the IS_ADMIN toggle test, so it can flag/unflag her
+	// without touching admins that other parallel tests rely on. She shares Alice's
+	// seeded password hash.
 	userCarolHandle   = "CarolTestRanger"
 	userCarolEmail    = "caroltestranger@example.com"
 	userCarolPassword = "password"
-	userDaveHandle    = "DaveTestRanger"
-	userDaveEmail     = "davetestranger@example.com"
-	userDavePassword  = "password"
 )
 
 // imsPeopleTestSeed seeds the local IMS-DB people directory used by the integration
@@ -87,12 +84,11 @@ const (
 // exercised. The person_id FKs (attachments, journal-entry author) resolve against
 // these rows and the author join renders the expected handle.
 const imsPeopleTestSeed = `
-insert into PERSON (ID, HANDLE, EMAIL, PASSWORD, STATUS, ON_SITE, CREATED) values
-    (6000, 'AdminTestRanger', 'admintestranger@example.com', '$argon2id$v=19$m=1,t=1,p=1$51uXrZoFRb6O4Tw4TsAJVQ$SedDwp+hPpIJc42QcnFJy6EOtE+b5kyYFpnuRHl/5qs', 'active', true, 0),
-    (6001, 'AliceTestRanger', 'alicetestranger@example.com', '$argon2id$v=19$m=1,t=1,p=1$eg9U8hLotCSmyCph1BQroA$KFfy0uDDpP+cXPnkSQRXt3z0Shd7M39tsrwJZuDrOdU', 'active', true, 0),
-    (6002, 'BobTestRanger', 'bobtestranger@example.com', '$argon2id$v=19$m=1,t=1,p=1$eg9U8hLotCSmyCph1BQroA$KFfy0uDDpP+cXPnkSQRXt3z0Shd7M39tsrwJZuDrOdU', 'active', true, 0),
-    (6003, 'CarolTestRanger', 'caroltestranger@example.com', '$argon2id$v=19$m=1,t=1,p=1$eg9U8hLotCSmyCph1BQroA$KFfy0uDDpP+cXPnkSQRXt3z0Shd7M39tsrwJZuDrOdU', 'active', true, 0),
-    (6004, 'DaveTestRanger', 'davetestranger@example.com', '$argon2id$v=19$m=1,t=1,p=1$eg9U8hLotCSmyCph1BQroA$KFfy0uDDpP+cXPnkSQRXt3z0Shd7M39tsrwJZuDrOdU', 'active', true, 0);
+insert into PERSON (ID, HANDLE, EMAIL, PASSWORD, STATUS, ON_SITE, CREATED, IS_ADMIN) values
+    (6000, 'AdminTestRanger', 'admintestranger@example.com', '$argon2id$v=19$m=1,t=1,p=1$51uXrZoFRb6O4Tw4TsAJVQ$SedDwp+hPpIJc42QcnFJy6EOtE+b5kyYFpnuRHl/5qs', 'active', true, 0, true),
+    (6001, 'AliceTestRanger', 'alicetestranger@example.com', '$argon2id$v=19$m=1,t=1,p=1$eg9U8hLotCSmyCph1BQroA$KFfy0uDDpP+cXPnkSQRXt3z0Shd7M39tsrwJZuDrOdU', 'active', true, 0, false),
+    (6002, 'BobTestRanger', 'bobtestranger@example.com', '$argon2id$v=19$m=1,t=1,p=1$eg9U8hLotCSmyCph1BQroA$KFfy0uDDpP+cXPnkSQRXt3z0Shd7M39tsrwJZuDrOdU', 'active', true, 0, false),
+    (6003, 'CarolTestRanger', 'caroltestranger@example.com', '$argon2id$v=19$m=1,t=1,p=1$eg9U8hLotCSmyCph1BQroA$KFfy0uDDpP+cXPnkSQRXt3z0Shd7M39tsrwJZuDrOdU', 'active', true, 0, false);
 insert into ` + "`POSITION`" + ` (ID, NAME) values (7000, 'Nooperator');
 insert into TEAM (ID, NAME) values (8000, 'Brown Dot');
 insert into PERSON__POSITION (PERSON_ID, POSITION_ID) values (6001, 7000);
@@ -125,7 +121,8 @@ func setup(ctx context.Context, tempDir string) {
 
 	shared.cfg = conf.DefaultIMS()
 	shared.cfg.Core.JWTSecret = "jwtsecret-" + rand.NonCryptoText()
-	shared.cfg.Core.Admins = []string{userAdminHandle}
+	// AdminTestRanger's admin status comes from the IS_ADMIN flag set in
+	// imsPeopleTestSeed (there is no IMS_ADMINS env list anymore).
 	// 100 KiB, much lower than we'd use outside tests, since we want to test error cases
 	// when requests are too large.
 	shared.cfg.Core.MaxRequestBytes = 100 << 10

@@ -78,5 +78,5 @@ docker restart ocf-ims
 ## Notes
 
 - Only `active`-status persons are loaded by the directory (the `People` query filters on `STATUS = 'active'`), so seed new login users with `STATUS = 'active'`.
-- `IMS_ADMINS` (in `.env`) controls which handles get admin access — adding a user here does **not** grant admin.
+- Admin access is the `PERSON.IS_ADMIN` flag (default `false`) — a seeded user is **not** an admin unless you set `IS_ADMIN = true` on their row (or toggle it later from Admin → People & Passwords).
 - Positions/teams are separate tables (`POSITION`, `TEAM`, `PERSON__POSITION`, `PERSON__TEAM`) — only add rows there if the user explicitly asks. Note `POSITION` is a reserved word and must be backticked in SQL.

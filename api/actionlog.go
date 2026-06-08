@@ -31,7 +31,6 @@ import (
 type GetActionLogs struct {
 	imsDBQ    *store.DBQ
 	userStore directory.UserStore
-	imsAdmins []string
 }
 
 func (action GetActionLogs) ServeHTTP(w http.ResponseWriter, req *http.Request) {
@@ -44,7 +43,7 @@ func (action GetActionLogs) ServeHTTP(w http.ResponseWriter, req *http.Request) 
 }
 
 func (action GetActionLogs) getActionLogs(req *http.Request) (imsjson.ActionLogs, *herr.HTTPError) {
-	_, globalPermissions, errHTTP := getGlobalPermissions(req, action.imsDBQ, action.userStore, action.imsAdmins)
+	_, globalPermissions, errHTTP := getGlobalPermissions(req, action.imsDBQ, action.userStore)
 	if errHTTP != nil {
 		return nil, errHTTP.From("[getGlobalPermissions]")
 	}

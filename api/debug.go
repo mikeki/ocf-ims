@@ -38,19 +38,16 @@ var serverStartTime = time.Now()
 type GetBuildInfo struct {
 	imsDBQ    *store.DBQ
 	userStore directory.UserStore
-	imsAdmins []string
 }
 
 type GetRuntimeMetrics struct {
 	imsDBQ    *store.DBQ
 	userStore directory.UserStore
-	imsAdmins []string
 }
 
 type PerformGC struct {
 	imsDBQ    *store.DBQ
 	userStore directory.UserStore
-	imsAdmins []string
 }
 
 func (action GetBuildInfo) ServeHTTP(w http.ResponseWriter, req *http.Request) {
@@ -67,7 +64,7 @@ func (action GetBuildInfo) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 
 func (action GetBuildInfo) getBuildInfo(req *http.Request) (debug.BuildInfo, *herr.HTTPError) {
 	empty := debug.BuildInfo{}
-	_, globalPermissions, errHTTP := getGlobalPermissions(req, action.imsDBQ, action.userStore, action.imsAdmins)
+	_, globalPermissions, errHTTP := getGlobalPermissions(req, action.imsDBQ, action.userStore)
 	if errHTTP != nil {
 		return empty, errHTTP.From("[getGlobalPermissions]")
 	}
@@ -100,7 +97,7 @@ func (action GetRuntimeMetrics) ServeHTTP(w http.ResponseWriter, req *http.Reque
 }
 
 func (action GetRuntimeMetrics) getRuntimeMetrics(req *http.Request) (string, *herr.HTTPError) {
-	_, globalPermissions, errHTTP := getGlobalPermissions(req, action.imsDBQ, action.userStore, action.imsAdmins)
+	_, globalPermissions, errHTTP := getGlobalPermissions(req, action.imsDBQ, action.userStore)
 	if errHTTP != nil {
 		return "", errHTTP.From("[getGlobalPermissions]")
 	}
@@ -178,7 +175,7 @@ func (action PerformGC) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 }
 
 func (action PerformGC) performGC(req *http.Request) *herr.HTTPError {
-	_, globalPermissions, errHTTP := getGlobalPermissions(req, action.imsDBQ, action.userStore, action.imsAdmins)
+	_, globalPermissions, errHTTP := getGlobalPermissions(req, action.imsDBQ, action.userStore)
 	if errHTTP != nil {
 		return errHTTP.From("[getGlobalPermissions]")
 	}

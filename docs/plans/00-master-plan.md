@@ -331,7 +331,7 @@ OCF target roles (draft):
 **Phase 5 tasks (detailed in [`50-roles-permissions.md`](50-roles-permissions.md)).**
 Beta scope decided 2026-06-07 = slices **5a–5d**; invites / emailed reset / onduty
 deferred post-fair:
-- [ ] **5a** — `PERSON.IS_ADMIN` flag (in-app admin; `IMS_ADMINS` env → bootstrap only).
+- [ ] **5a** — `PERSON.IS_ADMIN` flag (in-app admin; **replaces** the removed `IMS_ADMINS` env list).
 - [ ] **5b** — Role tiers (Basic Reporter / Coordinator / Management) labeled over existing primitives.
 - [ ] **5c** — Nestable crews (`TEAM.PARENT_TEAM_ID`) + crew-leader edges (`PERSON__TEAM.IS_LEADER`); additive.
 - [ ] **5d** — Crew/title admin UI + person assignment.
