@@ -74,7 +74,7 @@ func TestTemplEndpoints(t *testing.T) {
 		bod, err := io.ReadAll(resp.Body)
 		require.NoError(t, resp.Body.Close())
 		require.NoError(t, err)
-		require.Contains(t, string(bod), "IMS © Burning Man Project")
+		require.Contains(t, string(bod), "IMS © Oregon Country Fair")
 	}
 }
 
