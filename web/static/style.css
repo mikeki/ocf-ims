@@ -280,9 +280,16 @@ h1 {
 }
 
 .logo-icon {
-  width: 2.5rem;
+  width: auto;
   height: 1.8rem;
-  fill: currentcolor
+  object-fit: contain;
+}
+
+/* The OCF wordmark is white-on-transparent, so it reads on a dark navbar but would
+   vanish on the light theme's navbar. Invert it in light mode so it shows as dark,
+   mirroring the previous currentColor-driven behavior. */
+[data-bs-theme="light"] .logo-icon {
+  filter: invert(1);
 }
 
 @media print {

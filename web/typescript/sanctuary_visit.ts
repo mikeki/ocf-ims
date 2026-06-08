@@ -330,7 +330,7 @@ function drawVisitFields(): void {
     drawVisitTitle("for_display");
     el.visitNumber.value = (visit?.number??"(new)").toString();
 
-    let docTitle = "Sanctuary Visit";
+    let docTitle = "White Bird Visit";
     if (visit?.number == null) {
         docTitle = `New ${docTitle}`;
     } else if (visit?.departure_time) {
