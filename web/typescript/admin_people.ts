@@ -21,6 +21,9 @@ import * as ims from "./ims.ts";
 declare global {
     interface Window {
         submitSetPassword: ()=>Promise<void>;
+        showAddPersonModal: ()=>void;
+        submitCreatePerson: ()=>Promise<void>;
+        submitEditPerson: ()=>Promise<void>;
     }
 }
 
@@ -33,6 +36,15 @@ const el = {
     setPasswordHandle: ims.typedElement("set_password_handle", HTMLElement),
     setPasswordInput: ims.typedElement("set_password_input", HTMLInputElement),
     setPasswordConfirm: ims.typedElement("set_password_confirm", HTMLInputElement),
+    addPersonModal: ims.typedElement("addPersonModal", HTMLElement),
+    addPersonHandle: ims.typedElement("add_person_handle", HTMLInputElement),
+    addPersonEmail: ims.typedElement("add_person_email", HTMLInputElement),
+    addPersonPassword: ims.typedElement("add_person_password", HTMLInputElement),
+    addPersonOnsite: ims.typedElement("add_person_onsite", HTMLInputElement),
+    editPersonModal: ims.typedElement("editPersonModal", HTMLElement),
+    editPersonHandle: ims.typedElement("edit_person_handle", HTMLElement),
+    editPersonStatus: ims.typedElement("edit_person_status", HTMLSelectElement),
+    editPersonOnsite: ims.typedElement("edit_person_onsite", HTMLInputElement),
 };
 
 initAdminPeoplePage();
@@ -50,6 +62,9 @@ async function initAdminPeoplePage(): Promise<void> {
     }
 
     window.submitSetPassword = submitSetPassword;
+    window.showAddPersonModal = showAddPersonModal;
+    window.submitCreatePerson = submitCreatePerson;
+    window.submitEditPerson = submitEditPerson;
 
     await loadAndDrawPeople();
     ims.hideLoadingOverlay();
@@ -65,7 +80,7 @@ async function loadAndDrawPeople(): Promise<void> {
 }
 
 async function loadPeople(): Promise<{err:string|null}> {
-    const {json, err} = await ims.fetchNoThrow<ims.Personnel[]>(url_personnel, {
+    const {json, err} = await ims.fetchNoThrow<ims.Personnel[]>(url_personnel + "?all=true", {
         headers: {"Cache-Control": "no-cache"},
     });
     if (err != null || json == null) {
@@ -91,7 +106,8 @@ function drawPeople(): void {
 
         entryItem.dataset["personHandle"] = person.handle;
         entryItem.getElementsByClassName("person-handle")[0]!.textContent = person.handle;
-        entryItem.getElementsByClassName("person-status")[0]!.textContent = person.status;
+        entryItem.getElementsByClassName("person-status")[0]!.textContent =
+            person.status + (person.onsite ? " · on site" : "");
 
         const showModal: HTMLElement = entryItem.querySelector(".show-set-password-modal")!;
         showModal.addEventListener("click",
@@ -109,6 +125,17 @@ function drawPeople(): void {
         adminToggle.addEventListener("click",
             function (_e: MouseEvent): void {
                 void toggleAdmin(person, adminToggle);
+            },
+        );
+
+        const showEdit: HTMLElement = entryItem.querySelector(".show-edit-modal")!;
+        showEdit.addEventListener("click",
+            function (_e: MouseEvent): void {
+                el.editPersonModal.dataset["personHandle"] = person.handle;
+                el.editPersonHandle.textContent = person.handle;
+                el.editPersonStatus.value = person.status;
+                el.editPersonOnsite.checked = person.onsite ?? false;
+                ims.bsModal(el.editPersonModal).show();
             },
         );
 
@@ -170,4 +197,69 @@ async function submitSetPassword(): Promise<void> {
     }
     ims.controlHasSuccess(el.setPasswordInput);
     ims.bsModal(el.setPasswordModal).hide();
+}
+
+function showAddPersonModal(): void {
+    el.addPersonHandle.value = "";
+    el.addPersonEmail.value = "";
+    el.addPersonPassword.value = "";
+    el.addPersonOnsite.checked = false;
+    ims.bsModal(el.addPersonModal).show();
+}
+
+async function submitCreatePerson(): Promise<void> {
+    const handle = el.addPersonHandle.value.trim();
+    if (!handle) {
+        ims.controlHasError(el.addPersonHandle);
+        ims.setErrorMessage("Handle is required.");
+        return;
+    }
+    const password = el.addPersonPassword.value;
+    if (password !== "" && password.length < minPasswordLength) {
+        ims.controlHasError(el.addPersonPassword);
+        ims.setErrorMessage(`Password must be at least ${minPasswordLength} characters (or left blank).`);
+        return;
+    }
+
+    const {err} = await ims.fetchNoThrow(url_personnel, {
+        body: JSON.stringify({
+            "handle": handle,
+            "email": el.addPersonEmail.value.trim(),
+            "password": password,
+            "onsite": el.addPersonOnsite.checked,
+        }),
+    });
+    if (err != null) {
+        ims.controlHasError(el.addPersonHandle);
+        const message = `Failed to create person:\n${err}`;
+        console.error(message);
+        ims.setErrorMessage(message);
+        return;
+    }
+    ims.bsModal(el.addPersonModal).hide();
+    ims.clearErrorMessage();
+    await loadAndDrawPeople();
+}
+
+async function submitEditPerson(): Promise<void> {
+    const handle = el.editPersonModal.dataset["personHandle"];
+    if (!handle) {
+        return;
+    }
+    const url = url_personnelEdit.replace("<person_handle>", encodeURIComponent(handle));
+    const {err} = await ims.fetchNoThrow(url, {
+        body: JSON.stringify({
+            "status": el.editPersonStatus.value,
+            "onsite": el.editPersonOnsite.checked,
+        }),
+    });
+    if (err != null) {
+        const message = `Failed to edit person:\n${err}`;
+        console.error(message);
+        ims.setErrorMessage(message);
+        return;
+    }
+    ims.bsModal(el.editPersonModal).hide();
+    ims.clearErrorMessage();
+    await loadAndDrawPeople();
 }

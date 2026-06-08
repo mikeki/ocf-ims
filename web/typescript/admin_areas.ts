@@ -21,7 +21,8 @@ import * as ims from "./ims.ts";
 declare global {
     interface Window {
         loadAreas: ()=>Promise<void>;
-        createArea: (el: HTMLInputElement)=>Promise<void>;
+        showAddAreaModal: ()=>void;
+        submitCreateArea: ()=>Promise<void>;
         setAreaName: (el: HTMLInputElement)=>Promise<void>;
         setAreaParent: (el: HTMLSelectElement)=>Promise<void>;
         setAreaSortOrder: (el: HTMLInputElement)=>Promise<void>;
@@ -32,14 +33,23 @@ declare global {
 // Initialize UI
 //
 
+// Remembers the last event whose areas were viewed, so the page can reselect it
+// and auto-load on the next visit.
+const lastEventKey = "admin_areas_event";
+
 const el = {
-    eventName: ims.typedElement("event-name", HTMLInputElement),
+    eventName: ims.typedElement("event-name", HTMLSelectElement),
+    areasContainer: ims.typedElement("areas_container", HTMLElement),
     areas: ims.typedElement("areas", HTMLElement),
     areaLiTemplate: ims.typedElement("area_li_template", HTMLTemplateElement),
     editAreaModal: ims.typedElement("editAreaModal", HTMLElement),
     editAreaName: ims.typedElement("edit_area_name", HTMLInputElement),
     editAreaParent: ims.typedElement("edit_area_parent", HTMLSelectElement),
     editAreaSortOrder: ims.typedElement("edit_area_sort_order", HTMLInputElement),
+    addAreaModal: ims.typedElement("addAreaModal", HTMLElement),
+    addAreaName: ims.typedElement("add_area_name", HTMLInputElement),
+    addAreaParent: ims.typedElement("add_area_parent", HTMLSelectElement),
+    addAreaSortOrder: ims.typedElement("add_area_sort_order", HTMLInputElement),
 };
 
 initAdminAreasPage();
@@ -52,13 +62,42 @@ async function initAdminAreasPage(): Promise<void> {
     }
 
     window.loadAreas = loadAreas;
-    window.createArea = createArea;
+    window.showAddAreaModal = showAddAreaModal;
+    window.submitCreateArea = submitCreateArea;
     window.setAreaName = setAreaName;
     window.setAreaParent = setAreaParent;
     window.setAreaSortOrder = setAreaSortOrder;
 
+    await loadEventOptions();
+
+    // Reselect the last-viewed event and load its areas automatically.
+    const lastEvent = localStorage.getItem(lastEventKey);
+    if (lastEvent && [...el.eventName.options].some(o => o.value === lastEvent)) {
+        el.eventName.value = lastEvent;
+        await loadAreas();
+    }
+
     ims.hideLoadingOverlay();
     ims.enableEditing();
+}
+
+// loadEventOptions populates the event picker with the (non-group) events. Areas
+// are per-event, and only non-group events can hold areas/incidents.
+async function loadEventOptions(): Promise<void> {
+    const {json, err} = await ims.fetchNoThrow<ims.EventData[]>(url_events, null);
+    if (err != null || json == null) {
+        ims.setErrorMessage(`Failed to load events: ${err}`);
+        return;
+    }
+    const events = json.sort((a, b) => a.name.localeCompare(b.name));
+    // Keep the leading placeholder option; replace the rest.
+    el.eventName.querySelectorAll("option:not([value=''])").forEach(o => {o.remove()});
+    for (const event of events) {
+        const opt = document.createElement("option");
+        opt.value = event.name;
+        opt.textContent = event.name;
+        el.eventName.append(opt);
+    }
 }
 
 // The event whose areas are currently loaded; the area API is per-event.
@@ -72,11 +111,15 @@ function areasURL(): string {
 async function loadAreas(): Promise<void> {
     ims.clearErrorMessage();
     currentEvent = el.eventName.value.trim();
+    // The areas table (and its New-area button) only make sense once an event is
+    // chosen, so keep the whole card hidden until then.
+    el.areasContainer.classList.toggle("hidden", !currentEvent);
     if (!currentEvent) {
         adminAreas = [];
         drawAreas();
         return;
     }
+    localStorage.setItem(lastEventKey, currentEvent);
 
     const {json, err} = await ims.fetchNoThrow<ims.Areas>(areasURL(), {
         headers: {"Cache-Control": "no-cache"},
@@ -163,15 +206,53 @@ function populateParentOptions(editing: ims.Area): void {
     select.value = editing.parent_slug??"";
 }
 
-async function createArea(sender: HTMLInputElement): Promise<void> {
+// showAddAreaModal opens the New-area modal, prefilled with the event's top-level
+// areas as parent options. The button is only visible once an event is selected.
+function showAddAreaModal(): void {
     if (!currentEvent) {
-        ims.setErrorMessage("Enter an event name before adding areas.");
         return;
     }
-    const {err} = await sendArea({name: sender.value});
-    if (err == null) {
-        sender.value = "";
+    el.addAreaName.value = "";
+    el.addAreaSortOrder.value = "0";
+    populateAddParentOptions();
+    ims.bsModal(el.addAreaModal).show();
+}
+
+// populateAddParentOptions fills the New-area modal's parent <select> with the
+// event's top-level areas (single-level hierarchy, so children can't be parents).
+function populateAddParentOptions(): void {
+    const select = el.addAreaParent;
+    select.querySelectorAll("option:not([value=''])").forEach(o => {o.remove()});
+    const candidates = adminAreas.filter(a => !a.parent_slug).sort(compareAreas);
+    for (const a of candidates) {
+        const opt = document.createElement("option");
+        opt.value = a.slug??"";
+        opt.textContent = a.name??"";
+        select.append(opt);
     }
+    select.value = "";
+}
+
+async function submitCreateArea(): Promise<void> {
+    if (!currentEvent) {
+        return;
+    }
+    const name = el.addAreaName.value.trim();
+    if (!name) {
+        ims.controlHasError(el.addAreaName);
+        ims.setErrorMessage("Area name is required.");
+        return;
+    }
+    const {err} = await sendArea({
+        name: name,
+        parent_slug: el.addAreaParent.value,
+        sort_order: ims.parseInt10(el.addAreaSortOrder.value)??0,
+    });
+    if (err != null) {
+        ims.controlHasError(el.addAreaName);
+        return;
+    }
+    ims.bsModal(el.addAreaModal).hide();
     await loadAreas();
 }
 

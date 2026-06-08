@@ -54,10 +54,77 @@ templ AdminPeople(deployment, versionName, versionRef string) {
       </div>
     </div>
 
+    <div class="modal no-print" id="addPersonModal" tabindex="-1" aria-labelledby="addPersonModalLabel" aria-hidden="true">
+      <div class="modal-dialog">
+        <div class="modal-content">
+          <div class="modal-header">
+            <p class="modal-title fs-5" id="addPersonModalLabel">Add Person</p>
+            <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close" />
+          </div>
+          <div class="modal-body row">
+            <div class="form-floating mb-3">
+              <input id="add_person_handle" type="text" class="form-control" autocomplete="off" placeholder="Handle" />
+              <label for="add_person_handle">Handle (required)</label>
+            </div>
+            <div class="form-floating mb-3">
+              <input id="add_person_email" type="email" class="form-control" autocomplete="off" placeholder="Email" />
+              <label for="add_person_email">Email (optional)</label>
+            </div>
+            <div class="form-floating mb-3">
+              <input id="add_person_password" type="password" class="form-control" autocomplete="new-password" placeholder="Password" />
+              <label for="add_person_password">Initial password (optional)</label>
+            </div>
+            <div class="form-check ms-2">
+              <input id="add_person_onsite" type="checkbox" class="form-check-input" />
+              <label class="form-check-label" for="add_person_onsite">On site</label>
+            </div>
+          </div>
+          <div class="modal-footer">
+            <button type="button" class="btn btn-primary" id="add_person_submit" onclick="submitCreatePerson()">Add person</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="modal no-print" id="editPersonModal" tabindex="-1" aria-labelledby="editPersonModalLabel" aria-hidden="true">
+      <div class="modal-dialog">
+        <div class="modal-content">
+          <div class="modal-header">
+            <p class="modal-title fs-5" id="editPersonModalLabel">Edit Person</p>
+            <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close" />
+          </div>
+          <div class="modal-body row">
+            <p>Editing <strong id="edit_person_handle"></strong>.</p>
+            <div class="form-floating mb-3">
+              <select id="edit_person_status" class="form-select" aria-label="Status">
+                <option value="active">active</option>
+                <option value="alpha">alpha</option>
+                <option value="auditor">auditor</option>
+                <option value="prospective">prospective</option>
+                <option value="inactive extension">inactive extension</option>
+                <option value="inactive">inactive</option>
+              </select>
+              <label for="edit_person_status">Status</label>
+            </div>
+            <div class="form-check ms-2">
+              <input id="edit_person_onsite" type="checkbox" class="form-check-input" />
+              <label class="form-check-label" for="edit_person_onsite">On site</label>
+            </div>
+          </div>
+          <div class="modal-footer">
+            <button type="button" class="btn btn-primary" id="edit_person_submit" onclick="submitEditPerson()">Save</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
   <div class="row" id="people_container">
     <div id="people" class="col-sm-12">
       <div class="card">
-        <label class="card-header">People</label>
+        <div class="card-header d-flex justify-content-between align-items-center">
+          <label>People</label>
+          <button type="button" class="btn btn-sm btn-success" id="add_person_button" onclick="showAddPersonModal()">Add person</button>
+        </div>
         <ul class="list-group list-group-small list-group-flush card-body">
           <template id="person_li_template">
             <li class="list-group-item ps-3" data-person-handle="">
@@ -66,6 +133,9 @@ templ AdminPeople(deployment, versionName, versionRef string) {
               </button>
               <button class="toggle-admin badge btn float-end me-2">
                 Admin
+              </button>
+              <button class="show-edit-modal badge btn btn-secondary float-end me-2">
+                Edit
               </button>
               <div class="person-handle"></div>
               <div class="person-status text-body-secondary ms-3"></div>

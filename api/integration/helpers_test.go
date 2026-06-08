@@ -110,6 +110,25 @@ func (a ApiHelper) setPersonAdmin(ctx context.Context, handle string, isAdmin bo
 	return a.imsPost(ctx, api.SetPersonAdminRequest{IsAdmin: isAdmin}, path)
 }
 
+func (a ApiHelper) createPerson(ctx context.Context, body api.CreatePersonRequest) *http.Response {
+	a.t.Helper()
+	path := a.serverURL.JoinPath("/ims/api/personnel").String()
+	return a.imsPost(ctx, body, path)
+}
+
+func (a ApiHelper) editPerson(ctx context.Context, handle string, body api.EditPersonRequest) *http.Response {
+	a.t.Helper()
+	path := a.serverURL.JoinPath("/ims/api/personnel", handle).String()
+	return a.imsPost(ctx, body, path)
+}
+
+func (a ApiHelper) getAllPersonnel(ctx context.Context) ([]imsjson.Person, *http.Response) {
+	a.t.Helper()
+	path := a.serverURL.JoinPath("/ims/api/personnel").String() + "?all=true"
+	bod, resp := a.imsGet(ctx, path, &[]imsjson.Person{})
+	return *bod.(*[]imsjson.Person), resp
+}
+
 func (a ApiHelper) editType(ctx context.Context, req imsjson.IncidentType) (*int32, *http.Response) {
 	a.t.Helper()
 	httpResp := a.imsPost(ctx, req, a.serverURL.JoinPath("/ims/api/incident_types").String())

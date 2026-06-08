@@ -641,6 +641,27 @@ select ID, HANDLE, EMAIL, STATUS, ON_SITE, PASSWORD, IS_ADMIN
 from PERSON
 where STATUS = 'active';
 
+-- AllPeople returns every person regardless of status. It is for the admin
+-- People page (so admins can see and reactivate inactive people); the login
+-- directory and the attach-person autocompletes use the active-only People query.
+-- name: AllPeople :many
+select ID, HANDLE, EMAIL, STATUS, ON_SITE, IS_ADMIN
+from PERSON;
+
+-- name: PersonByHandle :one
+select ID, HANDLE, EMAIL, STATUS, ON_SITE, IS_ADMIN
+from PERSON
+where HANDLE = ?;
+
+-- name: CreatePerson :exec
+insert into PERSON (HANDLE, EMAIL, STATUS, ON_SITE, PASSWORD, CREATED)
+values (?, ?, ?, ?, ?, ?);
+
+-- name: EditPerson :exec
+update PERSON
+set STATUS = ?, ON_SITE = ?
+where ID = ?;
+
 -- name: SetPersonPassword :exec
 update PERSON
 set PASSWORD = ?
