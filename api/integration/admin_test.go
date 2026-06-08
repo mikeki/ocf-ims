@@ -56,8 +56,9 @@ func TestSetPersonAdmin(t *testing.T) {
 	})
 	require.Equal(t, http.StatusOK, statusCode)
 	apisCarol := ApiHelper{t: t, serverURL: shared.serverURL, jwt: carolToken}
-	authResp, _ := apisCarol.getAuth(ctx, "")
+	authResp, authHTTPResp := apisCarol.getAuth(ctx, "")
 	require.False(t, authResp.Admin)
+	require.NoError(t, authHTTPResp.Body.Close())
 
 	// The admin flags Carol as an administrator.
 	resp = apisAdmin.setPersonAdmin(ctx, userCarolHandle, true)
@@ -72,8 +73,9 @@ func TestSetPersonAdmin(t *testing.T) {
 	})
 	require.Equal(t, http.StatusOK, statusCode)
 	apisCarol = ApiHelper{t: t, serverURL: shared.serverURL, jwt: carolToken}
-	authResp, _ = apisCarol.getAuth(ctx, "")
+	authResp, authHTTPResp = apisCarol.getAuth(ctx, "")
 	require.True(t, authResp.Admin)
+	require.NoError(t, authHTTPResp.Body.Close())
 
 	// Clearing Carol is fine — AdminTestRanger remains an admin.
 	resp = apisAdmin.setPersonAdmin(ctx, userCarolHandle, false)
