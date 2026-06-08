@@ -10,6 +10,10 @@ values  (600, 'Miguel',       'miguel@example.com',       '$argon2id$v=19$m=8192
         (605, 'Defect',       null, null, 'active', false, 0),
         (606, 'Loosy',        null, null, 'active', false, 0);
 
+-- Miguel is a local (in-app) administrator, exercising the PERSON.IS_ADMIN path
+-- in addition to any IMS_ADMINS env bootstrap.
+update PERSON set IS_ADMIN = true where ID = 600;
+
 insert into `POSITION` (ID, NAME) values (701, 'Driver'), (702, 'Dancer');
 insert into TEAM (ID, NAME) values (800, 'Driving Team');
 insert into PERSON__POSITION (PERSON_ID, POSITION_ID) values (601, 702);

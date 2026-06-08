@@ -467,6 +467,16 @@ func AddToMux(
 		),
 	)
 
+	mux.Handle("POST /ims/api/personnel/{personHandle}/admin",
+		Adapt(
+			SetPersonAdmin{db, userStore, cfg.Core.Admins},
+			RecoverFromPanic(),
+			RequireAuthN(jwter),
+			LogRequest(true, actionLogger, userStore),
+			LimitRequestBytes(cfg.Core.MaxRequestBytes),
+		),
+	)
+
 	mux.Handle("GET /ims/api/eventsource",
 		Adapt(
 			es.Server.Handler(EventSourceChannel),

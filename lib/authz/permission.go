@@ -161,6 +161,7 @@ func EventPermissions(
 		imsAdmins,
 		claims.PersonHandle(),
 		claims.PersonOnSite(),
+		claims.PersonAdmin(),
 		userPosNames,
 		userTeamNames,
 		onDutyPosition,
@@ -173,6 +174,7 @@ func ManyEventPermissions(
 	imsAdmins []string,
 	handle string,
 	onsite bool,
+	isAdmin bool,
 	positions []string,
 	teams []string,
 	onDutyPosition string,
@@ -184,7 +186,11 @@ func ManyEventPermissions(
 		globalPermissions |= RolesToGlobalPerms[AnyAuthenticatedUser]
 	}
 
-	if slices.Contains(imsAdmins, handle) {
+	// A person is an administrator if their local IS_ADMIN flag is set (managed
+	// in-app) or their handle is in the IMS_ADMINS bootstrap list. The two are a
+	// union, so a fresh database with no flagged admins is still recoverable via
+	// the env list.
+	if isAdmin || slices.Contains(imsAdmins, handle) {
 		globalPermissions |= RolesToGlobalPerms[Administrator]
 	}
 

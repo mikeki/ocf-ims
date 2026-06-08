@@ -69,6 +69,7 @@ func (s *localPersonSource) users(ctx context.Context) (map[int64]*User, error) 
 			Status:   person.Status,
 			Onsite:   person.OnSite,
 			Password: person.Password.String,
+			IsAdmin:  person.IsAdmin,
 		}
 	}
 	for _, pp := range personPositions {

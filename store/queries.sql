@@ -637,7 +637,7 @@ limit 1;
 --
 
 -- name: People :many
-select ID, HANDLE, EMAIL, STATUS, ON_SITE, PASSWORD
+select ID, HANDLE, EMAIL, STATUS, ON_SITE, PASSWORD, IS_ADMIN
 from PERSON
 where STATUS = 'active';
 
@@ -645,6 +645,16 @@ where STATUS = 'active';
 update PERSON
 set PASSWORD = ?
 where ID = ?;
+
+-- name: SetPersonAdmin :exec
+update PERSON
+set IS_ADMIN = ?
+where ID = ?;
+
+-- name: CountAdmins :one
+select count(*)
+from PERSON
+where IS_ADMIN = true;
 
 -- name: PeoplePositions :many
 select PERSON_ID, POSITION_ID

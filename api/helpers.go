@@ -210,6 +210,7 @@ func permissionsByEvent(ctx context.Context, jwtCtx JWTContext, imsDBQ *store.DB
 		imsAdmins,
 		jwtCtx.Claims.PersonHandle(),
 		jwtCtx.Claims.PersonOnSite(),
+		jwtCtx.Claims.PersonAdmin(),
 		userPosNames,
 		userTeamNames,
 		onDutyPosition,

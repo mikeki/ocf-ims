@@ -6,7 +6,7 @@ create table SCHEMA_INFO (
 -- This value must be updated when you make a new migration file.
 --
 
-insert into SCHEMA_INFO (VERSION) values (40);
+insert into SCHEMA_INFO (VERSION) values (41);
 
 
 create table `EVENT` (
@@ -74,6 +74,7 @@ create table PERSON (
     ON_SITE     boolean      not null default false,
     PASSWORD    varchar(255),
     CREATED     double       not null,
+    IS_ADMIN    boolean      not null default false,
 
     primary key (ID),
     unique key (HANDLE),

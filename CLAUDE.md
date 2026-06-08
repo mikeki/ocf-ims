@@ -260,7 +260,14 @@ For seeding/scripts, the `hash_password` CLI prints an argon2id hash to write in
 
 Event-based access control defined in `lib/authz/`:
 - Users have specific access modes per event (read, write, report)
-- Admins (defined in `IMS_ADMINS`) have unrestricted access
+- Admins have unrestricted access. A user is an admin if their local
+  `PERSON.IS_ADMIN` flag is set (managed in-app from **Admin → People & Passwords**
+  via `POST /ims/api/personnel/{handle}/admin`, gated by
+  `GlobalAdministratePersonnel`) **or** their handle is in the `IMS_ADMINS` env
+  list. The two are a union; the env list is a bootstrap so a fresh DB with no
+  flagged admins is still recoverable. The flag rides in the JWT, so a change
+  takes effect on the next access-token refresh. The endpoint refuses to clear the
+  last remaining flagged admin (409).
 - Global permissions (e.g. `GlobalAdministratePersonnel`, which gates password
   resets) are granted via roles in `RolesToGlobalPerms`. Today only the
   `Administrator` role holds the admin-level globals; a future roles model may grant

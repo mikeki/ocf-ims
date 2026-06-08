@@ -138,6 +138,7 @@ func (action PostAuth) postAuth(req *http.Request) (PostAuthResponse, *http.Cook
 			matchedPerson.PositionIDs,
 			matchedPerson.TeamIDs,
 			matchedPerson.Onsite,
+			matchedPerson.IsAdmin,
 			matchedPerson.OnDutyPositionID,
 			accessTokenExpiration,
 		)
@@ -230,7 +231,7 @@ func (action GetAuth) getAuth(req *http.Request) (GetAuthResponse, *herr.HTTPErr
 	resp = GetAuthResponse{
 		Authenticated:      true,
 		User:               handle,
-		Admin:              slices.Contains(action.admins, handle),
+		Admin:              claims.PersonAdmin() || slices.Contains(action.admins, handle),
 		CanManagePersonnel: globalPermissions&authz.GlobalAdministratePersonnel != 0,
 	}
 	// event_id is an optional query param for this endpoint
@@ -336,6 +337,7 @@ func (action RefreshAccessToken) refreshAccessToken(req *http.Request) (RefreshA
 			matchedPerson.PositionIDs,
 			matchedPerson.TeamIDs,
 			matchedPerson.Onsite,
+			matchedPerson.IsAdmin,
 			matchedPerson.OnDutyPositionID,
 			accessTokenExpiration,
 		)

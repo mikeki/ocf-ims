@@ -59,6 +59,7 @@ func TestManyEventPermissions_personRules(t *testing.T) {
 		testAdmins,
 		"EventReaderGuy",
 		true,
+		false,
 		[]string{},
 		[]string{},
 		"",
@@ -72,6 +73,7 @@ func TestManyEventPermissions_personRules(t *testing.T) {
 		testAdmins,
 		"EventWriterGal",
 		true,
+		false,
 		[]string{},
 		[]string{},
 		"",
@@ -85,6 +87,7 @@ func TestManyEventPermissions_personRules(t *testing.T) {
 		testAdmins,
 		"EventReporterPerson",
 		true,
+		false,
 		[]string{},
 		[]string{},
 		"",
@@ -98,6 +101,7 @@ func TestManyEventPermissions_personRules(t *testing.T) {
 		testAdmins,
 		"EventVisitWriterPerson",
 		true,
+		false,
 		[]string{},
 		[]string{},
 		"",
@@ -111,6 +115,7 @@ func TestManyEventPermissions_personRules(t *testing.T) {
 		testAdmins,
 		"AdminCat",
 		true,
+		false,
 		[]string{},
 		[]string{},
 		"",
@@ -133,6 +138,7 @@ func TestManyEventPermissions_positionRules(t *testing.T) {
 		testAdmins,
 		"Running Ranger",
 		true,
+		false,
 		[]string{"Runner", "Swimmer"},
 		[]string{},
 		"",
@@ -155,6 +161,7 @@ func TestManyEventPermissions_teamRules(t *testing.T) {
 		testAdmins,
 		"Running Ranger",
 		true,
+		false,
 		[]string{"Runner", "Swimmer"},
 		[]string{"Running Squad", "Swimming Squad"},
 		"",
@@ -177,6 +184,7 @@ func TestManyEventPermissions_onDutyRules(t *testing.T) {
 		testAdmins,
 		"Running Ranger",
 		true,
+		false,
 		[]string{},
 		[]string{},
 		"Runner",
@@ -196,6 +204,7 @@ func TestManyEventPermissions_wildcardValidity(t *testing.T) {
 		testAdmins,
 		"Onsite Ranger",
 		true,
+		false,
 		[]string{"Runner", "Swimmer"},
 		[]string{"Running Squad", "Swimming Squad"},
 		"",
@@ -208,10 +217,46 @@ func TestManyEventPermissions_wildcardValidity(t *testing.T) {
 		testAdmins,
 		"Offsite Ranger",
 		false,
+		false,
 		[]string{"Runner", "Swimmer"},
 		[]string{"Running Squad", "Swimming Squad"},
 		"",
 	)
 	require.Equal(t, EventNoPermissions, permissions[123])
+	require.Equal(t, authenticatedUserPerms, globalPermissions)
+}
+
+// TestManyEventPermissions_isAdminRules verifies the local IS_ADMIN flag grants
+// the Administrator global permissions even for a handle that is not in the
+// IMS_ADMINS bootstrap list, and that a non-flagged, non-env user does not get
+// them.
+func TestManyEventPermissions_isAdminRules(t *testing.T) {
+	t.Parallel()
+	accessByEvent := make(map[int32][]imsdb.EventAccess)
+
+	// Flagged local admin, NOT in testAdmins → still gets admin global perms.
+	_, globalPermissions := ManyEventPermissions(
+		accessByEvent,
+		testAdmins,
+		"LocalAdmin",
+		true,
+		true,
+		[]string{},
+		[]string{},
+		"",
+	)
+	require.Equal(t, authenticatedUserPerms|adminGlobalPerms, globalPermissions)
+
+	// Same handle without the flag → ordinary authenticated user only.
+	_, globalPermissions = ManyEventPermissions(
+		accessByEvent,
+		testAdmins,
+		"LocalAdmin",
+		true,
+		false,
+		[]string{},
+		[]string{},
+		"",
+	)
 	require.Equal(t, authenticatedUserPerms, globalPermissions)
 }

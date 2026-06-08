@@ -71,6 +71,7 @@ func (action GetPersonnel) getPersonnel(req *http.Request) (GetPersonnelResponse
 			Password: "",
 			Status:   person.Status,
 			Onsite:   person.Onsite,
+			IsAdmin:  person.IsAdmin,
 			PersonID: person.PersonID,
 		})
 	}

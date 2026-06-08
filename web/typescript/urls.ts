@@ -30,6 +30,7 @@ const url_authRefresh = "/ims/api/auth/refresh";
 const url_acl = "/ims/api/access";
 const url_personnel = "/ims/api/personnel";
 const url_personnelPassword = "/ims/api/personnel/<person_handle>/password";
+const url_personnelAdmin = "/ims/api/personnel/<person_handle>/admin";
 const url_incidentTypes = "/ims/api/incident_types";
 const url_events = "/ims/api/events";
 const url_event = "/ims/api/events/<event_id>";

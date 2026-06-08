@@ -68,6 +68,7 @@ type User struct {
 	Onsite bool
 	// #nosec G117 // Exported secret struct field
 	Password           string
+	IsAdmin            bool
 	PositionIDs        []int64
 	PositionNames      []string
 	TeamIDs            []int64
@@ -119,6 +120,7 @@ func (store *cachedUserStore) GetPeople(ctx context.Context) ([]imsjson.Person, 
 			Password: r.Password,
 			Status:   r.Status,
 			Onsite:   r.Onsite,
+			IsAdmin:  r.IsAdmin,
 			PersonID: r.ID,
 		})
 	}

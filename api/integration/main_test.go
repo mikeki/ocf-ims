@@ -69,6 +69,16 @@ const (
 	userBobHandle          = "BobTestRanger"
 	userBobEmail           = "bobtestranger@example.com"
 	userBobInitialPassword = "password"
+
+	// Carol and Dave are dedicated to the IS_ADMIN toggle test, so it can flag/unflag
+	// them (and exercise the last-admin guard) without touching admins that other
+	// parallel tests rely on. Both share Alice's seeded password hash.
+	userCarolHandle   = "CarolTestRanger"
+	userCarolEmail    = "caroltestranger@example.com"
+	userCarolPassword = "password"
+	userDaveHandle    = "DaveTestRanger"
+	userDaveEmail     = "davetestranger@example.com"
+	userDavePassword  = "password"
 )
 
 // imsPeopleTestSeed seeds the local IMS-DB people directory used by the integration
@@ -80,7 +90,9 @@ const imsPeopleTestSeed = `
 insert into PERSON (ID, HANDLE, EMAIL, PASSWORD, STATUS, ON_SITE, CREATED) values
     (6000, 'AdminTestRanger', 'admintestranger@example.com', '$argon2id$v=19$m=1,t=1,p=1$51uXrZoFRb6O4Tw4TsAJVQ$SedDwp+hPpIJc42QcnFJy6EOtE+b5kyYFpnuRHl/5qs', 'active', true, 0),
     (6001, 'AliceTestRanger', 'alicetestranger@example.com', '$argon2id$v=19$m=1,t=1,p=1$eg9U8hLotCSmyCph1BQroA$KFfy0uDDpP+cXPnkSQRXt3z0Shd7M39tsrwJZuDrOdU', 'active', true, 0),
-    (6002, 'BobTestRanger', 'bobtestranger@example.com', '$argon2id$v=19$m=1,t=1,p=1$eg9U8hLotCSmyCph1BQroA$KFfy0uDDpP+cXPnkSQRXt3z0Shd7M39tsrwJZuDrOdU', 'active', true, 0);
+    (6002, 'BobTestRanger', 'bobtestranger@example.com', '$argon2id$v=19$m=1,t=1,p=1$eg9U8hLotCSmyCph1BQroA$KFfy0uDDpP+cXPnkSQRXt3z0Shd7M39tsrwJZuDrOdU', 'active', true, 0),
+    (6003, 'CarolTestRanger', 'caroltestranger@example.com', '$argon2id$v=19$m=1,t=1,p=1$eg9U8hLotCSmyCph1BQroA$KFfy0uDDpP+cXPnkSQRXt3z0Shd7M39tsrwJZuDrOdU', 'active', true, 0),
+    (6004, 'DaveTestRanger', 'davetestranger@example.com', '$argon2id$v=19$m=1,t=1,p=1$eg9U8hLotCSmyCph1BQroA$KFfy0uDDpP+cXPnkSQRXt3z0Shd7M39tsrwJZuDrOdU', 'active', true, 0);
 insert into ` + "`POSITION`" + ` (ID, NAME) values (7000, 'Nooperator');
 insert into TEAM (ID, NAME) values (8000, 'Brown Dot');
 insert into PERSON__POSITION (PERSON_ID, POSITION_ID) values (6001, 7000);
