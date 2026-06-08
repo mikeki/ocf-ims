@@ -130,6 +130,37 @@ Make "who is an admin" data-driven and manageable in-app, instead of (only) the
 > write, and the last-admin guard prevents reaching zero through the UI. Removing it
 > deletes the parallel admin mechanism and its plumbing.
 
+### 5a.1 — In-app people create/edit + areas-page UX (pulled forward)
+
+A small follow-on to 5a, pulled forward because there was no in-app way to add or
+edit people at all (only password/admin toggles on already-seeded rows). This is
+the minimal create/edit surface; bulk invites / emailed onboarding stay deferred
+(5e, post-fair).
+
+- **API**: `POST /ims/api/personnel` (`CreatePerson`: handle required, email +
+  password optional, on-site flag; status defaults to `active`) and
+  `POST /ims/api/personnel/{handle}` (`EditPerson`: status + on-site; handle is
+  immutable). Both gated on `GlobalAdministratePersonnel` (personnel management,
+  *not* admin-minting — that stays on `PersonAdmin()` per 5a). Duplicate handle/email
+  → 409; unknown handle on edit → 404; unknown status → 400. A password, if given,
+  is bounded like the reset endpoint and argon2id-hashed.
+- **Listing**: `GET /ims/api/personnel?all=true` returns people of *any* status
+  (admin People page); the default active-only listing still feeds the
+  attach-person autocompletes.
+- **UI**: People admin page gets a green "Add person" button + modal and a per-row
+  "Edit" modal. Areas admin page reworked: event **picker** (`<select>`, was a text
+  box) that remembers the last-viewed event and auto-loads it, the areas table stays
+  hidden until an event is chosen, and a green "New area" button opens a prefill
+  modal (replacing the old inline add textbox).
+- **Bug fix**: `ims.bsModal` now uses `bootstrap.Modal.getOrCreateInstance` instead
+  of `new bootstrap.Modal` — the `new` form created a fresh instance each call whose
+  programmatic `.hide()` no-oped, so modals didn't close after a successful submit.
+- **Dev**: `docker-compose.dev.yml` sets `IMS_CACHE_CONTROL_SHORT/LONG: "0s"` so
+  rebuilt JS/CSS propagate without a hard refresh (the `?v=` cache-buster is a
+  constant in dev, so a non-zero TTL served stale assets after every `air` rebuild).
+- **Tests**: `api/integration/person_test.go` exercises create/edit (403/400/404/409,
+  deactivate→login-fails, reactivate→login-works).
+
 ### 5b — Role tiers (Basic Reporter / Coordinator / Management)
 
 OCF speaks in three tiers; the system speaks in modes/perms. This slice makes the

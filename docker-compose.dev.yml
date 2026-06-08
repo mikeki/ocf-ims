@@ -51,6 +51,12 @@ services:
       IMS_DB_PORT: "3306"
       IMS_DB_USER_NAME: "${IMS_DB_USER_NAME:-ims}"
       IMS_DB_PASSWORD: "${IMS_DB_PASSWORD:-ims}"
+      # Disable HTTP caching in dev so rebuilt JS/CSS propagate without a hard
+      # refresh. The static cache-buster (?v=…) is a constant ("deadbeef") in dev
+      # because git VCS stamping is off, so a non-zero cache TTL serves stale JS
+      # for up to its lifetime after every `air` rebuild.
+      IMS_CACHE_CONTROL_SHORT: "0s"
+      IMS_CACHE_CONTROL_LONG: "0s"
     ports:
       # Override IMS_HOST_PORT to set the port mapping on the host.
       - "${IMS_HOST_PORT:-8090}:8080"

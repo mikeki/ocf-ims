@@ -455,6 +455,27 @@ func AddToMux(
 		),
 	)
 
+	mux.Handle("POST /ims/api/personnel",
+		Adapt(
+			CreatePerson{db, userStore},
+			RecoverFromPanic(),
+			RequireAuthN(jwter),
+			// Do not log the request body: it may contain a plaintext password.
+			LogRequest(false, actionLogger, userStore),
+			LimitRequestBytes(cfg.Core.MaxRequestBytes),
+		),
+	)
+
+	mux.Handle("POST /ims/api/personnel/{personHandle}",
+		Adapt(
+			EditPerson{db, userStore},
+			RecoverFromPanic(),
+			RequireAuthN(jwter),
+			LogRequest(true, actionLogger, userStore),
+			LimitRequestBytes(cfg.Core.MaxRequestBytes),
+		),
+	)
+
 	mux.Handle("POST /ims/api/personnel/{personHandle}/password",
 		Adapt(
 			SetPersonPassword{db, userStore},

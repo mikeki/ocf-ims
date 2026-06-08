@@ -26,9 +26,11 @@ https://github.com/burningmantech/ranger-ims-go/pull/528
 
 - Administrators are now managed in-app via a `PERSON.IS_ADMIN` flag (schema v41), toggled from **Admin → People & Passwords** (`/ims/app/admin/people`) or `POST /ims/api/personnel/{handle}/admin`. This **replaces the `IMS_ADMINS` environment list**, which has been removed — admin status is now solely the database flag. Only an administrator may change admin status (the endpoint requires the caller to be an admin, not merely to hold the delegatable personnel-management permission), and it refuses to clear the last remaining admin. A fresh deployment seeds its first admin by inserting a `PERSON` row with `IS_ADMIN = true`.
 - Admins can set or reset a person's password from inside IMS, via **Admin → People & Passwords** (`/ims/app/admin/people`) or `POST /ims/api/personnel/{handle}/password`. The action is gated on a new `GlobalAdministratePersonnel` permission (held by admins today).
+- People can now be **created and edited in-app** from **Admin → People & Passwords**: add a person (handle required; email and password optional) via `POST /ims/api/personnel`, and change a person's status or on-site flag via `POST /ims/api/personnel/{handle}`. Both are gated on `GlobalAdministratePersonnel`. The People list now shows people of every status (`GET /ims/api/personnel?all=true`); the default active-only listing still feeds the attach-person autocompletes.
 
 ### Changed
 
+- The Event Areas admin page now uses an event **picker** (it previously took a typed event name), remembers the last-viewed event and auto-loads its areas, hides the areas table until an event is selected, and adds areas through a "New area" modal instead of an inline textbox.
 - Renamed "report entry" to "journal entry" throughout, for clearer semantics and to disambiguate it from a (field) Report. This is a breaking API change: the incident/report/visit JSON now carries a `journal_entries` array (was `report_entries`), and the entry endpoints moved from `…/report_entries/{id}` to `…/journal_entries/{id}`. The underlying `REPORT_ENTRY` table and its join tables were likewise renamed to `JOURNAL_ENTRY` (schema v40).
 - The login page's "Forgot your password?" now directs users to ask a crew leader or an admin to reset it, rather than linking to the retired Clubhouse reset pages. (Self-service / emailed reset is deferred.)
 
@@ -36,6 +38,10 @@ https://github.com/burningmantech/ranger-ims-go/pull/528
 
 - Removed the `IMS_ADMINS` environment variable. Administrators are now defined solely by the `PERSON.IS_ADMIN` database flag (see Added), removing the parallel env-based admin mechanism and its plumbing.
 - Removed the dead Clubhouse credentials notice and password-reset links from the login page.
+
+### Fixed
+
+- Modals (e.g. the add/edit-person and add-area dialogs) now close after a successful submit. They previously stayed open because `ims.bsModal` constructed a fresh Bootstrap modal instance on each call, whose programmatic `.hide()` was a no-op.
 
 ## 2026-02
 

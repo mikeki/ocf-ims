@@ -24,6 +24,7 @@ import (
 	"github.com/mikeki/ocf-ims/lib/herr"
 	"github.com/mikeki/ocf-ims/store"
 	"net/http"
+	"strings"
 	"time"
 )
 
@@ -52,6 +53,31 @@ func (action GetPersonnel) getPersonnel(req *http.Request) (GetPersonnelResponse
 	}
 	if globalPermissions&authz.GlobalReadPersonnel == 0 {
 		return response, herr.Forbidden("The requestor does not have GlobalReadPersonnel permission", nil)
+	}
+
+	// The admin People page requests ?all=true to manage every person, including
+	// inactive ones (so they can be reactivated). That requires the stronger
+	// GlobalAdministratePersonnel and bypasses the cached, active-only directory
+	// used by login and the attach-person autocompletes.
+	if strings.EqualFold(req.FormValue("all"), "true") {
+		if globalPermissions&authz.GlobalAdministratePersonnel == 0 {
+			return response, herr.Forbidden("The requestor does not have GlobalAdministratePersonnel permission", nil)
+		}
+		rows, err := action.imsDBQ.AllPeople(req.Context(), action.imsDBQ)
+		if err != nil {
+			return response, herr.InternalServerError("Failed to get personnel", err).From("[AllPeople]")
+		}
+		for _, person := range rows {
+			response = append(response, imsjson.Person{
+				Handle: person.Handle,
+				// Email/Password are still withheld (also json:"-" on the type).
+				Status:   person.Status,
+				Onsite:   person.OnSite,
+				IsAdmin:  person.IsAdmin,
+				PersonID: int64(person.ID),
+			})
+		}
+		return response, nil
 	}
 
 	people, err := action.userStore.GetPeople(req.Context())

@@ -1530,14 +1530,23 @@ export function clearErrorMessage(): void {
 }
 
 export function bsModal(el: HTMLElement) {
-    const modal = new bootstrap.Modal(el);
+    // Use getOrCreateInstance (not `new`) so that showing and later
+    // programmatically hiding a modal operate on the SAME Bootstrap instance.
+    // With `new`, a hide() call creates a fresh instance whose _isShown is false,
+    // so Bootstrap's hide() early-returns and the modal never closes.
+    const modal = bootstrap.Modal.getOrCreateInstance(el);
     // This is needed to resolve a Chrome Bootstrap ARIA bug
     // https://github.com/twbs/bootstrap/issues/41005#issuecomment-2497670835
-    el.addEventListener("hide.bs.modal", () => {
-        if (document.activeElement instanceof HTMLElement) {
-            document.activeElement.blur();
-        }
-    });
+    // Register the workaround once per element (getOrCreateInstance may be called
+    // repeatedly for the same modal).
+    if (el.dataset["bsModalAriaFix"] == null) {
+        el.dataset["bsModalAriaFix"] = "true";
+        el.addEventListener("hide.bs.modal", () => {
+            if (document.activeElement instanceof HTMLElement) {
+                document.activeElement.blur();
+            }
+        });
+    }
     return modal;
 }
 
@@ -1980,6 +1989,7 @@ export type Personnel = {
     handle: string;
     person_id?: number|null;
     is_admin?: boolean;
+    onsite?: boolean;
     // These are the person statuses IMS recognizes (from the local PERSON table).
     status: "active"|"alpha"|"auditor"|"inactive extension"|"inactive"|"prospective";
 }
@@ -2059,6 +2069,7 @@ export interface DataTablesTable {
 export declare namespace bootstrap {
     class Modal {
         constructor(element: string | Element, options?: any);
+        static getOrCreateInstance(element: string | Element, options?: any): Modal;
         toggle(relatedTarget?: HTMLElement): void;
         hide(): void;
         show(): void;

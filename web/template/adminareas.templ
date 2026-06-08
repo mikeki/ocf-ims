@@ -57,15 +57,51 @@ templ AdminAreas(deployment, versionName, versionRef string) {
       </div>
     </div>
 
+    <div class="modal no-print" id="addAreaModal" tabindex="-1" aria-labelledby="addAreaModalLabel" aria-hidden="true">
+      <div class="modal-dialog">
+        <div class="modal-content">
+          <div class="modal-header">
+            <p class="modal-title fs-5" id="addAreaModalLabel">New Area</p>
+            <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close" />
+          </div>
+          <div class="modal-body row">
+            <div class="input-group mb-3">
+              <label for="add_area_name" class="control-label input-group-text">Name</label>
+              <input id="add_area_name" type="text" class="form-control form-control-sm" placeholder="Chela Mela" />
+            </div>
+            <div class="input-group mb-3">
+              <label for="add_area_parent" class="control-label input-group-text">Parent</label>
+              <select id="add_area_parent" class="form-control form-select form-select-sm">
+                <option value="">(top level)</option>
+              </select>
+            </div>
+            <div class="input-group mb-3">
+              <label for="add_area_sort_order" class="control-label input-group-text">Sort order</label>
+              <input id="add_area_sort_order" type="number" class="form-control form-control-sm" value="0" />
+            </div>
+            <div class="form-text">The slug is generated from the name when the area is created and never changes.</div>
+          </div>
+          <div class="modal-footer">
+            <button type="button" class="btn btn-primary" id="add_area_submit" onclick="submitCreateArea()">Add area</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
   <div class="mb-3">
-    <label for="event-name" class="form-label">Event name</label>
-    <input id="event-name" type="text" class="form-control auto-width" onchange="loadAreas();">
+    <label for="event-name" class="form-label">Event</label>
+    <select id="event-name" class="form-select auto-width" onchange="loadAreas();">
+      <option value="">Select an event…</option>
+    </select>
   </div>
 
-  <div class="row" id="areas_container">
+  <div class="row hidden" id="areas_container">
     <div id="areas" class="col-sm-12 areas">
       <div class="card">
-        <label class="card-header">Areas</label>
+        <div class="card-header d-flex justify-content-between align-items-center">
+          <label>Areas</label>
+          <button type="button" class="btn btn-sm btn-success" id="add_area_button" onclick="showAddAreaModal()">New area</button>
+        </div>
         <ul class="list-group list-group-small list-group-flush card-body">
           <template id="area_li_template">
             <li class="list-group-item ps-3" data-area-slug="">
@@ -77,16 +113,6 @@ templ AdminAreas(deployment, versionName, versionRef string) {
             </li>
           </template>
         </ul>
-        <div class="card-footer">
-          <label>Add:</label>
-          <input
-              class="form-control input-sm auto-width"
-              type="text" inputmode="verbatim"
-              disabled=""
-              placeholder="Chela Mela"
-              onchange="createArea(this)"
-          />
-        </div>
       </div>
     </div>
   </div>
