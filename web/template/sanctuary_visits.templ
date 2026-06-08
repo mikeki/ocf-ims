@@ -19,7 +19,7 @@ package template
 templ SanctuaryVisits(deployment, versionName, versionRef, eventName string) {
 <!DOCTYPE html>
 <html lang="en">
-@Head("Sanctuary Visits | " + eventName, "sanctuary_visits.js", true, versionRef)
+@Head("White Bird Visits | " + eventName, "sanctuary_visits.js", true, versionRef)
 
 <body>
 <div class="container-fluid">
@@ -27,7 +27,7 @@ templ SanctuaryVisits(deployment, versionName, versionRef, eventName string) {
 @Nav(eventName)
 
 <div class="d-flex justify-content-between">
-  <h1 id="doc-title">Sanctuary Visits</h1>
+  <h1 id="doc-title">White Bird Visits</h1>
 </div>
 
 @ErrorInfo()
@@ -37,7 +37,7 @@ templ SanctuaryVisits(deployment, versionName, versionRef, eventName string) {
       <div class="modal-dialog">
         <div class="modal-content">
           <div class="modal-header">
-            <p class="modal-title fs-5" id="helpModalLabel">Sanctuary Visits help</p>
+            <p class="modal-title fs-5" id="helpModalLabel">White Bird Visits help</p>
             <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close" />
           </div>
           <div class="modal-body">

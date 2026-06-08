@@ -19,13 +19,13 @@ package template
 templ SanctuaryVisit(deployment, versionName, versionRef, eventName string) {
 <!DOCTYPE html>
 <html lang="en">
-@Head("Sanctuary Visit | " + eventName, "sanctuary_visit.js", true, versionRef)
+@Head("White Bird Visit | " + eventName, "sanctuary_visit.js", true, versionRef)
 
 <body>
 <div class="container-fluid">
 @Header(deployment)
 @Nav(eventName)
-<h1 id="doc-title">Sanctuary Visit</h1>
+<h1 id="doc-title">White Bird Visit</h1>
 
 @LoadingOverlay()
 
@@ -40,7 +40,7 @@ templ SanctuaryVisit(deployment, versionName, versionRef, eventName string) {
             <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close" />
           </div>
           <div class="modal-body">
-            <code>n</code>: create (n)ew Sanctuary Visit<br/>
+            <code>n</code>: create (n)ew White Bird Visit<br/>
             <code>a</code>: jump to (a)dd new journal text<br/>
             <code>h</code>: toggle showing system-generated (h)istory <br/>
           </div>
@@ -144,14 +144,14 @@ templ SanctuaryVisit(deployment, versionName, versionRef, eventName string) {
                   />
                 </div>
               </div>
-              <div title="When this guest arrived at Sanctuary" class="input-group row align-items-center">
+              <div title="When this guest arrived at White Bird" class="input-group row align-items-center">
                 <!-- This label will be applied to the altInput, which is created in the JS by Flatpickr. -->
                 <label class="col-sm-2 col-form-label control-label" for="alt_arrival_time">Arrival time:</label>
                 <div class="col-sm-10">
                   <input id="arrival_time" type="text" class="form-control form-control-sm" />
                 </div>
               </div>
-              <div title="When this guest departed from Sanctuary"  class="input-group row align-items-center">
+              <div title="When this guest departed from White Bird"  class="input-group row align-items-center">
                 <!-- This label will be applied to the altInput, which is created in the JS by Flatpickr. -->
                 <label class="col-sm-2 col-form-label control-label" for="alt_departure_time">Departure time:</label>
                 <div class="col-sm-10">
@@ -177,7 +177,7 @@ templ SanctuaryVisit(deployment, versionName, versionRef, eventName string) {
         <div id="collapse-arrival" class="accordion-collapse collapse">
           <div class="accordion-body">
             <form class="form-horizontal">
-              <div title="How the guest arrived at Sanctuary (on foot, by volunteer transport, etc.)"  class="input-group row align-items-center">
+              <div title="How the guest arrived at White Bird (on foot, by volunteer transport, etc.)"  class="input-group row align-items-center">
                 <label for="arrival_method" class="col-sm-2 col-form-label control-label">Arrival method:</label>
                 <div class="col-sm-10">
                   <input
@@ -203,7 +203,7 @@ templ SanctuaryVisit(deployment, versionName, versionRef, eventName string) {
                 </div>
               </div>
 
-              <div title="The reason the guest needed a visit to Sanctuary" class="input-group row align-items-center">
+              <div title="The reason the guest needed a visit to White Bird" class="input-group row align-items-center">
                 <label for="arrival_reason" class="col-sm-2 col-form-label control-label">Reason:</label>
                 <div class="col-sm-10">
                   <textarea
@@ -215,7 +215,7 @@ templ SanctuaryVisit(deployment, versionName, versionRef, eventName string) {
                 </div>
               </div>
 
-              <div title="The belongings brought with the guest to Sanctuary, including medications" class="input-group row align-items-center">
+              <div title="The belongings brought with the guest to White Bird, including medications" class="input-group row align-items-center">
                 <label for="arrival_belongings" class="col-sm-2 col-form-label control-label">Items brought:</label>
                 <div class="col-sm-10">
                   <textarea
@@ -227,7 +227,7 @@ templ SanctuaryVisit(deployment, versionName, versionRef, eventName string) {
                 </div>
               </div>
 
-              <div title="How the guest departed from Sanctuary (on foot, by volunteer transport, etc.)" class="input-group row align-items-center">
+              <div title="How the guest departed from White Bird (on foot, by volunteer transport, etc.)" class="input-group row align-items-center">
                 <label for="departure_method" class="col-sm-2 col-form-label control-label">Departure method:</label>
                 <div class="col-sm-10">
                   <input
@@ -330,7 +330,7 @@ templ SanctuaryVisit(deployment, versionName, versionRef, eventName string) {
       </div>
       <div class="accordion">
 
-      <!-- Sanctuary resources -->
+      <!-- White Bird resources -->
       <div class="accordion-item">
         <h2 class="accordion-header">
           <button class="accordion-button collapsed" type="button" data-bs-toggle="collapse"
@@ -341,8 +341,8 @@ templ SanctuaryVisit(deployment, versionName, versionRef, eventName string) {
         <div id="collapse-resources" class="accordion-collapse collapse">
           <div class="accordion-body">
             <form class="form-horizontal">
-              <div title="The most reason Sanctuary volunteer who sat with the guest" class="input-group row align-items-center">
-                <label for="resource_sitter" class="col-sm-2 col-form-label control-label">Sanctuary sitter:</label>
+              <div title="The most reason White Bird volunteer who sat with the guest" class="input-group row align-items-center">
+                <label for="resource_sitter" class="col-sm-2 col-form-label control-label">White Bird sitter:</label>
                 <div class="col-sm-10">
                   <input
                       id="resource_sitter" class="form-control form-control-sm"
@@ -373,7 +373,7 @@ templ SanctuaryVisit(deployment, versionName, versionRef, eventName string) {
                   />
                 </div>
               </div>
-              <div title="Clothing resources donated from Sanctuary to the guest" class="input-group row align-items-center">
+              <div title="Clothing resources donated from White Bird to the guest" class="input-group row align-items-center">
                 <label for="resource_clothes" class="col-sm-2 col-form-label control-label">Clothing:</label>
                 <div class="col-sm-10">
                   <input
@@ -385,7 +385,7 @@ templ SanctuaryVisit(deployment, versionName, versionRef, eventName string) {
                   />
                 </div>
               </div>
-              <div title="Details of Sanctuary food or beverages donated to the guest" class="input-group row align-items-center">
+              <div title="Details of White Bird food or beverages donated to the guest" class="input-group row align-items-center">
                 <label for="resource_food_bev" class="col-sm-2 col-form-label control-label">Food/bev given:</label>
                 <div class="col-sm-10">
                   <input
@@ -429,7 +429,7 @@ templ SanctuaryVisit(deployment, versionName, versionRef, eventName string) {
       </div>
       <div class="accordion">
 
-      <!-- Sanctuary people -->
+      <!-- White Bird people -->
       <div class="accordion-item">
         <h2 class="accordion-header">
           <button class="accordion-button collapsed" type="button" data-bs-toggle="collapse"

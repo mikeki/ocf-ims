@@ -49,3 +49,7 @@ air_tmp
 /directory/clubhousedb/
 /web/template/*_templ.go
 /web/static/*.js
+
+# session/tool artifacts
+.claude/scheduled_tasks.lock
+.playwright-mcp/
