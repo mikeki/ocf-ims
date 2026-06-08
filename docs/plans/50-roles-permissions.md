@@ -102,16 +102,21 @@ Make "who is an admin" data-driven and manageable in-app, instead of (only) the
 - **Schema** (migration `41-from-40.sql`, v41): add
   `PERSON.IS_ADMIN boolean not null default false`. Append the column last in
   `current.sql` to match the replay test's `SHOW CREATE TABLE` ordering.
-- **Authz**: `ManyEventPermissions` OR-s in `Administrator` global perms when the
-  person's `IS_ADMIN` is set **or** their handle is in `imsAdmins`. The env list
-  stays as a **bootstrap** (so a fresh DB with no admins is still recoverable) —
-  it's a union, not a replacement. Plumb `is_admin` into the JWT claims (mirror
-  `PersonOnSite`/`PersonPositions`) so the permission calc needs no extra DB read.
-- **API/UI**: extend the existing People admin page (`/ims/app/admin/people`,
-  gated by `GlobalAdministratePersonnel`) with an admin toggle →
-  `POST /ims/api/personnel/{handle}/admin` (or fold into an existing personnel
-  update). Self-demotion guard: refuse to let the last admin clear their own flag
-  (avoid lockout); surface as 409/400.
+- **Authz**: a single `authz.IsAdministrator(handle, hasAdminFlag, imsAdmins)`
+  helper is the source of truth — a person is an admin when their `IS_ADMIN` is set
+  **or** their handle is in `imsAdmins`. The env list stays as a **bootstrap** (so a
+  fresh DB with no admins is still recoverable) — it's a union, not a replacement.
+  `ManyEventPermissions` OR-s in the `Administrator` global perms via that helper.
+  Plumb `is_admin` into the JWT claims (mirror `PersonOnSite`/`PersonPositions`) so
+  the permission calc needs no extra DB read.
+- **API/UI**: extend the existing People admin page (`/ims/app/admin/people`) with
+  an admin toggle → `POST /ims/api/personnel/{handle}/admin`. **Gate: the caller
+  must themselves be an admin** (`authz.IsAdministrator`), *not* merely hold the
+  delegatable `GlobalAdministratePersonnel`. Only admins create admins — otherwise,
+  once 5b/D-decisions let a crew leader hold `GlobalAdministratePersonnel` (for
+  password resets), that leader could self-promote to full admin (a confused-deputy
+  escalation). Last-admin guard: refuse to clear the last remaining flagged admin
+  (avoid lockout); surface as 409.
 - **Seed**: mark the dev admin user `IS_ADMIN = true` in `fakeimsdb/seed.sql`.
 - **Tests**: `is_admin`-grants-Administrator unit test in
   `lib/authz/permission_test.go`; an integration test that a flagged non-env

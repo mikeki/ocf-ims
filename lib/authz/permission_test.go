@@ -45,6 +45,16 @@ func addPerm(m map[int32][]imsdb.EventAccess, eventID int32, expr string, mode i
 	)
 }
 
+func TestIsAdministrator(t *testing.T) {
+	t.Parallel()
+	// Env bootstrap list grants admin.
+	require.True(t, IsAdministrator("AdminCat", false, testAdmins))
+	// Local IS_ADMIN flag grants admin even off the env list.
+	require.True(t, IsAdministrator("SomeoneElse", true, testAdmins))
+	// Neither flag nor env membership → not an admin.
+	require.False(t, IsAdministrator("SomeoneElse", false, testAdmins))
+}
+
 func TestManyEventPermissions_personRules(t *testing.T) {
 	t.Parallel()
 	accessByEvent := make(map[int32][]imsdb.EventAccess)
