@@ -102,7 +102,7 @@ contract-break cheaper. The **interface** and **restructure** still wait.
 | 2 | **Terminology** | Burning Man terms → OCF terms across code + UI | Med | `20-terminology.md` (2a ✅, 2c ✅; 2b → Phase 3; 2d open) |
 | 3 | **Remove Clubhouse & local People** | ✅ **Done** — local `Person` identity replaced Clubhouse; Ranger→Person rename keyed on `person_id`; admin password reset | High | `30-remove-clubhouse.md` ✅ (PRs #16–#19) |
 | 4 | **Domain model** | OCF incident categories, outcomes, locations | Med–High | [`40-domain-model.md`](40-domain-model.md) (plan — for review) |
-| 5 | **Roles & permissions** | OCF crews/titles/roles in authz, built on Phase 3's local People | Med | `50-roles-permissions.md` (TODO) |
+| 5 | **Roles & permissions** | OCF crews/titles/roles in authz, built on Phase 3's local People | Med | [`50-roles-permissions.md`](50-roles-permissions.md) (plan — for review; beta scope 5a–5d) |
 | 6 | **Dashboards & metrics** | Management reporting OCF will use | Med | `60-dashboards.md` (TODO) |
 
 Phases 1→2 are sequential. **Phase 3 (remove Clubhouse) is the identity foundation
@@ -328,10 +328,14 @@ OCF target roles (draft):
 > structure"). The directory-source question is **resolved by Phase 3** (local
 > People, no Clubhouse).
 
-**Phase 5 tasks (detailed in `50-roles-permissions.md`):**
-- [ ] Map OCF roles onto existing permission primitives; add bits if needed.
-- [ ] Design crews (nestable) / titles / role tiers / crew-leader powers / invites.
-- [ ] Update admin onboarding for OCF (on top of Phase 3's `is_admin` bootstrap).
+**Phase 5 tasks (detailed in [`50-roles-permissions.md`](50-roles-permissions.md)).**
+Beta scope decided 2026-06-07 = slices **5a–5d**; invites / emailed reset / onduty
+deferred post-fair:
+- [ ] **5a** — `PERSON.IS_ADMIN` flag (in-app admin; `IMS_ADMINS` env → bootstrap only).
+- [ ] **5b** — Role tiers (Basic Reporter / Coordinator / Management) labeled over existing primitives.
+- [ ] **5c** — Nestable crews (`TEAM.PARENT_TEAM_ID`) + crew-leader edges (`PERSON__TEAM.IS_LEADER`); additive.
+- [ ] **5d** — Crew/title admin UI + person assignment.
+- [ ] *(deferred)* crew-leader powers + invites; emailed self-service reset; `onduty` local surfacing.
 
 ---
 
