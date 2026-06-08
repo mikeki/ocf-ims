@@ -34,7 +34,6 @@ import (
 type GetIncidentTypes struct {
 	imsDBQ            *store.DBQ
 	userStore         directory.UserStore
-	imsAdmins         []string
 	cacheControlShort time.Duration
 }
 
@@ -49,7 +48,7 @@ func (action GetIncidentTypes) ServeHTTP(w http.ResponseWriter, req *http.Reques
 }
 func (action GetIncidentTypes) getIncidentTypes(req *http.Request) (imsjson.IncidentTypes, *herr.HTTPError) {
 	response := make(imsjson.IncidentTypes, 0)
-	_, globalPermissions, errHTTP := getGlobalPermissions(req, action.imsDBQ, action.userStore, action.imsAdmins)
+	_, globalPermissions, errHTTP := getGlobalPermissions(req, action.imsDBQ, action.userStore)
 	if errHTTP != nil {
 		return response, errHTTP.From("[getGlobalPermissions]")
 	}
@@ -86,7 +85,6 @@ func (action GetIncidentTypes) getIncidentTypes(req *http.Request) (imsjson.Inci
 type EditIncidentTypes struct {
 	imsDBQ    *store.DBQ
 	userStore directory.UserStore
-	imsAdmins []string
 }
 
 func (action EditIncidentTypes) ServeHTTP(w http.ResponseWriter, req *http.Request) {
@@ -101,7 +99,7 @@ func (action EditIncidentTypes) ServeHTTP(w http.ResponseWriter, req *http.Reque
 	herr.WriteNoContentResponse(w, "Success")
 }
 func (action EditIncidentTypes) editIncidentTypes(req *http.Request) (newTypeID *int32, errHTTP *herr.HTTPError) {
-	_, globalPermissions, errHTTP := getGlobalPermissions(req, action.imsDBQ, action.userStore, action.imsAdmins)
+	_, globalPermissions, errHTTP := getGlobalPermissions(req, action.imsDBQ, action.userStore)
 	if errHTTP != nil {
 		return nil, errHTTP.From("[getGlobalPermissions]")
 	}

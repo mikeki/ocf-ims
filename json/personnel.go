@@ -22,5 +22,6 @@ type Person struct {
 	Password string `json:"-"`
 	Status   string `json:"status"`
 	Onsite   bool   `json:"onsite"`
+	IsAdmin  bool   `json:"is_admin"`
 	PersonID int64  `json:"person_id,omitzero"`
 }

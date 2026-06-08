@@ -37,7 +37,6 @@ import (
 type GetEventAccesses struct {
 	imsDBQ    *store.DBQ
 	userStore directory.UserStore
-	imsAdmins []string
 }
 
 func (action GetEventAccesses) ServeHTTP(w http.ResponseWriter, req *http.Request) {
@@ -50,7 +49,7 @@ func (action GetEventAccesses) ServeHTTP(w http.ResponseWriter, req *http.Reques
 }
 func (action GetEventAccesses) getEventAccesses(req *http.Request) (imsjson.EventsAccess, *herr.HTTPError) {
 	var empty imsjson.EventsAccess
-	_, globalPermissions, errHTTP := getGlobalPermissions(req, action.imsDBQ, action.userStore, action.imsAdmins)
+	_, globalPermissions, errHTTP := getGlobalPermissions(req, action.imsDBQ, action.userStore)
 	if errHTTP != nil {
 		return empty, errHTTP.From("[getGlobalPermissions]")
 	}
@@ -187,7 +186,6 @@ func knownTarget(expression string, allHandles, allPositions, allTeams map[strin
 type PostEventAccess struct {
 	imsDBQ    *store.DBQ
 	userStore directory.UserStore
-	imsAdmins []string
 }
 
 var eventAccessWriteMu sync.Mutex
@@ -202,7 +200,7 @@ func (action PostEventAccess) ServeHTTP(w http.ResponseWriter, req *http.Request
 }
 
 func (action PostEventAccess) postEventAccess(req *http.Request) *herr.HTTPError {
-	_, globalPermissions, errHTTP := getGlobalPermissions(req, action.imsDBQ, action.userStore, action.imsAdmins)
+	_, globalPermissions, errHTTP := getGlobalPermissions(req, action.imsDBQ, action.userStore)
 	if errHTTP != nil {
 		return errHTTP.From("[getGlobalPermissions]")
 	}

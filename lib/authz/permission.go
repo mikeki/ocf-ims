@@ -119,7 +119,6 @@ func EventPermissions(
 	eventID *int32, // nil for no event
 	imsDBQ *store.DBQ,
 	userStore directory.UserStore,
-	imsAdmins []string,
 	claims IMSClaims,
 ) (eventPermissions map[int32]EventPermissionMask, globalPermissions GlobalPermissionMask, err error) {
 	accessByEvent := make(map[int32][]imsdb.EventAccess)
@@ -158,9 +157,9 @@ func EventPermissions(
 
 	eventPermissions, globalPermissions = ManyEventPermissions(
 		accessByEvent,
-		imsAdmins,
 		claims.PersonHandle(),
 		claims.PersonOnSite(),
+		claims.PersonAdmin(),
 		userPosNames,
 		userTeamNames,
 		onDutyPosition,
@@ -170,9 +169,9 @@ func EventPermissions(
 
 func ManyEventPermissions(
 	accessByEvent map[int32][]imsdb.EventAccess, // eventID as key
-	imsAdmins []string,
 	handle string,
 	onsite bool,
+	isAdmin bool,
 	positions []string,
 	teams []string,
 	onDutyPosition string,
@@ -184,7 +183,12 @@ func ManyEventPermissions(
 		globalPermissions |= RolesToGlobalPerms[AnyAuthenticatedUser]
 	}
 
-	if slices.Contains(imsAdmins, handle) {
+	// Admin status is solely the local PERSON.IS_ADMIN flag (carried in the JWT
+	// claim). It is deliberately NOT a delegatable GlobalPermissionMask bit:
+	// granting an individual global (e.g. GlobalAdministratePersonnel to a future
+	// crew leader) must never imply the ability to mint other admins. Endpoints
+	// that create/destroy admins gate on this flag directly.
+	if isAdmin {
 		globalPermissions |= RolesToGlobalPerms[Administrator]
 	}
 

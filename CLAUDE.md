@@ -260,7 +260,18 @@ For seeding/scripts, the `hash_password` CLI prints an argon2id hash to write in
 
 Event-based access control defined in `lib/authz/`:
 - Users have specific access modes per event (read, write, report)
-- Admins (defined in `IMS_ADMINS`) have unrestricted access
+- Admins have unrestricted access. A user is an admin solely if their local
+  `PERSON.IS_ADMIN` flag is set — there is no admin env list. The flag is managed
+  in-app from **Admin → People & Passwords** via
+  `POST /ims/api/personnel/{handle}/admin`, and rides in the JWT, so a change takes
+  effect on the next access-token refresh. The endpoint refuses to clear the last
+  remaining admin (409). **Only admins may change admin status**: the toggle is
+  gated on the caller actually being an admin (`claims.PersonAdmin()`), *not* on the
+  delegatable `GlobalAdministratePersonnel` — so delegating personnel management
+  (e.g. password resets) to a future crew-leader role never implies the power to
+  mint admins. **Bootstrap:** OCF launches on a fresh DB, so the first admin is
+  seeded by inserting a `PERSON` row with `IS_ADMIN = true` (password hashed via the
+  `hash_password` CLI); the dev seed marks Miguel as an admin.
 - Global permissions (e.g. `GlobalAdministratePersonnel`, which gates password
   resets) are granted via roles in `RolesToGlobalPerms`. Today only the
   `Administrator` role holds the admin-level globals; a future roles model may grant

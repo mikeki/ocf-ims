@@ -104,8 +104,39 @@ function drawPeople(): void {
             },
         );
 
+        const adminToggle: HTMLButtonElement = entryItem.querySelector(".toggle-admin")!;
+        drawAdminToggle(adminToggle, person.is_admin ?? false);
+        adminToggle.addEventListener("click",
+            function (_e: MouseEvent): void {
+                void toggleAdmin(person, adminToggle);
+            },
+        );
+
         container.append(entryItemFrag);
     }
+}
+
+function drawAdminToggle(button: HTMLButtonElement, isAdmin: boolean): void {
+    button.textContent = isAdmin ? "Admin ✓" : "Admin";
+    button.classList.toggle("btn-warning", isAdmin);
+    button.classList.toggle("btn-outline-secondary", !isAdmin);
+    button.setAttribute("aria-pressed", isAdmin ? "true" : "false");
+}
+
+async function toggleAdmin(person: ims.Personnel, button: HTMLButtonElement): Promise<void> {
+    const next = !(person.is_admin ?? false);
+    const url = url_personnelAdmin.replace("<person_handle>", encodeURIComponent(person.handle));
+    const {err} = await ims.fetchNoThrow(url, {
+        body: JSON.stringify({"is_admin": next}),
+    });
+    if (err != null) {
+        const message = `Failed to update admin flag:\n${err}`;
+        console.error(message);
+        ims.setErrorMessage(message);
+        return;
+    }
+    person.is_admin = next;
+    drawAdminToggle(button, next);
 }
 
 async function submitSetPassword(): Promise<void> {

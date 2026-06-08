@@ -40,7 +40,6 @@ import (
 type GetEvents struct {
 	imsDBQ            *store.DBQ
 	userStore         directory.UserStore
-	imsAdmins         []string
 	cacheControlShort time.Duration
 }
 
@@ -56,7 +55,7 @@ func (action GetEvents) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 }
 func (action GetEvents) getEvents(req *http.Request) (imsjson.Events, *herr.HTTPError) {
 	var empty imsjson.Events
-	jwt, globalPermissions, errHTTP := getGlobalPermissions(req, action.imsDBQ, action.userStore, action.imsAdmins)
+	jwt, globalPermissions, errHTTP := getGlobalPermissions(req, action.imsDBQ, action.userStore)
 	if errHTTP != nil {
 		return empty, errHTTP.From("[getGlobalPermissions]")
 	}
@@ -74,7 +73,7 @@ func (action GetEvents) getEvents(req *http.Request) (imsjson.Events, *herr.HTTP
 	if err != nil {
 		return nil, herr.InternalServerError("Failed to get events", err).From("[Events]")
 	}
-	permsByEvent, errHTTP := permissionsByEvent(req.Context(), jwt, action.imsDBQ, action.userStore, action.imsAdmins)
+	permsByEvent, errHTTP := permissionsByEvent(req.Context(), jwt, action.imsDBQ, action.userStore)
 	if errHTTP != nil {
 		return empty, errHTTP.From("[permissionsByEvent]")
 	}
@@ -108,7 +107,6 @@ func (action GetEvents) getEvents(req *http.Request) (imsjson.Events, *herr.HTTP
 type EditEvent struct {
 	imsDBQ    *store.DBQ
 	userStore directory.UserStore
-	imsAdmins []string
 }
 
 // Require basic cleanliness for EventName, since it's used in IMS URLs
@@ -130,7 +128,7 @@ func (action EditEvent) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 	herr.WriteNoContentResponse(w, "Success")
 }
 func (action EditEvent) editEvents(req *http.Request) (newEventID *int32, errHTTP *herr.HTTPError) {
-	_, globalPermissions, errHTTP := getGlobalPermissions(req, action.imsDBQ, action.userStore, action.imsAdmins)
+	_, globalPermissions, errHTTP := getGlobalPermissions(req, action.imsDBQ, action.userStore)
 	if errHTTP != nil {
 		return nil, errHTTP.From("[getGlobalPermissions]")
 	}

@@ -37,7 +37,6 @@ import (
 type GetAreas struct {
 	imsDBQ            *store.DBQ
 	userStore         directory.UserStore
-	imsAdmins         []string
 	cacheControlShort time.Duration
 }
 
@@ -53,11 +52,11 @@ func (action GetAreas) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 
 func (action GetAreas) run(req *http.Request) (imsjson.Areas, *herr.HTTPError) {
 	ctx := req.Context()
-	event, _, eventPermissions, errHTTP := getEventPermissions(req, action.imsDBQ, action.userStore, action.imsAdmins)
+	event, _, eventPermissions, errHTTP := getEventPermissions(req, action.imsDBQ, action.userStore)
 	if errHTTP != nil {
 		return nil, errHTTP.From("[getEventPermissions]")
 	}
-	_, globalPermissions, errHTTP := getGlobalPermissions(req, action.imsDBQ, action.userStore, action.imsAdmins)
+	_, globalPermissions, errHTTP := getGlobalPermissions(req, action.imsDBQ, action.userStore)
 	if errHTTP != nil {
 		return nil, errHTTP.From("[getGlobalPermissions]")
 	}
@@ -80,7 +79,6 @@ func (action GetAreas) run(req *http.Request) (imsjson.Areas, *herr.HTTPError) {
 type EditAreas struct {
 	imsDBQ    *store.DBQ
 	userStore directory.UserStore
-	imsAdmins []string
 }
 
 func (action EditAreas) ServeHTTP(w http.ResponseWriter, req *http.Request) {
@@ -97,7 +95,7 @@ func (action EditAreas) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 
 func (action EditAreas) run(req *http.Request) (newSlug string, errHTTP *herr.HTTPError) {
 	ctx := req.Context()
-	_, globalPermissions, errHTTP := getGlobalPermissions(req, action.imsDBQ, action.userStore, action.imsAdmins)
+	_, globalPermissions, errHTTP := getGlobalPermissions(req, action.imsDBQ, action.userStore)
 	if errHTTP != nil {
 		return "", errHTTP.From("[getGlobalPermissions]")
 	}

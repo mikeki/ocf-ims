@@ -23,8 +23,6 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-var testAdmins = []string{"AdminCat", "AdminDog"}
-
 const (
 	readerPerm             = EventReadEventName | EventReadIncidents | EventReadOwnReports | EventReadAllReports | EventReadVisits | EventReadAreas
 	writerPerm             = EventReadEventName | EventReadIncidents | EventWriteIncidents | EventReadAllReports | EventReadOwnReports | EventWriteAllReports | EventWriteOwnReports | EventReadVisits | EventWriteVisits | EventReadAreas
@@ -56,9 +54,9 @@ func TestManyEventPermissions_personRules(t *testing.T) {
 
 	permissions, globalPermissions := ManyEventPermissions(
 		accessByEvent,
-		testAdmins,
 		"EventReaderGuy",
 		true,
+		false,
 		[]string{},
 		[]string{},
 		"",
@@ -69,9 +67,9 @@ func TestManyEventPermissions_personRules(t *testing.T) {
 
 	permissions, globalPermissions = ManyEventPermissions(
 		accessByEvent,
-		testAdmins,
 		"EventWriterGal",
 		true,
+		false,
 		[]string{},
 		[]string{},
 		"",
@@ -82,9 +80,9 @@ func TestManyEventPermissions_personRules(t *testing.T) {
 
 	permissions, globalPermissions = ManyEventPermissions(
 		accessByEvent,
-		testAdmins,
 		"EventReporterPerson",
 		true,
+		false,
 		[]string{},
 		[]string{},
 		"",
@@ -95,9 +93,9 @@ func TestManyEventPermissions_personRules(t *testing.T) {
 
 	permissions, globalPermissions = ManyEventPermissions(
 		accessByEvent,
-		testAdmins,
 		"EventVisitWriterPerson",
 		true,
+		false,
 		[]string{},
 		[]string{},
 		"",
@@ -106,10 +104,12 @@ func TestManyEventPermissions_personRules(t *testing.T) {
 	require.Equal(t, visitWriterPerm, permissions[123])
 	require.Equal(t, authenticatedUserPerms, globalPermissions)
 
+	// A flagged admin (isAdmin=true) gets the Administrator global perms even with
+	// no matching event-access rows.
 	permissions, globalPermissions = ManyEventPermissions(
 		accessByEvent,
-		testAdmins,
-		"AdminCat",
+		"FlaggedAdmin",
+		true,
 		true,
 		[]string{},
 		[]string{},
@@ -130,9 +130,9 @@ func TestManyEventPermissions_positionRules(t *testing.T) {
 	// this user matches both a person and a position rule on event 123
 	permissions, globalPermissions := ManyEventPermissions(
 		accessByEvent,
-		testAdmins,
 		"Running Ranger",
 		true,
+		false,
 		[]string{"Runner", "Swimmer"},
 		[]string{},
 		"",
@@ -152,9 +152,9 @@ func TestManyEventPermissions_teamRules(t *testing.T) {
 	// this user matches both a team and position rule on event 123
 	permissions, globalPermissions := ManyEventPermissions(
 		accessByEvent,
-		testAdmins,
 		"Running Ranger",
 		true,
+		false,
 		[]string{"Runner", "Swimmer"},
 		[]string{"Running Squad", "Swimming Squad"},
 		"",
@@ -174,9 +174,9 @@ func TestManyEventPermissions_onDutyRules(t *testing.T) {
 	// this user matches both a person and an onduty rule on event 123
 	permissions, globalPermissions := ManyEventPermissions(
 		accessByEvent,
-		testAdmins,
 		"Running Ranger",
 		true,
+		false,
 		[]string{},
 		[]string{},
 		"Runner",
@@ -193,9 +193,9 @@ func TestManyEventPermissions_wildcardValidity(t *testing.T) {
 
 	permissions, globalPermissions := ManyEventPermissions(
 		accessByEvent,
-		testAdmins,
 		"Onsite Ranger",
 		true,
+		false,
 		[]string{"Runner", "Swimmer"},
 		[]string{"Running Squad", "Swimming Squad"},
 		"",
@@ -205,13 +205,45 @@ func TestManyEventPermissions_wildcardValidity(t *testing.T) {
 
 	permissions, globalPermissions = ManyEventPermissions(
 		accessByEvent,
-		testAdmins,
 		"Offsite Ranger",
+		false,
 		false,
 		[]string{"Runner", "Swimmer"},
 		[]string{"Running Squad", "Swimming Squad"},
 		"",
 	)
 	require.Equal(t, EventNoPermissions, permissions[123])
+	require.Equal(t, authenticatedUserPerms, globalPermissions)
+}
+
+// TestManyEventPermissions_isAdminRules verifies the local IS_ADMIN flag is what
+// grants the Administrator global permissions, and that a non-flagged user does
+// not get them.
+func TestManyEventPermissions_isAdminRules(t *testing.T) {
+	t.Parallel()
+	accessByEvent := make(map[int32][]imsdb.EventAccess)
+
+	// Flagged local admin → gets admin global perms.
+	_, globalPermissions := ManyEventPermissions(
+		accessByEvent,
+		"LocalAdmin",
+		true,
+		true,
+		[]string{},
+		[]string{},
+		"",
+	)
+	require.Equal(t, authenticatedUserPerms|adminGlobalPerms, globalPermissions)
+
+	// Same handle without the flag → ordinary authenticated user only.
+	_, globalPermissions = ManyEventPermissions(
+		accessByEvent,
+		"LocalAdmin",
+		true,
+		false,
+		[]string{},
+		[]string{},
+		"",
+	)
 	require.Equal(t, authenticatedUserPerms, globalPermissions)
 }

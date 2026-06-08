@@ -27,9 +27,7 @@ import (
 func TestPrintRedacted(t *testing.T) {
 	t.Parallel()
 	cfg := conf.IMSConfig{
-		Core: conf.ConfigCore{
-			Admins: []string{"admin user"},
-		},
+		Core: conf.ConfigCore{},
 		Store: conf.DBStore{
 			Type: conf.DBStoreTypeMaria,
 			MariaDB: conf.DBStoreMaria{
@@ -40,7 +38,6 @@ func TestPrintRedacted(t *testing.T) {
 	}
 
 	redacted := cfg.PrintRedacted()
-	assert.Contains(t, redacted, "admin user")
 	assert.Contains(t, redacted, "db username")
 	assert.NotContains(t, redacted, "db password")
 	assert.NotContains(t, redacted, "user password")

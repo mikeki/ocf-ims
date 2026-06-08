@@ -121,7 +121,7 @@ func getJwtCtx(req *http.Request) (JWTContext, *herr.HTTPError) {
 	return jwtCtx, nil
 }
 
-func getEventPermissions(req *http.Request, imsDBQ *store.DBQ, userStore directory.UserStore, imsAdmins []string) (
+func getEventPermissions(req *http.Request, imsDBQ *store.DBQ, userStore directory.UserStore) (
 	imsdb.Event, JWTContext, authz.EventPermissionMask, *herr.HTTPError,
 ) {
 	event, errHTTP := getEvent(req, req.PathValue("eventName"), imsDBQ)
@@ -132,14 +132,14 @@ func getEventPermissions(req *http.Request, imsDBQ *store.DBQ, userStore directo
 	if errHTTP != nil {
 		return imsdb.Event{}, JWTContext{}, 0, errHTTP.From("[getJwtCtx]")
 	}
-	eventPermissions, _, err := authz.EventPermissions(req.Context(), &event.ID, imsDBQ, userStore, imsAdmins, *jwtCtx.Claims)
+	eventPermissions, _, err := authz.EventPermissions(req.Context(), &event.ID, imsDBQ, userStore, *jwtCtx.Claims)
 	if err != nil {
 		return imsdb.Event{}, JWTContext{}, 0, herr.InternalServerError("Failed to compute permissions", err).From("[EventPermissions]")
 	}
 	return event, jwtCtx, eventPermissions[event.ID], nil
 }
 
-func getGlobalPermissions(req *http.Request, imsDBQ *store.DBQ, userStore directory.UserStore, imsAdmins []string) (
+func getGlobalPermissions(req *http.Request, imsDBQ *store.DBQ, userStore directory.UserStore) (
 	JWTContext, authz.GlobalPermissionMask, *herr.HTTPError,
 ) {
 	empty := JWTContext{}
@@ -147,14 +147,14 @@ func getGlobalPermissions(req *http.Request, imsDBQ *store.DBQ, userStore direct
 	if errHTTP != nil {
 		return empty, 0, errHTTP.From("[getJwtCtx]")
 	}
-	_, globalPermissions, err := authz.EventPermissions(req.Context(), nil, imsDBQ, userStore, imsAdmins, *jwtCtx.Claims)
+	_, globalPermissions, err := authz.EventPermissions(req.Context(), nil, imsDBQ, userStore, *jwtCtx.Claims)
 	if err != nil {
 		return empty, 0, herr.InternalServerError("Failed to compute permissions", err).From("[EventPermissions]")
 	}
 	return jwtCtx, globalPermissions, nil
 }
 
-func permissionsByEvent(ctx context.Context, jwtCtx JWTContext, imsDBQ *store.DBQ, userStore directory.UserStore, imsAdmins []string) (
+func permissionsByEvent(ctx context.Context, jwtCtx JWTContext, imsDBQ *store.DBQ, userStore directory.UserStore) (
 	map[int32]authz.EventPermissionMask, *herr.HTTPError,
 ) {
 	// This query doesn't know about parent groups. We'll start by accumulating EventAccesses directly referencing
@@ -207,9 +207,9 @@ func permissionsByEvent(ctx context.Context, jwtCtx JWTContext, imsDBQ *store.DB
 
 	permissionsByEvent, _ := authz.ManyEventPermissions(
 		accessRowByEventID,
-		imsAdmins,
 		jwtCtx.Claims.PersonHandle(),
 		jwtCtx.Claims.PersonOnSite(),
+		jwtCtx.Claims.PersonAdmin(),
 		userPosNames,
 		userTeamNames,
 		onDutyPosition,

@@ -1979,6 +1979,7 @@ export type AuthInfoEventAccess = {
 export type Personnel = {
     handle: string;
     person_id?: number|null;
+    is_admin?: boolean;
     // These are the person statuses IMS recognizes (from the local PERSON table).
     status: "active"|"alpha"|"auditor"|"inactive extension"|"inactive"|"prospective";
 }

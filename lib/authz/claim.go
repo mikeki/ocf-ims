@@ -34,6 +34,7 @@ type IMSClaims struct {
 	Positions      string `json:"pos"`
 	Teams          string `json:"tea"`
 	Onsite         bool   `json:"ons"`
+	Admin          bool   `json:"adm,omitempty"`
 	OnDutyPosition *int64 `json:"dut,omitempty"`
 }
 
@@ -104,6 +105,11 @@ func (c IMSClaims) WithPersonOnSite(onsite bool) IMSClaims {
 	return c
 }
 
+func (c IMSClaims) WithPersonAdmin(admin bool) IMSClaims {
+	c.Admin = admin
+	return c
+}
+
 func (c IMSClaims) WithPersonPositions(pos ...int64) IMSClaims {
 	c.Positions = marshalBigInt(intsToBitSet(pos))
 	return c
@@ -125,6 +131,10 @@ func (c IMSClaims) PersonHandle() string {
 
 func (c IMSClaims) PersonOnSite() bool {
 	return c.Onsite
+}
+
+func (c IMSClaims) PersonAdmin() bool {
+	return c.Admin
 }
 
 func (c IMSClaims) PersonPositions() []int64 {

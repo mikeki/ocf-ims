@@ -53,7 +53,6 @@ type GetIncidentAttachment struct {
 	userStore        directory.UserStore
 	attachmentsStore conf.AttachmentsStore
 	s3Client         *attachment.S3Client
-	imsAdmins        []string
 }
 
 type AttachToIncident struct {
@@ -62,7 +61,6 @@ type AttachToIncident struct {
 	es               *EventSourcerer
 	attachmentsStore conf.AttachmentsStore
 	s3Client         *attachment.S3Client
-	imsAdmins        []string
 }
 
 type GetReportAttachment struct {
@@ -70,7 +68,6 @@ type GetReportAttachment struct {
 	userStore        directory.UserStore
 	attachmentsStore conf.AttachmentsStore
 	s3Client         *attachment.S3Client
-	imsAdmins        []string
 }
 
 type AttachToReport struct {
@@ -79,7 +76,6 @@ type AttachToReport struct {
 	es               *EventSourcerer
 	attachmentsStore conf.AttachmentsStore
 	s3Client         *attachment.S3Client
-	imsAdmins        []string
 }
 
 type GetVisitAttachment struct {
@@ -87,7 +83,6 @@ type GetVisitAttachment struct {
 	userStore        directory.UserStore
 	attachmentsStore conf.AttachmentsStore
 	s3Client         *attachment.S3Client
-	imsAdmins        []string
 }
 
 type AttachToVisit struct {
@@ -96,7 +91,6 @@ type AttachToVisit struct {
 	es               *EventSourcerer
 	attachmentsStore conf.AttachmentsStore
 	s3Client         *attachment.S3Client
-	imsAdmins        []string
 }
 
 func (action GetIncidentAttachment) ServeHTTP(w http.ResponseWriter, req *http.Request) {
@@ -112,7 +106,7 @@ func (action GetIncidentAttachment) ServeHTTP(w http.ResponseWriter, req *http.R
 func (action GetIncidentAttachment) getIncidentAttachment(
 	req *http.Request,
 ) (fi io.ReadSeeker, contentType string, errHTTP *herr.HTTPError) {
-	event, _, eventPermissions, errHTTP := getEventPermissions(req, action.imsDBQ, action.userStore, action.imsAdmins)
+	event, _, eventPermissions, errHTTP := getEventPermissions(req, action.imsDBQ, action.userStore)
 	if errHTTP != nil {
 		return nil, "", errHTTP.From("[getEventPermissions]")
 	}
@@ -263,7 +257,7 @@ func (action GetReportAttachment) ServeHTTP(w http.ResponseWriter, req *http.Req
 func (action GetReportAttachment) getReportAttachment(
 	req *http.Request,
 ) (fi io.ReadSeeker, contentType string, errHTTP *herr.HTTPError) {
-	event, jwtCtx, eventPermissions, errHTTP := getEventPermissions(req, action.imsDBQ, action.userStore, action.imsAdmins)
+	event, jwtCtx, eventPermissions, errHTTP := getEventPermissions(req, action.imsDBQ, action.userStore)
 	if errHTTP != nil {
 		return nil, "", errHTTP.From("[getEventPermissions]")
 	}
@@ -338,7 +332,7 @@ func (action AttachToIncident) ServeHTTP(w http.ResponseWriter, req *http.Reques
 }
 
 func (action AttachToIncident) attachToIncident(req *http.Request) (int32, *herr.HTTPError) {
-	event, jwtCtx, eventPermissions, errHTTP := getEventPermissions(req, action.imsDBQ, action.userStore, action.imsAdmins)
+	event, jwtCtx, eventPermissions, errHTTP := getEventPermissions(req, action.imsDBQ, action.userStore)
 	if errHTTP != nil {
 		return 0, errHTTP.From("[getEventPermissions]")
 	}
@@ -438,7 +432,7 @@ func (action AttachToReport) ServeHTTP(w http.ResponseWriter, req *http.Request)
 	herr.WriteNoContentResponse(w, "Saved Report attachment")
 }
 func (action AttachToReport) attachToReport(req *http.Request) (int32, *herr.HTTPError) {
-	event, jwtCtx, eventPermissions, errHTTP := getEventPermissions(req, action.imsDBQ, action.userStore, action.imsAdmins)
+	event, jwtCtx, eventPermissions, errHTTP := getEventPermissions(req, action.imsDBQ, action.userStore)
 	if errHTTP != nil {
 		return 0, errHTTP.From("[getEventPermissions]")
 	}
@@ -529,7 +523,7 @@ func (action GetVisitAttachment) ServeHTTP(w http.ResponseWriter, req *http.Requ
 func (action GetVisitAttachment) getVisitAttachment(
 	req *http.Request,
 ) (fi io.ReadSeeker, contentType string, errHTTP *herr.HTTPError) {
-	event, _, eventPermissions, errHTTP := getEventPermissions(req, action.imsDBQ, action.userStore, action.imsAdmins)
+	event, _, eventPermissions, errHTTP := getEventPermissions(req, action.imsDBQ, action.userStore)
 	if errHTTP != nil {
 		return nil, "", errHTTP.From("[getEventPermissions]")
 	}
@@ -596,7 +590,7 @@ func (action AttachToVisit) ServeHTTP(w http.ResponseWriter, req *http.Request) 
 }
 
 func (action AttachToVisit) attachToVisit(req *http.Request) (int32, *herr.HTTPError) {
-	event, jwtCtx, eventPermissions, errHTTP := getEventPermissions(req, action.imsDBQ, action.userStore, action.imsAdmins)
+	event, jwtCtx, eventPermissions, errHTTP := getEventPermissions(req, action.imsDBQ, action.userStore)
 	if errHTTP != nil {
 		return 0, errHTTP.From("[getEventPermissions]")
 	}

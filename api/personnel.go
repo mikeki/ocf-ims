@@ -30,7 +30,6 @@ import (
 type GetPersonnel struct {
 	imsDBQ            *store.DBQ
 	userStore         directory.UserStore
-	imsAdmins         []string
 	cacheControlShort time.Duration
 }
 
@@ -47,7 +46,7 @@ func (action GetPersonnel) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 }
 func (action GetPersonnel) getPersonnel(req *http.Request) (GetPersonnelResponse, *herr.HTTPError) {
 	response := make(GetPersonnelResponse, 0)
-	_, globalPermissions, errHTTP := getGlobalPermissions(req, action.imsDBQ, action.userStore, action.imsAdmins)
+	_, globalPermissions, errHTTP := getGlobalPermissions(req, action.imsDBQ, action.userStore)
 	if errHTTP != nil {
 		return response, errHTTP.From("[getGlobalPermissions]")
 	}
@@ -71,6 +70,7 @@ func (action GetPersonnel) getPersonnel(req *http.Request) (GetPersonnelResponse
 			Password: "",
 			Status:   person.Status,
 			Onsite:   person.Onsite,
+			IsAdmin:  person.IsAdmin,
 			PersonID: person.PersonID,
 		})
 	}
