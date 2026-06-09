@@ -25,16 +25,11 @@ values  (6, 'TestBRC', true, null);
 
 insert into EVENT (ID, NAME, IS_GROUP, PARENT_GROUP)
 values  (2, '2025', false, 6),
-        (1, '2026', false, 6),
-        (3, '2031', false, 6),
-        (4, '2032', false, 6),
-        (5, 'Test', false, null);
+        (1, '2026', false, 6);
 
 insert into EVENT_ACCESS (ID, EVENT, EXPRESSION, MODE, VALIDITY)
 values  (1, 6, '*', 'write', 'always'),
-        (2, 2, '*', 'read', 'always'),
-        (3, 3, '*', 'report', 'always'),
-        (4, 4, '*', 'write', 'always');
+        (2, 2, '*', 'read', 'always');
 
 -- OCF location areas (draft, pending stakeholder sign-off). Slugs are derived
 -- from the name and immutable; parents must be listed before their children.

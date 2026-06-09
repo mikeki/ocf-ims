@@ -25,6 +25,8 @@ services:
       dockerfile: dev.Dockerfile
     image: "ims-go-air"
     container_name: "ocf-ims"
+    # Survive host reboots (the host auto-reboots ~02:00 for kernel upgrades).
+    restart: unless-stopped
 
     # Map the repo into a directory in the container.
     working_dir: /src
@@ -70,6 +72,7 @@ services:
   ims-db:
     image: "mariadb:10.5.27"
     container_name: "ranger-ims-db"
+    restart: unless-stopped
     environment:
       MARIADB_DATABASE: "${IMS_DB_DATABASE:-ims}"
       MARIADB_USER: "${IMS_DB_USER_NAME:-ims}"
