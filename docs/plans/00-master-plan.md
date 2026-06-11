@@ -101,9 +101,10 @@ contract-break cheaper. The **interface** and **restructure** still wait.
 | 1 | **Preparation & clean-up** | ✅ **Done** — dead/deprecated code removed; baseline green | Low | `10-cleanup-pass.md` ✅ |
 | 2 | **Terminology** | Burning Man terms → OCF terms across code + UI | Med | `20-terminology.md` (2a ✅, 2c ✅; 2b → Phase 3; 2d open) |
 | 3 | **Remove Clubhouse & local People** | ✅ **Done** — local `Person` identity replaced Clubhouse; Ranger→Person rename keyed on `person_id`; admin password reset | High | `30-remove-clubhouse.md` ✅ (PRs #16–#19) |
-| 4 | **Domain model** | OCF incident categories, outcomes, locations | Med–High | [`40-domain-model.md`](40-domain-model.md) (plan — for review) |
-| 5 | **Roles & permissions** | OCF crews/titles/roles in authz, built on Phase 3's local People | Med | [`50-roles-permissions.md`](50-roles-permissions.md) (plan — for review; beta scope 5a–5d) |
-| 6 | **Dashboards & metrics** | Management reporting OCF will use | Med | `60-dashboards.md` (TODO) |
+| 4 | **Domain model** | ✅ **Done** — OCF incident categories, outcomes, locations (AREA model) | Med–High | [`40-domain-model.md`](40-domain-model.md) ✅ (PRs #20–#24) |
+| 5 | **Roles & permissions + people registry** | OCF crews/titles/roles in authz; unified people registry | Med | [`50-roles-permissions.md`](50-roles-permissions.md) (5a/5a.1 ✅; 5b–5d planned; 5e → [`51-people-registry.md`](51-people-registry.md)) |
+| 6 | **Feedback round 1** | Beta-usage feedback: areas/landmarks, "Other" type, booth #, journal draft autosave, action-log gaps | Low | [`60-feedback-round-1.md`](60-feedback-round-1.md) (plan — for review) |
+| 7 | **Dashboards & metrics** | Management reporting OCF will use | Med | `70-dashboards.md` (TODO) |
 
 Phases 1→2 are sequential. **Phase 3 (remove Clubhouse) is the identity foundation
 Phase 5 (roles & permissions) builds on**, so 3 precedes 5. Phases 4, 5, 6 can
@@ -115,6 +116,15 @@ otherwise overlap once terminology lands, and each ships independently.
 > without a local Person table, and login/authz still read Clubhouse). The former
 > Phases 3/4/5 (Domain model / Roles / Dashboards) shifted to **4/5/6**. See
 > [`30-remove-clubhouse.md`](30-remove-clubhouse.md).
+>
+> **Re-scope note (2026-06-11).** The first round of **beta-usage feedback**
+> (two crew stakeholders + the maintainer) became the new **Phase 6**
+> ([`60-feedback-round-1.md`](60-feedback-round-1.md)); **Dashboards shifted to
+> Phase 7** (no plan doc existed yet, so the renumber was free). The feedback's
+> *people* items (one registry of all people, wristbands, search) reshape
+> `PERSON`, so they joined **Phase 5 as slice 5e**
+> ([`51-people-registry.md`](51-people-registry.md)). Phases 5 and 6 sequence
+> freely against each other at implementation time.
 
 ---
 
@@ -329,17 +339,37 @@ OCF target roles (draft):
 > People, no Clubhouse).
 
 **Phase 5 tasks (detailed in [`50-roles-permissions.md`](50-roles-permissions.md)).**
-Beta scope decided 2026-06-07 = slices **5a–5d**; invites / emailed reset / onduty
-deferred post-fair:
-- [ ] **5a** — `PERSON.IS_ADMIN` flag (in-app admin; **replaces** the removed `IMS_ADMINS` env list).
+Beta scope decided 2026-06-07 = slices **5a–5d** (+ **5e** added 2026-06-11);
+invites / emailed reset / onduty deferred post-fair:
+- [x] **5a** — `PERSON.IS_ADMIN` flag (in-app admin; **replaces** the removed `IMS_ADMINS` env list). *(PR #27; 5a.1 people create/edit PR #28.)*
 - [ ] **5b** — Role tiers (Basic Reporter / Coordinator / Management) labeled over existing primitives.
 - [ ] **5c** — Nestable crews (`TEAM.PARENT_TEAM_ID`) + crew-leader edges (`PERSON__TEAM.IS_LEADER`); additive.
 - [ ] **5d** — Crew/title admin UI + person assignment.
+- [ ] **5e** — Unified people registry ([`51-people-registry.md`](51-people-registry.md)): all people in one table, per-event wristbands, typeahead search, visit-guest linkage, admin email/profile editing.
 - [ ] *(deferred)* crew-leader powers + invites; emailed self-service reset; `onduty` local surfacing.
 
 ---
 
-## Phase 6 — Dashboards & Metrics (longer-term)
+## Phase 6 — Feedback Round 1 (beta usage feedback)
+
+**Objective:** Land the first round of real-usage feedback (collected
+2026-06-11 from two crew stakeholders and the maintainer). Detailed plan:
+[`60-feedback-round-1.md`](60-feedback-round-1.md).
+
+- **6a** — Quick wins: areas reseed (path segments + landmarks), "Other"
+  incident type, action-log coverage flips (visits create/edit + personnel
+  create/password — bodies are never logged, so the password concern is moot).
+- **6b** — Structured booth-number field on incident location
+  (`INCIDENT.LOCATION_BOOTH`).
+- **6c** — Journal-entry draft persistence (localStorage autosave; the only real
+  data-loss hole — other fields already save per-edit).
+
+Slices are independent; sequence freely, including interleaved with Phase 5.
+The feedback's people items live in **Phase 5e**, not here.
+
+---
+
+## Phase 7 — Dashboards & Metrics (longer-term)
 
 **Objective:** Management-facing reporting OCF will actually use.
 
@@ -350,7 +380,7 @@ open follow-ups.
 > Depends on Phase 4 (categories/locations/outcomes) and likely 5. Response
 > times and open follow-ups depend on outcome/follow-up modeling from Phase 4b.
 
-**Phase 6 tasks (detailed in `60-dashboards.md`):** TBD after Phase 4.
+**Phase 7 tasks (detailed in `70-dashboards.md`):** TBD.
 
 ---
 
@@ -371,12 +401,12 @@ open follow-ups.
 ## 5. Sequencing summary
 
 ```
-Phase 1 (clean-up) ─► Phase 2 (terminology) ─► Phase 3 (remove Clubhouse / local People) ─┬─► Phase 5 (roles, needs 3)
-                                                                                          ├─► Phase 4 (domain model)
-                                                                                          └─► Phase 6 (dashboards, after 4)
+Phase 1 (clean-up) ─► Phase 2 (terminology) ─► Phase 3 (remove Clubhouse / local People) ─┬─► Phase 5 (roles + people registry, needs 3)
+                                                                                          ├─► Phase 4 (domain model) ─► Phase 6 (feedback round 1)
+                                                                                          └─► Phase 7 (dashboards, after 4)
 ```
 
-**Status (2026-06-07):**
+**Status (2026-06-11):**
 - **Phase 1** ✅ complete (PRs #1–#5).
 - **Phase 2** (terminology): **2a** Field Report→Report ✅ (PR #13), **2c** OCF
   branding ✅ (PR #14). **2b** (Ranger→Person) promoted to **Phase 3**. **2d**
@@ -385,10 +415,18 @@ Phase 1 (clean-up) ─► Phase 2 (terminology) ─► Phase 3 (remove Clubhouse
   (`31-local-people-directory.md`), #17 (`32-retire-clubhouse.md`), #18
   (`33-people-rename.md`), #19 (`34-post-clubhouse-login.md`, admin password
   reset + login cleanup). Clubhouse retired; local `PERSON` identity + credentials.
-- **Phase 4** (domain model): plan written (`40-domain-model.md`); **in review** —
-  all three slices (categories / outcomes / locations) are beta must-haves.
-- **Phases 5–6**: not yet started; design docs TODO.
+- **Phase 4** (domain model) ✅ **complete** — PRs #20 (plan), #21 (4a categories),
+  #22/#23 (4c model + cutover, PLACE retired, incident→AREA FK), #24 (4b outcome
+  enum). Also shipped since: journal-entry rename (PR #25), White Bird rebrand
+  (PR #29), license pass (PR #30).
+- **Phase 5** (roles & permissions + people registry): **5a** ✅ (PR #27) +
+  **5a.1** people create/edit ✅ (PR #28); 5b–5d planned; **5e people registry**
+  added 2026-06-11 (`51-people-registry.md`, plan for review).
+- **Phase 6** (feedback round 1): plan written 2026-06-11
+  (`60-feedback-round-1.md`, for review).
+- **Phase 7** (dashboards): not started; design doc TODO.
 
-Next action: review `40-domain-model.md`, then implement Phase 4 in slices
-(4a categories + grouping → 4c-model additive → 4c-cutover breaking + PLACE
-retire → 4b outcome).
+Next action: review `51-people-registry.md` + `60-feedback-round-1.md`, get
+the locations stakeholder's final area/landmark list (blocks 6a), then implement Phase 5b–5e and
+Phase 6 slices in whatever order fits (sequencing decided at implementation
+time; only hard edge: 5e.1 schema before 5d).
