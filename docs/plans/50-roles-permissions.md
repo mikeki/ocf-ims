@@ -1,6 +1,6 @@
 # Phase 5 — Roles & Permissions
 
-> **Status:** Plan / for review. **Owner:** TBD · **Last updated:** 2026-06-07
+> **Status:** Plan / for review; 5a + 5a.1 shipped. **Owner:** TBD · **Last updated:** 2026-06-11
 >
 > Detailed plan for **Phase 5** of the OCF conversion (see
 > [`00-master-plan.md`](00-master-plan.md) §"Phase 5"). Builds on **Phase 3**'s
@@ -26,6 +26,9 @@ The chosen beta scope is **"plumbing + crews model"**: slices **5a–5d** below.
 - **5c** — Local crews/titles model made first-class: **nestable crews** (parent
   edge on `TEAM`) and **crew-leader edges** (`is_leader` on `PERSON__TEAM`).
 - **5d** — Admin UI to manage crews, titles, membership, and leader edges.
+- **5e** — **Unified people registry** (added 2026-06-11 from beta feedback):
+  `PERSON` becomes the registry of *all* people the IMS touches, not just logins —
+  see [`51-people-registry.md`](51-people-registry.md).
 
 **Explicitly deferred to post-fair (out of scope here):**
 - **Invites** — email self-register *and* admin-create-Person onboarding flows.
@@ -135,7 +138,7 @@ Make "who is an admin" data-driven and manageable in-app, instead of (only) the
 A small follow-on to 5a, pulled forward because there was no in-app way to add or
 edit people at all (only password/admin toggles on already-seeded rows). This is
 the minimal create/edit surface; bulk invites / emailed onboarding stay deferred
-(5e, post-fair).
+(post-fair).
 
 - **API**: `POST /ims/api/personnel` (`CreatePerson`: handle required, email +
   password optional, on-site flag; status defaults to `active`) and
@@ -245,14 +248,35 @@ need management UI. Model on the existing per-event admin pages
 > the grant model is reworked. Lowest effort; matches today's behavior where names
 > were authoritative.
 
+### 5e — Unified people registry (added 2026-06-11)
+
+From beta feedback (Stakeholder A + maintainer): `PERSON` becomes the **single registry of
+every person the IMS touches** — crews pre-loaded with logins, plus people added
+ad-hoc from incident/visit flows (no login, no handle), with per-event
+**wristband numbers** and registry-wide **typeahead search**. Visit guests become
+linked `PERSON` rows instead of freeform text; admins gain full-profile editing
+(including the currently-frozen **email**) and search.
+
+Full design, decisions, and sub-slices (5e.1–5e.4):
+[`51-people-registry.md`](51-people-registry.md). Lives in the Phase 5 family
+because it reshapes the `PERSON` table that 5c/5d build on, and 5b's tiers apply
+only to its login-capable subset.
+
 ## 6. Sequencing & risk
 
-Suggested order: **5a → 5b → 5c → 5d** (each independently shippable).
+Suggested order: **5a → 5b → 5c → 5d** (each independently shippable); **5e**
+slots in flexibly (decided 2026-06-11: sequence at implementation time) **except
+5e.1 (schema) should precede 5d**, whose people-admin UI would otherwise be built
+against the old `PERSON` shape. 5c and 5e both claim "the next" migration
+number — whichever lands first takes it.
 - **5a** is the highest-value, lowest-risk win (in-app admin; removes an env-only
-  footgun) and is self-contained — do it first.
+  footgun) and is self-contained — do it first. *(✅ shipped: 5a PR #27, 5a.1 PR #28.)*
 - **5b** is mostly labeling/docs; cheap; can land alongside or right after 5a.
 - **5c** is additive schema + sqlc; moderate.
-- **5d** is the largest (new admin UI surface); depends on 5c's schema.
+- **5d** is the largest (new admin UI surface); depends on 5c's schema (and 5e.1,
+  see above).
+- **5e** is moderate-to-large (schema + search + two flow UIs + admin UX), split
+  into four sub-slices.
 
 Risk is **Med** overall (per master plan). The sharpest edges are the
 name-as-grant-key coupling (D6) and not over-building crew-leader authority before
@@ -270,6 +294,7 @@ keep `TestMigrateSameAsCurrentSchema` green.
 | D4 | Parent-crew leadership cascades to sub-crews? | **Parked** with invites (post-fair) |
 | D5 | What can a crew leader *do*? | **Parked** with invites (post-fair) |
 | D6 | Crew/title rename vs. `team:`/`position:` grant coupling | **Allow + warn** for beta |
+| D-P1–D-P4 | People-registry decisions (inline create gating, legal-name home, handle→ID URLs, min query length) | See [`51-people-registry.md`](51-people-registry.md) §6 |
 
 ## 8. Exit criteria
 
@@ -277,6 +302,8 @@ keep `TestMigrateSameAsCurrentSchema` green.
 - Role tiers are documented and surfaced in the access-grant UI.
 - Crews nest (one level) and carry leader edges; titles manage locally.
 - Admin UI covers crew/title CRUD + person assignment, gated and 403-tested.
+- The people registry holds crew + participants + public in one table, searchable,
+  with visit guests linked (5e exit criteria in [`51-people-registry.md`](51-people-registry.md)).
 - `go test ./...`, generators, and build green; migrations replay == `current.sql`.
 - Deferred items (invites, emailed reset, onduty) recorded here and in
   [`34-post-clubhouse-login.md`](34-post-clubhouse-login.md) so nothing is lost.

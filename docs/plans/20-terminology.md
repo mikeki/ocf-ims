@@ -318,6 +318,12 @@ needed** — we can rename JSON fields and URLs outright.
    clients; contract break is contained, no compat window needed.
 5. **Per-term wording** — Patrol, Ranger HQ, Participant, Camp → confirm exact OCF
    terms (drafts above are guesses). *(Still open.)*
+6. **Incident `State` values** — "On Hold / Dispatched / On Scene" are Burning Man
+   dispatch-model terms a stakeholder flagged as unclear (Phase 6 round 2,
+   [`61-feedback-round-2.md`](61-feedback-round-2.md) §4). **Decided 2026-06-12:
+   leave as-is for beta**, revisit post-fair — a relabel (UI-only) or a remodel
+   (enum migration) needs OCF input on the target states. Tracked here as the
+   natural home for the eventual wording.
 
 ## Exit criteria
 
