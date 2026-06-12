@@ -43,3 +43,4 @@ management system.
 | [50-roles-permissions.md](50-roles-permissions.md) | Phase 5 — Roles & permissions | 5a ✅ (PR #27), 5a.1 ✅ (PR #28); 5b–5e planned |
 | [51-people-registry.md](51-people-registry.md) | Phase 5e — Unified people registry | Plan — for review |
 | [60-feedback-round-1.md](60-feedback-round-1.md) | Phase 6 — Feedback round 1 (beta usage feedback) | Plan — for review |
+| [61-feedback-round-2.md](61-feedback-round-2.md) | Phase 6 — Feedback round 2 (structured stakeholder review) | Plan — for review |

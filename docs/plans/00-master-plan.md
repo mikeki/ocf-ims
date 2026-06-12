@@ -350,12 +350,13 @@ invites / emailed reset / onduty deferred post-fair:
 
 ---
 
-## Phase 6 — Feedback Round 1 (beta usage feedback)
+## Phase 6 — Feedback (beta usage)
 
-**Objective:** Land the first round of real-usage feedback (collected
-2026-06-11 from two crew stakeholders and the maintainer). Detailed plan:
-[`60-feedback-round-1.md`](60-feedback-round-1.md).
+**Objective:** Land real-usage feedback in independent, freely-sequenced slices.
+Two rounds so far:
 
+**Round 1** ([`60-feedback-round-1.md`](60-feedback-round-1.md)) — informal batch,
+2026-06-11 (two crew stakeholders + maintainer):
 - **6a** — Quick wins: areas reseed (path segments + landmarks), "Other"
   incident type, action-log coverage flips (visits create/edit + personnel
   create/password — bodies are never logged, so the password concern is moot).
@@ -363,6 +364,19 @@ invites / emailed reset / onduty deferred post-fair:
   (`INCIDENT.LOCATION_BOOTH`).
 - **6c** — Journal-entry draft persistence (localStorage autosave; the only real
   data-loss hole — other fields already save per-edit).
+
+**Round 2** ([`61-feedback-round-2.md`](61-feedback-round-2.md)) — structured
+stakeholder questionnaire, 2026-06-12 (Stakeholder C):
+- **6d** — Incident-form UX & clarity (template/TS/CSS, no schema): rename the
+  journal control "Add Entry" → **"Submit"** and move the Attached
+  Reports/Visits + Linked Incidents sections **below** the entries so it sits at
+  the bottom; mark required fields; give the People + Incident Types inputs a
+  visible dropdown affordance; add help text on the cross-reference sections.
+- Fold-ins: **6a** gains a "Weapon" type + alphabetical type listing; **5e**
+  gains follow-up contact (phone) + a discoverable "witness" involvement path.
+- Deferred (recorded, no beta work): **State** wording (On Hold/Dispatched/On
+  Scene) left as-is for beta; **offline-first + concurrent-user scale** is the
+  platform/infra track.
 
 Slices are independent; sequence freely, including interleaved with Phase 5.
 The feedback's people items live in **Phase 5e**, not here.
@@ -422,11 +436,13 @@ Phase 1 (clean-up) ─► Phase 2 (terminology) ─► Phase 3 (remove Clubhouse
 - **Phase 5** (roles & permissions + people registry): **5a** ✅ (PR #27) +
   **5a.1** people create/edit ✅ (PR #28); 5b–5d planned; **5e people registry**
   added 2026-06-11 (`51-people-registry.md`, plan for review).
-- **Phase 6** (feedback round 1): plan written 2026-06-11
-  (`60-feedback-round-1.md`, for review).
+- **Phase 6** (feedback): round 1 plan written 2026-06-11
+  (`60-feedback-round-1.md`); round 2 written 2026-06-12
+  (`61-feedback-round-2.md`, Stakeholder C — incident-form UX). Both for review.
 - **Phase 7** (dashboards): not started; design doc TODO.
 
-Next action: review `51-people-registry.md` + `60-feedback-round-1.md`, get
-the locations stakeholder's final area/landmark list (blocks 6a), then implement Phase 5b–5e and
-Phase 6 slices in whatever order fits (sequencing decided at implementation
-time; only hard edge: 5e.1 schema before 5d).
+Next action: review `51-people-registry.md` + `60`/`61-feedback-round-*.md`, get
+the locations stakeholder's final area/landmark list (blocks 6a), then implement
+Phase 5b–5e and Phase 6 slices in whatever order fits (sequencing decided at
+implementation time; only hard edge: 5e.1 schema before 5d). 6d is
+template/TS-only and can start immediately.
