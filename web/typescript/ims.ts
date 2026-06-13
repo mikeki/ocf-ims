@@ -586,6 +586,204 @@ export async function fetchPersonnel(): Promise<{personnel: PersonnelMap|null, e
 }
 
 
+//
+// Person search + search-first combobox (see docs/plans/51-people-registry.md).
+// Replaces the native <datalist> person picker so handle-less registry people are
+// findable and a "create new person" fallback can be offered inline.
+//
+
+// personDisplayLabel resolves a person's display label as COALESCE(name, handle).
+export function personDisplayLabel(p: {name?: string|null, handle?: string|null}): string {
+    if (p.name != null && p.name.trim() !== "") {
+        return p.name;
+    }
+    return p.handle ?? "";
+}
+
+// searchPersonnel queries the typeahead endpoint, scoped to an event so each hit
+// carries that event's wristband + participation type and wristbands are searchable.
+export async function searchPersonnel(query: string, eventName: string): Promise<PersonSearchResult[]> {
+    const params = new URLSearchParams({q: query, event: eventName});
+    const {json, err} = await fetchNoThrow<PersonSearchResult[]>(
+        urlReplace(url_personnel) + "?" + params.toString(), null);
+    if (err != null || json == null) {
+        if (err != null) {
+            console.error(`Failed to search personnel: ${err}`);
+        }
+        return [];
+    }
+    return json;
+}
+
+// createRegistryPerson creates a minimal (no-login) registry person from a field
+// flow and returns it (with its new person_id) for immediate attach.
+export async function createRegistryPerson(name: string, eventName: string): Promise<PersonSearchResult|null> {
+    const {json, err} = await fetchNoThrow<PersonSearchResult>(urlReplace(url_personnel), {
+        method: "POST",
+        body: JSON.stringify({name: name, event: eventName}),
+    });
+    if (err != null || json == null) {
+        setErrorMessage(`Failed to create person: ${err}`);
+        return null;
+    }
+    return json;
+}
+
+export type PersonComboboxConfig = {
+    // The text input the user types into.
+    input: HTMLInputElement;
+    // An (initially empty, "hidden"-classed) container the results dropdown renders into.
+    results: HTMLElement;
+    // Event name used to scope the search and any inline create.
+    eventName: string;
+    // Whether to offer the "create new person" fallback when nothing matches.
+    allowCreate: boolean;
+    // Called with the picked (or freshly created) person.
+    onPick: (person: PersonSearchResult) => void | Promise<void>;
+};
+
+// setupPersonCombobox turns a text input + a results container into a search-first
+// person picker: it debounces queries to the typeahead endpoint, lists matches to
+// pick from, and — only when nothing matches — offers "Create new person" (if
+// allowCreate). This replaces the native <input list=datalist> and delivers the
+// visible dropdown affordance round-2 feedback 6d.3 asked for.
+export function setupPersonCombobox(cfg: PersonComboboxConfig): void {
+    type Row = {person?: PersonSearchResult; createName?: string};
+    let rows: Row[] = [];
+    let activeIndex = -1;
+    let seq = 0;
+    let timer = 0;
+
+    function closeList(): void {
+        cfg.results.replaceChildren();
+        cfg.results.classList.add("hidden");
+        rows = [];
+        activeIndex = -1;
+    }
+
+    function highlight(idx: number): void {
+        activeIndex = idx;
+        Array.from(cfg.results.children).forEach((c: Element, i: number): void => {
+            c.classList.toggle("active", i === idx);
+        });
+    }
+
+    function renderRows(matches: PersonSearchResult[], typed: string): void {
+        const lowerTyped = typed.toLowerCase();
+        const exact = matches.some((m: PersonSearchResult): boolean =>
+            personDisplayLabel(m).toLowerCase() === lowerTyped || (m.handle??"").toLowerCase() === lowerTyped);
+        rows = matches.map((p: PersonSearchResult): Row => ({person: p}));
+        if (cfg.allowCreate && !exact) {
+            rows.push({createName: typed});
+        }
+        cfg.results.replaceChildren();
+        if (rows.length === 0) {
+            closeList();
+            return;
+        }
+        rows.forEach((row: Row, idx: number): void => {
+            const item: HTMLButtonElement = document.createElement("button");
+            item.type = "button";
+            item.classList.add("list-group-item", "list-group-item-action", "py-1", "text-start");
+            if (row.person != null) {
+                const label: HTMLSpanElement = document.createElement("span");
+                label.textContent = personDisplayLabel(row.person);
+                item.append(label);
+                if (row.person.wristband) {
+                    const wb: HTMLSpanElement = document.createElement("span");
+                    wb.classList.add("badge", "text-bg-secondary", "ms-2");
+                    wb.textContent = row.person.wristband;
+                    item.append(wb);
+                }
+                if (row.person.participation_type) {
+                    const pt: HTMLSpanElement = document.createElement("span");
+                    pt.classList.add("badge", "text-bg-light", "ms-2");
+                    pt.textContent = row.person.participation_type;
+                    item.append(pt);
+                }
+            } else {
+                item.classList.add("fst-italic");
+                item.textContent = `Create new person “${row.createName}”`;
+            }
+            // mousedown (not click) so selection fires before the input's blur hides the list.
+            item.addEventListener("mousedown", (e: MouseEvent): void => {
+                e.preventDefault();
+                void choose(idx);
+            });
+            cfg.results.append(item);
+        });
+        cfg.results.classList.remove("hidden");
+        highlight(0);
+    }
+
+    async function choose(idx: number): Promise<void> {
+        const row: Row|undefined = rows[idx];
+        closeList();
+        if (row == null) {
+            return;
+        }
+        cfg.input.value = "";
+        if (row.person != null) {
+            await cfg.onPick(row.person);
+        } else if (row.createName != null) {
+            const created = await createRegistryPerson(row.createName, cfg.eventName);
+            if (created != null) {
+                await cfg.onPick(created);
+            }
+        }
+    }
+
+    async function runSearch(): Promise<void> {
+        const typed: string = cfg.input.value.trim();
+        // D-P4: require >= 2 chars before searching.
+        if (typed.length < 2) {
+            closeList();
+            return;
+        }
+        const mySeq: number = ++seq;
+        const matches: PersonSearchResult[] = await searchPersonnel(typed, cfg.eventName);
+        if (mySeq !== seq) {
+            return; // a newer keystroke superseded this query
+        }
+        renderRows(matches, typed);
+    }
+
+    cfg.input.setAttribute("autocomplete", "off");
+    cfg.input.addEventListener("input", (): void => {
+        window.clearTimeout(timer);
+        timer = window.setTimeout((): void => void runSearch(), 200);
+    });
+    cfg.input.addEventListener("keydown", (e: KeyboardEvent): void => {
+        if (cfg.results.classList.contains("hidden")) {
+            return;
+        }
+        switch (e.key) {
+            case "ArrowDown":
+                e.preventDefault();
+                highlight(Math.min(activeIndex + 1, rows.length - 1));
+                break;
+            case "ArrowUp":
+                e.preventDefault();
+                highlight(Math.max(activeIndex - 1, 0));
+                break;
+            case "Enter":
+                e.preventDefault();
+                if (activeIndex >= 0) {
+                    void choose(activeIndex);
+                }
+                break;
+            case "Escape":
+                closeList();
+                break;
+        }
+    });
+    // Delay close so a result's mousedown is handled before the list hides.
+    cfg.input.addEventListener("blur", (): void => {
+        window.setTimeout(closeList, 150);
+    });
+}
+
+
 // Return the state ID for a given incident.
 export function stateForIncident(incident: Incident): IncidentState {
     // Data from 2014+ should have incident.state set.
@@ -971,7 +1169,8 @@ export function renderPersonHandles(data: IncidentPerson[]|null, type: RenderTyp
     if (data == null) {
         return undefined;
     }
-    const handles = data.map(r=>r.handle).filter(r=>r!=null);
+    // Display name is COALESCE(name, handle) so handle-less registry people still show.
+    const handles = data.map(r=>personDisplayLabel(r)).filter(r=>r!=="");
     switch (type) {
         case "display":
             return renderSortedSpan(handles);
@@ -1794,13 +1993,27 @@ export type LinkedIncident = {
 }
 
 export type IncidentPerson = {
+    person_id?: number|null;
     handle?: string|null;
+    name?: string|null;
     involvement?: string|null;
 }
 
 export type VisitPerson = {
+    person_id?: number|null;
     handle?: string|null;
+    name?: string|null;
     involvement?: string|null;
+}
+
+// PersonSearchResult is the minimal typeahead shape returned by
+// GET /ims/api/personnel?q=&event= (see docs/plans/51-people-registry.md).
+export type PersonSearchResult = {
+    person_id?: number|null;
+    handle?: string|null;
+    name?: string|null;
+    wristband?: string|null;
+    participation_type?: string|null;
 }
 
 export type IncidentState = 'new'|'on_hold'|'dispatched'|'on_scene'|'closed'|'null';

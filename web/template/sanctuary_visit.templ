@@ -455,18 +455,19 @@ templ SanctuaryVisit(deployment, versionName, versionRef, eventName string) {
               </ul>
               <div class="flex-input-container no-print">
                 <label for="person_add" class="control-label">Add:</label>
-                <input
-                        type="text"
-                        id="person_add"
-                        aria-label="Add Person"
-                        list="person_handles"
-                        autocomplete="off"
-                        class="form-control form-control-sm auto-width"
-                        onchange="addPerson()"
-                />
-                <datalist id="person_handles">
-                  <option value=""></option>
-                </datalist>
+                <div class="position-relative auto-width">
+                  <input
+                          type="text"
+                          id="person_add"
+                          aria-label="Add Person"
+                          autocomplete="off"
+                          placeholder="Search name, handle, or wristband…"
+                          class="form-control form-control-sm w-100"
+                  />
+                  <div id="person_add_results"
+                       class="list-group position-absolute w-100 shadow-sm hidden"
+                       style="z-index: 1000; max-height: 16rem; overflow-y: auto;"></div>
+                </div>
               </div>
           </div>
         </div>

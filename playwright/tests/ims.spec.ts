@@ -244,10 +244,11 @@ test("incidents", async ({ page, browser }) => {
     // add several people to the incident
     {
       async function addPerson(page: Page, personName: string): Promise<void> {
-        await page.getByLabel("Add Person").fill("");
-        await page.getByLabel("Add Person").press("Tab");
         await page.getByLabel("Add Person").fill(personName);
-        await page.getByLabel("Add Person").press("Tab");
+        // Search-first combobox (5e.2): pick the matching result, or the
+        // "Create new person" fallback whose label also contains the typed name.
+        await page.locator("#person_add_results")
+            .getByRole("button", {name: personName}).first().click();
         await expect(page.locator("li", {hasText: personName})).toBeVisible({timeout: 5000});
         await expect(page.getByLabel("Add Person")).toHaveValue("");
         const involvementField = page.locator("li", {hasText: personName}).getByRole("textbox");

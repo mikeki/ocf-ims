@@ -104,7 +104,7 @@ function drawPeople(): void {
         const entryItemFrag = el.personLiTemplate.content.cloneNode(true) as DocumentFragment;
         const entryItem = entryItemFrag.querySelector("li")!;
 
-        entryItem.dataset["personHandle"] = person.handle;
+        entryItem.dataset["personId"] = (person.person_id ?? "").toString();
         entryItem.getElementsByClassName("person-handle")[0]!.textContent = person.handle;
         entryItem.getElementsByClassName("person-status")[0]!.textContent =
             person.status + (person.onsite ? " · on site" : "");
@@ -112,7 +112,7 @@ function drawPeople(): void {
         const showModal: HTMLElement = entryItem.querySelector(".show-set-password-modal")!;
         showModal.addEventListener("click",
             function (_e: MouseEvent): void {
-                el.setPasswordModal.dataset["personHandle"] = person.handle;
+                el.setPasswordModal.dataset["personId"] = (person.person_id ?? "").toString();
                 el.setPasswordHandle.textContent = person.handle;
                 el.setPasswordInput.value = "";
                 el.setPasswordConfirm.value = "";
@@ -131,7 +131,7 @@ function drawPeople(): void {
         const showEdit: HTMLElement = entryItem.querySelector(".show-edit-modal")!;
         showEdit.addEventListener("click",
             function (_e: MouseEvent): void {
-                el.editPersonModal.dataset["personHandle"] = person.handle;
+                el.editPersonModal.dataset["personId"] = (person.person_id ?? "").toString();
                 el.editPersonHandle.textContent = person.handle;
                 el.editPersonStatus.value = person.status;
                 el.editPersonOnsite.checked = person.onsite ?? false;
@@ -152,7 +152,7 @@ function drawAdminToggle(button: HTMLButtonElement, isAdmin: boolean): void {
 
 async function toggleAdmin(person: ims.Personnel, button: HTMLButtonElement): Promise<void> {
     const next = !(person.is_admin ?? false);
-    const url = url_personnelAdmin.replace("<person_handle>", encodeURIComponent(person.handle));
+    const url = url_personnelAdmin.replace("<person_id>", encodeURIComponent((person.person_id ?? "").toString()));
     const {err} = await ims.fetchNoThrow(url, {
         body: JSON.stringify({"is_admin": next}),
     });
@@ -167,8 +167,8 @@ async function toggleAdmin(person: ims.Personnel, button: HTMLButtonElement): Pr
 }
 
 async function submitSetPassword(): Promise<void> {
-    const handle = el.setPasswordModal.dataset["personHandle"];
-    if (!handle) {
+    const personId = el.setPasswordModal.dataset["personId"];
+    if (!personId) {
         return;
     }
     const password = el.setPasswordInput.value;
@@ -184,7 +184,7 @@ async function submitSetPassword(): Promise<void> {
         return;
     }
 
-    const url = url_personnelPassword.replace("<person_handle>", encodeURIComponent(handle));
+    const url = url_personnelPassword.replace("<person_id>", encodeURIComponent(personId));
     const {err} = await ims.fetchNoThrow(url, {
         body: JSON.stringify({"password": password}),
     });
@@ -242,11 +242,11 @@ async function submitCreatePerson(): Promise<void> {
 }
 
 async function submitEditPerson(): Promise<void> {
-    const handle = el.editPersonModal.dataset["personHandle"];
-    if (!handle) {
+    const personId = el.editPersonModal.dataset["personId"];
+    if (!personId) {
         return;
     }
-    const url = url_personnelEdit.replace("<person_handle>", encodeURIComponent(handle));
+    const url = url_personnelEdit.replace("<person_id>", encodeURIComponent(personId));
     const {err} = await ims.fetchNoThrow(url, {
         body: JSON.stringify({
             "status": el.editPersonStatus.value,

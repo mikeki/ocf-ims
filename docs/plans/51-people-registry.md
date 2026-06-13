@@ -191,10 +191,22 @@ Branch-per-slice, PR-per-slice, each independently green.
   (`directory/local.go` seam + the incident/visit people + journal-author joins +
   `person.go` create/edit params); the `directory.User` domain type absorbs the
   `NullString`, so login / JWT / authz were untouched.
-- **5e.2 — Search + create-as-fallback**: the `?q=` endpoint **and its LEFT-JOIN
-  search query** (carried over from 5e.1), the search-first **combobox** on
-  incident/visit attach flows (replaces the native datalist; delivers 6d.3's
-  affordance), inline minimal-create, handle→ID URL migration.
+- **5e.2 — Search + create-as-fallback** *(done)*: the `?q=&event=` endpoint **and
+  its LEFT-JOIN search query** (carried over from 5e.1), the search-first
+  **combobox** (`setupPersonCombobox` in `ims.ts`) on incident/visit attach flows
+  (replaces the native datalist; delivers 6d.3's affordance), inline minimal-create
+  (`createRegistryPerson` → `POST /personnel` with D-P1 event-writer gating), and
+  the handle→ID URL migration (all 7 attach/detach + personnel sub-routes now key
+  on `{personId}`; `IncidentPerson`/`VisitPerson` JSON gained `person_id` + `name`
+  so handle-less people are addressable/displayable). As-built notes:
+  - the **field combobox creates name-only** (participation defaults to `public`);
+    capturing a **wristband at field-create** is deferred to the admin per-event
+    editor in **5e.4** (the create endpoint already accepts wristband + event).
+  - **admin People page**: the URL keys moved to `{personId}`, but name/email
+    display and the per-event wristband/participation editor remain **5e.4**
+    (handle-less people still render a blank handle there until then).
+  - `setPersonInvolvement` now sends the correct `involvement` field (the old
+    datalist path sent a stray `role` key the server ignored — latent bugfix).
 - **5e.3 — Visit guest linkage**: visit page person picker; visit JSON gains
   `guest` person ref; **drop `VISIT.GUEST_PREFERRED_NAME`** once guests link to a
   `PERSON` row (deferred here from 5e.1).

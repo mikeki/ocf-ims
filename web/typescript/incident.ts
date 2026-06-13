@@ -17,7 +17,6 @@
 "use strict";
 
 import * as ims from "./ims.ts";
-import {fetchPersonnel} from "./ims.ts";
 
 declare global {
     interface Window {
@@ -33,7 +32,6 @@ declare global {
         attachReport: ()=>Promise<void>;
         unlinkIncident: (el: HTMLElement)=>Promise<void>;
         linkIncident: (el: HTMLInputElement)=>Promise<void>;
-        addPerson: ()=>void;
         addIncidentType: ()=>Promise<void>;
         attachFile: ()=>void;
         drawMergedJournalEntries: ()=>void;
@@ -68,7 +66,7 @@ const el = {
     locationDescription: ims.typedElement("incident_location_description", HTMLInputElement),
 
     personAdd: ims.typedElement("person_add", HTMLInputElement),
-    personHandles: ims.typedElement("person_handles", HTMLDataListElement),
+    personAddResults: ims.typedElement("person_add_results", HTMLElement),
     peopleList: ims.typedElement("incident_people_list", HTMLElement),
     peopleLiTemplate: ims.typedElement("incident_people_li_template", HTMLTemplateElement),
 
@@ -124,7 +122,6 @@ async function initIncidentPage(): Promise<void> {
     window.attachReport = attachReport;
     window.unlinkIncident = unlinkIncident;
     window.linkIncident = linkIncident;
-    window.addPerson = addPerson;
     window.addIncidentType = addIncidentType;
     window.attachFile = attachFile;
     window.drawMergedJournalEntries = drawMergedJournalEntries;
@@ -135,7 +132,6 @@ async function initIncidentPage(): Promise<void> {
     // load everything from the APIs concurrently
     await Promise.all([
         await loadIncident(),
-        await loadPersonnel(),
         await ims.loadIncidentTypes().then(
             value=> {
                 // Cluster by OCF category so the add-dropdown and info modal
@@ -158,7 +154,7 @@ async function initIncidentPage(): Promise<void> {
         return;
     }
     drawPeople();
-    drawPeopleToAdd();
+    setupPersonAdd();
     drawIncidentTypesToAdd();
     drawIncidentTypeInfo();
     renderReportData();
@@ -368,20 +364,6 @@ function renderReportData(): void {
     drawLinkedIncidents();
 }
 
-
-//
-// Load personnel
-//
-
-let personnel: ims.PersonnelMap|null = null;
-
-async function loadPersonnel(): Promise<void> {
-    const res = await fetchPersonnel();
-    if (res.err != null || res.personnel == null) {
-        ims.setErrorMessage(res.err??"");
-    }
-    personnel = res.personnel;
-}
 
 //
 // Load all reports and visits
@@ -708,33 +690,29 @@ function drawIncidentSummary(): void {
 
 function drawPeople() {
     const people: ims.IncidentPerson[] = incident?.people??[];
-    people.sort((a: ims.IncidentPerson, b: ims.IncidentPerson) => (a.handle??"").localeCompare(b.handle??""));
+    people.sort((a: ims.IncidentPerson, b: ims.IncidentPerson) =>
+        ims.personDisplayLabel(a).localeCompare(ims.personDisplayLabel(b)));
 
     el.peopleList.querySelectorAll("li").forEach((li: HTMLElement) => {li.remove()});
 
     for (const person of people) {
-        if (!person.handle) {
+        if (person.person_id == null) {
             continue;
         }
-        const handle = person.handle;
+        const label = ims.personDisplayLabel(person);
 
         const personFragment = el.peopleLiTemplate.content.cloneNode(true) as DocumentFragment;
         const personLi = personFragment.querySelector("li")!;
         personLi.classList.remove("hidden");
-        personLi.dataset["personHandle"] = handle;
+        personLi.dataset["personId"] = person.person_id.toString();
 
-        const personName =  personLi.querySelector("span")!
-        if (personnel?.[handle] == null) {
-            personName.textContent = handle;
-        } else {
-            const person = personnel[handle];
-            const personLink = personName.querySelector("a")!;
-            personLink.textContent = person.handle;
-        }
+        const personLink = personLi.querySelector("span")!.querySelector("a")!;
+        personLink.textContent = label;
+
         const involvementInput = personLi.querySelector("input")!;
-        involvementInput.ariaLabel = `Involvement for ${handle}`;
+        involvementInput.ariaLabel = `Involvement for ${label}`;
         if (person.involvement) {
-            personLi.querySelector("input")!.value = person.involvement;
+            involvementInput.value = person.involvement;
         }
 
         el.peopleList.append(personFragment);
@@ -742,31 +720,14 @@ function drawPeople() {
 }
 
 
-function drawPeopleToAdd(): void {
-    const handles: string[] = [];
-    for (const handle in personnel) {
-        handles.push(handle);
-    }
-    handles.sort((a: string, b: string) => a.localeCompare(b));
-
-    el.personHandles.replaceChildren();
-    el.personHandles.append(document.createElement("option"));
-
-    if (personnel != null) {
-        for (const handle of handles) {
-            const person = personnel[handle];
-            if (person === undefined) {
-                console.error(`no record for personnel with handle ${handle}`);
-                continue;
-            }
-
-            const option: HTMLOptionElement = document.createElement("option");
-            option.value = handle;
-            option.text = person.handle;
-
-            el.personHandles.append(option);
-        }
-    }
+function setupPersonAdd(): void {
+    ims.setupPersonCombobox({
+        input: el.personAdd,
+        results: el.personAddResults,
+        eventName: ims.pathIds.eventName ?? "",
+        allowCreate: true,
+        onPick: attachPersonToIncident,
+    });
 }
 
 
@@ -1199,15 +1160,15 @@ async function editLocationDescription(): Promise<void> {
 
 async function removePerson(sender: HTMLElement): Promise<void> {
     const parent = sender.parentElement as HTMLElement;
-    const personHandle = parent.dataset["personHandle"];
-    if (!personHandle) {
+    const personId = parent.dataset["personId"];
+    if (!personId) {
         return;
     }
 
     const url = (
         ims.urlReplace(url_incidentPerson)
             .replace("<incident_number>", ims.pathIds.incidentNumber!.toString())
-            .replace("<person_handle>", encodeURIComponent(personHandle))
+            .replace("<person_id>", encodeURIComponent(personId))
     );
     await ims.fetchNoThrow(url, {
         method: "DELETE",
@@ -1215,21 +1176,20 @@ async function removePerson(sender: HTMLElement): Promise<void> {
 }
 
 async function setPersonInvolvement(sender: HTMLInputElement): Promise<void> {
-    const handle = sender.closest("li")?.dataset["personHandle"];
-    if (!handle) {
-        console.log("no person handle for element");
+    const personId = sender.closest("li")?.dataset["personId"];
+    if (!personId) {
+        console.log("no person id for element");
         return;
     }
 
     const url = (
         ims.urlReplace(url_incidentPerson)
             .replace("<incident_number>", ims.pathIds.incidentNumber!.toString())
-            .replace("<person_handle>", encodeURIComponent(handle))
+            .replace("<person_id>", encodeURIComponent(personId))
     );
     const {err} = await ims.fetchNoThrow(url, {
         body: JSON.stringify({
-            handle: handle,
-            role: sender.value,
+            involvement: sender.value,
         }),
     });
     if (err !== null) {
@@ -1256,44 +1216,17 @@ function normalize(str: string): string {
     return str.toLowerCase().trim();
 }
 
-async function addPerson(): Promise<void> {
-    let handle: string = el.personAdd.value;
-
-    // make a copy of the people
-    const people = (incident!.people??[]).slice();
-    const handles = people.map(r=>r.handle).filter(handle => handle != null);
-
-    // fuzzy-match on handle, to allow case insensitivity and
-    // leading/trailing whitespace.
-    if (!(handle in (personnel??[]))) {
-        const normalized = normalize(handle);
-        for (const validHandle in personnel) {
-            if (normalized === normalize(validHandle)) {
-                handle = validHandle;
-                break;
-            }
-        }
-    }
-    if (!(handle in (personnel??[]))) {
-        // Not a valid handle
-        el.personAdd.value = "";
+async function attachPersonToIncident(person: ims.PersonSearchResult): Promise<void> {
+    if (person.person_id == null) {
         return;
     }
-
-    if (handles.indexOf(handle) !== -1) {
-        // Already in the list, so… move along.
-        el.personAdd.value = "";
-        return;
-    }
-
-    people.push({handle: handle});
-
     el.personAdd.disabled = true;
 
     if (ims.pathIds.incidentNumber == null) {
         // Incident doesn't exist yet. Create it first.
         const {err} = await sendEdits({});
         if (err != null) {
+            el.personAdd.disabled = false;
             return;
         }
     }
@@ -1301,21 +1234,16 @@ async function addPerson(): Promise<void> {
     const url = (
         ims.urlReplace(url_incidentPerson)
             .replace("<incident_number>", ims.pathIds.incidentNumber!.toString())
-            .replace("<person_handle>", encodeURIComponent(handle))
+            .replace("<person_id>", person.person_id.toString())
     );
     const {err} = await ims.fetchNoThrow(url, {
-        body: JSON.stringify({
-            handle: handle,
-        }),
+        body: JSON.stringify({}),
     });
+    el.personAdd.disabled = false;
     if (err !== null) {
         ims.controlHasError(el.personAdd);
-        el.personAdd.value = "";
-        el.personAdd.disabled = false;
         return;
     }
-    el.personAdd.value = "";
-    el.personAdd.disabled = false;
     ims.controlHasSuccess(el.personAdd);
     el.personAdd.focus();
 }
