@@ -35,22 +35,22 @@ func TestSetPersonPassword(t *testing.T) {
 	const newPassword = "a-brand-new-password"
 
 	// A non-admin (lacking GlobalAdministratePersonnel) cannot set a password.
-	resp := apisAlice.setPersonPassword(ctx, userBobHandle, newPassword)
+	resp := apisAlice.setPersonPassword(ctx, userBobPersonID, newPassword)
 	require.Equal(t, http.StatusForbidden, resp.StatusCode)
 	require.NoError(t, resp.Body.Close())
 
-	// An unknown handle is a 404.
-	resp = apisAdmin.setPersonPassword(ctx, "NoSuchPersonHandle", newPassword)
+	// An unknown person ID is a 404.
+	resp = apisAdmin.setPersonPassword(ctx, nonexistentPersonID, newPassword)
 	require.Equal(t, http.StatusNotFound, resp.StatusCode)
 	require.NoError(t, resp.Body.Close())
 
 	// A too-short password is rejected.
-	resp = apisAdmin.setPersonPassword(ctx, userBobHandle, "short")
+	resp = apisAdmin.setPersonPassword(ctx, userBobPersonID, "short")
 	require.Equal(t, http.StatusBadRequest, resp.StatusCode)
 	require.NoError(t, resp.Body.Close())
 
 	// The admin sets Bob's password.
-	resp = apisAdmin.setPersonPassword(ctx, userBobHandle, newPassword)
+	resp = apisAdmin.setPersonPassword(ctx, userBobPersonID, newPassword)
 	require.Equal(t, http.StatusNoContent, resp.StatusCode)
 	require.NoError(t, resp.Body.Close())
 

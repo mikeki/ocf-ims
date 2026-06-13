@@ -20,7 +20,6 @@ import (
 	"fmt"
 	"log/slog"
 	"net/http"
-	"strings"
 
 	"github.com/mikeki/ocf-ims/directory"
 	"github.com/mikeki/ocf-ims/lib/argon2id"
@@ -69,11 +68,6 @@ func (action SetPersonPassword) setPersonPassword(req *http.Request) *herr.HTTPE
 		return herr.Forbidden("The requestor does not have GlobalAdministratePersonnel permission", nil)
 	}
 
-	handle := req.PathValue("personHandle")
-	if handle == "" {
-		return herr.BadRequest("Empty person handle", nil)
-	}
-
 	body, errHTTP := readBodyAs[SetPersonPasswordRequest](req)
 	if errHTTP != nil {
 		return errHTTP.From("[readBodyAs]")
@@ -86,29 +80,17 @@ func (action SetPersonPassword) setPersonPassword(req *http.Request) *herr.HTTPE
 		return herr.BadRequest("Outrageously long passwords are disallowed", ErrLongPassword)
 	}
 
-	// Resolve the handle (addressed in the URL path) to a local person_id. Use 404
-	// rather than 400 since the handle identifies the resource.
-	users, err := action.userStore.GetAllUsers(req.Context())
-	if err != nil {
-		return herr.InternalServerError("Failed to fetch personnel", err).From("[GetAllUsers]")
-	}
-	var personID int32
-	found := false
-	for _, u := range users {
-		if strings.EqualFold(u.Handle, handle) {
-			personID = int32(u.ID)
-			found = true
-			break
-		}
-	}
-	if !found {
-		return herr.NotFound("Unknown person: "+handle, nil)
+	// The person is addressed by stable ID in the URL path (registry people may
+	// have no handle since 5e).
+	person, errHTTP := personByIDFromPath(req.Context(), action.imsDBQ, req)
+	if errHTTP != nil {
+		return errHTTP
 	}
 
 	hashed := argon2id.CreateHash(body.Password, argon2id.DefaultParams)
-	err = action.imsDBQ.SetPersonPassword(req.Context(), action.imsDBQ, imsdb.SetPersonPasswordParams{
+	err := action.imsDBQ.SetPersonPassword(req.Context(), action.imsDBQ, imsdb.SetPersonPasswordParams{
 		Password: conv.StringToSql(&hashed, 255),
-		ID:       personID,
+		ID:       person.ID,
 	})
 	if err != nil {
 		return herr.InternalServerError("Failed to set password", err).From("[SetPersonPassword]")
@@ -119,6 +101,6 @@ func (action SetPersonPassword) setPersonPassword(req *http.Request) *herr.HTTPE
 	action.userStore.InvalidateUsers()
 
 	// #nosec G706 // log injection
-	slog.Info("Password set for person", "handle", handle)
+	slog.Info("Password set for person", "person_id", person.ID, "handle", person.Handle.String)
 	return nil
 }

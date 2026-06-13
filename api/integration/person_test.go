@@ -17,6 +17,7 @@
 package integration_test
 
 import (
+	"encoding/json"
 	"net/http"
 	"slices"
 	"testing"
@@ -61,8 +62,14 @@ func TestCreateAndEditPerson(t *testing.T) {
 		Email:    "edithtestranger@example.com",
 		Password: newPassword,
 	})
-	require.Equal(t, http.StatusNoContent, resp.StatusCode)
+	require.Equal(t, http.StatusCreated, resp.StatusCode)
+	// Create returns the new person (with its server-assigned person_id), which is
+	// the URL key for the edits below.
+	var created imsjson.Person
+	require.NoError(t, json.NewDecoder(resp.Body).Decode(&created))
 	require.NoError(t, resp.Body.Close())
+	require.Positive(t, created.PersonID)
+	newPersonID := created.PersonID
 
 	// Creating the same handle again is a conflict.
 	resp = apisAdmin.createPerson(ctx, api.CreatePersonRequest{Handle: newHandle, Password: newPassword})
@@ -86,16 +93,16 @@ func TestCreateAndEditPerson(t *testing.T) {
 	require.NotEmpty(t, token)
 
 	// Edit validation: unknown handle is 404, bad status is 400.
-	resp = apisAdmin.editPerson(ctx, "NoSuchPersonHandle", api.EditPersonRequest{Status: "active"})
+	resp = apisAdmin.editPerson(ctx, nonexistentPersonID, api.EditPersonRequest{Status: "active"})
 	require.Equal(t, http.StatusNotFound, resp.StatusCode)
 	require.NoError(t, resp.Body.Close())
-	resp = apisAdmin.editPerson(ctx, newHandle, api.EditPersonRequest{Status: "bogus"})
+	resp = apisAdmin.editPerson(ctx, newPersonID, api.EditPersonRequest{Status: "bogus"})
 	require.Equal(t, http.StatusBadRequest, resp.StatusCode)
 	require.NoError(t, resp.Body.Close())
 
 	// Deactivate the person: now they can no longer log in (the login directory is
 	// active-only) but still appear in the admin listing as inactive.
-	resp = apisAdmin.editPerson(ctx, newHandle, api.EditPersonRequest{Status: "inactive"})
+	resp = apisAdmin.editPerson(ctx, newPersonID, api.EditPersonRequest{Status: "inactive"})
 	require.Equal(t, http.StatusNoContent, resp.StatusCode)
 	require.NoError(t, resp.Body.Close())
 
@@ -112,7 +119,7 @@ func TestCreateAndEditPerson(t *testing.T) {
 	}), "deactivated person should still appear (as inactive) in the admin listing")
 
 	// Reactivate (and set on-site): login works again.
-	resp = apisAdmin.editPerson(ctx, newHandle, api.EditPersonRequest{Status: "active", Onsite: true})
+	resp = apisAdmin.editPerson(ctx, newPersonID, api.EditPersonRequest{Status: "active", Onsite: true})
 	require.Equal(t, http.StatusNoContent, resp.StatusCode)
 	require.NoError(t, resp.Body.Close())
 

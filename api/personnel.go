@@ -17,12 +17,14 @@
 package api
 
 import (
+	"database/sql"
 	"fmt"
 	"github.com/mikeki/ocf-ims/directory"
 	imsjson "github.com/mikeki/ocf-ims/json"
 	"github.com/mikeki/ocf-ims/lib/authz"
 	"github.com/mikeki/ocf-ims/lib/herr"
 	"github.com/mikeki/ocf-ims/store"
+	"github.com/mikeki/ocf-ims/store/imsdb"
 	"net/http"
 	"strings"
 	"time"
@@ -53,6 +55,14 @@ func (action GetPersonnel) getPersonnel(req *http.Request) (GetPersonnelResponse
 	}
 	if globalPermissions&authz.GlobalReadPersonnel == 0 {
 		return response, herr.Forbidden("The requestor does not have GlobalReadPersonnel permission", nil)
+	}
+
+	// Typeahead search (?q=) backs the search-first person picker on the incident
+	// and visit attach flows and the admin People page. It returns a minimal shape
+	// (id, name, handle?, wristband?, participation_type?) over active people and is
+	// gated only on GlobalReadPersonnel (any logged-in user; see R4 in the plan).
+	if q := strings.TrimSpace(req.FormValue("q")); q != "" {
+		return action.searchPersonnel(req, q)
 	}
 
 	// The admin People page requests ?all=true to manage every person, including
@@ -102,4 +112,51 @@ func (action GetPersonnel) getPersonnel(req *http.Request) (GetPersonnelResponse
 	}
 
 	return response, nil
+}
+
+// searchPersonnel runs the typeahead query. With an event named (?event=), each
+// hit carries that event's wristband and participation type, and the wristband
+// becomes searchable; without one, those per-event fields are empty.
+func (action GetPersonnel) searchPersonnel(req *http.Request, q string) (GetPersonnelResponse, *herr.HTTPError) {
+	response := make(GetPersonnelResponse, 0)
+	// D-P4: require >= 2 chars so a single keystroke doesn't dump the registry.
+	if len([]rune(q)) < 2 {
+		return response, nil
+	}
+
+	var eventID int32
+	if eventName := strings.TrimSpace(req.FormValue("event")); eventName != "" {
+		event, errHTTP := getEvent(req, eventName, action.imsDBQ)
+		if errHTTP != nil {
+			return response, errHTTP.From("[getEvent]")
+		}
+		eventID = event.ID
+	}
+
+	rows, err := action.imsDBQ.SearchPeople(req.Context(), action.imsDBQ, imsdb.SearchPeopleParams{
+		Event: eventID,
+		Query: sql.NullString{String: "%" + escapeLike(q) + "%", Valid: true},
+	})
+	if err != nil {
+		return response, herr.InternalServerError("Failed to search personnel", err).From("[SearchPeople]")
+	}
+	for _, row := range rows {
+		person := imsjson.Person{
+			PersonID:  int64(row.ID),
+			Handle:    row.Handle.String,
+			Name:      row.Name.String,
+			Wristband: row.Wristband.String,
+		}
+		if row.ParticipationType.Valid {
+			person.ParticipationType = string(row.ParticipationType.PersonEventParticipationType)
+		}
+		response = append(response, person)
+	}
+	return response, nil
+}
+
+// escapeLike escapes the LIKE metacharacters in user input so a typed '%' or '_'
+// matches literally rather than as a wildcard (default backslash is the escape).
+func escapeLike(s string) string {
+	return strings.NewReplacer(`\`, `\\`, `%`, `\%`, `_`, `\_`).Replace(s)
 }

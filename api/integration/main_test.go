@@ -53,15 +53,18 @@ var shared struct {
 	actionLogger *actionlog.Logger
 }
 
-// These values must align with those in imsPeopleTestSeed.
+// These values must align with those in imsPeopleTestSeed. Person IDs are the URL
+// key for personnel endpoints since 5e (registry people may have no handle).
 const (
 	userAdminHandle   = "AdminTestRanger"
 	userAdminEmail    = "admintestranger@example.com"
 	userAdminPassword = ")'("
+	userAdminPersonID = 6000
 
 	userAliceHandle   = "AliceTestRanger"
 	userAliceEmail    = "alicetestranger@example.com"
 	userAlicePassword = "password"
+	userAlicePersonID = 6001
 
 	// Bob is a dedicated non-admin user for the password-reset test, so that test
 	// can mutate his password without contaminating other (parallel) tests that log
@@ -69,6 +72,7 @@ const (
 	userBobHandle          = "BobTestRanger"
 	userBobEmail           = "bobtestranger@example.com"
 	userBobInitialPassword = "password"
+	userBobPersonID        = 6002
 
 	// Carol is dedicated to the IS_ADMIN toggle test, so it can flag/unflag her
 	// without touching admins that other parallel tests rely on. She shares Alice's
@@ -76,6 +80,10 @@ const (
 	userCarolHandle   = "CarolTestRanger"
 	userCarolEmail    = "caroltestranger@example.com"
 	userCarolPassword = "password"
+	userCarolPersonID = 6003
+
+	// A person_id that doesn't exist, for not-found (404) assertions.
+	nonexistentPersonID = 999999
 )
 
 // imsPeopleTestSeed seeds the local IMS-DB people directory used by the integration

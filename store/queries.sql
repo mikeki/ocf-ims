@@ -145,7 +145,8 @@ group by
 -- name: Incidents_People :many
 select
     sqlc.embed(ip),
-    p.HANDLE
+    p.HANDLE,
+    p.NAME
 from
     INCIDENT__PERSON ip
     join PERSON p on p.ID = ip.PERSON_ID
@@ -155,7 +156,8 @@ where
 -- name: Incident_People :many
 select
     sqlc.embed(ip),
-    p.HANDLE
+    p.HANDLE,
+    p.NAME
 from
     INCIDENT__PERSON ip
     join PERSON p on p.ID = ip.PERSON_ID
@@ -556,7 +558,8 @@ group by
 -- name: Visits_People :many
 select
     sqlc.embed(vp),
-    p.HANDLE
+    p.HANDLE,
+    p.NAME
 from
     VISIT__PERSON vp
     join PERSON p on p.ID = vp.PERSON_ID
@@ -566,7 +569,8 @@ where
 -- name: Visit_People :many
 select
     sqlc.embed(vp),
-    p.HANDLE
+    p.HANDLE,
+    p.NAME
 from
     VISIT__PERSON vp
     join PERSON p on p.ID = vp.PERSON_ID
@@ -653,9 +657,17 @@ select ID, HANDLE, EMAIL, STATUS, ON_SITE, IS_ADMIN
 from PERSON
 where HANDLE = ?;
 
--- name: CreatePerson :exec
-insert into PERSON (HANDLE, EMAIL, STATUS, ON_SITE, PASSWORD, CREATED)
-values (?, ?, ?, ?, ?, ?);
+-- PersonByID resolves a person by their stable primary key. Since 5e the web UI
+-- addresses people by person_id (registry people may have no handle), so the
+-- attach/detach and personnel-edit handlers look people up here.
+-- name: PersonByID :one
+select ID, HANDLE, NAME, EMAIL, STATUS, ON_SITE, IS_ADMIN
+from PERSON
+where ID = ?;
+
+-- name: CreatePerson :execlastid
+insert into PERSON (HANDLE, NAME, EMAIL, STATUS, ON_SITE, PASSWORD, CREATED)
+values (?, ?, ?, ?, ?, ?, ?);
 
 -- name: EditPerson :exec
 update PERSON
@@ -676,6 +688,43 @@ where ID = ?;
 select count(*)
 from PERSON
 where IS_ADMIN = true;
+
+-- SearchPeople backs the typeahead person picker (search-first attach + admin
+-- search). It matches the query term against handle, display name, and — when an
+-- event is given — that event's wristband, LEFT JOINing PERSON__EVENT so each hit
+-- carries the event's wristband + participation type (null when the person has no
+-- row for the event yet). Active people only, mirroring the attach autocompletes;
+-- pass event = 0 to search without per-event fields. Caller supplies the LIKE
+-- wildcards in `query` (e.g. "%term%").
+-- name: SearchPeople :many
+select
+    p.ID,
+    p.HANDLE,
+    p.NAME,
+    pe.WRISTBAND,
+    pe.PARTICIPATION_TYPE
+from PERSON p
+    left join PERSON__EVENT pe on pe.PERSON_ID = p.ID and pe.EVENT = sqlc.arg(event)
+where
+    p.STATUS = 'active'
+    and (
+        coalesce(p.HANDLE, '') like sqlc.arg(query)
+        or coalesce(p.NAME, '') like sqlc.arg(query)
+        or coalesce(pe.WRISTBAND, '') like sqlc.arg(query)
+    )
+order by coalesce(p.NAME, p.HANDLE)
+limit 25;
+
+-- UpsertPersonEvent records (or updates) how a person relates to one event — their
+-- wristband and participation type. Created lazily the first time a person is
+-- associated with an event (e.g. inline-created from an attach flow with a
+-- wristband). See docs/plans/51-people-registry.md.
+-- name: UpsertPersonEvent :exec
+insert into PERSON__EVENT (PERSON_ID, EVENT, WRISTBAND, PARTICIPATION_TYPE)
+values (?, ?, ?, ?)
+on duplicate key update
+    WRISTBAND = values(WRISTBAND),
+    PARTICIPATION_TYPE = values(PARTICIPATION_TYPE);
 
 -- name: PeoplePositions :many
 select PERSON_ID, POSITION_ID

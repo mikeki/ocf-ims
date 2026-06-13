@@ -98,15 +98,15 @@ func (a ApiHelper) getAuth(ctx context.Context, eventName string) (api.GetAuthRe
 	return *bod.(*api.GetAuthResponse), resp
 }
 
-func (a ApiHelper) setPersonPassword(ctx context.Context, handle, password string) *http.Response {
+func (a ApiHelper) setPersonPassword(ctx context.Context, personID int64, password string) *http.Response {
 	a.t.Helper()
-	path := a.serverURL.JoinPath("/ims/api/personnel", handle, "password").String()
+	path := a.serverURL.JoinPath("/ims/api/personnel", strconv.FormatInt(personID, 10), "password").String()
 	return a.imsPost(ctx, api.SetPersonPasswordRequest{Password: password}, path)
 }
 
-func (a ApiHelper) setPersonAdmin(ctx context.Context, handle string, isAdmin bool) *http.Response {
+func (a ApiHelper) setPersonAdmin(ctx context.Context, personID int64, isAdmin bool) *http.Response {
 	a.t.Helper()
-	path := a.serverURL.JoinPath("/ims/api/personnel", handle, "admin").String()
+	path := a.serverURL.JoinPath("/ims/api/personnel", strconv.FormatInt(personID, 10), "admin").String()
 	return a.imsPost(ctx, api.SetPersonAdminRequest{IsAdmin: isAdmin}, path)
 }
 
@@ -116,9 +116,9 @@ func (a ApiHelper) createPerson(ctx context.Context, body api.CreatePersonReques
 	return a.imsPost(ctx, body, path)
 }
 
-func (a ApiHelper) editPerson(ctx context.Context, handle string, body api.EditPersonRequest) *http.Response {
+func (a ApiHelper) editPerson(ctx context.Context, personID int64, body api.EditPersonRequest) *http.Response {
 	a.t.Helper()
-	path := a.serverURL.JoinPath("/ims/api/personnel", handle).String()
+	path := a.serverURL.JoinPath("/ims/api/personnel", strconv.FormatInt(personID, 10)).String()
 	return a.imsPost(ctx, body, path)
 }
 
@@ -277,27 +277,25 @@ func (a ApiHelper) updateVisit(ctx context.Context, eventName string, visit int3
 	return a.imsPost(ctx, req, a.serverURL.JoinPath("/ims/api/events/", eventName, "/visits/", strconv.Itoa(int(visit))).String())
 }
 
-func (a ApiHelper) attachPersonToIncident(ctx context.Context, eventName string, incident int32, handle string) *http.Response {
+func (a ApiHelper) attachPersonToIncident(ctx context.Context, eventName string, incident int32, personID int64) *http.Response {
 	a.t.Helper()
-	req := imsjson.IncidentPerson{Handle: handle}
-	return a.imsPost(ctx, req, a.serverURL.JoinPath("/ims/api/events/", eventName, "/incidents/", strconv.Itoa(int(incident)), "/people/", handle).String())
+	return a.imsPost(ctx, imsjson.IncidentPerson{}, a.serverURL.JoinPath("/ims/api/events/", eventName, "/incidents/", strconv.Itoa(int(incident)), "/people/", strconv.FormatInt(personID, 10)).String())
 }
 
-func (a ApiHelper) attachPersonToVisit(ctx context.Context, eventName string, visit int32, handle string) *http.Response {
+func (a ApiHelper) attachPersonToVisit(ctx context.Context, eventName string, visit int32, personID int64) *http.Response {
 	a.t.Helper()
-	req := imsjson.VisitPerson{Handle: handle}
-	return a.imsPost(ctx, req, a.serverURL.JoinPath("/ims/api/events/", eventName, "/visits/", strconv.Itoa(int(visit)), "/people/", handle).String())
+	return a.imsPost(ctx, imsjson.VisitPerson{}, a.serverURL.JoinPath("/ims/api/events/", eventName, "/visits/", strconv.Itoa(int(visit)), "/people/", strconv.FormatInt(personID, 10)).String())
 }
 
-func (a ApiHelper) detachPersonFromIncident(ctx context.Context, eventName string, incident int32, handle string) *http.Response {
+func (a ApiHelper) detachPersonFromIncident(ctx context.Context, eventName string, incident int32, personID int64) *http.Response {
 	a.t.Helper()
-	_, resp := a.imsDelete(ctx, a.serverURL.JoinPath("/ims/api/events/", eventName, "/incidents/", strconv.Itoa(int(incident)), "/people/", handle).String(), nil)
+	_, resp := a.imsDelete(ctx, a.serverURL.JoinPath("/ims/api/events/", eventName, "/incidents/", strconv.Itoa(int(incident)), "/people/", strconv.FormatInt(personID, 10)).String(), nil)
 	return resp
 }
 
-func (a ApiHelper) detachPersonFromVisit(ctx context.Context, eventName string, visit int32, handle string) *http.Response {
+func (a ApiHelper) detachPersonFromVisit(ctx context.Context, eventName string, visit int32, personID int64) *http.Response {
 	a.t.Helper()
-	_, resp := a.imsDelete(ctx, a.serverURL.JoinPath("/ims/api/events/", eventName, "/visits/", strconv.Itoa(int(visit)), "/people/", handle).String(), nil)
+	_, resp := a.imsDelete(ctx, a.serverURL.JoinPath("/ims/api/events/", eventName, "/visits/", strconv.Itoa(int(visit)), "/people/", strconv.FormatInt(personID, 10)).String(), nil)
 	return resp
 }
 

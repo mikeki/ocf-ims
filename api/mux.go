@@ -195,7 +195,7 @@ func AddToMux(
 		),
 	)
 
-	mux.Handle("POST /ims/api/events/{eventName}/incidents/{incidentNumber}/people/{personHandle}",
+	mux.Handle("POST /ims/api/events/{eventName}/incidents/{incidentNumber}/people/{personId}",
 		Adapt(
 			AttachPersonToIncident{db, userStore, es},
 			RecoverFromPanic(),
@@ -205,7 +205,7 @@ func AddToMux(
 		),
 	)
 
-	mux.Handle("DELETE /ims/api/events/{eventName}/incidents/{incidentNumber}/people/{personHandle}",
+	mux.Handle("DELETE /ims/api/events/{eventName}/incidents/{incidentNumber}/people/{personId}",
 		Adapt(
 			DetachPersonFromIncident{db, userStore, es},
 			RecoverFromPanic(),
@@ -335,7 +335,7 @@ func AddToMux(
 		),
 	)
 
-	mux.Handle("POST /ims/api/events/{eventName}/visits/{visitNumber}/people/{personHandle}",
+	mux.Handle("POST /ims/api/events/{eventName}/visits/{visitNumber}/people/{personId}",
 		Adapt(
 			AttachPersonToVisit{db, userStore, es},
 			RecoverFromPanic(),
@@ -345,7 +345,7 @@ func AddToMux(
 		),
 	)
 
-	mux.Handle("DELETE /ims/api/events/{eventName}/visits/{visitNumber}/people/{personHandle}",
+	mux.Handle("DELETE /ims/api/events/{eventName}/visits/{visitNumber}/people/{personId}",
 		Adapt(
 			DetachPersonFromVisit{db, userStore, es},
 			RecoverFromPanic(),
@@ -466,7 +466,7 @@ func AddToMux(
 		),
 	)
 
-	mux.Handle("POST /ims/api/personnel/{personHandle}",
+	mux.Handle("POST /ims/api/personnel/{personId}",
 		Adapt(
 			EditPerson{db, userStore},
 			RecoverFromPanic(),
@@ -476,7 +476,7 @@ func AddToMux(
 		),
 	)
 
-	mux.Handle("POST /ims/api/personnel/{personHandle}/password",
+	mux.Handle("POST /ims/api/personnel/{personId}/password",
 		Adapt(
 			SetPersonPassword{db, userStore},
 			RecoverFromPanic(),
@@ -487,7 +487,7 @@ func AddToMux(
 		),
 	)
 
-	mux.Handle("POST /ims/api/personnel/{personHandle}/admin",
+	mux.Handle("POST /ims/api/personnel/{personId}/admin",
 		Adapt(
 			SetPersonAdmin{db, userStore},
 			RecoverFromPanic(),

@@ -40,12 +40,12 @@ func TestSetPersonAdmin(t *testing.T) {
 	apisNoAuth := ApiHelper{t: t, serverURL: shared.serverURL}
 
 	// A non-admin cannot set the admin flag.
-	resp := apisAlice.setPersonAdmin(ctx, userCarolHandle, true)
+	resp := apisAlice.setPersonAdmin(ctx, userCarolPersonID, true)
 	require.Equal(t, http.StatusForbidden, resp.StatusCode)
 	require.NoError(t, resp.Body.Close())
 
-	// An unknown handle is a 404.
-	resp = apisAdmin.setPersonAdmin(ctx, "NoSuchPersonHandle", true)
+	// An unknown person ID is a 404.
+	resp = apisAdmin.setPersonAdmin(ctx, nonexistentPersonID, true)
 	require.Equal(t, http.StatusNotFound, resp.StatusCode)
 	require.NoError(t, resp.Body.Close())
 
@@ -61,7 +61,7 @@ func TestSetPersonAdmin(t *testing.T) {
 	require.NoError(t, authHTTPResp.Body.Close())
 
 	// The admin flags Carol as an administrator.
-	resp = apisAdmin.setPersonAdmin(ctx, userCarolHandle, true)
+	resp = apisAdmin.setPersonAdmin(ctx, userCarolPersonID, true)
 	require.Equal(t, http.StatusNoContent, resp.StatusCode)
 	require.NoError(t, resp.Body.Close())
 
@@ -78,14 +78,14 @@ func TestSetPersonAdmin(t *testing.T) {
 	require.NoError(t, authHTTPResp.Body.Close())
 
 	// Clearing Carol is fine — AdminTestRanger remains an admin.
-	resp = apisAdmin.setPersonAdmin(ctx, userCarolHandle, false)
+	resp = apisAdmin.setPersonAdmin(ctx, userCarolPersonID, false)
 	require.Equal(t, http.StatusNoContent, resp.StatusCode)
 	require.NoError(t, resp.Body.Close())
 
 	// Attempting to clear the last remaining admin (AdminTestRanger) is blocked
 	// with 409 to avoid leaving the instance with no administrator. The guard
 	// rejects before writing, so AdminTestRanger stays an admin.
-	resp = apisAdmin.setPersonAdmin(ctx, userAdminHandle, false)
+	resp = apisAdmin.setPersonAdmin(ctx, userAdminPersonID, false)
 	require.Equal(t, http.StatusConflict, resp.StatusCode)
 	require.NoError(t, resp.Body.Close())
 }

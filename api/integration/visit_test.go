@@ -58,7 +58,7 @@ func sampleVisit1(eventName string) imsjson.Visit {
 		ResourcePogs:    new("no, wasn't hungry"),
 		ResourceFoodBev: new("ate a lot of our grass"),
 		ResourceOther:   new("nothing else"),
-		People:          &[]imsjson.VisitPerson{{Handle: userAdminHandle}, {Handle: userAliceHandle}},
+		People:          &[]imsjson.VisitPerson{{PersonID: userAdminPersonID, Handle: userAdminHandle}, {PersonID: userAlicePersonID, Handle: userAliceHandle}},
 		JournalEntries: []imsjson.JournalEntry{
 			{Text: "This is some visit journal text"},
 			{Text: ""},
@@ -168,7 +168,7 @@ func TestCreateAndGetVisit(t *testing.T) {
 	num := apisNonAdmin.newVisitSuccess(ctx, visitReq)
 	visitReq.Number = num
 	for _, r := range *visitReq.People {
-		resp = apisNonAdmin.attachPersonToVisit(ctx, eventName, num, r.Handle)
+		resp = apisNonAdmin.attachPersonToVisit(ctx, eventName, num, r.PersonID)
 		require.Equal(t, http.StatusNoContent, resp.StatusCode)
 		require.NoError(t, resp.Body.Close())
 	}
@@ -334,7 +334,7 @@ func TestCreateAndUpdateVisit(t *testing.T) {
 	require.Nil(t, visitAfterDetach.Incident)
 
 	// attach a person
-	resp = apisNonAdmin.attachPersonToVisit(ctx, eventName, num, userAliceHandle)
+	resp = apisNonAdmin.attachPersonToVisit(ctx, eventName, num, userAlicePersonID)
 	require.Equal(t, http.StatusNoContent, resp.StatusCode)
 	require.NoError(t, resp.Body.Close())
 	retrievedVisitAfterUpdate, resp = apisNonAdmin.getVisit(ctx, eventName, num)
@@ -344,7 +344,7 @@ func TestCreateAndUpdateVisit(t *testing.T) {
 	require.Equal(t, userAliceHandle, (*retrievedVisitAfterUpdate.People)[0].Handle)
 
 	// detach that person
-	resp = apisNonAdmin.detachPersonFromVisit(ctx, eventName, num, userAliceHandle)
+	resp = apisNonAdmin.detachPersonFromVisit(ctx, eventName, num, userAlicePersonID)
 	require.Equal(t, http.StatusNoContent, resp.StatusCode)
 	require.NoError(t, resp.Body.Close())
 	retrievedVisitAfterUpdate, resp = apisNonAdmin.getVisit(ctx, eventName, num)

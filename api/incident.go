@@ -102,7 +102,7 @@ func (action GetIncidents) getIncidents(req *http.Request) (imsjson.Incidents, *
 		}
 		for _, row := range peopleRows {
 			peopleByIncident[row.IncidentPerson.IncidentNumber] = append(peopleByIncident[row.IncidentPerson.IncidentNumber],
-				imsjson.IncidentPerson{Handle: row.Handle.String, Involvement: conv.SqlToString(row.IncidentPerson.Involvement)})
+				imsjson.IncidentPerson{PersonID: int64(row.IncidentPerson.PersonID), Handle: row.Handle.String, Name: row.Name.String, Involvement: conv.SqlToString(row.IncidentPerson.Involvement)})
 		}
 		return nil
 	})
@@ -192,7 +192,7 @@ func (action GetIncident) getIncident(req *http.Request) (imsjson.Incident, *her
 	}
 	people := make([]imsjson.IncidentPerson, len(peopleRows))
 	for i, row := range peopleRows {
-		people[i] = imsjson.IncidentPerson{Handle: row.Handle.String, Involvement: conv.SqlToString(row.IncidentPerson.Involvement)}
+		people[i] = imsjson.IncidentPerson{PersonID: int64(row.IncidentPerson.PersonID), Handle: row.Handle.String, Name: row.Name.String, Involvement: conv.SqlToString(row.IncidentPerson.Involvement)}
 	}
 
 	linkedIncidents, err := action.imsDBQ.Incident_LinkedIncidents(ctx, action.imsDBQ, imsdb.Incident_LinkedIncidentsParams{
@@ -913,14 +913,11 @@ func (action AttachPersonToIncident) attachPerson(req *http.Request) *herr.HTTPE
 		return herr.BadRequest("Invalid Incident Number", err).From("[ParseInt32]")
 	}
 
-	personHandle := req.PathValue("personHandle")
-	if personHandle == "" {
-		return herr.BadRequest("Empty person handle", nil)
-	}
-	personID, errHTTP := personIDByHandle(ctx, action.userStore, personHandle)
+	person, errHTTP := personByIDFromPath(ctx, action.imsDBQ, req)
 	if errHTTP != nil {
-		return errHTTP.From("[personIDByHandle]")
+		return errHTTP.From("[personByIDFromPath]")
 	}
+	personID := person.ID
 
 	body, errHTTP := readBodyAs[imsjson.IncidentPerson](req)
 	if errHTTP != nil {
@@ -953,7 +950,7 @@ func (action AttachPersonToIncident) attachPerson(req *http.Request) *herr.HTTPE
 
 	_, errHTTP = addIncidentJournalEntry(
 		ctx, action.imsDBQ, txn, event.ID, incidentNumber,
-		jwtCtx.Claims.PersonID(), fmt.Sprintf("Added person: %v", personHandle),
+		jwtCtx.Claims.PersonID(), fmt.Sprintf("Added person: %v", personDisplayName(person)),
 		true, "", "", "",
 	)
 	if errHTTP != nil {
@@ -999,14 +996,11 @@ func (action DetachPersonFromIncident) detachPerson(req *http.Request) *herr.HTT
 		return herr.BadRequest("Invalid Incident Number", err).From("[ParseInt32]")
 	}
 
-	personHandle := req.PathValue("personHandle")
-	if personHandle == "" {
-		return herr.BadRequest("Empty person handle", nil)
-	}
-	personID, errHTTP := personIDByHandle(ctx, action.userStore, personHandle)
+	person, errHTTP := personByIDFromPath(ctx, action.imsDBQ, req)
 	if errHTTP != nil {
-		return errHTTP.From("[personIDByHandle]")
+		return errHTTP.From("[personByIDFromPath]")
 	}
+	personID := person.ID
 
 	txn, err := action.imsDBQ.Begin()
 	if err != nil {
@@ -1024,7 +1018,7 @@ func (action DetachPersonFromIncident) detachPerson(req *http.Request) *herr.HTT
 	}
 	_, errHTTP = addIncidentJournalEntry(
 		ctx, action.imsDBQ, txn, event.ID, incidentNumber,
-		jwtCtx.Claims.PersonID(), fmt.Sprintf("Removed person: %v", personHandle),
+		jwtCtx.Claims.PersonID(), fmt.Sprintf("Removed person: %v", personDisplayName(person)),
 		true, "", "", "",
 	)
 	if errHTTP != nil {

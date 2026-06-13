@@ -47,7 +47,6 @@ declare global {
         editResourceFoodBev: () => void;
         editResourceOther: () => void;
 
-        addPerson: () => void;
         removePerson: (el: HTMLElement)=>void;
         setPersonInvolvement: (el: HTMLInputElement)=>void;
 
@@ -96,8 +95,8 @@ const el = {
     resourceFoodBev: ims.typedElement("resource_food_bev", HTMLInputElement),
     resourceOther: ims.typedElement("resource_other", HTMLInputElement),
 
-    personHandles: ims.typedElement("person_handles", HTMLDataListElement),
-    addPerson: ims.typedElement("person_add", HTMLInputElement),
+    personAdd: ims.typedElement("person_add", HTMLInputElement),
+    personAddResults: ims.typedElement("person_add_results", HTMLElement),
 
     historyCheckbox: ims.typedElement("history_checkbox", HTMLInputElement),
     journalEntryAdd: ims.typedElement("journal_entry_add", HTMLTextAreaElement),
@@ -149,7 +148,6 @@ async function initSanctuaryVisitPage(): Promise<void> {
     window.editResourceFoodBev = editResourceFoodBev;
     window.editResourceOther = editResourceOther;
 
-    window.addPerson = addPerson;
     window.removePerson = removePerson;
     window.setPersonInvolvement = setPersonInvolvement;
 
@@ -161,7 +159,6 @@ async function initSanctuaryVisitPage(): Promise<void> {
     // load everything from the APIs concurrently
     await Promise.all([
         await loadVisit(),
-        await loadPersonnel(),
     ])
 
     // const onChange = function(selectedDates: Date[], _dateStr: string, instance: ims.Flatpickr): void {
@@ -179,7 +176,7 @@ async function initSanctuaryVisitPage(): Promise<void> {
     }
 
     drawPeople();
-    drawPeopleToAdd();
+    setupPersonAdd();
 
     // TODO: draw other fields
 
@@ -613,58 +610,17 @@ async function attachFile(): Promise<void> {
     await loadAndDisplayVisit();
 }
 
-let personnel: ims.PersonnelMap|null = null;
-
-async function loadPersonnel(): Promise<void> {
-    const res = await ims.fetchPersonnel();
-    if (res.err != null || res.personnel == null) {
-        ims.setErrorMessage(res.err??"");
-    }
-    personnel = res.personnel;
-}
-
-function normalize(str: string): string {
-    return str.toLowerCase().trim();
-}
-
-async function addPerson(): Promise<void> {
-    let handle: string = el.addPerson.value;
-
-    // make a copy of the people
-    const people = (visit?.people??[]).slice();
-    const handles = people.map(r=>r.handle).filter(handle => handle != null);
-
-    // fuzzy-match on handle, to allow case insensitivity and
-    // leading/trailing whitespace.
-    if (!(handle in (personnel??[]))) {
-        const normalized = normalize(handle);
-        for (const validHandle in personnel) {
-            if (normalized === normalize(validHandle)) {
-                handle = validHandle;
-                break;
-            }
-        }
-    }
-    if (!(handle in (personnel??[]))) {
-        // Not a valid handle
-        el.addPerson.value = "";
+async function attachPersonToVisit(person: ims.PersonSearchResult): Promise<void> {
+    if (person.person_id == null) {
         return;
     }
-
-    if (handles.indexOf(handle) !== -1) {
-        // Already in the list, so… move along.
-        el.addPerson.value = "";
-        return;
-    }
-
-    people.push({handle: handle});
-
-    el.addPerson.disabled = true;
+    el.personAdd.disabled = true;
 
     if (ims.pathIds.visitNumber == null) {
         // Visit doesn't exist yet. Create it first.
         const {err} = await sendEdits({});
         if (err != null) {
+            el.personAdd.disabled = false;
             return;
         }
     }
@@ -672,36 +628,41 @@ async function addPerson(): Promise<void> {
     const url = (
         ims.urlReplace(url_visitPerson)
             .replace("<visit_number>", ims.pathIds.visitNumber!.toString())
-            .replace("<person_handle>", encodeURIComponent(handle))
+            .replace("<person_id>", person.person_id.toString())
     );
     const {err} = await ims.fetchNoThrow(url, {
-        body: JSON.stringify({
-            handle: handle,
-        }),
+        body: JSON.stringify({}),
     });
+    el.personAdd.disabled = false;
     if (err !== null) {
-        ims.controlHasError(el.addPerson);
-        el.addPerson.value = "";
-        el.addPerson.disabled = false;
+        ims.controlHasError(el.personAdd);
         return;
     }
-    el.addPerson.value = "";
-    el.addPerson.disabled = false;
-    ims.controlHasSuccess(el.addPerson);
-    el.addPerson.focus();
+    ims.controlHasSuccess(el.personAdd);
+    el.personAdd.focus();
+}
+
+function setupPersonAdd(): void {
+    ims.setupPersonCombobox({
+        input: el.personAdd,
+        results: el.personAddResults,
+        eventName: ims.pathIds.eventName ?? "",
+        allowCreate: true,
+        onPick: attachPersonToVisit,
+    });
 }
 
 async function removePerson(sender: HTMLElement): Promise<void> {
     const parent = sender.parentElement as HTMLElement;
-    const personHandle = parent.dataset["personHandle"];
-    if (!personHandle) {
+    const personId = parent.dataset["personId"];
+    if (!personId) {
         return;
     }
 
     const url = (
         ims.urlReplace(url_visitPerson)
             .replace("<visit_number>", ims.pathIds.visitNumber!.toString())
-            .replace("<person_handle>", encodeURIComponent(personHandle))
+            .replace("<person_id>", encodeURIComponent(personId))
     );
     await ims.fetchNoThrow(url, {
         method: "DELETE",
@@ -710,21 +671,20 @@ async function removePerson(sender: HTMLElement): Promise<void> {
 
 
 async function setPersonInvolvement(sender: HTMLInputElement): Promise<void> {
-    const handle = sender.closest("li")?.dataset["personHandle"];
-    if (!handle) {
-        console.log("no person handle for element");
+    const personId = sender.closest("li")?.dataset["personId"];
+    if (!personId) {
+        console.log("no person id for element");
         return;
     }
 
     const url = (
         ims.urlReplace(url_visitPerson)
             .replace("<visit_number>", ims.pathIds.visitNumber!.toString())
-            .replace("<person_handle>", encodeURIComponent(handle))
+            .replace("<person_id>", encodeURIComponent(personId))
     );
     const {err} = await ims.fetchNoThrow(url, {
         body: JSON.stringify({
-            handle: handle,
-            role: sender.value,
+            involvement: sender.value,
         }),
     });
     if (err !== null) {
@@ -746,57 +706,25 @@ function drawPeople() {
     peopleElement.querySelectorAll("li").forEach((el: HTMLElement) => {el.remove()});
 
     for (const person of people) {
-        if (!person.handle) {
+        if (person.person_id == null) {
             continue;
         }
-        const handle = person.handle;
+        const label = ims.personDisplayLabel(person);
 
         const personFragment = personItemTemplate.content.cloneNode(true) as DocumentFragment;
         const personLi = personFragment.querySelector("li")!;
         personLi.classList.remove("hidden");
-        personLi.dataset["personHandle"] = handle;
+        personLi.dataset["personId"] = person.person_id.toString();
 
-        const personName =  personLi.querySelector("span")!
-        if (personnel?.[handle] == null) {
-            personName.textContent = handle;
-        } else {
-            const person = personnel[handle];
-            const personLink = personName.querySelector("a")!;
-            personLink.textContent = person.handle;
-        }
+        const personLink = personLi.querySelector("span")!.querySelector("a")!;
+        personLink.textContent = label;
+
         const involvementInput = personLi.querySelector("input")!;
-        involvementInput.ariaLabel = `Involvement for ${handle}`;
+        involvementInput.ariaLabel = `Involvement for ${label}`;
         if (person.involvement) {
-            personLi.querySelector("input")!.value = person.involvement;
+            involvementInput.value = person.involvement;
         }
 
         peopleElement.append(personFragment);
-    }
-}
-
-function drawPeopleToAdd(): void {
-    const handles: string[] = [];
-    for (const handle in personnel) {
-        handles.push(handle);
-    }
-    handles.sort((a: string, b: string) => a.localeCompare(b));
-
-    el.personHandles.replaceChildren();
-    el.personHandles.append(document.createElement("option"));
-
-    if (personnel != null) {
-        for (const handle of handles) {
-            const person = personnel[handle];
-            if (person === undefined) {
-                console.error(`no record for personnel with handle ${handle}`);
-                continue;
-            }
-
-            const option: HTMLOptionElement = document.createElement("option");
-            option.value = handle;
-            option.text = person.handle;
-
-            el.personHandles.append(option);
-        }
     }
 }
