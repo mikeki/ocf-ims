@@ -39,7 +39,7 @@ func sampleIncident1(eventName string) imsjson.Incident {
 		IncidentTypeIDs: &[]int32{1, 2},
 		Reports:         &[]int32{},
 		Visits:          &[]int32{},
-		People:          &[]imsjson.IncidentPerson{{Handle: userAdminHandle}, {Handle: userAliceHandle}},
+		People:          &[]imsjson.IncidentPerson{{PersonID: userAdminPersonID, Handle: userAdminHandle}, {PersonID: userAlicePersonID, Handle: userAliceHandle}},
 		JournalEntries: []imsjson.JournalEntry{
 			{Text: "This is some journal text lol"},
 			{Text: ""},
@@ -150,7 +150,7 @@ func TestCreateAndGetIncident(t *testing.T) {
 	num := apisNonAdmin.newIncidentSuccess(ctx, incidentReq)
 	incidentReq.Number = num
 	for _, r := range *incidentReq.People {
-		resp = apisNonAdmin.attachPersonToIncident(ctx, eventName, num, r.Handle)
+		resp = apisNonAdmin.attachPersonToIncident(ctx, eventName, num, r.PersonID)
 		require.Equal(t, http.StatusNoContent, resp.StatusCode)
 		require.NoError(t, resp.Body.Close())
 	}
@@ -277,7 +277,7 @@ func TestCreateAndUpdateIncident(t *testing.T) {
 	requireEqualIncident(t, expected, retrievedIncidentAfterUpdate)
 
 	// attach a person
-	resp = apisNonAdmin.attachPersonToIncident(ctx, eventName, num, userAliceHandle)
+	resp = apisNonAdmin.attachPersonToIncident(ctx, eventName, num, userAlicePersonID)
 	require.Equal(t, http.StatusNoContent, resp.StatusCode)
 	require.NoError(t, resp.Body.Close())
 	retrievedIncidentAfterUpdate, resp = apisNonAdmin.getIncident(ctx, eventName, num)
@@ -287,7 +287,7 @@ func TestCreateAndUpdateIncident(t *testing.T) {
 	require.Equal(t, userAliceHandle, (*retrievedIncidentAfterUpdate.People)[0].Handle)
 
 	// detach that person
-	resp = apisNonAdmin.detachPersonFromIncident(ctx, eventName, num, userAliceHandle)
+	resp = apisNonAdmin.detachPersonFromIncident(ctx, eventName, num, userAlicePersonID)
 	require.Equal(t, http.StatusNoContent, resp.StatusCode)
 	require.NoError(t, resp.Body.Close())
 	retrievedIncidentAfterUpdate, resp = apisNonAdmin.getIncident(ctx, eventName, num)
@@ -602,19 +602,6 @@ func requireEqualIncident(t *testing.T, before, after imsjson.Incident) {
 	before.Closed, after.Closed = time.Time{}, time.Time{}
 	before.LastModified, after.LastModified = time.Time{}, time.Time{}
 	before.JournalEntries, after.JournalEntries = nil, nil
-
-	// Attached people now carry a server-assigned PersonID and resolved display
-	// Name that the request shape (handle-only) doesn't; compare on the
-	// handle/involvement identity the request actually sets.
-	for _, people := range []*[]imsjson.IncidentPerson{before.People, after.People} {
-		if people == nil {
-			continue
-		}
-		for i := range *people {
-			(*people)[i].PersonID = 0
-			(*people)[i].Name = ""
-		}
-	}
 
 	require.Equal(t, before, after)
 }
