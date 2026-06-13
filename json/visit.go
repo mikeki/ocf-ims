@@ -60,6 +60,8 @@ type Visit struct {
 }
 
 type VisitPerson struct {
+	PersonID    int64   `json:"person_id,omitempty"`
 	Handle      string  `json:"handle,omitempty"`
+	Name        string  `json:"name,omitempty"`
 	Involvement *string `json:"involvement,omitempty"`
 }

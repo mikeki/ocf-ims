@@ -19,7 +19,6 @@ package api
 import (
 	"log/slog"
 	"net/http"
-	"strings"
 
 	"github.com/mikeki/ocf-ims/directory"
 	"github.com/mikeki/ocf-ims/lib/herr"
@@ -64,31 +63,16 @@ func (action SetPersonAdmin) setPersonAdmin(req *http.Request) *herr.HTTPError {
 		return herr.Forbidden("Only administrators may change administrator status", nil)
 	}
 
-	handle := req.PathValue("personHandle")
-	if handle == "" {
-		return herr.BadRequest("Empty person handle", nil)
-	}
-
 	body, errHTTP := readBodyAs[SetPersonAdminRequest](req)
 	if errHTTP != nil {
 		return errHTTP.From("[readBodyAs]")
 	}
 
-	// Resolve the handle (addressed in the URL path) to a local person. Use 404
-	// rather than 400 since the handle identifies the resource.
-	users, err := action.userStore.GetAllUsers(req.Context())
-	if err != nil {
-		return herr.InternalServerError("Failed to fetch personnel", err).From("[GetAllUsers]")
-	}
-	var target *directory.User
-	for _, u := range users {
-		if strings.EqualFold(u.Handle, handle) {
-			target = u
-			break
-		}
-	}
-	if target == nil {
-		return herr.NotFound("Unknown person: "+handle, nil)
+	// The person is addressed by stable ID in the URL path (registry people may
+	// have no handle since 5e).
+	target, errHTTP := personByIDFromPath(req.Context(), action.imsDBQ, req)
+	if errHTTP != nil {
+		return errHTTP
 	}
 
 	// Guard against removing the last flagged administrator, which would leave the
@@ -104,9 +88,9 @@ func (action SetPersonAdmin) setPersonAdmin(req *http.Request) *herr.HTTPError {
 		}
 	}
 
-	err = action.imsDBQ.SetPersonAdmin(req.Context(), action.imsDBQ, imsdb.SetPersonAdminParams{
+	err := action.imsDBQ.SetPersonAdmin(req.Context(), action.imsDBQ, imsdb.SetPersonAdminParams{
 		IsAdmin: body.IsAdmin,
-		ID:      int32(target.ID),
+		ID:      target.ID,
 	})
 	if err != nil {
 		return herr.InternalServerError("Failed to set admin flag", err).From("[SetPersonAdmin]")
@@ -117,6 +101,6 @@ func (action SetPersonAdmin) setPersonAdmin(req *http.Request) *herr.HTTPError {
 	action.userStore.InvalidateUsers()
 
 	// #nosec G706 // log injection
-	slog.Info("Admin flag set for person", "handle", handle, "is_admin", body.IsAdmin)
+	slog.Info("Admin flag set for person", "person_id", target.ID, "handle", target.Handle.String, "is_admin", body.IsAdmin)
 	return nil
 }

@@ -25,6 +25,7 @@ import (
 	"io"
 	"log/slog"
 	"net/http"
+	"strconv"
 	"strings"
 
 	"github.com/mikeki/ocf-ims/directory"
@@ -34,20 +35,34 @@ import (
 	"github.com/mikeki/ocf-ims/store/imsdb"
 )
 
-// personIDByHandle resolves a person's handle/nickname to their local person_id.
-// The web UI still addresses attached people by handle (the JSON/URL contract is
-// unchanged this PR), so attach/detach handlers translate handle -> person_id here.
-func personIDByHandle(ctx context.Context, userStore directory.UserStore, handle string) (int32, *herr.HTTPError) {
-	users, err := userStore.GetAllUsers(ctx)
+// personByIDFromPath reads the {personId} path value, validates it, and loads the
+// person. Since 5e the web UI addresses people by their stable ID (registry people
+// may have no handle), so attach/detach and personnel-edit handlers resolve here.
+// The full row is returned so callers can show a display name in logs/journals.
+func personByIDFromPath(ctx context.Context, imsDBQ *store.DBQ, req *http.Request) (imsdb.PersonByIDRow, *herr.HTTPError) {
+	raw := req.PathValue("personId")
+	// ParseInt with bitSize 32 range-checks the value fits int32 (no overflow).
+	id, err := strconv.ParseInt(raw, 10, 32)
+	if err != nil || id <= 0 {
+		return imsdb.PersonByIDRow{}, herr.BadRequest("Invalid person ID: "+raw, nil)
+	}
+	person, err := imsDBQ.PersonByID(ctx, imsDBQ, int32(id))
+	if errors.Is(err, sql.ErrNoRows) {
+		return imsdb.PersonByIDRow{}, herr.NotFound("Unknown person", nil)
+	}
 	if err != nil {
-		return 0, herr.InternalServerError("Failed to fetch personnel", err).From("[GetAllUsers]")
+		return imsdb.PersonByIDRow{}, herr.InternalServerError("Failed to look up person", err).From("[PersonByID]")
 	}
-	for _, u := range users {
-		if strings.EqualFold(u.Handle, handle) {
-			return int32(u.ID), nil
-		}
+	return person, nil
+}
+
+// personDisplayName resolves a person's display label as COALESCE(NAME, HANDLE) —
+// the preferred name if set, otherwise the handle — for logs and journal entries.
+func personDisplayName(p imsdb.PersonByIDRow) string {
+	if p.Name.Valid && strings.TrimSpace(p.Name.String) != "" {
+		return p.Name.String
 	}
-	return 0, herr.BadRequest("Unknown person: "+handle, nil)
+	return p.Handle.String
 }
 
 func readBodyAs[T any](req *http.Request) (T, *herr.HTTPError) {

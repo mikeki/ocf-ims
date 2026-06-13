@@ -61,7 +61,7 @@ func TestCreateAndEditPerson(t *testing.T) {
 		Email:    "edithtestranger@example.com",
 		Password: newPassword,
 	})
-	require.Equal(t, http.StatusNoContent, resp.StatusCode)
+	require.Equal(t, http.StatusCreated, resp.StatusCode)
 	require.NoError(t, resp.Body.Close())
 
 	// Creating the same handle again is a conflict.

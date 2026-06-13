@@ -101,7 +101,7 @@ func (action GetVisits) getVisits(req *http.Request) (imsjson.Visits, *herr.HTTP
 		}
 		for _, row := range peopleRows {
 			peopleByVisit[row.VisitPerson.VisitNumber] = append(peopleByVisit[row.VisitPerson.VisitNumber],
-				imsjson.VisitPerson{Handle: row.Handle.String, Involvement: conv.SqlToString(row.VisitPerson.Involvement)})
+				imsjson.VisitPerson{PersonID: int64(row.VisitPerson.PersonID), Handle: row.Handle.String, Name: row.Name.String, Involvement: conv.SqlToString(row.VisitPerson.Involvement)})
 		}
 		return nil
 	})
@@ -181,7 +181,7 @@ func (action GetVisit) getVisit(req *http.Request) (imsjson.Visit, *herr.HTTPErr
 	}
 	people := make([]imsjson.VisitPerson, len(peopleRows))
 	for i, row := range peopleRows {
-		people[i] = imsjson.VisitPerson{Handle: row.Handle.String, Involvement: conv.SqlToString(row.VisitPerson.Involvement)}
+		people[i] = imsjson.VisitPerson{PersonID: int64(row.VisitPerson.PersonID), Handle: row.Handle.String, Name: row.Name.String, Involvement: conv.SqlToString(row.VisitPerson.Involvement)}
 	}
 
 	resp, errHTTP = visitToJSON(storedRow, people, journalEntries, event, action.attachmentsEnabled)
@@ -662,14 +662,11 @@ func (action AttachPersonToVisit) attachPerson(req *http.Request) *herr.HTTPErro
 		return herr.BadRequest("Invalid Visit Number", err).From("[ParseInt32]")
 	}
 
-	personHandle := req.PathValue("personHandle")
-	if personHandle == "" {
-		return herr.BadRequest("Empty person handle", nil)
-	}
-	personID, errHTTP := personIDByHandle(ctx, action.userStore, personHandle)
+	person, errHTTP := personByIDFromPath(ctx, action.imsDBQ, req)
 	if errHTTP != nil {
-		return errHTTP.From("[personIDByHandle]")
+		return errHTTP.From("[personByIDFromPath]")
 	}
+	personID := person.ID
 
 	body, errHTTP := readBodyAs[imsjson.VisitPerson](req)
 	if errHTTP != nil {
@@ -702,7 +699,7 @@ func (action AttachPersonToVisit) attachPerson(req *http.Request) *herr.HTTPErro
 
 	_, errHTTP = addVisitJournalEntry(
 		ctx, action.imsDBQ, txn, event.ID, visitNumber,
-		jwtCtx.Claims.PersonID(), fmt.Sprintf("Added person: %v", personHandle),
+		jwtCtx.Claims.PersonID(), fmt.Sprintf("Added person: %v", personDisplayName(person)),
 		true, "", "", "",
 	)
 	if errHTTP != nil {
@@ -748,14 +745,11 @@ func (action DetachPersonFromVisit) detachPerson(req *http.Request) *herr.HTTPEr
 		return herr.BadRequest("Invalid Visit Number", err).From("[ParseInt32]")
 	}
 
-	personHandle := req.PathValue("personHandle")
-	if personHandle == "" {
-		return herr.BadRequest("Empty person handle", nil)
-	}
-	personID, errHTTP := personIDByHandle(ctx, action.userStore, personHandle)
+	person, errHTTP := personByIDFromPath(ctx, action.imsDBQ, req)
 	if errHTTP != nil {
-		return errHTTP.From("[personIDByHandle]")
+		return errHTTP.From("[personByIDFromPath]")
 	}
+	personID := person.ID
 
 	txn, err := action.imsDBQ.Begin()
 	if err != nil {
@@ -773,7 +767,7 @@ func (action DetachPersonFromVisit) detachPerson(req *http.Request) *herr.HTTPEr
 	}
 	_, errHTTP = addVisitJournalEntry(
 		ctx, action.imsDBQ, txn, event.ID, visitNumber,
-		jwtCtx.Claims.PersonID(), fmt.Sprintf("Removed person: %v", personHandle),
+		jwtCtx.Claims.PersonID(), fmt.Sprintf("Removed person: %v", personDisplayName(person)),
 		true, "", "", "",
 	)
 	if errHTTP != nil {

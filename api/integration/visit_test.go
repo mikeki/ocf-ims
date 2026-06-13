@@ -416,6 +416,19 @@ func requireEqualVisit(t *testing.T, before, after imsjson.Visit) {
 	before.DepartureTime, after.DepartureTime = &time.Time{}, &time.Time{}
 	before.JournalEntries, after.JournalEntries = nil, nil
 
+	// Attached people now carry a server-assigned PersonID and resolved display
+	// Name that the request shape (handle-only) doesn't; compare on the
+	// handle/involvement identity the request actually sets.
+	for _, people := range []*[]imsjson.VisitPerson{before.People, after.People} {
+		if people == nil {
+			continue
+		}
+		for i := range *people {
+			(*people)[i].PersonID = 0
+			(*people)[i].Name = ""
+		}
+	}
+
 	require.Equal(t, before, after)
 }
 

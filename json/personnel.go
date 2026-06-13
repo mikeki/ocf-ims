@@ -18,10 +18,16 @@ package json
 
 type Person struct {
 	Handle   string `json:"handle"`
+	Name     string `json:"name,omitempty"`
 	Email    string `json:"-"`
 	Password string `json:"-"`
 	Status   string `json:"status"`
 	Onsite   bool   `json:"onsite"`
 	IsAdmin  bool   `json:"is_admin"`
 	PersonID int64  `json:"person_id,omitzero"`
+	// Wristband and ParticipationType are per-event and only populated by the
+	// typeahead search endpoint (GET /personnel?q=&event=); they're empty on the
+	// login directory and admin listings. See docs/plans/51-people-registry.md.
+	Wristband         string `json:"wristband,omitempty"`
+	ParticipationType string `json:"participation_type,omitempty"`
 }

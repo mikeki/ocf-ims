@@ -26,6 +26,7 @@ import (
 
 	"github.com/go-sql-driver/mysql"
 	"github.com/mikeki/ocf-ims/directory"
+	imsjson "github.com/mikeki/ocf-ims/json"
 	"github.com/mikeki/ocf-ims/lib/argon2id"
 	"github.com/mikeki/ocf-ims/lib/authz"
 	"github.com/mikeki/ocf-ims/lib/conv"
@@ -35,8 +36,10 @@ import (
 )
 
 const (
-	maxHandleLength = 64
-	maxEmailLength  = 128
+	maxHandleLength    = 64
+	maxNameLength      = 255
+	maxEmailLength     = 128
+	maxWristbandLength = 32
 )
 
 // dupEntryError is the MariaDB error number for a unique-constraint violation.
@@ -54,12 +57,18 @@ var validPersonStatuses = map[string]bool{
 	"prospective":        true,
 }
 
-// CreatePerson adds a new person to the local directory. It is gated on
-// GlobalAdministratePersonnel (the same delegatable permission as password reset),
-// not on being an admin: onboarding people is personnel management, distinct from
-// minting admins (see SetPersonAdmin). New people are created with status 'active';
-// a password is optional (without one, the person can't log in until an admin sets
-// one) and admin status is set separately via SetPersonAdmin.
+// CreatePerson adds a new person to the registry. Gating has two tiers (D-P1):
+//   - A "full" create — anything touching login or profile (handle, email,
+//     password, on-site) — requires GlobalAdministratePersonnel, as before
+//     (onboarding login-capable people is personnel management, distinct from
+//     minting admins, which stays on SetPersonAdmin).
+//   - A "minimal" registry create (name, optionally an event + wristband) may be
+//     done by an event writer from the field, so people met at an incident/visit
+//     can be registered ad-hoc without a personnel admin.
+//
+// New people are status 'active'. A password is optional (without one the person
+// can't log in until an admin sets one). The created person is returned as JSON so
+// an inline-create from the attach picker can immediately attach the new person.
 type CreatePerson struct {
 	imsDBQ    *store.DBQ
 	userStore directory.UserStore
@@ -67,50 +76,103 @@ type CreatePerson struct {
 
 type CreatePersonRequest struct {
 	Handle string `json:"handle"`
+	Name   string `json:"name"`
 	Email  string `json:"email"`
 	// #nosec G117 // Exported secret field
 	Password string `json:"password"`
 	Onsite   bool   `json:"onsite"`
+	// Event-scoped participation (all optional). When an event is named a
+	// PERSON__EVENT row is written so the new person carries a wristband and
+	// classification for that fair. participation_type is honored explicitly only
+	// for personnel admins; for field (event-writer) creates it defaults from the
+	// wristband (present -> participant, absent -> public). See R3 / D-P1.
+	Event             string `json:"event"`
+	Wristband         string `json:"wristband"`
+	ParticipationType string `json:"participation_type"`
 }
 
 func (action CreatePerson) ServeHTTP(w http.ResponseWriter, req *http.Request) {
-	errHTTP := action.createPerson(req)
+	resp, errHTTP := action.createPerson(req)
 	if errHTTP != nil {
 		errHTTP.From("[createPerson]").WriteResponse(w)
 		return
 	}
-	w.WriteHeader(http.StatusNoContent)
+	w.WriteHeader(http.StatusCreated)
+	mustWriteJSON(w, req, resp)
 }
 
-func (action CreatePerson) createPerson(req *http.Request) *herr.HTTPError {
-	_, globalPermissions, errHTTP := getGlobalPermissions(req, action.imsDBQ, action.userStore)
+func (action CreatePerson) createPerson(req *http.Request) (imsjson.Person, *herr.HTTPError) {
+	var empty imsjson.Person
+	jwtCtx, globalPermissions, errHTTP := getGlobalPermissions(req, action.imsDBQ, action.userStore)
 	if errHTTP != nil {
-		return errHTTP.From("[getGlobalPermissions]")
-	}
-	if globalPermissions&authz.GlobalAdministratePersonnel == 0 {
-		return herr.Forbidden("The requestor does not have GlobalAdministratePersonnel permission", nil)
+		return empty, errHTTP.From("[getGlobalPermissions]")
 	}
 
 	body, errHTTP := readBodyAs[CreatePersonRequest](req)
 	if errHTTP != nil {
-		return errHTTP.From("[readBodyAs]")
+		return empty, errHTTP.From("[readBodyAs]")
 	}
 
 	handle := strings.TrimSpace(body.Handle)
-	if handle == "" {
-		return herr.BadRequest("Handle is required", nil)
+	name := strings.TrimSpace(body.Name)
+	email := strings.TrimSpace(body.Email)
+	wristband := strings.TrimSpace(body.Wristband)
+
+	// Identity: a registry person needs at least a handle or a name.
+	if handle == "" && name == "" {
+		return empty, herr.BadRequest("A handle or name is required", nil)
 	}
 	if len(handle) > maxHandleLength {
-		return herr.BadRequest("Handle is too long", nil)
+		return empty, herr.BadRequest("Handle is too long", nil)
 	}
-	// HANDLE is nullable since 5e (registry people may have none); a login-capable
-	// person created here always has one, so store it as a present value.
-	handleNull := conv.StringToSql(&handle, maxHandleLength)
-
-	email := strings.TrimSpace(body.Email)
+	if len(name) > maxNameLength {
+		return empty, herr.BadRequest("Name is too long", nil)
+	}
 	if len(email) > maxEmailLength {
-		return herr.BadRequest("Email is too long", nil)
+		return empty, herr.BadRequest("Email is too long", nil)
 	}
+	if len(wristband) > maxWristbandLength {
+		return empty, herr.BadRequest("Wristband is too long", nil)
+	}
+
+	isPersonnelAdmin := globalPermissions&authz.GlobalAdministratePersonnel != 0
+
+	// D-P1 gating. A "full" create touches login/profile fields and stays
+	// admin-only; a "minimal" create (name + optional per-event wristband) may be
+	// done by a writer on the named event.
+	fullCreate := handle != "" || email != "" || body.Password != "" || body.Onsite
+	var eventID int32
+	if !isPersonnelAdmin {
+		if fullCreate {
+			return empty, herr.Forbidden("Setting a handle, email, password, or on-site flag requires GlobalAdministratePersonnel", nil)
+		}
+		eventID, errHTTP = action.eventForFieldCreate(req, jwtCtx, body.Event)
+		if errHTTP != nil {
+			return empty, errHTTP
+		}
+	} else if strings.TrimSpace(body.Event) != "" {
+		var event imsdb.Event
+		event, errHTTP = getEvent(req, strings.TrimSpace(body.Event), action.imsDBQ)
+		if errHTTP != nil {
+			return empty, errHTTP.From("[getEvent]")
+		}
+		eventID = event.ID
+	}
+
+	// Per-event participation type: honored explicitly only for personnel admins;
+	// otherwise defaulted from the wristband.
+	participation := defaultParticipation(wristband)
+	if isPersonnelAdmin && strings.TrimSpace(body.ParticipationType) != "" {
+		pt, ok := validParticipation(body.ParticipationType)
+		if !ok {
+			return empty, herr.BadRequest("Unknown participation_type: "+body.ParticipationType, nil)
+		}
+		participation = pt
+	}
+
+	handleNull := conv.StringToSql(&handle, maxHandleLength) // null when empty
+	nameNull := conv.StringToSql(&name, maxNameLength)
+
 	var emailNull sql.NullString
 	if email != "" {
 		emailNull = conv.StringToSql(&email, maxEmailLength)
@@ -121,27 +183,30 @@ func (action CreatePerson) createPerson(req *http.Request) *herr.HTTPError {
 	var passwordNull sql.NullString
 	if body.Password != "" {
 		if len(body.Password) < minPasswordLength {
-			return herr.BadRequest("Password must be at least 8 characters", nil)
+			return empty, herr.BadRequest("Password must be at least 8 characters", nil)
 		}
 		if len(body.Password) > 256 {
-			return herr.BadRequest("Outrageously long passwords are disallowed", ErrLongPassword)
+			return empty, herr.BadRequest("Outrageously long passwords are disallowed", ErrLongPassword)
 		}
 		hashed := argon2id.CreateHash(body.Password, argon2id.DefaultParams)
 		passwordNull = conv.StringToSql(&hashed, 255)
 	}
 
-	// Friendly pre-check (the unique constraint is the backstop below, and also
-	// catches a concurrent insert and the EMAIL uniqueness).
-	_, err := action.imsDBQ.PersonByHandle(req.Context(), action.imsDBQ, handleNull)
-	if err == nil {
-		return herr.Conflict("A person with that handle already exists", nil)
-	}
-	if !errors.Is(err, sql.ErrNoRows) {
-		return herr.InternalServerError("Failed to check handle", err).From("[PersonByHandle]")
+	// Friendly pre-check on the handle (the unique constraint is the backstop below,
+	// and also catches a concurrent insert and the EMAIL uniqueness).
+	if handle != "" {
+		_, err := action.imsDBQ.PersonByHandle(req.Context(), action.imsDBQ, handleNull)
+		if err == nil {
+			return empty, herr.Conflict("A person with that handle already exists", nil)
+		}
+		if !errors.Is(err, sql.ErrNoRows) {
+			return empty, herr.InternalServerError("Failed to check handle", err).From("[PersonByHandle]")
+		}
 	}
 
-	err = action.imsDBQ.CreatePerson(req.Context(), action.imsDBQ, imsdb.CreatePersonParams{
+	newID, err := action.imsDBQ.CreatePerson(req.Context(), action.imsDBQ, imsdb.CreatePersonParams{
 		Handle:   handleNull,
+		Name:     nameNull,
 		Email:    emailNull,
 		Status:   "active",
 		OnSite:   body.Onsite,
@@ -151,17 +216,92 @@ func (action CreatePerson) createPerson(req *http.Request) *herr.HTTPError {
 	if err != nil {
 		var mysqlErr *mysql.MySQLError
 		if errors.As(err, &mysqlErr) && mysqlErr.Number == dupEntryError {
-			return herr.Conflict("That handle or email is already in use", nil)
+			return empty, herr.Conflict("That handle or email is already in use", nil)
 		}
-		return herr.InternalServerError("Failed to create person", err).From("[CreatePerson]")
+		return empty, herr.InternalServerError("Failed to create person", err).From("[CreatePerson]")
+	}
+
+	resp := imsjson.Person{
+		PersonID: newID,
+		Handle:   handle,
+		Name:     name,
+		Status:   "active",
+		Onsite:   body.Onsite,
+	}
+
+	// Write the per-event participation row when an event was named (wristband
+	// uniqueness within the event is enforced by the DB).
+	if eventID != 0 {
+		var wristbandNull sql.NullString
+		if wristband != "" {
+			wristbandNull = conv.StringToSql(&wristband, maxWristbandLength)
+		}
+		err = action.imsDBQ.UpsertPersonEvent(req.Context(), action.imsDBQ, imsdb.UpsertPersonEventParams{
+			PersonID:          int32(newID),
+			Event:             eventID,
+			Wristband:         wristbandNull,
+			ParticipationType: participation,
+		})
+		if err != nil {
+			var mysqlErr *mysql.MySQLError
+			if errors.As(err, &mysqlErr) && mysqlErr.Number == dupEntryError {
+				return empty, herr.Conflict("That wristband is already assigned for this event", nil)
+			}
+			return empty, herr.InternalServerError("Failed to set participation", err).From("[UpsertPersonEvent]")
+		}
+		resp.Wristband = wristband
+		resp.ParticipationType = string(participation)
 	}
 
 	// The directory is cached, so drop it to surface the new person immediately.
 	action.userStore.InvalidateUsers()
 
 	// #nosec G706 // log injection
-	slog.Info("Created person", "handle", handle)
-	return nil
+	slog.Info("Created person", "person_id", newID, "handle", handle, "name", name)
+	return resp, nil
+}
+
+// eventForFieldCreate authorizes a minimal (event-writer) create: the caller must
+// name an event they can write incidents or visits to. Returns that event's ID for
+// the PERSON__EVENT row. See D-P1.
+func (action CreatePerson) eventForFieldCreate(req *http.Request, jwtCtx JWTContext, eventName string) (int32, *herr.HTTPError) {
+	eventName = strings.TrimSpace(eventName)
+	if eventName == "" {
+		return 0, herr.Forbidden("Creating a person requires GlobalAdministratePersonnel, or an event you can write to", nil)
+	}
+	event, errHTTP := getEvent(req, eventName, action.imsDBQ)
+	if errHTTP != nil {
+		return 0, errHTTP.From("[getEvent]")
+	}
+	perms, _, err := authz.EventPermissions(req.Context(), &event.ID, action.imsDBQ, action.userStore, *jwtCtx.Claims)
+	if err != nil {
+		return 0, herr.InternalServerError("Failed to compute permissions", err).From("[EventPermissions]")
+	}
+	if perms[event.ID]&(authz.EventWriteIncidents|authz.EventWriteVisits) == 0 {
+		return 0, herr.Forbidden("You do not have write access to that event", nil)
+	}
+	return event.ID, nil
+}
+
+// defaultParticipation classifies a new person from their wristband: someone with
+// a wristband is a participant; without one, public. Admins can override and crew
+// is set when loading rosters. See R3.
+func defaultParticipation(wristband string) imsdb.PersonEventParticipationType {
+	if strings.TrimSpace(wristband) != "" {
+		return imsdb.PersonEventParticipationTypeParticipant
+	}
+	return imsdb.PersonEventParticipationTypePublic
+}
+
+// validParticipation validates a participation_type string against the enum.
+func validParticipation(s string) (imsdb.PersonEventParticipationType, bool) {
+	switch imsdb.PersonEventParticipationType(s) {
+	case imsdb.PersonEventParticipationTypeCrew,
+		imsdb.PersonEventParticipationTypeParticipant,
+		imsdb.PersonEventParticipationTypePublic:
+		return imsdb.PersonEventParticipationType(s), true
+	}
+	return "", false
 }
 
 // EditPerson updates a person's status and on-site flag. Gated on
@@ -196,11 +336,6 @@ func (action EditPerson) editPerson(req *http.Request) *herr.HTTPError {
 		return herr.Forbidden("The requestor does not have GlobalAdministratePersonnel permission", nil)
 	}
 
-	handle := req.PathValue("personHandle")
-	if handle == "" {
-		return herr.BadRequest("Empty person handle", nil)
-	}
-
 	body, errHTTP := readBodyAs[EditPersonRequest](req)
 	if errHTTP != nil {
 		return errHTTP.From("[readBodyAs]")
@@ -209,16 +344,14 @@ func (action EditPerson) editPerson(req *http.Request) *herr.HTTPError {
 		return herr.BadRequest("Unknown status: "+body.Status, nil)
 	}
 
-	// Resolve the handle to a person (any status, so inactive people are editable).
-	person, err := action.imsDBQ.PersonByHandle(req.Context(), action.imsDBQ, conv.StringToSql(&handle, maxHandleLength))
-	if errors.Is(err, sql.ErrNoRows) {
-		return herr.NotFound("Unknown person: "+handle, nil)
-	}
-	if err != nil {
-		return herr.InternalServerError("Failed to look up person", err).From("[PersonByHandle]")
+	// The person is addressed by stable ID in the URL path (any status, so inactive
+	// people stay editable; registry people may have no handle since 5e).
+	person, errHTTP := personByIDFromPath(req.Context(), action.imsDBQ, req)
+	if errHTTP != nil {
+		return errHTTP
 	}
 
-	err = action.imsDBQ.EditPerson(req.Context(), action.imsDBQ, imsdb.EditPersonParams{
+	err := action.imsDBQ.EditPerson(req.Context(), action.imsDBQ, imsdb.EditPersonParams{
 		Status: body.Status,
 		OnSite: body.Onsite,
 		ID:     person.ID,
@@ -230,6 +363,6 @@ func (action EditPerson) editPerson(req *http.Request) *herr.HTTPError {
 	action.userStore.InvalidateUsers()
 
 	// #nosec G706 // log injection
-	slog.Info("Edited person", "handle", handle, "status", body.Status, "onsite", body.Onsite)
+	slog.Info("Edited person", "person_id", person.ID, "handle", person.Handle.String, "status", body.Status, "onsite", body.Onsite)
 	return nil
 }
