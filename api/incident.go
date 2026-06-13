@@ -88,7 +88,7 @@ func (action GetIncidents) getIncidents(req *http.Request) (imsjson.Incidents, *
 		for _, row := range journalEntries {
 			entriesByIncident[row.IncidentNumber] = append(
 				entriesByIncident[row.IncidentNumber],
-				journalEntryToJSON(row.JournalEntry, row.Author, action.attachmentsEnabled),
+				journalEntryToJSON(row.JournalEntry, row.Author.String, action.attachmentsEnabled),
 			)
 		}
 		return nil
@@ -102,7 +102,7 @@ func (action GetIncidents) getIncidents(req *http.Request) (imsjson.Incidents, *
 		}
 		for _, row := range peopleRows {
 			peopleByIncident[row.IncidentPerson.IncidentNumber] = append(peopleByIncident[row.IncidentPerson.IncidentNumber],
-				imsjson.IncidentPerson{Handle: row.Handle, Involvement: conv.SqlToString(row.IncidentPerson.Involvement)})
+				imsjson.IncidentPerson{Handle: row.Handle.String, Involvement: conv.SqlToString(row.IncidentPerson.Involvement)})
 		}
 		return nil
 	})
@@ -192,7 +192,7 @@ func (action GetIncident) getIncident(req *http.Request) (imsjson.Incident, *her
 	}
 	people := make([]imsjson.IncidentPerson, len(peopleRows))
 	for i, row := range peopleRows {
-		people[i] = imsjson.IncidentPerson{Handle: row.Handle, Involvement: conv.SqlToString(row.IncidentPerson.Involvement)}
+		people[i] = imsjson.IncidentPerson{Handle: row.Handle.String, Involvement: conv.SqlToString(row.IncidentPerson.Involvement)}
 	}
 
 	linkedIncidents, err := action.imsDBQ.Incident_LinkedIncidents(ctx, action.imsDBQ, imsdb.Incident_LinkedIncidentsParams{
@@ -297,7 +297,7 @@ func fetchIncident(ctx context.Context, imsDBQ *store.DBQ, eventID, incidentNumb
 		return empty, nil, herr.InternalServerError("Failed to fetch journal entries", err).From("[Incident_JournalEntries]")
 	}
 	for _, rer := range journalEntryRows {
-		journalEntries = append(journalEntries, journalEntryToJSON(rer.JournalEntry, rer.Author, attachmentsEnabled))
+		journalEntries = append(journalEntries, journalEntryToJSON(rer.JournalEntry, rer.Author.String, attachmentsEnabled))
 	}
 	return incidentRow, journalEntries, nil
 }

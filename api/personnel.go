@@ -69,7 +69,7 @@ func (action GetPersonnel) getPersonnel(req *http.Request) (GetPersonnelResponse
 		}
 		for _, person := range rows {
 			response = append(response, imsjson.Person{
-				Handle: person.Handle,
+				Handle: person.Handle.String,
 				// Email/Password are still withheld (also json:"-" on the type).
 				Status:   person.Status,
 				Onsite:   person.OnSite,

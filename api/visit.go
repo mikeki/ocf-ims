@@ -87,7 +87,7 @@ func (action GetVisits) getVisits(req *http.Request) (imsjson.Visits, *herr.HTTP
 		for _, row := range journalEntries {
 			entriesByVisit[row.VisitNumber] = append(
 				entriesByVisit[row.VisitNumber],
-				journalEntryToJSON(row.JournalEntry, row.Author, action.attachmentsEnabled),
+				journalEntryToJSON(row.JournalEntry, row.Author.String, action.attachmentsEnabled),
 			)
 		}
 		return nil
@@ -101,7 +101,7 @@ func (action GetVisits) getVisits(req *http.Request) (imsjson.Visits, *herr.HTTP
 		}
 		for _, row := range peopleRows {
 			peopleByVisit[row.VisitPerson.VisitNumber] = append(peopleByVisit[row.VisitPerson.VisitNumber],
-				imsjson.VisitPerson{Handle: row.Handle, Involvement: conv.SqlToString(row.VisitPerson.Involvement)})
+				imsjson.VisitPerson{Handle: row.Handle.String, Involvement: conv.SqlToString(row.VisitPerson.Involvement)})
 		}
 		return nil
 	})
@@ -181,7 +181,7 @@ func (action GetVisit) getVisit(req *http.Request) (imsjson.Visit, *herr.HTTPErr
 	}
 	people := make([]imsjson.VisitPerson, len(peopleRows))
 	for i, row := range peopleRows {
-		people[i] = imsjson.VisitPerson{Handle: row.Handle, Involvement: conv.SqlToString(row.VisitPerson.Involvement)}
+		people[i] = imsjson.VisitPerson{Handle: row.Handle.String, Involvement: conv.SqlToString(row.VisitPerson.Involvement)}
 	}
 
 	resp, errHTTP = visitToJSON(storedRow, people, journalEntries, event, action.attachmentsEnabled)
@@ -218,7 +218,7 @@ func fetchVisit(ctx context.Context, imsDBQ *store.DBQ, eventID, visitNumber int
 		return empty, nil, herr.InternalServerError("Failed to fetch journal entries", err).From("[Visit_JournalEntries]")
 	}
 	for _, rer := range journalEntryRows {
-		journalEntries = append(journalEntries, journalEntryToJSON(rer.JournalEntry, rer.Author, attachmentsEnabled))
+		journalEntries = append(journalEntries, journalEntryToJSON(rer.JournalEntry, rer.Author.String, attachmentsEnabled))
 	}
 	return visitRow, journalEntries, nil
 }

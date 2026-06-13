@@ -6,7 +6,7 @@ create table SCHEMA_INFO (
 -- This value must be updated when you make a new migration file.
 --
 
-insert into SCHEMA_INFO (VERSION) values (41);
+insert into SCHEMA_INFO (VERSION) values (42);
 
 
 create table `EVENT` (
@@ -68,13 +68,21 @@ insert into INCIDENT_TYPE (ID, NAME, HIDDEN, `GROUP`) values
 -- fresh create. See docs/plans/31-local-people-directory.md.
 create table PERSON (
     ID          integer      not null auto_increment,
-    HANDLE    varchar(64)  not null,
+    -- HANDLE is the login callsign. It is nullable because PERSON is the unified
+    -- people registry (5e): handle-less people (e.g. visit guests, folks met on an
+    -- incident) live here too. The unique key is retained — MySQL/MariaDB allow
+    -- multiple NULLs in a UNIQUE index, so handles stay unique among login users.
+    HANDLE      varchar(64),
     EMAIL       varchar(128),
     STATUS      varchar(32)  not null default 'active',
     ON_SITE     boolean      not null default false,
     PASSWORD    varchar(255),
     CREATED     double       not null,
     IS_ADMIN    boolean      not null default false,
+    -- NAME is the preferred/display name; display resolves to COALESCE(NAME,
+    -- HANDLE). Added last so the column order matches the ALTER ... ADD COLUMN in
+    -- migration 42-from-41.
+    NAME        varchar(255),
 
     primary key (ID),
     unique key (HANDLE),
@@ -115,6 +123,24 @@ create table PERSON__TEAM (
     foreign key `PT_TO_TEAM`   (TEAM_ID)   references TEAM(ID),
 
     primary key (PERSON_ID, TEAM_ID)
+) DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- PERSON__EVENT records a person's per-event participation in a fair (5e):
+-- identity is global (PERSON), participation is per-event (here + EVENT_ACCESS).
+-- The row is created lazily — when a person is first associated with the event
+-- (loaded from a crew roster, or met on an incident/visit). WRISTBAND reissues
+-- each fair and is unique within the event (nullable: public folks have none).
+-- PARTICIPATION_TYPE is an explicit classification, NOT derived from the login.
+create table PERSON__EVENT (
+    PERSON_ID          integer not null,
+    EVENT              integer not null,
+    WRISTBAND          varchar(32),
+    PARTICIPATION_TYPE enum('crew', 'participant', 'public') not null default 'public',
+
+    primary key (PERSON_ID, EVENT),
+    unique key (EVENT, WRISTBAND),
+    foreign key PE_TO_PERSON (PERSON_ID) references PERSON(ID),
+    foreign key PE_TO_EVENT  (EVENT)     references `EVENT`(ID)
 ) DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 
@@ -353,8 +379,15 @@ create table VISIT (
     RESOURCE_FOOD_BEV   varchar(256),
     RESOURCE_OTHER      varchar(256),
 
+    -- GUEST_PERSON_ID links a visit guest to a PERSON in the unified registry (5e).
+    -- The freeform GUEST_PREFERRED_NAME above is retained until slice 5e.3 wires the
+    -- visit UI to populate this link. Added last so the column order matches the
+    -- ALTER ... ADD COLUMN in migration 42-from-41.
+    GUEST_PERSON_ID     integer,
+
     foreign key `VISIT_TO_EVENT` (`EVENT`) references `EVENT`(ID),
     foreign key `VISIT_TO_INCIDENT` (`EVENT`, INCIDENT_NUMBER) references INCIDENT(`EVENT`, NUMBER),
+    foreign key `VISIT_TO_GUEST_PERSON` (GUEST_PERSON_ID) references PERSON(ID),
 
     primary key (`EVENT`, NUMBER)
 ) DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
