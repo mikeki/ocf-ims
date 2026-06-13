@@ -175,14 +175,29 @@ duplicate rows). Flow (decided 2026-06-12, maintainer):
 
 Branch-per-slice, PR-per-slice, each independently green.
 
-- **5e.1 — Schema + sqlc**: `PERSON.NAME` + nullable `HANDLE`; `PERSON__EVENT`
-  (`WRISTBAND` + `PARTICIPATION_TYPE`); `VISIT.GUEST_PERSON_ID` (+ guest-name
-  column drop); seed updates; query updates (incl. the LEFT-JOIN search query).
-- **5e.2 — Search + create-as-fallback**: `?q=` endpoint, the search-first
-  **combobox** on incident/visit attach flows (replaces the native datalist;
-  delivers 6d.3's affordance), inline minimal-create, handle→ID URL migration.
+- **5e.1 — Schema + sqlc** *(this slice — migration `42-from-41.sql`, schema v42)*:
+  `PERSON.NAME` + nullable `HANDLE`; `PERSON__EVENT` (`WRISTBAND` +
+  `PARTICIPATION_TYPE`); `VISIT.GUEST_PERSON_ID` + FK; seed updates (NAME backfill,
+  a registry-only handle-less person, per-event participation rows). **Two items
+  were deferred out of 5e.1 to keep the product green between PRs** (expand-now /
+  contract-later):
+  - the **`GUEST_PREFERRED_NAME` drop moved to 5e.3** — dropping it before the
+    visit UI populates `GUEST_PERSON_ID` would strip guest-name capture from the
+    visit page in the interim;
+  - the **LEFT-JOIN search query moved to 5e.2** — it's built and tested with its
+    endpoint rather than left as a dead, untested query in the foundation PR.
+
+  Implementation note: nullable `HANDLE` rippled to only ~6 raw sqlc-row reads
+  (`directory/local.go` seam + the incident/visit people + journal-author joins +
+  `person.go` create/edit params); the `directory.User` domain type absorbs the
+  `NullString`, so login / JWT / authz were untouched.
+- **5e.2 — Search + create-as-fallback**: the `?q=` endpoint **and its LEFT-JOIN
+  search query** (carried over from 5e.1), the search-first **combobox** on
+  incident/visit attach flows (replaces the native datalist; delivers 6d.3's
+  affordance), inline minimal-create, handle→ID URL migration.
 - **5e.3 — Visit guest linkage**: visit page person picker; visit JSON gains
-  `guest` person ref.
+  `guest` person ref; **drop `VISIT.GUEST_PREFERRED_NAME`** once guests link to a
+  `PERSON` row (deferred here from 5e.1).
 - **5e.4 — Admin registry UX**: search, profile/email edit, per-event wristband +
   participation-type editor, type badge.
 

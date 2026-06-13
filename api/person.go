@@ -103,6 +103,9 @@ func (action CreatePerson) createPerson(req *http.Request) *herr.HTTPError {
 	if len(handle) > maxHandleLength {
 		return herr.BadRequest("Handle is too long", nil)
 	}
+	// HANDLE is nullable since 5e (registry people may have none); a login-capable
+	// person created here always has one, so store it as a present value.
+	handleNull := conv.StringToSql(&handle, maxHandleLength)
 
 	email := strings.TrimSpace(body.Email)
 	if len(email) > maxEmailLength {
@@ -129,7 +132,7 @@ func (action CreatePerson) createPerson(req *http.Request) *herr.HTTPError {
 
 	// Friendly pre-check (the unique constraint is the backstop below, and also
 	// catches a concurrent insert and the EMAIL uniqueness).
-	_, err := action.imsDBQ.PersonByHandle(req.Context(), action.imsDBQ, handle)
+	_, err := action.imsDBQ.PersonByHandle(req.Context(), action.imsDBQ, handleNull)
 	if err == nil {
 		return herr.Conflict("A person with that handle already exists", nil)
 	}
@@ -138,7 +141,7 @@ func (action CreatePerson) createPerson(req *http.Request) *herr.HTTPError {
 	}
 
 	err = action.imsDBQ.CreatePerson(req.Context(), action.imsDBQ, imsdb.CreatePersonParams{
-		Handle:   handle,
+		Handle:   handleNull,
 		Email:    emailNull,
 		Status:   "active",
 		OnSite:   body.Onsite,
@@ -207,7 +210,7 @@ func (action EditPerson) editPerson(req *http.Request) *herr.HTTPError {
 	}
 
 	// Resolve the handle to a person (any status, so inactive people are editable).
-	person, err := action.imsDBQ.PersonByHandle(req.Context(), action.imsDBQ, handle)
+	person, err := action.imsDBQ.PersonByHandle(req.Context(), action.imsDBQ, conv.StringToSql(&handle, maxHandleLength))
 	if errors.Is(err, sql.ErrNoRows) {
 		return herr.NotFound("Unknown person: "+handle, nil)
 	}

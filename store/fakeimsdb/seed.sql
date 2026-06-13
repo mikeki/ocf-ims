@@ -14,6 +14,25 @@ values  (600, 'Miguel',       'miguel@example.com',       '$argon2id$v=19$m=8192
 -- in addition to any IMS_ADMINS env bootstrap.
 update PERSON set IS_ADMIN = true where ID = 600;
 
+-- 5e unified people registry. Backfill preferred/display names for the existing
+-- people (display resolves to COALESCE(NAME, HANDLE)), and add a registry-only
+-- person (607): someone met at the fair who has no handle and no login — the new
+-- capability the nullable HANDLE enables. Per-event participation is seeded below
+-- (PERSON__EVENT), after the EVENT rows exist.
+update PERSON set NAME = case ID
+    when 600 then 'Miguel Cervera'
+    when 601 then 'Sasha Dane'
+    when 602 then 'Terry Mason'
+    when 603 then 'Abraham Stone'
+    when 604 then 'Hannah Reyes'
+    when 605 then 'Dana Feld'
+    when 606 then 'Lucy Osei'
+end
+where ID between 600 and 606;
+
+insert into PERSON (ID, HANDLE, NAME, STATUS, ON_SITE, CREATED)
+values (607, null, 'River Quinn', 'active', false, 0);
+
 insert into `POSITION` (ID, NAME) values (701, 'Driver'), (702, 'Dancer');
 insert into TEAM (ID, NAME) values (800, 'Driving Team');
 insert into PERSON__POSITION (PERSON_ID, POSITION_ID) values (601, 702);
@@ -30,6 +49,17 @@ values  (2, '2025', false, 6),
 insert into EVENT_ACCESS (ID, EVENT, EXPRESSION, MODE, VALIDITY)
 values  (1, 6, '*', 'write', 'always'),
         (2, 2, '*', 'read', 'always');
+
+-- 5e per-event participation for the 2026 fair (event 1): wristband + explicit
+-- classification. Crew and participants carry wristbands (unique within the
+-- event); the registry-only guest (607) is public with no wristband. Identity is
+-- global (PERSON); this relationship is per-event and changes each fair.
+insert into PERSON__EVENT (PERSON_ID, EVENT, WRISTBAND, PARTICIPATION_TYPE)
+values  (600, 1, 'A-1001', 'crew'),
+        (601, 1, 'A-1002', 'crew'),
+        (602, 1, 'B-2001', 'participant'),
+        (603, 1, 'B-2002', 'participant'),
+        (607, 1, null,     'public');
 
 -- OCF location areas (draft, pending stakeholder sign-off). Slugs are derived
 -- from the name and immutable; parents must be listed before their children.

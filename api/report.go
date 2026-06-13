@@ -85,7 +85,7 @@ func (action GetReports) getReports(req *http.Request) (imsjson.Reports, *herr.H
 	entriesByReport := make(map[int32][]imsjson.JournalEntry)
 	for _, row := range journalEntries {
 		entriesByReport[row.ReportNumber] = append(entriesByReport[row.ReportNumber],
-			journalEntryToJSON(row.JournalEntry, row.Author, action.attachmentsEnabled))
+			journalEntryToJSON(row.JournalEntry, row.Author.String, action.attachmentsEnabled))
 	}
 
 	storedReports, err := action.imsDBQ.Reports(req.Context(), action.imsDBQ, event.ID)
@@ -217,7 +217,7 @@ func fetchReport(ctx context.Context, imsDBQ *store.DBQ, eventID, reportNumber i
 	}
 	var journalEntries []imsjson.JournalEntry
 	for _, rer := range journalEntryRows {
-		journalEntries = append(journalEntries, journalEntryToJSON(rer.JournalEntry, rer.Author, attachmentsEnabled))
+		journalEntries = append(journalEntries, journalEntryToJSON(rer.JournalEntry, rer.Author.String, attachmentsEnabled))
 	}
 	return reportRow.Report, journalEntries, nil
 }
@@ -419,7 +419,7 @@ func (action EditReport) isPreviousAuthor(
 	}
 	authorMatch := false
 	for _, entry := range entries {
-		if entry.Author == author {
+		if entry.Author.String == author {
 			authorMatch = true
 			break
 		}
