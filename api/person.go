@@ -17,6 +17,7 @@
 package api
 
 import (
+	"context"
 	"database/sql"
 	"errors"
 	"log/slog"
@@ -229,25 +230,22 @@ func (action CreatePerson) createPerson(req *http.Request) (imsjson.Person, *her
 		Onsite:   body.Onsite,
 	}
 
-	// Write the per-event participation row when an event was named (wristband
-	// uniqueness within the event is enforced by the DB).
+	// Write the per-event participation row when an event was named. The person is
+	// brand-new, so this is always an insert; a wristband already taken in the event
+	// is a conflict (the DB's EVENT,WRISTBAND unique key).
 	if eventID != 0 {
 		var wristbandNull sql.NullString
 		if wristband != "" {
 			wristbandNull = conv.StringToSql(&wristband, maxWristbandLength)
 		}
-		err = action.imsDBQ.UpsertPersonEvent(req.Context(), action.imsDBQ, imsdb.UpsertPersonEventParams{
+		err = action.imsDBQ.InsertPersonEvent(req.Context(), action.imsDBQ, imsdb.InsertPersonEventParams{
 			PersonID:          int32(newID),
 			Event:             eventID,
 			Wristband:         wristbandNull,
 			ParticipationType: participation,
 		})
 		if err != nil {
-			var mysqlErr *mysql.MySQLError
-			if errors.As(err, &mysqlErr) && mysqlErr.Number == dupEntryError {
-				return empty, herr.Conflict("That wristband is already assigned for this event", nil)
-			}
-			return empty, herr.InternalServerError("Failed to set participation", err).From("[UpsertPersonEvent]")
+			return empty, wristbandConflict(err)
 		}
 		resp.Wristband = wristband
 		resp.ParticipationType = string(participation)
@@ -304,18 +302,29 @@ func validParticipation(s string) (imsdb.PersonEventParticipationType, bool) {
 	return "", false
 }
 
-// EditPerson updates a person's status and on-site flag. Gated on
-// GlobalAdministratePersonnel like CreatePerson. The handle is immutable (it is
-// the identifier in person: access expressions); the password and admin flag are
-// changed via their own endpoints; email is set at creation only.
+// EditPerson updates a person's editable profile and, when an event is named, that
+// person's per-event participation. Gated on GlobalAdministratePersonnel like
+// CreatePerson. The handle is immutable (it is the identifier in person: access
+// expressions); the password and admin flag are changed via their own endpoints.
 type EditPerson struct {
 	imsDBQ    *store.DBQ
 	userStore directory.UserStore
 }
 
+// EditPersonRequest carries the profile edit plus an optional per-event update.
+// Name and Email are pointers so the field can be distinguished from "" (clear):
+// nil leaves the value unchanged, a non-nil pointer sets it (empty string clears).
+// The per-event block is applied only when Event is named (the admin People page
+// scopes it to the selected event); Wristband/ParticipationType then upsert that
+// person's PERSON__EVENT row.
 type EditPersonRequest struct {
-	Status string `json:"status"`
-	Onsite bool   `json:"onsite"`
+	Name              *string `json:"name"`
+	Email             *string `json:"email"`
+	Status            string  `json:"status"`
+	Onsite            bool    `json:"onsite"`
+	Event             string  `json:"event"`
+	Wristband         string  `json:"wristband"`
+	ParticipationType string  `json:"participation_type"`
 }
 
 func (action EditPerson) ServeHTTP(w http.ResponseWriter, req *http.Request) {
@@ -351,13 +360,51 @@ func (action EditPerson) editPerson(req *http.Request) *herr.HTTPError {
 		return errHTTP
 	}
 
+	// Name/Email default to the stored values; a non-nil pointer overrides (empty
+	// clears). Keep the identity invariant: a handle-less registry person must keep
+	// a name, else they'd have no human identifier left.
+	name := person.Name
+	if body.Name != nil {
+		trimmed := strings.TrimSpace(*body.Name)
+		if len(trimmed) > maxNameLength {
+			return herr.BadRequest("Name is too long", nil)
+		}
+		if trimmed == "" && person.Handle.String == "" {
+			return herr.BadRequest("A handle or name is required", nil)
+		}
+		name = conv.StringToSql(&trimmed, maxNameLength) // null when empty
+	}
+	email := person.Email
+	if body.Email != nil {
+		trimmed := strings.TrimSpace(*body.Email)
+		if len(trimmed) > maxEmailLength {
+			return herr.BadRequest("Email is too long", nil)
+		}
+		email = conv.StringToSql(&trimmed, maxEmailLength) // null when empty
+	}
+
 	err := action.imsDBQ.EditPerson(req.Context(), action.imsDBQ, imsdb.EditPersonParams{
+		Name:   name,
+		Email:  email,
 		Status: body.Status,
 		OnSite: body.Onsite,
 		ID:     person.ID,
 	})
 	if err != nil {
+		var mysqlErr *mysql.MySQLError
+		if errors.As(err, &mysqlErr) && mysqlErr.Number == dupEntryError {
+			return herr.Conflict("That email is already in use", nil)
+		}
 		return herr.InternalServerError("Failed to edit person", err).From("[EditPerson]")
+	}
+
+	// Per-event participation: applied only when an event is named and the admin
+	// actually engaged the per-event fields (a wristband or a participation type).
+	// This avoids minting a stray 'public' PERSON__EVENT row just for editing a
+	// profile while an event happens to be selected.
+	errHTTP = action.editParticipation(req, person.ID, body)
+	if errHTTP != nil {
+		return errHTTP
 	}
 
 	action.userStore.InvalidateUsers()
@@ -365,4 +412,82 @@ func (action EditPerson) editPerson(req *http.Request) *herr.HTTPError {
 	// #nosec G706 // log injection
 	slog.Info("Edited person", "person_id", person.ID, "handle", person.Handle.String, "status", body.Status, "onsite", body.Onsite)
 	return nil
+}
+
+// editParticipation upserts the person's PERSON__EVENT row when the edit names an
+// event and supplies a wristband or participation type. A blank wristband clears
+// that column; an omitted participation type defaults from the wristband.
+func (action EditPerson) editParticipation(req *http.Request, personID int32, body EditPersonRequest) *herr.HTTPError {
+	if strings.TrimSpace(body.Event) == "" {
+		return nil
+	}
+	wristband := strings.TrimSpace(body.Wristband)
+	ptStr := strings.TrimSpace(body.ParticipationType)
+	if wristband == "" && ptStr == "" {
+		return nil
+	}
+	if len(wristband) > maxWristbandLength {
+		return herr.BadRequest("Wristband is too long", nil)
+	}
+
+	participation := defaultParticipation(wristband)
+	if ptStr != "" {
+		pt, ok := validParticipation(ptStr)
+		if !ok {
+			return herr.BadRequest("Unknown participation_type: "+ptStr, nil)
+		}
+		participation = pt
+	}
+
+	event, errHTTP := getEvent(req, strings.TrimSpace(body.Event), action.imsDBQ)
+	if errHTTP != nil {
+		return errHTTP.From("[getEvent]")
+	}
+
+	var wristbandNull sql.NullString
+	if wristband != "" {
+		wristbandNull = conv.StringToSql(&wristband, maxWristbandLength)
+	}
+	return setPersonEvent(req.Context(), action.imsDBQ, personID, event.ID, wristbandNull, participation)
+}
+
+// setPersonEvent creates or updates a person's PERSON__EVENT row, choosing insert vs
+// update from whether they already have a row for the event. It deliberately does
+// NOT use INSERT ... ON DUPLICATE KEY UPDATE: that fires on either unique key, so a
+// wristband already held by a *different* person would silently relabel them instead
+// of conflicting. Read-first keeps the (EVENT, WRISTBAND) collision a real 409.
+func setPersonEvent(ctx context.Context, dbq *store.DBQ, personID, eventID int32, wristband sql.NullString, participation imsdb.PersonEventParticipationType) *herr.HTTPError {
+	_, err := dbq.PersonEvent(ctx, dbq, imsdb.PersonEventParams{PersonID: personID, Event: eventID})
+	switch {
+	case err == nil:
+		err = dbq.UpdatePersonEvent(ctx, dbq, imsdb.UpdatePersonEventParams{
+			Wristband:         wristband,
+			ParticipationType: participation,
+			PersonID:          personID,
+			Event:             eventID,
+		})
+	case errors.Is(err, sql.ErrNoRows):
+		err = dbq.InsertPersonEvent(ctx, dbq, imsdb.InsertPersonEventParams{
+			PersonID:          personID,
+			Event:             eventID,
+			Wristband:         wristband,
+			ParticipationType: participation,
+		})
+	default:
+		return herr.InternalServerError("Failed to read participation", err).From("[PersonEvent]")
+	}
+	if err != nil {
+		return wristbandConflict(err)
+	}
+	return nil
+}
+
+// wristbandConflict maps a duplicate-key error from a PERSON__EVENT write to a 409
+// (a wristband is unique within an event); anything else becomes a 500.
+func wristbandConflict(err error) *herr.HTTPError {
+	var mysqlErr *mysql.MySQLError
+	if errors.As(err, &mysqlErr) && mysqlErr.Number == dupEntryError {
+		return herr.Conflict("That wristband is already assigned for this event", nil)
+	}
+	return herr.InternalServerError("Failed to set participation", err).From("[setPersonEvent]")
 }

@@ -17,9 +17,13 @@
 package json
 
 type Person struct {
-	Handle   string `json:"handle"`
-	Name     string `json:"name,omitempty"`
-	Email    string `json:"-"`
+	Handle string `json:"handle"`
+	Name   string `json:"name,omitempty"`
+	// Email is sent ONLY by the admin People listing (GET /personnel?all=true, gated
+	// on GlobalAdministratePersonnel) so admins can edit it; the login directory and
+	// the typeahead search leave it empty, so omitempty withholds it there. Password
+	// is never serialized.
+	Email    string `json:"email,omitempty"`
 	Password string `json:"-"`
 	Status   string `json:"status"`
 	Onsite   bool   `json:"onsite"`

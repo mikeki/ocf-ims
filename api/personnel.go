@@ -68,24 +68,41 @@ func (action GetPersonnel) getPersonnel(req *http.Request) (GetPersonnelResponse
 	// The admin People page requests ?all=true to manage every person, including
 	// inactive ones (so they can be reactivated). That requires the stronger
 	// GlobalAdministratePersonnel and bypasses the cached, active-only directory
-	// used by login and the attach-person autocompletes.
+	// used by login and the attach-person autocompletes. An optional ?event= scopes
+	// the per-event wristband + participation columns (identity is global, but those
+	// are per-event); without it those fields are empty for everyone.
 	if strings.EqualFold(req.FormValue("all"), "true") {
 		if globalPermissions&authz.GlobalAdministratePersonnel == 0 {
 			return response, herr.Forbidden("The requestor does not have GlobalAdministratePersonnel permission", nil)
 		}
-		rows, err := action.imsDBQ.AllPeople(req.Context(), action.imsDBQ)
+		var eventID int32
+		if eventName := strings.TrimSpace(req.FormValue("event")); eventName != "" {
+			event, errHTTP := getEvent(req, eventName, action.imsDBQ)
+			if errHTTP != nil {
+				return response, errHTTP.From("[getEvent]")
+			}
+			eventID = event.ID
+		}
+		rows, err := action.imsDBQ.AllPeople(req.Context(), action.imsDBQ, eventID)
 		if err != nil {
 			return response, herr.InternalServerError("Failed to get personnel", err).From("[AllPeople]")
 		}
 		for _, person := range rows {
-			response = append(response, imsjson.Person{
+			p := imsjson.Person{
 				Handle: person.Handle.String,
-				// Email/Password are still withheld (also json:"-" on the type).
-				Status:   person.Status,
-				Onsite:   person.OnSite,
-				IsAdmin:  person.IsAdmin,
-				PersonID: int64(person.ID),
-			})
+				Name:   person.Name.String,
+				// Email goes only to this admin-gated listing so it can be edited.
+				Email:     person.Email.String,
+				Status:    person.Status,
+				Onsite:    person.OnSite,
+				IsAdmin:   person.IsAdmin,
+				PersonID:  int64(person.ID),
+				Wristband: person.Wristband.String,
+			}
+			if person.ParticipationType.Valid {
+				p.ParticipationType = string(person.ParticipationType.PersonEventParticipationType)
+			}
+			response = append(response, p)
 		}
 		return response, nil
 	}
