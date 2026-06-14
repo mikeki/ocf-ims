@@ -1,6 +1,6 @@
 # Phase 5e — Unified People Registry
 
-> **Status:** Plan / for review. **Owner:** TBD · **Last updated:** 2026-06-12
+> **Status:** Plan / for review. **Owner:** TBD · **Last updated:** 2026-06-13
 > (**R3 revised** — classification is now an explicit per-event enum, not derived).
 >
 > A new slice in the **Phase 5** family ([`50-roles-permissions.md`](50-roles-permissions.md)),
@@ -207,9 +207,19 @@ Branch-per-slice, PR-per-slice, each independently green.
     (handle-less people still render a blank handle there until then).
   - `setPersonInvolvement` now sends the correct `involvement` field (the old
     datalist path sent a stray `role` key the server ignored — latent bugfix).
-- **5e.3 — Visit guest linkage**: visit page person picker; visit JSON gains
-  `guest` person ref; **drop `VISIT.GUEST_PREFERRED_NAME`** once guests link to a
-  `PERSON` row (deferred here from 5e.1).
+- **5e.3 — Visit guest linkage** *(done)*: the visit "Preferred name" field is now
+  the search-first **person picker** (`setupGuestPicker` → `setupPersonCombobox` in
+  `sanctuary_visit.ts`), linking the guest to a `PERSON` via `GUEST_PERSON_ID` (write
+  field `guest_person_id`; nil leaves unchanged, `> 0` links, `<= 0` clears, with a
+  Clear button). The `Visit`/`Visits` queries LEFT JOIN `PERSON` so the visit JSON
+  carries the linked guest's **read-only** `guest_name` + `guest_handle` for display
+  (preferred name now lives on `PERSON.NAME`, resolved `COALESCE(name, handle)`).
+  **`VISIT.GUEST_PREFERRED_NAME` dropped** (migration `43-from-42.sql`, schema
+  **v43**); episode data (legal name, description, camp…) stays on `VISIT`, gated by
+  visit access (D-P2). Inline create from the picker reuses the D-P1 event-writer
+  gating. Migration replay + api/integration (guest-link round-trip + FK-not-found +
+  clear) green; dev `seed.sql` reworked (preferred names dropped, a few guests linked
+  to registry `PERSON` rows).
 - **5e.4 — Admin registry UX**: search, profile/email edit, per-event wristband +
   participation-type editor, type badge.
 

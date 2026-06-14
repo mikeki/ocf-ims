@@ -505,7 +505,7 @@ insert into VISIT (`EVENT`, NUMBER, CREATED) values (?, ?, ?);
 update VISIT set
     -- CREATED should be immutable, so it's not present in this UPDATE query
     INCIDENT_NUMBER = ?,
-    GUEST_PREFERRED_NAME = ?,
+    GUEST_PERSON_ID = ?,
     GUEST_LEGAL_NAME = ?,
     GUEST_DESCRIPTION = ?,
     GUEST_ACTION_PLAN = ?,
@@ -536,20 +536,30 @@ where
     and NUMBER = ?
 ;
 
+-- The Visit/Visits queries LEFT JOIN PERSON via GUEST_PERSON_ID so each visit
+-- carries its linked guest's display name + handle (null when no guest is linked).
+-- The guest's preferred name lives on PERSON.NAME since slice 5e.3. Both queries
+-- select the same shape so api/visit.go can cast VisitsRow -> VisitRow.
 -- name: Visit :one
 select
-    sqlc.embed(s)
+    sqlc.embed(s),
+    gp.HANDLE as GUEST_HANDLE,
+    gp.NAME as GUEST_NAME
 from
     VISIT s
+    left join PERSON gp on gp.ID = s.GUEST_PERSON_ID
 where
     s.EVENT = ?
     and s.NUMBER = ?;
 
 -- name: Visits :many
 select
-    sqlc.embed(s)
+    sqlc.embed(s),
+    gp.HANDLE as GUEST_HANDLE,
+    gp.NAME as GUEST_NAME
 from
     VISIT s
+    left join PERSON gp on gp.ID = s.GUEST_PERSON_ID
 where
     s.EVENT = ?
 group by

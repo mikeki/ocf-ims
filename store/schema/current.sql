@@ -6,7 +6,7 @@ create table SCHEMA_INFO (
 -- This value must be updated when you make a new migration file.
 --
 
-insert into SCHEMA_INFO (VERSION) values (42);
+insert into SCHEMA_INFO (VERSION) values (43);
 
 
 create table `EVENT` (
@@ -352,7 +352,6 @@ create table VISIT (
     CREATED         double   not null,
     INCIDENT_NUMBER integer,
 
-    GUEST_PREFERRED_NAME        varchar(128),
     GUEST_LEGAL_NAME            varchar(128),
     GUEST_DESCRIPTION           varchar(256),
     GUEST_ACTION_PLAN           varchar(512),
@@ -380,9 +379,10 @@ create table VISIT (
     RESOURCE_OTHER      varchar(256),
 
     -- GUEST_PERSON_ID links a visit guest to a PERSON in the unified registry (5e).
-    -- The freeform GUEST_PREFERRED_NAME above is retained until slice 5e.3 wires the
-    -- visit UI to populate this link. Added last so the column order matches the
-    -- ALTER ... ADD COLUMN in migration 42-from-41.
+    -- The guest's preferred name lives on PERSON.NAME (resolved via this link); the
+    -- old freeform GUEST_PREFERRED_NAME column was dropped in migration 43-from-42.
+    -- Episode data (legal name, description, camp…) stays on VISIT, gated by visit
+    -- access. Added last so the column order matches the ALTER ... ADD COLUMN history.
     GUEST_PERSON_ID     integer,
 
     foreign key `VISIT_TO_EVENT` (`EVENT`) references `EVENT`(ID),

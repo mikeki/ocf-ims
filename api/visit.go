@@ -244,7 +244,9 @@ func visitToJSON(storedRow imsdb.VisitRow, visitPeople []imsjson.VisitPerson,
 		LastModified: lastModified,
 		Incident:     conv.SqlToInt32(storedRow.Visit.IncidentNumber),
 
-		GuestPreferredName:   conv.SqlToString(storedRow.Visit.GuestPreferredName),
+		GuestPersonID:        conv.SqlToInt32(storedRow.Visit.GuestPersonID),
+		GuestName:            conv.SqlToString(storedRow.GuestName),
+		GuestHandle:          conv.SqlToString(storedRow.GuestHandle),
 		GuestLegalName:       conv.SqlToString(storedRow.Visit.GuestLegalName),
 		GuestDescription:     conv.SqlToString(storedRow.Visit.GuestDescription),
 		GuestActionPlan:      conv.SqlToString(storedRow.Visit.GuestActionPlan),
@@ -369,7 +371,7 @@ func updateVisit(ctx context.Context, imsDBQ *store.DBQ, es *EventSourcerer, new
 		Event:                storedVisit.Event,
 		Number:               storedVisit.Number,
 		IncidentNumber:       storedVisit.IncidentNumber,
-		GuestPreferredName:   storedVisit.GuestPreferredName,
+		GuestPersonID:        storedVisit.GuestPersonID,
 		GuestLegalName:       storedVisit.GuestLegalName,
 		GuestDescription:     storedVisit.GuestDescription,
 		GuestActionPlan:      storedVisit.GuestActionPlan,
@@ -410,9 +412,14 @@ func updateVisit(ctx context.Context, imsDBQ *store.DBQ, es *EventSourcerer, new
 		}
 	}
 
-	if newVisit.GuestPreferredName != nil {
-		update.GuestPreferredName = conv.StringToSql(newVisit.GuestPreferredName, 0)
-		logs = append(logs, fmt.Sprintf("Changed GuestPreferredName: %v", update.GuestPreferredName.String))
+	if newVisit.GuestPersonID != nil {
+		// nil leaves the link unchanged; a positive id links that PERSON; <= 0 clears it.
+		update.GuestPersonID = sql.NullInt32{Int32: *newVisit.GuestPersonID, Valid: *newVisit.GuestPersonID > 0}
+		if update.GuestPersonID.Valid {
+			logs = append(logs, fmt.Sprintf("Linked guest person: %v", update.GuestPersonID.Int32))
+		} else {
+			logs = append(logs, "Unlinked guest person")
+		}
 	}
 	if newVisit.GuestLegalName != nil {
 		update.GuestLegalName = conv.StringToSql(newVisit.GuestLegalName, 0)
@@ -517,9 +524,9 @@ func updateVisit(ctx context.Context, imsDBQ *store.DBQ, es *EventSourcerer, new
 		const mySQLErNoReferencedRow2 = 1452
 		mysqlErr, ok := errors.AsType[*mysql.MySQLError](err)
 		if ok && mysqlErr.Number == mySQLErNoReferencedRow2 {
-			// This is probably the source of the error, because there are no other foreign
-			// keys updates within this function.
-			return herr.NotFound("No such Incident", err).From("[UpdateVisit]")
+			// A 1452 here means a referenced row is missing — either the linked
+			// incident (INCIDENT_NUMBER) or the linked guest person (GUEST_PERSON_ID).
+			return herr.NotFound("No such Incident or guest Person", err).From("[UpdateVisit]")
 		}
 		return herr.InternalServerError("Failed to update visit", err).From("[UpdateVisit]")
 	}
