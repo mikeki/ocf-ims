@@ -32,7 +32,6 @@ func sampleVisit1(eventName string) imsjson.Visit {
 		Event: eventName,
 		// Incident
 
-		GuestPreferredName:   new("Buffy"),
 		GuestLegalName:       new("Jim"),
 		GuestDescription:     new("Tall very large guy"),
 		GuestActionPlan:      new("Return him to the herd"),
@@ -260,7 +259,6 @@ func TestCreateAndUpdateVisit(t *testing.T) {
 		Event:                visitReq.Event,
 		Number:               num,
 		Incident:             new(int32(0)),
-		GuestPreferredName:   new(""),
 		GuestLegalName:       new(""),
 		GuestDescription:     new(""),
 		GuestActionPlan:      new(""),
@@ -351,6 +349,46 @@ func TestCreateAndUpdateVisit(t *testing.T) {
 	require.Equal(t, http.StatusOK, resp.StatusCode)
 	require.NoError(t, resp.Body.Close())
 	require.Empty(t, *retrievedVisitAfterUpdate.People)
+
+	// link a guest person (registry identity) to the visit, then verify the link
+	// round-trips and the server resolves the linked person's handle for display.
+	resp = apisNonAdmin.updateVisit(ctx, eventName, num, imsjson.Visit{
+		Event:         eventName,
+		Number:        num,
+		GuestPersonID: new(int32(userAlicePersonID)),
+	})
+	require.Equal(t, http.StatusNoContent, resp.StatusCode)
+	require.NoError(t, resp.Body.Close())
+	visitWithGuest, resp := apisNonAdmin.getVisit(ctx, eventName, num)
+	require.Equal(t, http.StatusOK, resp.StatusCode)
+	require.NoError(t, resp.Body.Close())
+	require.NotNil(t, visitWithGuest.GuestPersonID)
+	require.Equal(t, int32(userAlicePersonID), *visitWithGuest.GuestPersonID)
+	require.NotNil(t, visitWithGuest.GuestHandle)
+	require.Equal(t, userAliceHandle, *visitWithGuest.GuestHandle)
+
+	// linking a nonexistent person is a not-found (the GUEST_PERSON_ID FK fails).
+	resp = apisNonAdmin.updateVisit(ctx, eventName, num, imsjson.Visit{
+		Event:         eventName,
+		Number:        num,
+		GuestPersonID: new(int32(nonexistentPersonID)),
+	})
+	require.Equal(t, http.StatusNotFound, resp.StatusCode)
+	require.NoError(t, resp.Body.Close())
+
+	// clearing the guest (id 0) unlinks it.
+	resp = apisNonAdmin.updateVisit(ctx, eventName, num, imsjson.Visit{
+		Event:         eventName,
+		Number:        num,
+		GuestPersonID: new(int32(0)),
+	})
+	require.Equal(t, http.StatusNoContent, resp.StatusCode)
+	require.NoError(t, resp.Body.Close())
+	visitNoGuest, resp := apisNonAdmin.getVisit(ctx, eventName, num)
+	require.Equal(t, http.StatusOK, resp.StatusCode)
+	require.NoError(t, resp.Body.Close())
+	require.Nil(t, visitNoGuest.GuestPersonID)
+	require.Nil(t, visitNoGuest.GuestHandle)
 }
 
 func TestCreateAndAttachFileToVisit(t *testing.T) {

@@ -22,7 +22,7 @@ declare global {
     interface Window {
         editParentIncident: () => void;
 
-        editGuestPreferredName: () => void;
+        clearGuest: () => void;
         editGuestLegalName: () => void;
         editGuestDescription: () => void;
         editGuestActionPlan: () => void;
@@ -68,7 +68,10 @@ const el = {
     parentIncident: ims.typedElement("parent_incident", HTMLInputElement),
     parentIncidentLink: ims.typedElement("parent_incident_link", HTMLAnchorElement),
 
-    guestPreferredName: ims.typedElement("guest_preferred_name", HTMLInputElement),
+    guestPersonName: ims.typedElement("guest_person_name", HTMLElement),
+    guestClear: ims.typedElement("guest_clear", HTMLButtonElement),
+    guestAdd: ims.typedElement("guest_person_add", HTMLInputElement),
+    guestAddResults: ims.typedElement("guest_person_results", HTMLElement),
     guestLegalName: ims.typedElement("guest_legal_name", HTMLInputElement),
     guestDescription: ims.typedElement("guest_description", HTMLInputElement),
     guestActionPlan: ims.typedElement("guest_action_plan", HTMLInputElement),
@@ -123,7 +126,7 @@ async function initSanctuaryVisitPage(): Promise<void> {
     // TODO: window assignments go here
     window.editParentIncident = editParentIncident;
 
-    window.editGuestPreferredName = editGuestPreferredName;
+    window.clearGuest = clearGuest;
     window.editGuestLegalName = editGuestLegalName;
     window.editGuestDescription = editGuestDescription;
     window.editGuestActionPlan = editGuestActionPlan;
@@ -177,6 +180,7 @@ async function initSanctuaryVisitPage(): Promise<void> {
 
     drawPeople();
     setupPersonAdd();
+    setupGuestPicker();
 
     // TODO: draw other fields
 
@@ -184,7 +188,7 @@ async function initSanctuaryVisitPage(): Promise<void> {
 
     // For a new visit, jump to the name field
     if (visit!.number == null) {
-        el.guestPreferredName.focus();
+        el.guestAdd.focus();
     }
 
     // Warn the user if they're about to navigate away with unsaved text.
@@ -335,8 +339,9 @@ function drawVisitFields(): void {
     } else {
         docTitle = `Current ${docTitle}`;
     }
-    if (visit?.guest_preferred_name) {
-        docTitle = `${docTitle} (${visit?.guest_preferred_name})`;
+    const guestLabel = ims.personDisplayLabel({name: visit?.guest_name, handle: visit?.guest_handle});
+    if (guestLabel) {
+        docTitle = `${docTitle} (${guestLabel})`;
     } else if (visit?.guest_legal_name) {
         docTitle = `${docTitle} (${visit?.guest_legal_name})`;
     } else if (visit?.number) {
@@ -351,7 +356,7 @@ function drawVisitFields(): void {
     }
     el.parentIncident.placeholder = "(none)";
 
-    el.guestPreferredName.value = (visit?.guest_preferred_name?.toString())??"";
+    drawGuest();
     el.guestLegalName.value = (visit?.guest_legal_name?.toString())??"";
     el.guestDescription.value = (visit?.guest_description?.toString())??"";
     el.guestActionPlan.value = (visit?.guest_action_plan?.toString())??"";
@@ -394,7 +399,8 @@ function drawVisitFields(): void {
 function drawVisitTitle(mode: "for_display"|"for_print_to_pdf"): void {
     let newTitle: string = "";
     if (mode === "for_print_to_pdf" && visit?.number) {
-        newTitle = `Visit-${ims.pathIds.eventName}-${visit.number}_${visit.guest_preferred_name??""}`;
+        const guestLabel = ims.personDisplayLabel({name: visit.guest_name, handle: visit.guest_handle});
+        newTitle = `Visit-${ims.pathIds.eventName}-${visit.number}_${guestLabel}`;
     } else {
         const eventSuffix: string = ims.pathIds.eventName != null ? ` | ${ims.pathIds.eventName}` : "";
         newTitle = `${ims.visitAsString(visit!)}${eventSuffix}`;
@@ -477,8 +483,35 @@ async function editParentIncident(): Promise<void> {
     await ims.editFromElement(el.parentIncident, "incident", transform);
 }
 
-async function editGuestPreferredName(): Promise<void> {
-    await ims.editFromElement(el.guestPreferredName, "guest_preferred_name");
+function setupGuestPicker(): void {
+    ims.setupPersonCombobox({
+        input: el.guestAdd,
+        results: el.guestAddResults,
+        eventName: ims.pathIds.eventName ?? "",
+        allowCreate: true,
+        onPick: setGuestPerson,
+    });
+}
+
+// drawGuest renders the currently-linked guest person (the preferred name now lives
+// on PERSON.NAME) and shows the Clear button only when a guest is linked.
+function drawGuest(): void {
+    const label = ims.personDisplayLabel({name: visit?.guest_name, handle: visit?.guest_handle});
+    el.guestPersonName.textContent = label || "(no guest linked)";
+    el.guestClear.classList.toggle("hidden", visit?.guest_person_id == null);
+}
+
+// setGuestPerson links the visit's guest to the picked (or freshly created) person.
+async function setGuestPerson(person: ims.PersonSearchResult): Promise<void> {
+    if (person.person_id == null) {
+        return;
+    }
+    await sendEdits({guest_person_id: person.person_id});
+}
+
+// clearGuest unlinks the visit's guest person (0 clears the link server-side).
+async function clearGuest(): Promise<void> {
+    await sendEdits({guest_person_id: 0});
 }
 
 async function editGuestLegalName(): Promise<void> {

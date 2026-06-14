@@ -276,7 +276,7 @@ function initDataTables() {
             {   // 4
                 "name": "visit_name",
                 "className": "visit_name all",
-                "data": "guest_preferred_name",
+                "data": "guest_name",
                 "defaultContent": "",
                 "render": renderName,
                 "width": "50%",
@@ -330,7 +330,7 @@ function initDataTables() {
 }
 
 function renderName(_data: string|null, type: string, visit: ims.Visit): ims.RenderValue {
-    const guestName = visit.guest_preferred_name || visit.guest_legal_name || "";
+    const guestName = ims.personDisplayLabel({name: visit.guest_name, handle: visit.guest_handle}) || visit.guest_legal_name || "";
     switch (type) {
         case "display":
             const sp = document.createElement("span");

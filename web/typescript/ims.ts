@@ -593,7 +593,7 @@ export async function fetchPersonnel(): Promise<{personnel: PersonnelMap|null, e
 //
 
 // personDisplayLabel resolves a person's display label as COALESCE(name, handle).
-export function personDisplayLabel(p: {name?: string|null, handle?: string|null}): string {
+export function personDisplayLabel(p: {name?: string|null|undefined, handle?: string|null|undefined}): string {
     if (p.name != null && p.name.trim() !== "") {
         return p.name;
     }
@@ -859,7 +859,8 @@ export function visitAsString(s: Visit): string {
     if (s.number == null) {
         return "New Visit";
     }
-    return `VS #${s.number}: ${s.guest_preferred_name || s.guest_legal_name || ""}`;
+    const guest = personDisplayLabel({name: s.guest_name, handle: s.guest_handle}) || s.guest_legal_name || "";
+    return `VS #${s.number}: ${guest}`;
 }
 
 // Return all user-entered journal text for a given incident as a single string.
@@ -873,8 +874,8 @@ export function reportTextFromIncident(
     if ("summary" in incidentFROrVisit) {
         texts.push(incidentFROrVisit.summary||"");
     }
-    if ("guest_preferred_name" in incidentFROrVisit) {
-        texts.push(incidentFROrVisit.guest_preferred_name||"");
+    if ("guest_name" in incidentFROrVisit) {
+        texts.push(incidentFROrVisit.guest_name||"");
     }
     if ("guest_legal_name" in incidentFROrVisit) {
         texts.push(incidentFROrVisit.guest_legal_name||"");
@@ -2063,7 +2064,12 @@ export type Visit = {
     last_modified?: string|null;
     incident?: number|null;
 
-    guest_preferred_name?: string|null;
+    // Guest identity links to a registry PERSON (slice 5e.3). guest_person_id is
+    // read+write (<= 0 clears the link); guest_name/guest_handle are read-only,
+    // resolved by the server from the linked PERSON for display.
+    guest_person_id?: number|null;
+    guest_name?: string|null;
+    guest_handle?: string|null;
     guest_legal_name?: string|null;
     guest_description?: string|null;
     guest_action_plan?: string|null;
