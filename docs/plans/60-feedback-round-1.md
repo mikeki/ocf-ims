@@ -1,6 +1,8 @@
 # Phase 6 — Feedback Round 1 (beta usage feedback)
 
-> **Status:** Plan / for review. **Owner:** TBD · **Last updated:** 2026-06-11
+> **Status:** 6a shipped — "Other"/"Weapon" types + action-log coverage done;
+> areas reseed still blocked on the stakeholder area list. 6b/6c not started.
+> **Last updated:** 2026-06-14
 >
 > First round of feedback from real usage of the beta, collected 2026-06-11.
 > Phase 6 was previously reserved for Dashboards & Metrics — that work moved to
@@ -36,12 +38,21 @@ One small PR; zero migrations.
   figure-8 **path segments** and **landmarks** (Drum Tower, …); for any live DB,
   enter the same areas via the admin page (no deploy needed).
   - **Open item:** get the final segment/landmark list from Stakeholder A before the PR.
-- **"Other" incident type** (Stakeholder A). One row added to the `INCIDENT_TYPE` seed in
-  `store/schema/current.sql` (types are seeded there) — group `null` (it belongs
-  to none of safety/conduct/operations/compliance). Live DBs: add via the
-  existing types admin page. No code.
-- **Action-log coverage** (Maintainer). The middleware logs per-endpoint via a
-  boolean (`LogRequest(true/false, …)` in `api/mux.go`); audit findings:
+- **"Other" + "Weapon" incident types** (Stakeholder A; "Weapon" folded in from
+  round 2 §3). **Done.** Two rows added to the `INCIDENT_TYPE` seed in
+  `store/schema/current.sql` (types are seeded there) — "Other" group `null`
+  (ungrouped; renders under the existing "Ungrouped" heading, sorted last),
+  "Weapon" group `safety`. Live DBs: add via the existing types admin page. No
+  migration — the migrate test now normalizes the `AUTO_INCREMENT` counter, so
+  growing reference-data seeds in `current.sql` stays migration-free. The
+  flat-alphabetical type listing (round 2 D-R3) stays with 6d (frontend).
+- **Action-log coverage** (Maintainer). **Done** — all four endpoints below
+  flipped to `LogRequest(true, …)`; the obsolete "plaintext password" comments
+  were removed (the log records metadata only — method/path/user/status/duration,
+  never request bodies — verified in `LogRequest`) and a CLAUDE.md note now
+  documents the opt-in flag so new mutating endpoints register it. The middleware
+  logs per-endpoint via a boolean (`LogRequest(true/false, …)` in `api/mux.go`);
+  audit findings (now all fixed):
 
   | Endpoint | Today | Fix |
   |---|---|---|

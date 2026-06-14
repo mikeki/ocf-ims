@@ -182,7 +182,9 @@ data to migrate; see `docs/plans/40-domain-model.md`).
 *future* migrations stay consistent with `current.sql`: `TestMigrateSameAsCurrentSchema`
 loads the frozen OCF baseline (`store/integration/36.sql`, a snapshot of the
 schema OCF launched on), applies every migration from v37 onward, and checks the
-result still matches `current.sql`. The pre-OCF Burning Man upgrade chain is
+result still matches `current.sql` (structurally — the comparison strips each
+table's `AUTO_INCREMENT` counter, so growing the reference-data seeds in
+`current.sql`, e.g. adding an incident type, stays migration-free). The pre-OCF Burning Man upgrade chain is
 **not** replayed — OCF starts fresh from `current.sql` and never runs that legacy
 path, so the old `06.sql` fixture was retired. The baseline `36.sql` is itself a
 frozen fixture: leave it as-is. (When the schema diverges far enough that a fresh
@@ -280,7 +282,18 @@ Event-based access control defined in `lib/authz/`:
 
 ### Action Logging
 
-All authenticated API requests are logged to an action log (`store/actionlog/`) for audit purposes.
+Mutating API requests are recorded to an action log (`store/actionlog/`) for
+audit purposes. Logging is **opt-in per endpoint**: each route registers
+`LogRequest(true|false, …)` in `api/mux.go`, and an endpoint wired with `false`
+(or one that forgets the adapter) is silently *unlogged*. The log captures
+**metadata only** — method, path, user, client address, HTTP status, and
+duration — never the request or response body, so password/credential payloads
+are never at risk of being logged.
+
+**When adding a new mutating endpoint, register it with `LogRequest(true, …)`.**
+Reads are typically `false`; anything that changes state should be `true`. Treat
+this as a code-review checklist item — the flag is easy to omit and fails closed
+(unlogged) rather than loudly.
 
 ## Key Differences from Python Version
 

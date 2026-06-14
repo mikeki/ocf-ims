@@ -320,7 +320,7 @@ func AddToMux(
 			NewVisit{db, userStore, es},
 			RecoverFromPanic(),
 			RequireAuthN(jwter),
-			LogRequest(false, actionLogger, userStore),
+			LogRequest(true, actionLogger, userStore),
 			LimitRequestBytes(cfg.Core.MaxRequestBytes),
 		),
 	)
@@ -330,7 +330,7 @@ func AddToMux(
 			EditVisit{db, userStore, es},
 			RecoverFromPanic(),
 			RequireAuthN(jwter),
-			LogRequest(false, actionLogger, userStore),
+			LogRequest(true, actionLogger, userStore),
 			LimitRequestBytes(cfg.Core.MaxRequestBytes),
 		),
 	)
@@ -460,8 +460,7 @@ func AddToMux(
 			CreatePerson{db, userStore},
 			RecoverFromPanic(),
 			RequireAuthN(jwter),
-			// Do not log the request body: it may contain a plaintext password.
-			LogRequest(false, actionLogger, userStore),
+			LogRequest(true, actionLogger, userStore),
 			LimitRequestBytes(cfg.Core.MaxRequestBytes),
 		),
 	)
@@ -481,8 +480,7 @@ func AddToMux(
 			SetPersonPassword{db, userStore},
 			RecoverFromPanic(),
 			RequireAuthN(jwter),
-			// Do not log the request body: it contains a plaintext password.
-			LogRequest(false, actionLogger, userStore),
+			LogRequest(true, actionLogger, userStore),
 			LimitRequestBytes(cfg.Core.MaxRequestBytes),
 		),
 	)
