@@ -655,12 +655,19 @@ select ID, HANDLE, EMAIL, STATUS, ON_SITE, PASSWORD, IS_ADMIN
 from PERSON
 where STATUS = 'active';
 
--- AllPeople returns every person regardless of status. It is for the admin
--- People page (so admins can see and reactivate inactive people); the login
--- directory and the attach-person autocompletes use the active-only People query.
+-- AllPeople returns every person regardless of status, for the admin People page
+-- (so admins can see and reactivate inactive people). It LEFT JOINs PERSON__EVENT
+-- for the given event so each row carries that event's wristband + participation
+-- type — null when the person has no row for the event yet, or when no event is
+-- selected (event = 0 matches nothing). The login directory and the attach-person
+-- autocompletes use the active-only People query instead.
 -- name: AllPeople :many
-select ID, HANDLE, EMAIL, STATUS, ON_SITE, IS_ADMIN
-from PERSON;
+select
+    p.ID, p.HANDLE, p.NAME, p.EMAIL, p.STATUS, p.ON_SITE, p.IS_ADMIN,
+    pe.WRISTBAND, pe.PARTICIPATION_TYPE
+from PERSON p
+    left join PERSON__EVENT pe on pe.PERSON_ID = p.ID and pe.EVENT = sqlc.arg(event)
+order by coalesce(p.NAME, p.HANDLE);
 
 -- name: PersonByHandle :one
 select ID, HANDLE, EMAIL, STATUS, ON_SITE, IS_ADMIN
@@ -679,9 +686,14 @@ where ID = ?;
 insert into PERSON (HANDLE, NAME, EMAIL, STATUS, ON_SITE, PASSWORD, CREATED)
 values (?, ?, ?, ?, ?, ?, ?);
 
+-- EditPerson updates a person's editable profile fields. NAME and EMAIL are
+-- nullable identity fields the admin People page can change (the email gap closed
+-- in 5e.4); HANDLE stays immutable (it's the identifier in person: access
+-- expressions). Per-event wristband/participation live on PERSON__EVENT via
+-- UpsertPersonEvent, not here.
 -- name: EditPerson :exec
 update PERSON
-set STATUS = ?, ON_SITE = ?
+set NAME = ?, EMAIL = ?, STATUS = ?, ON_SITE = ?
 where ID = ?;
 
 -- name: SetPersonPassword :exec
@@ -725,16 +737,31 @@ where
 order by coalesce(p.NAME, p.HANDLE)
 limit 25;
 
--- UpsertPersonEvent records (or updates) how a person relates to one event — their
--- wristband and participation type. Created lazily the first time a person is
--- associated with an event (e.g. inline-created from an attach flow with a
--- wristband). See docs/plans/51-people-registry.md.
--- name: UpsertPersonEvent :exec
+-- PersonEvent reads how a person relates to one event (their wristband +
+-- participation type), or sql.ErrNoRows if they have no row for it yet. It lets the
+-- handler decide between InsertPersonEvent and UpdatePersonEvent rather than using
+-- INSERT ... ON DUPLICATE KEY UPDATE, which fires on *either* unique key — so a
+-- wristband already held by a different person (the EVENT,WRISTBAND key) would
+-- silently relabel that person instead of conflicting. See docs/plans/51-people-registry.md.
+-- name: PersonEvent :one
+select PERSON_ID, EVENT, WRISTBAND, PARTICIPATION_TYPE
+from PERSON__EVENT
+where PERSON_ID = ? and EVENT = ?;
+
+-- InsertPersonEvent creates a person's per-event row. A wristband already taken in
+-- the event violates the (EVENT, WRISTBAND) unique key (a real conflict the caller
+-- maps to 409); null wristbands don't collide (MySQL allows multiple NULLs).
+-- name: InsertPersonEvent :exec
 insert into PERSON__EVENT (PERSON_ID, EVENT, WRISTBAND, PARTICIPATION_TYPE)
-values (?, ?, ?, ?)
-on duplicate key update
-    WRISTBAND = values(WRISTBAND),
-    PARTICIPATION_TYPE = values(PARTICIPATION_TYPE);
+values (?, ?, ?, ?);
+
+-- UpdatePersonEvent updates a person's existing per-event row, keyed on their own
+-- (PERSON_ID, EVENT). Setting a wristband held by another person in the event still
+-- violates the (EVENT, WRISTBAND) unique key (→ 409), so it can't steal one.
+-- name: UpdatePersonEvent :exec
+update PERSON__EVENT
+set WRISTBAND = ?, PARTICIPATION_TYPE = ?
+where PERSON_ID = ? and EVENT = ?;
 
 -- name: PeoplePositions :many
 select PERSON_ID, POSITION_ID

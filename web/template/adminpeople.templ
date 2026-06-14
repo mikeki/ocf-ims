@@ -63,8 +63,12 @@ templ AdminPeople(deployment, versionName, versionRef string) {
           </div>
           <div class="modal-body row">
             <div class="form-floating mb-3">
+              <input id="add_person_name" type="text" class="form-control" autocomplete="off" placeholder="Name" />
+              <label for="add_person_name">Name</label>
+            </div>
+            <div class="form-floating mb-3">
               <input id="add_person_handle" type="text" class="form-control" autocomplete="off" placeholder="Handle" />
-              <label for="add_person_handle">Handle (required)</label>
+              <label for="add_person_handle">Handle (for login)</label>
             </div>
             <div class="form-floating mb-3">
               <input id="add_person_email" type="email" class="form-control" autocomplete="off" placeholder="Email" />
@@ -78,6 +82,23 @@ templ AdminPeople(deployment, versionName, versionRef string) {
               <input id="add_person_onsite" type="checkbox" class="form-check-input" />
               <label class="form-check-label" for="add_person_onsite">On site</label>
             </div>
+            <div id="add_person_event_section" class="hidden mt-3">
+              <p class="text-body-secondary small mb-2">Participation for <strong id="add_person_event_name"></strong></p>
+              <div class="form-floating mb-3">
+                <input id="add_person_wristband" type="text" class="form-control" autocomplete="off" placeholder="Wristband" />
+                <label for="add_person_wristband">Wristband (optional)</label>
+              </div>
+              <div class="form-floating mb-3">
+                <select id="add_person_participation" class="form-select" aria-label="Participation">
+                  <option value="">— none —</option>
+                  <option value="public">public</option>
+                  <option value="participant">participant</option>
+                  <option value="crew">crew</option>
+                </select>
+                <label for="add_person_participation">Participation</label>
+              </div>
+            </div>
+            <div class="form-text">A person needs a name or a handle. A handle (and password) lets them log in.</div>
           </div>
           <div class="modal-footer">
             <button type="button" class="btn btn-primary" id="add_person_submit" onclick="submitCreatePerson()">Add person</button>
@@ -96,6 +117,14 @@ templ AdminPeople(deployment, versionName, versionRef string) {
           <div class="modal-body row">
             <p>Editing <strong id="edit_person_handle"></strong>.</p>
             <div class="form-floating mb-3">
+              <input id="edit_person_name" type="text" class="form-control" autocomplete="off" placeholder="Name" />
+              <label for="edit_person_name">Name</label>
+            </div>
+            <div class="form-floating mb-3">
+              <input id="edit_person_email" type="email" class="form-control" autocomplete="off" placeholder="Email" />
+              <label for="edit_person_email">Email</label>
+            </div>
+            <div class="form-floating mb-3">
               <select id="edit_person_status" class="form-select" aria-label="Status">
                 <option value="active">active</option>
                 <option value="alpha">alpha</option>
@@ -110,6 +139,23 @@ templ AdminPeople(deployment, versionName, versionRef string) {
               <input id="edit_person_onsite" type="checkbox" class="form-check-input" />
               <label class="form-check-label" for="edit_person_onsite">On site</label>
             </div>
+            <div id="edit_person_event_section" class="hidden mt-3">
+              <hr />
+              <p class="text-body-secondary small mb-2">Participation for <strong id="edit_person_event_name"></strong></p>
+              <div class="form-floating mb-3">
+                <input id="edit_person_wristband" type="text" class="form-control" autocomplete="off" placeholder="Wristband" />
+                <label for="edit_person_wristband">Wristband</label>
+              </div>
+              <div class="form-floating mb-3">
+                <select id="edit_person_participation" class="form-select" aria-label="Participation">
+                  <option value="">— none —</option>
+                  <option value="public">public</option>
+                  <option value="participant">participant</option>
+                  <option value="crew">crew</option>
+                </select>
+                <label for="edit_person_participation">Participation</label>
+              </div>
+            </div>
           </div>
           <div class="modal-footer">
             <button type="button" class="btn btn-primary" id="edit_person_submit" onclick="submitEditPerson()">Save</button>
@@ -117,6 +163,20 @@ templ AdminPeople(deployment, versionName, versionRef string) {
         </div>
       </div>
     </div>
+
+  <div class="row mb-3">
+    <div class="col-sm-6 col-md-4 mb-2">
+      <label for="event-name" class="form-label">Event</label>
+      <select id="event-name" class="form-select" onchange="changeEvent();">
+        <option value="">— no event —</option>
+      </select>
+      <div class="form-text">Pick an event to show each person's wristband &amp; participation and to edit them.</div>
+    </div>
+    <div class="col-sm-6 col-md-4 mb-2">
+      <label for="people-search" class="form-label">Search</label>
+      <input id="people-search" type="search" class="form-control" autocomplete="off" placeholder="Name, handle, or wristband" oninput="filterPeople();" />
+    </div>
+  </div>
 
   <div class="row" id="people_container">
     <div id="people" class="col-sm-12">
@@ -127,7 +187,7 @@ templ AdminPeople(deployment, versionName, versionRef string) {
         </div>
         <ul class="list-group list-group-small list-group-flush card-body">
           <template id="person_li_template">
-            <li class="list-group-item ps-3" data-person-handle="">
+            <li class="list-group-item ps-3" data-person-id="">
               <button class="show-set-password-modal badge btn btn-primary float-end">
                 Set password
               </button>
@@ -137,7 +197,10 @@ templ AdminPeople(deployment, versionName, versionRef string) {
               <button class="show-edit-modal badge btn btn-secondary float-end me-2">
                 Edit
               </button>
-              <div class="person-handle"></div>
+              <span class="person-name"></span>
+              <span class="person-handle text-body-secondary ms-2 font-monospace small"></span>
+              <span class="person-wristband badge text-bg-secondary ms-2 hidden"></span>
+              <span class="person-participation badge text-bg-light ms-2 hidden"></span>
               <div class="person-status text-body-secondary ms-3"></div>
             </li>
           </template>

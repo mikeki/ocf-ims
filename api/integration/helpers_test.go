@@ -124,7 +124,18 @@ func (a ApiHelper) editPerson(ctx context.Context, personID int64, body api.Edit
 
 func (a ApiHelper) getAllPersonnel(ctx context.Context) ([]imsjson.Person, *http.Response) {
 	a.t.Helper()
+	return a.getAllPersonnelForEvent(ctx, "")
+}
+
+// getAllPersonnelForEvent fetches the admin People listing scoped to an event, so
+// each person carries that event's wristband + participation type. An empty event
+// name fetches the unscoped listing.
+func (a ApiHelper) getAllPersonnelForEvent(ctx context.Context, eventName string) ([]imsjson.Person, *http.Response) {
+	a.t.Helper()
 	path := a.serverURL.JoinPath("/ims/api/personnel").String() + "?all=true"
+	if eventName != "" {
+		path += "&event=" + url.QueryEscape(eventName)
+	}
 	bod, resp := a.imsGet(ctx, path, &[]imsjson.Person{})
 	return *bod.(*[]imsjson.Person), resp
 }

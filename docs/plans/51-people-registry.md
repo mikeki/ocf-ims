@@ -1,7 +1,8 @@
 # Phase 5e — Unified People Registry
 
-> **Status:** Plan / for review. **Owner:** TBD · **Last updated:** 2026-06-13
-> (**R3 revised** — classification is now an explicit per-event enum, not derived).
+> **Status:** Implemented — all slices (5e.1–5e.4) shipped. **Owner:** TBD · **Last
+> updated:** 2026-06-14 (**R3 revised** — classification is an explicit per-event
+> enum, not derived).
 >
 > A new slice in the **Phase 5** family ([`50-roles-permissions.md`](50-roles-permissions.md)),
 > added 2026-06-11 from beta-usage feedback (Stakeholder A + maintainer; see
@@ -220,8 +221,36 @@ Branch-per-slice, PR-per-slice, each independently green.
   gating. Migration replay + api/integration (guest-link round-trip + FK-not-found +
   clear) green; dev `seed.sql` reworked (preferred names dropped, a few guests linked
   to registry `PERSON` rows).
-- **5e.4 — Admin registry UX**: search, profile/email edit, per-event wristband +
-  participation-type editor, type badge.
+- **5e.4 — Admin registry UX** *(done)*: the admin People page is now event-scoped.
+  An **event picker** (mirroring the areas page; remembers the last event in
+  `localStorage` `admin_people_event`) is *optional* — identity is global, so with no
+  event selected the page lists everyone without per-event info; pick an event and
+  `AllPeople` LEFT JOINs `PERSON__EVENT` so each row shows that event's **wristband +
+  participation badge**. **Name + email are now editable** (`EditPersonRequest` grew
+  `Name`/`Email` as `*string`: nil = leave unchanged, non-nil = set/clear; the
+  identity invariant keeps a handle-less person from having its name cleared). Email
+  rides only on the admin-gated `?all=true` listing (`json:"email,omitempty"`,
+  populated only there), closing the frozen-email gap without leaking it to the
+  typeahead/login paths. The Add + Edit modals carry a **per-event wristband +
+  participation-type editor** (shown only when an event is selected); it upserts the
+  `PERSON__EVENT` row **only when the admin engages it** (a wristband or a
+  participation type is set), so editing a profile while an event is selected doesn't
+  mint a stray `public` row. Display is `COALESCE(name, handle)`, and handle-less
+  registry people hide the **Set-password / Admin** buttons (login-only actions).
+  This also **closes the wristband-at-create deferral** from 5e.2 (the Add modal
+  accepts a wristband + participation when an event is selected). **Bugfix folded in:**
+  `UpsertPersonEvent` (`INSERT … ON DUPLICATE KEY UPDATE`) fired on *either* unique
+  key, so assigning a wristband already held by a different person silently relabeled
+  *that* person instead of conflicting (and made `CreatePerson`'s 409 path dead) — it
+  was replaced with a read-first `PersonEvent` + `InsertPersonEvent`/`UpdatePersonEvent`
+  so an `(EVENT, WRISTBAND)` collision is a real **409**. **As-built deviation:** the
+  admin **search box filters client-side** over the already-loaded `?all=true` listing
+  rather than calling the `?q=` endpoint — the typeahead is active-only and minimal
+  (no status/admin/inactive), which the admin page needs; `?q=` stays the picker
+  typeahead for attach/visit flows. No schema change. Covered by
+  `TestEditPersonProfileAndParticipation` (name/email round-trip, per-event upsert +
+  event scoping, wristband-uniqueness 409, the handle-less identity invariant, and
+  non-admin gating).
 
 ## 6. Decisions needed before build
 

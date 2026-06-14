@@ -2206,9 +2206,16 @@ export type AuthInfoEventAccess = {
 
 export type Personnel = {
     handle: string;
+    name?: string|null;
+    // email is sent only by the admin People listing (?all=true) so it can be edited.
+    email?: string|null;
     person_id?: number|null;
     is_admin?: boolean;
     onsite?: boolean;
+    // wristband and participation_type are per-event; the admin listing populates
+    // them when scoped to an event (?event=). See docs/plans/51-people-registry.md.
+    wristband?: string|null;
+    participation_type?: string|null;
     // These are the person statuses IMS recognizes (from the local PERSON table).
     status: "active"|"alpha"|"auditor"|"inactive extension"|"inactive"|"prospective";
 }
