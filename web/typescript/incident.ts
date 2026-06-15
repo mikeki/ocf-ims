@@ -24,6 +24,7 @@ declare global {
         editOutcome: ()=>Promise<void>;
         editIncidentSummary: ()=>Promise<void>;
         editLocationArea: ()=>Promise<void>;
+        editLocationBooth: ()=>Promise<void>;
         editLocationDescription: ()=>Promise<void>;
         removePerson: (el: HTMLElement)=>void;
         setPersonInvolvement: (el: HTMLInputElement)=>void;
@@ -63,6 +64,7 @@ const el = {
     startedDatetimeTz: ims.typedElement("started_datetime_tz", HTMLSpanElement),
 
     locationArea: ims.typedElement("incident_location_area", HTMLSelectElement),
+    locationBooth: ims.typedElement("incident_location_booth", HTMLInputElement),
     locationDescription: ims.typedElement("incident_location_description", HTMLInputElement),
 
     personAdd: ims.typedElement("person_add", HTMLInputElement),
@@ -73,6 +75,7 @@ const el = {
     incidentTypeAdd: ims.typedElement("incident_type_add", HTMLInputElement),
     incidentTypes: ims.typedElement("incident_types", HTMLDataListElement),
     incidentTypesList: ims.typedElement("incident_types_list", HTMLUListElement),
+    incidentTypesRequired: ims.typedElement("incident_types_required", HTMLElement),
     incidentTypesLiTemplate: ims.typedElement("incident_types_li_template", HTMLTemplateElement),
     incidentTypeInfo: ims.typedElement("incident-type-info", HTMLUListElement),
     incidentTypeInfoTemplate: ims.typedElement("incident-type-info-template", HTMLTemplateElement),
@@ -114,6 +117,7 @@ async function initIncidentPage(): Promise<void> {
     window.editOutcome = editOutcome;
     window.editIncidentSummary = editIncidentSummary;
     window.editLocationArea = editLocationArea;
+    window.editLocationBooth = editLocationBooth;
     window.editLocationDescription = editLocationDescription;
     window.removePerson = removePerson;
     window.setPersonInvolvement = setPersonInvolvement;
@@ -570,6 +574,7 @@ function drawIncidentFields() {
     drawPeople();
     drawIncidentTypes();
     drawLocationArea();
+    drawLocationBooth();
     drawLocationDescription();
     ims.toggleShowHistory();
     drawMergedJournalEntries();
@@ -744,6 +749,12 @@ function setupPersonAdd(): void {
 function drawIncidentTypes() {
     el.incidentTypesList.querySelectorAll("li").forEach((li: HTMLElement) => {li.remove()});
 
+    // At least one incident type is required (D-R2). Show a persistent inline
+    // marker while none is attached, instead of only surprising the user with an
+    // alert at close time (the close-time guard in editState remains a backstop).
+    const hasType: boolean = (incident!.incident_type_ids??[]).length > 0;
+    el.incidentTypesRequired.classList.toggle("hidden", hasType);
+
     for (const validType of allIncidentTypes) {
         if ((incident!.incident_type_ids??[]).includes(validType.id??-1)) {
             const fragment = el.incidentTypesLiTemplate.content.cloneNode(true) as DocumentFragment;
@@ -860,6 +871,12 @@ function areaOption(area: ims.Area, indent: boolean): HTMLOptionElement {
 function drawLocationArea(): void {
     drawAreaOptions();
     el.locationArea.value = incident?.location?.area_slug??"";
+}
+
+function drawLocationBooth() {
+    if (incident!.location?.booth) {
+        el.locationBooth.value = incident!.location.booth;
+    }
 }
 
 function drawLocationDescription() {
@@ -1161,6 +1178,10 @@ async function editIncidentSummary(): Promise<void> {
 
 async function editLocationArea(): Promise<void> {
     await ims.editFromElement(el.locationArea, "location.area_slug");
+}
+
+async function editLocationBooth(): Promise<void> {
+    await ims.editFromElement(el.locationBooth, "location.booth");
 }
 
 async function editLocationDescription(): Promise<void> {

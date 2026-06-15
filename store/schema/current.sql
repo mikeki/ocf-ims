@@ -6,7 +6,7 @@ create table SCHEMA_INFO (
 -- This value must be updated when you make a new migration file.
 --
 
-insert into SCHEMA_INFO (VERSION) values (43);
+insert into SCHEMA_INFO (VERSION) values (44);
 
 
 create table `EVENT` (
@@ -192,6 +192,11 @@ create table INCIDENT (
         'referred_to_management', 'referred_to_community_support',
         'referred_to_mediation', 'follow_up_required', 'no_action_needed'
     ),
+
+    -- LOCATION_BOOTH is an optional booth number/identifier, captured alongside
+    -- the structured AREA and the freeform LOCATION_DESCRIPTION. Added last so
+    -- the column order matches the ALTER ... ADD COLUMN in migration 44-from-43.
+    LOCATION_BOOTH          varchar(32),
 
     foreign key (`EVENT`) references `EVENT`(ID),
 
