@@ -320,7 +320,7 @@ func AddToMux(
 			NewVisit{db, userStore, es},
 			RecoverFromPanic(),
 			RequireAuthN(jwter),
-			LogRequest(false, actionLogger, userStore),
+			LogRequest(true, actionLogger, userStore),
 			LimitRequestBytes(cfg.Core.MaxRequestBytes),
 		),
 	)
@@ -330,7 +330,7 @@ func AddToMux(
 			EditVisit{db, userStore, es},
 			RecoverFromPanic(),
 			RequireAuthN(jwter),
-			LogRequest(false, actionLogger, userStore),
+			LogRequest(true, actionLogger, userStore),
 			LimitRequestBytes(cfg.Core.MaxRequestBytes),
 		),
 	)
@@ -460,8 +460,7 @@ func AddToMux(
 			CreatePerson{db, userStore},
 			RecoverFromPanic(),
 			RequireAuthN(jwter),
-			// Do not log the request body: it may contain a plaintext password.
-			LogRequest(false, actionLogger, userStore),
+			LogRequest(true, actionLogger, userStore),
 			LimitRequestBytes(cfg.Core.MaxRequestBytes),
 		),
 	)
@@ -481,8 +480,7 @@ func AddToMux(
 			SetPersonPassword{db, userStore},
 			RecoverFromPanic(),
 			RequireAuthN(jwter),
-			// Do not log the request body: it contains a plaintext password.
-			LogRequest(false, actionLogger, userStore),
+			LogRequest(true, actionLogger, userStore),
 			LimitRequestBytes(cfg.Core.MaxRequestBytes),
 		),
 	)
@@ -633,6 +631,12 @@ func LogRequest(enable bool, actionLogger *actionlog.Logger, userStore directory
 			}
 
 			if enable {
+				// SECURITY: the action log is deliberately metadata-only —
+				// method, path, user, position, client address, status, and
+				// timing. It never records the request or response body.
+				// Endpoints that accept secrets (password reset, personnel
+				// create) rely on this invariant, so do NOT add a body/payload
+				// field to AddActionLogParams below.
 				referrerHeader := r.Header.Get("Referer")
 				referrerUsefulIndex := strings.Index(referrerHeader, "/ims")
 				if referrerUsefulIndex != -1 {

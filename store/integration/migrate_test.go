@@ -30,12 +30,25 @@ import (
 	"github.com/testcontainers/testcontainers-go"
 	"golang.org/x/sync/errgroup"
 	"io"
+	"regexp"
 	"slices"
 	"testing"
 )
 
 //go:embed 36.sql
 var schemaBaseline string
+
+// SHOW CREATE TABLE embeds the table's live AUTO_INCREMENT counter, which
+// reflects how many seed rows current.sql inserted (e.g. the reference
+// INCIDENT_TYPE taxonomy). That counter legitimately grows as reference data is
+// added to current.sql and is not part of the table's structure, so strip it
+// before comparing — otherwise adding a seed row without a (schema-only)
+// migration would spuriously fail the schema-equivalence check.
+var autoIncrementClause = regexp.MustCompile(` AUTO_INCREMENT=\d+`)
+
+func normalizeCreateTable(createTable string) string {
+	return autoIncrementClause.ReplaceAllString(createTable, "")
+}
 
 // TestMigrateSameAsCurrentSchema verifies that OCF's migrations stay consistent
 // with current.sql.
@@ -124,7 +137,7 @@ func TestMigrateSameAsCurrentSchema(t *testing.T) {
 		var createTable2 string
 		require.NoError(t, row2.Scan(&tableName, &createTable2))
 
-		assert.Equal(t, createTable1, createTable2)
+		assert.Equal(t, normalizeCreateTable(createTable1), normalizeCreateTable(createTable2))
 	}
 }
 

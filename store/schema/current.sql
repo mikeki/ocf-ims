@@ -60,7 +60,9 @@ insert into INCIDENT_TYPE (ID, NAME, HIDDEN, `GROUP`) values
     (22, 'Permit Violation',          0, 'compliance'),
     (23, 'Amplified Sound Violation', 0, 'compliance'),
     (24, 'Unauthorized Vehicle',      0, 'compliance'),
-    (25, 'Wristband/Credential Issue',0, 'compliance');
+    (25, 'Wristband/Credential Issue',0, 'compliance'),
+    (26, 'Weapon',                    0, 'safety'),
+    (27, 'Other',                     0, null);
 
 
 -- Local people model (OCF-owned, replacing the external Clubhouse directory).
