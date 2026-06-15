@@ -1438,6 +1438,129 @@ export function journalEntryEdited(): void {
     }
 }
 
+//
+// Journal-entry draft persistence (localStorage)
+//
+// The journal-entry textarea is the one incident/report field that isn't
+// autosaved per-keystroke (every other field POSTs on change). To avoid losing
+// a half-written entry to a refresh, tab close, or dropped connection, we keep
+// its text in localStorage, restore it on the next page load, and clear it once
+// the entry is submitted. This is a draft cache, not an offline queue.
+
+const journalDraftKeyPrefix = "journal_draft";
+let journalDraftPageType: "incident"|"report"|null = null;
+let journalDraftSaveTimer: number|null = null;
+
+function journalDraftKeyFor(eventName: string, pageType: string, numberPart: string): string {
+    return `${journalDraftKeyPrefix}_${eventName}_${pageType}_${numberPart}`;
+}
+
+// The localStorage key for the current page's draft, or null if drafts don't
+// apply here. Keyed by (event, page type, number) so each incident/report — and
+// the not-yet-numbered "new" page — has its own draft.
+function journalDraftKey(): string|null {
+    if (journalDraftPageType == null || pathIds.eventName == null) {
+        return null;
+    }
+    const number = journalDraftPageType === "incident" ? pathIds.incidentNumber : pathIds.reportNumber;
+    return journalDraftKeyFor(pathIds.eventName, journalDraftPageType, number == null ? "new" : `${number}`);
+}
+
+function journalDraftTextArea(): HTMLTextAreaElement|null {
+    return document.getElementById("journal_entry_add") as HTMLTextAreaElement|null;
+}
+
+function hideJournalDraftNote(): void {
+    document.getElementById("journal_draft_restored")?.classList.add("hidden");
+}
+
+// setJournalDraftPageType enables draft persistence for the current page and
+// records its kind, so the draft key is unique per page type. Call once at init.
+export function setJournalDraftPageType(pageType: "incident"|"report"): void {
+    journalDraftPageType = pageType;
+}
+
+// saveJournalDraft debounces a write of the textarea contents to localStorage.
+// Wire it to the textarea's "input" event.
+export function saveJournalDraft(): void {
+    hideJournalDraftNote();
+    if (journalDraftSaveTimer != null) {
+        window.clearTimeout(journalDraftSaveTimer);
+    }
+    journalDraftSaveTimer = window.setTimeout(flushJournalDraft, 400);
+}
+
+// flushJournalDraft writes the draft immediately, cancelling any pending
+// debounced write. Also called synchronously from the beforeunload guard so the
+// last keystrokes can't be lost.
+export function flushJournalDraft(): void {
+    if (journalDraftSaveTimer != null) {
+        window.clearTimeout(journalDraftSaveTimer);
+        journalDraftSaveTimer = null;
+    }
+    const key = journalDraftKey();
+    const textArea = journalDraftTextArea();
+    if (key == null || textArea == null) {
+        return;
+    }
+    if (textArea.value === "") {
+        localStorage.removeItem(key);
+    } else {
+        localStorage.setItem(key, textArea.value);
+    }
+}
+
+// restoreJournalDraft loads a saved draft into the empty textarea on page load
+// and shows a subtle "draft restored" note. Call once, after the fields are
+// first drawn.
+export function restoreJournalDraft(): void {
+    const key = journalDraftKey();
+    const textArea = journalDraftTextArea();
+    if (key == null || textArea == null || textArea.value !== "") {
+        return;
+    }
+    const draft = localStorage.getItem(key);
+    if (!draft) {
+        return;
+    }
+    textArea.value = draft;
+    journalEntryEdited();
+    document.getElementById("journal_draft_restored")?.classList.remove("hidden");
+}
+
+// migrateJournalDraftToNumber moves a draft from the "new" key to the real
+// number once a brand-new incident/report is assigned one, so a reload right
+// after creation still finds it.
+export function migrateJournalDraftToNumber(newNumber: number): void {
+    if (journalDraftPageType == null || pathIds.eventName == null) {
+        return;
+    }
+    const oldKey = journalDraftKeyFor(pathIds.eventName, journalDraftPageType, "new");
+    const newKey = journalDraftKeyFor(pathIds.eventName, journalDraftPageType, `${newNumber}`);
+    if (oldKey === newKey) {
+        return;
+    }
+    const draft = localStorage.getItem(oldKey);
+    if (draft != null) {
+        localStorage.setItem(newKey, draft);
+        localStorage.removeItem(oldKey);
+    }
+}
+
+// clearJournalDraft drops the saved draft and hides the note. Called after a
+// successful submit.
+function clearJournalDraft(): void {
+    if (journalDraftSaveTimer != null) {
+        window.clearTimeout(journalDraftSaveTimer);
+        journalDraftSaveTimer = null;
+    }
+    const key = journalDraftKey();
+    if (key != null) {
+        localStorage.removeItem(key);
+    }
+    hideJournalDraftNote();
+}
+
 // The error callback for a journal entry strike call.
 // This function is designed to work from either the incident
 // or the report page.
@@ -1536,6 +1659,8 @@ export async function submitJournalEntry(): Promise<void> {
     textArea.value = "";
     // Reset the submit button and its "disabled" status
     journalEntryEdited();
+    // The entry is saved server-side now, so drop the local draft.
+    clearJournalDraft();
 }
 
 //

@@ -469,3 +469,73 @@ test("reports", async ({ page, browser }) => {
       await ctx.close();
   }
 })
+
+
+test("journal_draft_persistence", async ({ page, browser }) => {
+  test.slow();
+
+  // make a new event with a writer
+  await login(page);
+  const eventName: string = randomName("event");
+  await addEvent(page, eventName);
+  await addWriter(page, eventName, "person:" + username);
+  await page.close();
+
+  const ctx = await browser.newContext();
+  const incidentPage = await ctx.newPage();
+  await login(incidentPage);
+
+  await incidentPage.goto(`http://localhost:8080/ims/app/events/${eventName}/incidents`);
+  await incidentPage.getByRole("button", {name: "New"}).click();
+  await expect(incidentPage.getByLabel("IMS #", {exact: true})).toHaveValue("(new)");
+
+  // Type a journal entry, but do NOT submit it.
+  const draft = `Draft text - ${randomName("text")}`;
+  await incidentPage.getByLabel("New journal entry text").fill(draft);
+
+  // It's debounced into localStorage under the not-yet-numbered "new" key.
+  await expect.poll(async (): Promise<string|null> => incidentPage.evaluate(
+      (ev: string): string|null => localStorage.getItem(`journal_draft_${ev}_incident_new`),
+      eventName,
+  )).toBe(draft);
+
+  // Create the incident via a non-journal field edit, which assigns its number.
+  // The draft key must migrate from "new" to the freshly-assigned number.
+  const summary: string = randomName("summary");
+  await incidentPage.getByLabel("Summary").fill(summary);
+  await incidentPage.getByLabel("Summary").press("Tab");
+  await expect(incidentPage.getByLabel("IMS #", {exact: true})).toHaveValue(/^\d+$/);
+  const number: string = await incidentPage.getByLabel("IMS #", {exact: true}).inputValue();
+
+  // The draft now lives under the numbered key, and the "new" key is cleared.
+  await expect.poll(async (): Promise<string|null> => incidentPage.evaluate(
+      (key: string): string|null => localStorage.getItem(key),
+      `journal_draft_${eventName}_incident_${number}`,
+  )).toBe(draft);
+  expect(await incidentPage.evaluate(
+      (ev: string): string|null => localStorage.getItem(`journal_draft_${ev}_incident_new`),
+      eventName,
+  )).toBeNull();
+
+  // Reload: the draft is restored into the textarea, with a subtle note.
+  await incidentPage.reload();
+  await expect(incidentPage.getByLabel("New journal entry text")).toHaveValue(draft);
+  await expect(incidentPage.getByText("Unsaved draft restored.")).toBeVisible();
+
+  // Submitting the entry clears the local draft.
+  await incidentPage.getByLabel("Submit journal entry").click();
+  await expect(incidentPage.getByLabel("New journal entry text")).toBeEmpty();
+  await expect(incidentPage.getByText(draft)).toBeVisible();
+  await expect.poll(async (): Promise<string|null> => incidentPage.evaluate(
+      (key: string): string|null => localStorage.getItem(key),
+      `journal_draft_${eventName}_incident_${number}`,
+  )).toBeNull();
+
+  // A subsequent reload shows no restored draft.
+  await incidentPage.reload();
+  await expect(incidentPage.getByLabel("New journal entry text")).toBeEmpty();
+  await expect(incidentPage.getByText("Unsaved draft restored.")).toBeHidden();
+
+  await incidentPage.close();
+  await ctx.close();
+})

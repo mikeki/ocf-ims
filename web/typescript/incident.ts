@@ -128,6 +128,7 @@ async function initIncidentPage(): Promise<void> {
     window.toggleShowHistory = ims.toggleShowHistory;
     window.journalEntryEdited= ims.journalEntryEdited;
     window.submitJournalEntry = ims.submitJournalEntry;
+    ims.setJournalDraftPageType("incident");
 
     // load everything from the APIs concurrently
     await Promise.all([
@@ -166,8 +167,12 @@ async function initIncidentPage(): Promise<void> {
         el.incidentSummary.focus();
     }
 
+    // Restore any unsaved journal-entry draft from a previous visit.
+    ims.restoreJournalDraft();
+
     // Warn the user if they're about to navigate away with unsaved text.
     window.addEventListener("beforeunload", function (e: BeforeUnloadEvent): void {
+        ims.flushJournalDraft();
         if (el.journalEntryAdd.value !== "") {
             e.preventDefault();
         }
@@ -570,6 +575,7 @@ function drawIncidentFields() {
     drawMergedJournalEntries();
 
     el.journalEntryAdd.addEventListener("input", ims.journalEntryEdited);
+    el.journalEntryAdd.addEventListener("input", ims.saveJournalDraft);
 }
 
 
@@ -1096,6 +1102,9 @@ async function sendEdits(edits: ims.Incident): Promise<{err:string|null}> {
 
         // Store the new number in our incident object
         ims.pathIds.incidentNumber = incident!.number = newNumber;
+        // Carry any locally-saved journal draft from the "new" key over to the
+        // freshly-assigned number, so a reload after creation still finds it.
+        ims.migrateJournalDraftToNumber(newNumber);
 
         // Update browser history to update URL
         drawIncidentTitle("for_display");

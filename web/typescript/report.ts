@@ -74,6 +74,7 @@ async function initReportPage(): Promise<void> {
     window.toggleShowHistory = ims.toggleShowHistory;
     window.journalEntryEdited = ims.journalEntryEdited;
     window.submitJournalEntry = ims.submitJournalEntry;
+    ims.setJournalDraftPageType("report");
     window.attachFile = attachFile;
     window.updateIncident = updateIncident;
 
@@ -94,8 +95,12 @@ async function initReportPage(): Promise<void> {
         el.reportSummary.focus();
     }
 
+    // Restore any unsaved journal-entry draft from a previous visit.
+    ims.restoreJournalDraft();
+
     // Warn the user if they're about to navigate away with unsaved text.
     window.addEventListener("beforeunload", function (e: BeforeUnloadEvent): void {
+        ims.flushJournalDraft();
         if (el.journalEntryAdd.value !== "") {
             e.preventDefault();
         }
@@ -217,6 +222,7 @@ async function loadAndDisplayReport(): Promise<void> {
     ims.clearErrorMessage();
 
     el.journalEntryAdd.addEventListener("input", ims.journalEntryEdited);
+    el.journalEntryAdd.addEventListener("input", ims.saveJournalDraft);
 
     if (ims.eventAccess?.writeReports) {
         ims.enableEditing();
@@ -383,6 +389,9 @@ async function reportSendEdits(edits: ims.Report): Promise<{err:string|null}> {
 
         // Store the new number in our report object
         ims.pathIds.reportNumber = report.number = newAsNumber;
+        // Carry any locally-saved journal draft from the "new" key over to the
+        // freshly-assigned number, so a reload after creation still finds it.
+        ims.migrateJournalDraftToNumber(newAsNumber);
 
         // Update browser history to update URL
         drawTitle();

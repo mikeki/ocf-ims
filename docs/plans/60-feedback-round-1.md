@@ -1,7 +1,8 @@
 # Phase 6 — Feedback Round 1 (beta usage feedback)
 
 > **Status:** 6a shipped — "Other"/"Weapon" types + action-log coverage done;
-> areas reseed still blocked on the stakeholder area list. 6b/6c not started.
+> areas reseed still blocked on the stakeholder area list. 6c journal drafts
+> shipped; 6b booth field not started.
 > **Last updated:** 2026-06-14
 >
 > First round of feedback from real usage of the beta, collected 2026-06-11.
@@ -86,6 +87,14 @@ rows, unwieldy dropdown).
 - **Tests**: round-trip in the incident API tests; clear-vs-unchanged semantics.
 
 ### 6c — Journal draft persistence (Stakeholder B's auto-save)
+
+**Done.** Journal-entry drafts now persist to `localStorage` (shared logic in
+`ims.ts`, keyed `journal_draft_<event>_<page-type>_<number|"new">`): a debounced
+write on input, restore-on-load with a subtle "Unsaved draft restored." note,
+clear-on-submit, the `"new"`→number key migration on creation, and a
+`beforeunload` flush so the last keystrokes can't be lost. Covers both the
+incident and report pages. A Playwright test (`journal_draft_persistence`)
+exercises the migrate + restore + clear path (not in CI; run locally).
 
 Grounding: most incident fields **already save per-field on blur** (each edit is
 its own XHR). The real data-loss hole is the **journal-entry textarea** — text

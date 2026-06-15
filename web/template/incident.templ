@@ -338,6 +338,7 @@ templ Incident(deployment, versionName, versionRef, eventName string) {
                     placeholder="Press &quot;a&quot; to add journal text"
                     onchange="journalEntryEdited()"
             ></textarea>
+            <span id="journal_draft_restored" class="text-body-secondary small hidden no-print">Unsaved draft restored.</span>
             <div class="d-flex justify-content-between">
               <button
                       id="journal_entry_submit"
