@@ -405,6 +405,16 @@ func AddToMux(
 		),
 	)
 
+	mux.Handle("GET /ims/api/events/{eventName}/metrics",
+		Adapt(
+			GetMetrics{db, userStore},
+			RecoverFromPanic(),
+			RequireAuthN(jwter),
+			LogRequest(false, actionLogger, userStore),
+			LimitRequestBytes(cfg.Core.MaxRequestBytes),
+		),
+	)
+
 	mux.Handle("GET /ims/api/events",
 		Adapt(
 			GetEvents{db, userStore, cfg.Core.CacheControlShort},
