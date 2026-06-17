@@ -310,6 +310,13 @@ func (a ApiHelper) detachPersonFromVisit(ctx context.Context, eventName string, 
 	return resp
 }
 
+func (a ApiHelper) getMetrics(ctx context.Context, eventName string) (imsjson.Metrics, *http.Response) {
+	a.t.Helper()
+	path := a.serverURL.JoinPath("/ims/api/events/", eventName, "/metrics").String()
+	bod, resp := a.imsGet(ctx, path, &imsjson.Metrics{})
+	return *bod.(*imsjson.Metrics), resp
+}
+
 func (a ApiHelper) getIncidents(ctx context.Context, eventName string) (imsjson.Incidents, *http.Response) {
 	a.t.Helper()
 	path := a.serverURL.JoinPath(fmt.Sprint("/ims/api/events/", eventName, "/incidents")).String()

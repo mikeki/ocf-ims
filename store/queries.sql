@@ -779,3 +779,80 @@ from `POSITION`;
 -- name: PeopleTeamsList :many
 select ID, NAME
 from TEAM;
+
+-- ============================================================================
+-- Dashboard metrics (Phase 7). All read-only, all filtered by EVENT. The
+-- join-heavy category/type/area aggregations run as GROUP BY in SQL; the
+-- state/priority/by-day/time-to-close/follow-up metrics are derived in Go from
+-- one lightweight per-incident SELECT (MetricsIncidents) to keep the query count
+-- low and sidestep sqlc's weaker inference on AVG/date aggregations.
+-- See docs/plans/70-dashboards.md.
+-- ============================================================================
+
+-- MetricsIncidents returns one lightweight row per incident in the event. The
+-- handler aggregates these in Go into totals (total/open/closed), counts by
+-- state and priority, the by-day created series, average time-to-close (over
+-- closed incidents), and the open-follow-ups list (OUTCOME='follow_up_required'
+-- and STATE!='closed'). CLOSED is nullable; it is set only for closed incidents.
+-- name: MetricsIncidents :many
+select
+    i.NUMBER,
+    i.STATE,
+    i.PRIORITY,
+    i.CREATED,
+    i.CLOSED,
+    i.OUTCOME,
+    i.SUMMARY
+from INCIDENT i
+where i.EVENT = ?
+order by i.NUMBER;
+
+-- MetricsIncidentCountByCategory counts DISTINCT incidents per INCIDENT_TYPE.GROUP
+-- category. Because an incident can have several types in several categories, the
+-- per-category counts sum to >= the incident total — they are "incidents with a
+-- type in this category", not a partition. CATEGORY is null for ungrouped types.
+-- name: MetricsIncidentCountByCategory :many
+select
+    it.`GROUP` as CATEGORY,
+    count(distinct i.NUMBER) as COUNT
+from INCIDENT i
+    join INCIDENT__INCIDENT_TYPE iit
+        on iit.EVENT = i.EVENT and iit.INCIDENT_NUMBER = i.NUMBER
+    join INCIDENT_TYPE it
+        on it.ID = iit.INCIDENT_TYPE
+where i.EVENT = ?
+group by it.`GROUP`;
+
+-- MetricsIncidentCountByType counts DISTINCT incidents per incident type. Same
+-- multi-type caveat as the category query: the counts can sum to more than the
+-- incident total. Ordered most-frequent first.
+-- name: MetricsIncidentCountByType :many
+select
+    it.ID as TYPE_ID,
+    it.NAME as TYPE_NAME,
+    count(distinct i.NUMBER) as COUNT
+from INCIDENT i
+    join INCIDENT__INCIDENT_TYPE iit
+        on iit.EVENT = i.EVENT and iit.INCIDENT_NUMBER = i.NUMBER
+    join INCIDENT_TYPE it
+        on it.ID = iit.INCIDENT_TYPE
+where i.EVENT = ?
+group by it.ID, it.NAME
+order by COUNT desc, it.NAME;
+
+-- MetricsIncidentCountByArea counts incidents per location area. Each incident
+-- has at most one LOCATION_AREA_SLUG, so this is a clean partition; incidents
+-- with no area come back with a null slug/name (the handler labels them
+-- "Unassigned"). The LEFT JOIN carries the area's display name. Ordered busiest
+-- first, so the same result doubles as the repeat-locations ranking.
+-- name: MetricsIncidentCountByArea :many
+select
+    i.LOCATION_AREA_SLUG as AREA_SLUG,
+    a.NAME as AREA_NAME,
+    count(*) as COUNT
+from INCIDENT i
+    left join AREA a
+        on a.EVENT = i.EVENT and a.SLUG = i.LOCATION_AREA_SLUG
+where i.EVENT = ?
+group by i.LOCATION_AREA_SLUG, a.NAME
+order by COUNT desc, a.NAME;
