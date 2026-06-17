@@ -91,3 +91,5 @@ const url_viewReportNew = "/ims/app/events/<event_id>/reports/new";
 const url_viewReportNumber = "/ims/app/events/<event_id>/reports/<number>";
 const url_viewReportJS = "/ims/static/report.js";
 const url_viewVisits ="/ims/app/events/<event_id>/visits";
+const url_viewPeople = "/ims/app/events/<event_id>/people";
+const url_viewPeopleJS = "/ims/static/people.js";

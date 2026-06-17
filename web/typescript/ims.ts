@@ -448,6 +448,18 @@ function renderCommonPageItems(authInfo: AuthInfo): void {
                 activeEventVisits.classList.add("active");
             }
         }
+
+        // People is admin-only for now (the refine-later seam in 62-people-event-nav.md):
+        // reveal it only when an event is active AND the viewer is an admin.
+        const activeEventPeople = document.getElementById("active-event-people") as HTMLAnchorElement|null;
+        if (activeEventPeople != null && authInfo.authenticated && authInfo.admin) {
+            activeEventPeople.href = urlReplace(url_viewPeople);
+            activeEventPeople.classList.remove("hidden");
+
+            if (window.location.pathname.startsWith(urlReplace(url_viewPeople))) {
+                activeEventPeople.classList.add("active");
+            }
+        }
     }
 }
 

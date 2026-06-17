@@ -66,9 +66,16 @@ const el = {
     editPersonParticipation: ims.typedElement("edit_person_participation", HTMLSelectElement),
 };
 
-initAdminPeoplePage();
+// The page serves two doorways (docs/plans/62-people-event-nav.md):
+//   - event doorway  (/ims/app/events/{event}/people): pinned to the URL event;
+//     the picker is locked to it.
+//   - admin doorway  (/ims/app/admin/people): no URL event, the user picks one
+//     (remembered in localStorage), and "— no event —" is allowed for global work.
+const urlEvent: string|null = ims.pathIds.eventName;
 
-async function initAdminPeoplePage(): Promise<void> {
+initPeoplePage();
+
+async function initPeoplePage(): Promise<void> {
     const initResult = await ims.commonPageInit();
     if (!initResult.authInfo.authenticated) {
         await ims.redirectToLogin();
@@ -89,12 +96,26 @@ async function initAdminPeoplePage(): Promise<void> {
 
     await loadEventOptions();
 
-    // Reselect the last-scoped event so per-event info shows again.
-    const lastEvent = localStorage.getItem(lastEventKey);
-    if (lastEvent && [...el.eventName.options].some(o => o.value === lastEvent)) {
-        el.eventName.value = lastEvent;
+    if (urlEvent != null) {
+        // Event doorway: pin and lock the picker to the URL event.
+        if (![...el.eventName.options].some(o => o.value === urlEvent)) {
+            // Defensive: the URL event should already be a real (non-group) option.
+            const opt = document.createElement("option");
+            opt.value = urlEvent;
+            opt.textContent = urlEvent;
+            el.eventName.append(opt);
+        }
+        el.eventName.value = urlEvent;
+        el.eventName.disabled = true;
+        currentEvent = urlEvent;
+    } else {
+        // Admin doorway: restore the last-scoped event so per-event info shows again.
+        const lastEvent = localStorage.getItem(lastEventKey);
+        if (lastEvent && [...el.eventName.options].some(o => o.value === lastEvent)) {
+            el.eventName.value = lastEvent;
+        }
+        currentEvent = el.eventName.value.trim();
     }
-    currentEvent = el.eventName.value.trim();
     reflectEventSelection();
 
     await loadAndDrawPeople();

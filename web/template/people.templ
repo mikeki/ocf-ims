@@ -16,15 +16,15 @@
 
 package template
 
-templ AdminPeople(deployment, versionName, versionRef string) {
+templ People(deployment, versionName, versionRef, eventName string) {
 <!DOCTYPE html>
 <html lang="en">
-@Head("Manage People", "admin_people.js", false, versionRef)
+@Head("Manage People", "people.js", false, versionRef)
 
 <body>
 <div class="container-fluid">
 @Header(deployment)
-@Nav("")
+@Nav(eventName)
 <h1 id="doc-title">People</h1>
 @LoadingOverlay()
 @ErrorInfo()
