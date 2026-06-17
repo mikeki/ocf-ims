@@ -394,7 +394,13 @@ open follow-ups.
 > Depends on Phase 4 (categories/locations/outcomes) and likely 5. Response
 > times and open follow-ups depend on outcome/follow-up modeling from Phase 4b.
 
-**Phase 7 tasks (detailed in `70-dashboards.md`):** TBD.
+**Phase 7 tasks (detailed in [`70-dashboards.md`](70-dashboards.md)):** scope
+locked 2026-06-16. Admin-only, event-scoped dashboard built on a new aggregation
+API + Chart.js, in two slices — **7a** metrics endpoint (`GET
+/ims/api/events/{event}/metrics`, server-side `GROUP BY`, no schema change) and
+**7b** the dashboard page (event picker, four metric bundles: by category & type,
+status overview, areas + repeat-locations, open follow-ups + avg time-to-close).
+Date-range filtering and SLA-style metrics needing new schema are deferred.
 
 ---
 
