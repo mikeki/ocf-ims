@@ -135,7 +135,9 @@ templ Incident(deployment, versionName, versionRef, eventName string) {
 
     <div class="row">
       <div class="input-group">
-        <label for="incident_summary" class="input-group-text control-label">Summary</label>
+        <label for="incident_summary" class="input-group-text control-label">
+          Summary<span class="text-danger ms-1" title="Required field" aria-label="required">*</span>
+        </label>
         <input
                 id="incident_summary" class="form-control form-control-sm"
                 type="text" inputmode="latin-prose" autocomplete="off"
@@ -187,7 +189,7 @@ templ Incident(deployment, versionName, versionRef, eventName string) {
       </div>
       <div class="col-sm-6 py-2">
         <div class="card">
-          <label class="control-label card-header">Incident Types
+          <label class="control-label card-header">Incident Types<span class="text-danger ms-1" title="At least one is required" aria-label="required">*</span>
             <a href="#" class="link-body-emphasis float-end no-print" id="show-incident-type-info" title="Show Incident Type descriptions" tabindex="-1">
               Info
               <svg fill="currentColor" class="bi">
@@ -195,6 +197,9 @@ templ Incident(deployment, versionName, versionRef, eventName string) {
               </svg>
             </a>
           </label>
+          <div id="incident_types_required" class="small text-danger px-3 pt-2 hidden no-print">
+            Add at least one incident type.
+          </div>
           <ul id="incident_types_list" class="list-group list-group-flush list-group-small card-body">
             <template id="incident_types_li_template">
               <li class="list-group-item ps-3 hidden">
@@ -245,6 +250,21 @@ templ Incident(deployment, versionName, versionRef, eventName string) {
                 </div>
               </div>
               <div class="input-group row align-items-center">
+                <label for="incident_location_booth"
+                       class="col-sm-2 col-form-label control-label">Booth:</label>
+                <div class="col-sm-10">
+                  <input
+                          id="incident_location_booth" class="form-control form-control-sm"
+                          type="text" inputmode="latin-prose" autocomplete="off"
+                          data-1p-ignore data-lpignore="true" data-bwignore
+                          aria-label="Booth number"
+                          placeholder="Booth number, if applicable"
+                          maxlength="32"
+                          onchange="editLocationBooth()"
+                  />
+                </div>
+              </div>
+              <div class="input-group row align-items-center">
                 <label for="incident_location_description" class="col-sm-2 col-form-label control-label">Details:</label>
                 <div class="col-sm-10">
                   <input
@@ -258,60 +278,6 @@ templ Incident(deployment, versionName, versionRef, eventName string) {
                 </div>
               </div>
             </form>
-          </div>
-        </div>
-      </div>
-    </div>
-
-    <!-- Attached reports, linked incidents -->
-
-    <div class="row py-2">
-      <div class="col-sm-6">
-        <div class="card">
-          <label class="control-label card-header">Attached Reports/Visits</label>
-          <ul id="attached_reports" class="list-group list-group-small card-body list-group-flush">
-            <template id="attached_report_li_template">
-              <li class="list-group-item ps-3 hidden">
-                <button class="badge btn btn-danger remove-badge float-end"
-                        onclick="detachReport(this)">
-                  X
-                </button>
-              </li>
-            </template>
-          </ul>
-          <div id="attached_report_add_container" class="flex-input-container card-footer no-print">
-            <label for="attached_report_add" class="control-label">Add:</label>
-            <select
-                    id="attached_report_add"
-                    class="form-control form-control-sm"
-                    onchange="attachReport()"
-            >
-              <option value=""/>
-            </select>
-          </div>
-        </div>
-      </div>
-      <div class="col-sm-6">
-        <div class="card">
-          <label class="control-label card-header">Linked Incidents</label>
-          <ul id="linked_incidents" class="list-group list-group-small card-body list-group-flush">
-            <li class="list-group-item ps-3 hidden">
-              <button class="badge btn btn-danger remove-badge float-end"
-                      onclick="unlinkIncident(this)">
-                  X
-              </button>
-            </li>
-          </ul>
-          <div id="linked_incident_add_container" class="flex-input-container card-footer no-print">
-            <label class="control-label" for="linked_incident_add">Link IMS #:</label>
-            <input
-                    id="linked_incident_add"
-                    class="form-control form-control-sm"
-                    onchange="linkIncident(this)"
-                    autocomplete="off"
-                    placeholder="1 or 3,4,5 or 2015#2"
-                    type="text"
-            />
           </div>
         </div>
       </div>
@@ -347,7 +313,7 @@ templ Incident(deployment, versionName, versionRef, eventName string) {
                       class="btn btn-default btn-sm btn-block my-1 disabled no-print float-start"
                       onclick="submitJournalEntry()"
               >
-                Add Entry (Control ⏎)
+                Submit (Control ⏎)
               </button>
               <!-- File attachment -->
               <label class="input-group-text hidden" for="attach_file_input">Attach file</label>
@@ -360,6 +326,66 @@ templ Incident(deployment, versionName, versionRef, eventName string) {
                       onclick="document.getElementById('attach_file_input').click();"
               />
             </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Attached reports, linked incidents -->
+
+    <div class="row py-2">
+      <div class="col-sm-6">
+        <div class="card">
+          <label class="control-label card-header">Attached Reports/Visits</label>
+          <div class="small text-body-secondary px-3 pt-2 no-print">
+            Link existing Reports or Visits that relate to this incident.
+          </div>
+          <ul id="attached_reports" class="list-group list-group-small card-body list-group-flush">
+            <template id="attached_report_li_template">
+              <li class="list-group-item ps-3 hidden">
+                <button class="badge btn btn-danger remove-badge float-end"
+                        onclick="detachReport(this)">
+                  X
+                </button>
+              </li>
+            </template>
+          </ul>
+          <div id="attached_report_add_container" class="flex-input-container card-footer no-print">
+            <label for="attached_report_add" class="control-label">Add:</label>
+            <select
+                    id="attached_report_add"
+                    class="form-control form-control-sm"
+                    onchange="attachReport()"
+            >
+              <option value=""/>
+            </select>
+          </div>
+        </div>
+      </div>
+      <div class="col-sm-6">
+        <div class="card">
+          <label class="control-label card-header">Linked Incidents</label>
+          <div class="small text-body-secondary px-3 pt-2 no-print">
+            Cross-link other incidents that are related to this one.
+          </div>
+          <ul id="linked_incidents" class="list-group list-group-small card-body list-group-flush">
+            <li class="list-group-item ps-3 hidden">
+              <button class="badge btn btn-danger remove-badge float-end"
+                      onclick="unlinkIncident(this)">
+                  X
+              </button>
+            </li>
+          </ul>
+          <div id="linked_incident_add_container" class="flex-input-container card-footer no-print">
+            <label class="control-label" for="linked_incident_add">Link IMS #:</label>
+            <input
+                    id="linked_incident_add"
+                    class="form-control form-control-sm"
+                    onchange="linkIncident(this)"
+                    autocomplete="off"
+                    placeholder="1 or 3,4,5 or 2015#2"
+                    type="text"
+            />
           </div>
         </div>
       </div>

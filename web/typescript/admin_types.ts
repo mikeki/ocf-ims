@@ -100,7 +100,7 @@ function updateIncidentTypes(): void {
 
     const editIncidentTypeModal = ims.bsModal(el.editIncidentTypeModal);
 
-    // Render types grouped by OCF category (in canonical order), with any
+    // Render types grouped by OCF category (alphabetical order), with any
     // ungrouped types collected under a trailing "Ungrouped" heading.
     const groupOrder: (ims.IncidentTypeGroup|null)[] = [...ims.incidentTypeGroups, null];
     for (const group of groupOrder) {

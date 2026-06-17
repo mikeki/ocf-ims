@@ -933,25 +933,32 @@ function humanizeAreaSlug(slug: string): string {
 // Return a short description for a given location.
 function safeShortDescribeLocation(location: EventLocation): string {
     const area: string = location.area_slug ? humanizeAreaSlug(location.area_slug) : "";
+    const booth: string = location.booth ? `Booth ${location.booth}` : "";
     let detail: string = DataTable.render.text().display(location.description);
     if (detail) {
         detail = `(${detail})`;
     }
-    return [area, detail].filter(s => s).join(" ");
+    return [area, booth, detail].filter(s => s).join(" ");
 }
 
 // Return a short description for a given location.
 function shortDescribeLocation(location: EventLocation): HTMLSpanElement {
     const sp = document.createElement("span");
-    if (location.area_slug) {
-        sp.append(humanizeAreaSlug(location.area_slug));
-    }
-    if (location.description) {
-        if (location.area_slug) {
+    const appendSegment = (text: string): void => {
+        if (sp.childNodes.length > 0) {
             sp.append(document.createElement("wbr"));
             sp.append(" ");
         }
-        sp.append(`(${location.description})`);
+        sp.append(text);
+    };
+    if (location.area_slug) {
+        appendSegment(humanizeAreaSlug(location.area_slug));
+    }
+    if (location.booth) {
+        appendSegment(`Booth ${location.booth}`);
+    }
+    if (location.description) {
+        appendSegment(`(${location.description})`);
     }
     return sp;
 }
@@ -2106,9 +2113,11 @@ export type PageInitResult = {
 
 interface EventLocation {
     // area_slug references a per-event AREA (Phase 4c); description is the
-    // retained freeform "place / details" text.
+    // retained freeform "place / details" text; booth is an optional booth
+    // number/identifier.
     area_slug?: string|null;
     description?: string|null;
+    booth?: string|null;
 }
 
 export type LinkedIncident = {
@@ -2258,11 +2267,13 @@ export interface IncidentType {
     group?: IncidentTypeGroup|null;
 }
 
-// OCF incident-type categories, in canonical display order.
+// OCF incident-type categories, listed in alphabetical display order so the
+// type dropdown and info modal group headings sort predictably (6d.2). Types
+// remain alphabetical within each group; ungrouped types sort last.
 export type IncidentTypeGroup = "safety"|"conduct"|"operations"|"compliance";
 
 export const incidentTypeGroups: IncidentTypeGroup[] = [
-    "safety", "conduct", "operations", "compliance",
+    "compliance", "conduct", "operations", "safety",
 ];
 
 // incidentTypeGroupName returns the human-readable label for a group id, or
@@ -2277,9 +2288,9 @@ export function incidentTypeGroupName(group: string|null|undefined): string {
     }
 }
 
-// compareIncidentTypesByGroup orders incident types by their group's canonical
-// position (ungrouped last), then alphabetically by name. Useful for clustering
-// type lists/dropdowns by category.
+// compareIncidentTypesByGroup orders incident types by their group's position in
+// incidentTypeGroups (alphabetical; ungrouped last), then alphabetically by name.
+// Useful for clustering type lists/dropdowns by category.
 export function compareIncidentTypesByGroup(a: IncidentType, b: IncidentType): number {
     const rank = (g: IncidentTypeGroup|null|undefined): number =>
         g ? incidentTypeGroups.indexOf(g) : incidentTypeGroups.length;

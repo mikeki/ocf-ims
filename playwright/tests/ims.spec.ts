@@ -298,6 +298,8 @@ test("incidents", async ({ page, browser }) => {
       await incidentPage.getByLabel("Additional location description").click();
       await incidentPage.getByLabel("Additional location description").fill("other there");
       await incidentPage.getByLabel("Additional location description").press("Tab");
+      await incidentPage.getByLabel("Booth number").fill("B12");
+      await incidentPage.getByLabel("Booth number").press("Tab");
     }
     // add a journal entry
     const journalEntry = `This is some text - ${randomName("text")}`;

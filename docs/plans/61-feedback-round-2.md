@@ -1,6 +1,7 @@
 # Phase 6 — Feedback Round 2 (structured stakeholder review)
 
-> **Status:** Plan / for review. **Owner:** TBD · **Last updated:** 2026-06-12
+> **Status:** Slice 6d shipped (with 6b) 2026-06-15 — see as-built notes per
+> sub-slice below. **Owner:** TBD · **Last updated:** 2026-06-15
 >
 > Second feedback round: a **structured questionnaire** returned by **Stakeholder
 > C** (a new reviewer; round 1's informal batch is
@@ -40,6 +41,14 @@ Incidents** → *Entries from Incident and attached Reports/Visits* (journal +
 "Add Entry" button).
 
 ### 6d.1 — "Add Entry" → "Submit" + reorder so it's at the bottom
+
+> **Done (2026-06-15).** Button text → "Submit (Control ⏎)" on both
+> `incident.templ` and `report.templ` (the `aria-label` was already "Submit
+> journal entry", so tests/selectors are unaffected); the report-page
+> instructions prose that said *Click on "Add Entry"* now says *"Submit"*. The
+> Attached Reports/Visits + Linked Incidents row was moved **below** the
+> Entries card on the incident page, making Submit the last primary control.
+
 - Rename the journal control **"Add Entry (Control ⏎)" → "Submit (Control ⏎)"**
   (`incident.templ` ~L346; **and the twin on the report page**, `report.templ`,
   for consistency). The enable/disable + colour logic
@@ -63,6 +72,16 @@ Incidents** → *Entries from Incident and attached Reports/Visits* (journal +
 > field testing still shows confusion.
 
 ### 6d.2 — Required-field prominence
+
+> **Done (2026-06-15).** Per **D-R2** (Summary + ≥1 Incident Type): both labels
+> now carry a red `*` required marker (`title="Required"`). The Incident Types
+> card also shows a persistent inline "Add at least one incident type." hint
+> (`#incident_types_required`, toggled in `drawIncidentTypes`) while no type is
+> attached — replacing the alert-at-close *surprise* with an always-visible
+> marker. The close-time alert in `editState` is kept as a backstop (it carries
+> useful Junk/Admin special-case guidance). State defaults to "New" and Location
+> stays optional, as decided.
+
 - Today **no field is visually marked required**; the only guard is a JS alert
   when closing an incident with no incident type (`incident.ts` ~L1156).
 - Mark the agreed required set (proposed: **Summary** + **≥1 Incident Type** —
@@ -72,6 +91,16 @@ Incidents** → *Entries from Incident and attached Reports/Visits* (journal +
   "New"; Location is often unknown at entry — **don't** force it.
 
 ### 6d.3 — Dropdown affordance on People + Incident Types
+
+> **Resolved / verify-only (2026-06-15).** The **People** input is no longer a
+> bare datalist: slice 5e.2 replaced it with `setupPersonCombobox`
+> (`#person_add` + a visible `#person_add_results` list-group dropdown with
+> keyboard nav). That already delivers the visible affordance the round-2
+> feedback asked for — the original concern almost certainly predates the
+> combobox. Verified statically (markup/CSS/JS wiring correct); no change made.
+> The **Incident Types** input is still `<input list=datalist>`: decided to
+> **leave it as-is for beta** (defer any affordance change post-fair).
+
 - Both inputs are `<input type="text" list="…">` datalist typeaheads
   (`incident.templ`: People `#person_add` ~L170, Incident Types
   `#incident_type_add` ~L207) — they look like plain text boxes, so users don't
@@ -82,6 +111,12 @@ Incidents** → *Entries from Incident and attached Reports/Visits* (journal +
   datalist mechanics stay.
 
 ### 6d.4 — Clarify the cross-reference sections
+
+> **Done (2026-06-15).** Added a one-line muted hint under each section header on
+> the incident page: Attached Reports/Visits → "Link existing Reports or Visits
+> that relate to this incident."; Linked Incidents → "Cross-link other incidents
+> that are related to this one."
+
 - "Attached Reports/Visits" and "Linked Incidents" confused the reviewer. Add
   short help text / tooltips explaining each ("link an existing Report or guest
   Visit to this incident"; "relate this incident to another incident — entered
@@ -96,13 +131,15 @@ Incidents** → *Entries from Incident and attached Reports/Visits* (journal +
   (`store/schema/current.sql`), alongside the already-planned "Other". Group:
   `safety` (or `null`) — confirm with stakeholder. Implement with 6a; live DBs
   add it via the types admin page.
-- **6d/6a — alphabetical incident types.** The type datalist is currently drawn
-  grouped by category then alpha within group. Stakeholder wants a flat
-  alphabetical list for quick scanning. Recommendation: **flat-alphabetical in
-  the incident type *input*** (the datalist), keep the category grouping in the
-  *Info*/admin views (the reviewer separately said categories are "clear" and
-  liked them). Small change to the datalist-draw in `incident.ts`. Micro-decision
-  **D-R3** (§7).
+- **6d/6a — alphabetical incident types. Done (2026-06-15), scope revised.**
+  Maintainer steer 2026-06-14: **do not** go flat-alphabetical (original D-R3 is
+  dropped). Keep the category grouping (the reviewer liked the categories) and
+  keep types alpha within each group — just make the **groups themselves
+  alphabetical**. As built: `incidentTypeGroups` in `ims.ts` reordered from the
+  canonical `safety→conduct→operations→compliance` to alphabetical
+  `compliance→conduct→operations→safety`; ungrouped still sorts last. This flows
+  through the add-dropdown, the Info modal headings, and the admin types page
+  (all iterate `incidentTypeGroups`). See revised **D-R3** (§7).
 - **5e (people registry) gains follow-up contact capture.** "Witnesses, phone
   numbers, contact info" for follow-up:
   - *Witness* is already expressible — add the involved person with
@@ -160,11 +197,15 @@ field-count or process weight that erodes them.
 - **State wording:** **leave as-is for beta** (§4).
 - **Attribution:** new **Stakeholder C** (real identity tracked outside the repo).
 
-**Still needed before build:**
+**Resolved:**
+| # | Decision | Outcome |
+|---|---|---|
+| D-R2 | Required-field set | **Summary + ≥1 Incident Type** (State defaults, Location optional). Shipped 2026-06-15 as visible `*` markers + an inline incident-type hint; close-time alert kept as backstop. |
+| D-R3 | Incident-type list ordering | **Revised (2026-06-14):** keep category grouping + within-group alpha; sort the **groups** alphabetically. Flat-alphabetical idea dropped. Shipped 2026-06-15. |
+
+**Still open:**
 | # | Decision | Recommendation |
 |---|---|---|
-| D-R2 | Required-field set | **Summary + ≥1 Incident Type**; State defaults, Location optional |
-| D-R3 | Incident-type list ordering | **Flat alphabetical** in the input; keep grouping in Info/admin views |
 | D-P5 | Witness/follow-up contact home (carried into 5e) | Phone on `PERSON` (reusable); episode-only detail stays on incident/visit |
 
 ## 8. Sequencing & risk

@@ -83,7 +83,8 @@ update INCIDENT set
     CLOSED = ?,
     SUMMARY = ?,
     LOCATION_DESCRIPTION = ?,
-    LOCATION_AREA_SLUG = ?
+    LOCATION_AREA_SLUG = ?,
+    LOCATION_BOOTH = ?
 where
     EVENT = ?
     and NUMBER = ?

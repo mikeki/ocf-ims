@@ -2,8 +2,8 @@
 
 > **Status:** 6a shipped — "Other"/"Weapon" types + action-log coverage done;
 > areas reseed still blocked on the stakeholder area list. 6c journal drafts
-> shipped; 6b booth field not started.
-> **Last updated:** 2026-06-14
+> shipped. 6b booth field + 6d incident-form UX shipped together (this PR).
+> **Last updated:** 2026-06-15
 >
 > First round of feedback from real usage of the beta, collected 2026-06-11.
 > Phase 6 was previously reserved for Dashboards & Metrics — that work moved to
@@ -69,6 +69,17 @@ One small PR; zero migrations.
   endpoint and silently unlogged otherwise; make it a review-checklist item.
 
 ### 6b — Booth number field (Stakeholder A)
+
+**Done (2026-06-15).** As built: schema migration **44-from-43** adds
+`INCIDENT.LOCATION_BOOTH varchar(32)` (appended last in `current.sql` to match
+the ALTER; the migration replay test passes, AUTO_INCREMENT-normalized). `Booth
+*string` added to `json/incident.go`'s `Location`; `api/incident.go` reads it and
+applies the same nil-means-unchanged / empty-means-clear semantics as
+`description` (`conv.StringToSql(..., 32)`). UI: a "Booth:" input in the incident
+Location card (between Area and Details) with `editLocationBooth()` →
+`location.booth`. Booth also surfaces in the incident-list location summary
+(`shortDescribeLocation` / `safeShortDescribeLocation` in `ims.ts`, as "Booth X").
+Round-trip + clear-vs-unchanged covered by `TestIncidentLocationBooth`.
 
 Decided 2026-06-11: a **dedicated structured field**, not a free-text convention
 (searchable/reportable later) and not booths-as-child-areas (hundreds of seed

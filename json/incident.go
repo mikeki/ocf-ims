@@ -32,6 +32,9 @@ type Location struct {
 	// Description is the freeform "place / details" box retained alongside the
 	// structured area.
 	Description *string `json:"description,omitempty"`
+	// Booth is an optional booth number/identifier. Empty string clears it; nil
+	// leaves it unchanged on write.
+	Booth *string `json:"booth,omitempty"`
 }
 
 const (

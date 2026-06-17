@@ -259,6 +259,7 @@ func incidentToJSON(storedRow imsdb.IncidentRow, incidentPeople []imsjson.Incide
 		Location: imsjson.Location{
 			AreaSlug:    conv.SqlToString(storedRow.Incident.LocationAreaSlug),
 			Description: conv.SqlToString(storedRow.Incident.LocationDescription),
+			Booth:       conv.SqlToString(storedRow.Incident.LocationBooth),
 		},
 		IncidentTypeIDs: &incidentTypeIDs,
 		Reports:         &reportNumbers,
@@ -486,6 +487,7 @@ func updateIncident(ctx context.Context, imsDBQ *store.DBQ, es *EventSourcerer, 
 		Summary:             storedIncident.Summary,
 		LocationDescription: storedIncident.LocationDescription,
 		LocationAreaSlug:    storedIncident.LocationAreaSlug,
+		LocationBooth:       storedIncident.LocationBooth,
 	}
 
 	var logs []string
@@ -531,6 +533,10 @@ func updateIncident(ctx context.Context, imsDBQ *store.DBQ, es *EventSourcerer, 
 	if newIncident.Location.Description != nil {
 		update.LocationDescription = conv.StringToSql(newIncident.Location.Description, 0)
 		logs = append(logs, fmt.Sprintf("Changed location description: %v", update.LocationDescription.String))
+	}
+	if newIncident.Location.Booth != nil {
+		update.LocationBooth = conv.StringToSql(newIncident.Location.Booth, 32)
+		logs = append(logs, fmt.Sprintf("Changed location booth: %v", update.LocationBooth.String))
 	}
 	if newIncident.Location.AreaSlug != nil {
 		slug := strings.TrimSpace(*newIncident.Location.AreaSlug)

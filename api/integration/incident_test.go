@@ -499,6 +499,76 @@ func TestIncidentLocationArea(t *testing.T) {
 	require.Equal(t, "by the north gate", deref(got.Location.Description))
 }
 
+// TestIncidentLocationBooth exercises the optional booth field (Phase 6/6b):
+// it round-trips on create, can be updated, an empty string clears it, and a nil
+// booth on an unrelated edit leaves the existing value intact.
+func TestIncidentLocationBooth(t *testing.T) {
+	t.Parallel()
+	ctx := t.Context()
+
+	admin := ApiHelper{t: t, serverURL: shared.serverURL, jwt: jwtForAdmin(ctx, t)}
+	writer := ApiHelper{t: t, serverURL: shared.serverURL, jwt: jwtForAlice(t, ctx)}
+
+	eventName := makeEvent(ctx, t, admin)
+	resp := admin.addWriter(ctx, eventName, userAliceHandle)
+	require.Equal(t, http.StatusNoContent, resp.StatusCode)
+	require.NoError(t, resp.Body.Close())
+
+	// Create an incident with a booth number.
+	num := writer.newIncidentSuccess(ctx, imsjson.Incident{
+		Event: eventName,
+		Location: imsjson.Location{
+			Booth: new("B12"),
+		},
+	})
+
+	got, resp := writer.getIncident(ctx, eventName, num)
+	require.Equal(t, http.StatusOK, resp.StatusCode)
+	require.NoError(t, resp.Body.Close())
+	require.Equal(t, "B12", deref(got.Location.Booth))
+
+	// Update the booth, leaving everything else unset (nil) — booth changes,
+	// nothing else is disturbed.
+	resp = writer.updateIncident(ctx, eventName, num, imsjson.Incident{
+		Event:    eventName,
+		Number:   num,
+		Location: imsjson.Location{Booth: new("B34")},
+	})
+	require.Equal(t, http.StatusNoContent, resp.StatusCode)
+	require.NoError(t, resp.Body.Close())
+	got, resp = writer.getIncident(ctx, eventName, num)
+	require.Equal(t, http.StatusOK, resp.StatusCode)
+	require.NoError(t, resp.Body.Close())
+	require.Equal(t, "B34", deref(got.Location.Booth))
+
+	// An edit with a nil booth (here, editing only the summary) leaves the
+	// existing booth intact.
+	resp = writer.updateIncident(ctx, eventName, num, imsjson.Incident{
+		Event:   eventName,
+		Number:  num,
+		Summary: new("a summary"),
+	})
+	require.Equal(t, http.StatusNoContent, resp.StatusCode)
+	require.NoError(t, resp.Body.Close())
+	got, resp = writer.getIncident(ctx, eventName, num)
+	require.Equal(t, http.StatusOK, resp.StatusCode)
+	require.NoError(t, resp.Body.Close())
+	require.Equal(t, "B34", deref(got.Location.Booth))
+
+	// An empty-string booth clears it back to unset (nil on read).
+	resp = writer.updateIncident(ctx, eventName, num, imsjson.Incident{
+		Event:    eventName,
+		Number:   num,
+		Location: imsjson.Location{Booth: new("")},
+	})
+	require.Equal(t, http.StatusNoContent, resp.StatusCode)
+	require.NoError(t, resp.Body.Close())
+	got, resp = writer.getIncident(ctx, eventName, num)
+	require.Equal(t, http.StatusOK, resp.StatusCode)
+	require.NoError(t, resp.Body.Close())
+	require.Nil(t, got.Location.Booth)
+}
+
 func TestIncidentOutcome(t *testing.T) {
 	t.Parallel()
 	ctx := t.Context()
