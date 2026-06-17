@@ -541,3 +541,29 @@ test("journal_draft_persistence", async ({ page, browser }) => {
   await incidentPage.close();
   await ctx.close();
 })
+
+test("people_event_nav", async ({ page }) => {
+  test.slow();
+
+  // Make a new event so the event nav has a real (non-group) event to scope to.
+  await login(page);
+  const eventName: string = randomName("event");
+  await addEvent(page, eventName);
+
+  // Event doorway: from an event-scoped page, the nav shows a "People" link
+  // (admin-only) that lands on the event-scoped People page.
+  await page.goto(`http://localhost:8080/ims/app/events/${eventName}/incidents`);
+  await maybeOpenNav(page);
+  await page.getByRole("link", {name: "People", exact: true}).click();
+  expect(page.url()).toBe(`http://localhost:8080/ims/app/events/${eventName}/people`);
+
+  // The event picker is locked to the URL event.
+  await expect(page.locator("#event-name")).toBeDisabled();
+  await expect(page.locator("#event-name")).toHaveValue(eventName);
+
+  // Admin doorway: the global entry still works and lets the user choose an
+  // event (including "— no event —" for global identity work).
+  await page.goto("http://localhost:8080/ims/app/admin/people");
+  await expect(page.locator("#event-name")).toBeEnabled();
+  await expect(page.locator("#event-name")).toHaveValue("");
+})

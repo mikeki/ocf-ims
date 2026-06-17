@@ -94,7 +94,7 @@ func AddToMux(mux *http.ServeMux, cfg *conf.IMSConfig) *http.ServeMux {
 		AdaptTempl(template.AdminAreas(deployment, versionName, versionRef), cfg.Core.CacheControlLong),
 	)
 	mux.Handle("GET /ims/app/admin/people",
-		AdaptTempl(template.AdminPeople(deployment, versionName, versionRef), cfg.Core.CacheControlLong),
+		AdaptTempl(template.People(deployment, versionName, versionRef, ""), cfg.Core.CacheControlLong),
 	)
 	mux.Handle("GET /ims/app/settings",
 		AdaptTempl(template.Settings(deployment, versionName, versionRef), cfg.Core.CacheControlLong),
@@ -143,6 +143,17 @@ func AddToMux(mux *http.ServeMux, cfg *conf.IMSConfig) *http.ServeMux {
 		func(w http.ResponseWriter, r *http.Request) {
 			AdaptTempl(
 				template.SanctuaryVisit(deployment, versionName, versionRef, r.PathValue("eventName")),
+				cfg.Core.CacheControlLong,
+			).ServeHTTP(w, r)
+		},
+	)
+	// People registry, reached as an event-scoped page (the primary nav doorway).
+	// The same template also serves the global Admin → People & Passwords doorway
+	// above (eventName ""); see docs/plans/62-people-event-nav.md.
+	mux.HandleFunc("GET /ims/app/events/{eventName}/people",
+		func(w http.ResponseWriter, r *http.Request) {
+			AdaptTempl(
+				template.People(deployment, versionName, versionRef, r.PathValue("eventName")),
 				cfg.Core.CacheControlLong,
 			).ServeHTTP(w, r)
 		},

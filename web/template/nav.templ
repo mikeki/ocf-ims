@@ -144,6 +144,13 @@ templ Nav(eventName string) {
              }
              href="">White Bird Visits</a>
         </li>
+        <!-- People: admin-only for now, so unlike the links above it stays hidden
+             until setupNav reveals it (only when an event is active AND the user is
+             an admin). Deliberately not tagged .if-admin — that class auto-unhides
+             on every admin page, which would show it with no event context. -->
+        <li class="nav-item">
+          <a id="active-event-people" class="nav-link hidden" href="">People</a>
+        </li>
       </ul>
 
       <!-- this keeps the nav_login thing on the right when the events dropdown is hidden -->
