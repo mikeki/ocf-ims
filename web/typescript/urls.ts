@@ -93,3 +93,6 @@ const url_viewReportJS = "/ims/static/report.js";
 const url_viewVisits ="/ims/app/events/<event_id>/visits";
 const url_viewPeople = "/ims/app/events/<event_id>/people";
 const url_viewPeopleJS = "/ims/static/people.js";
+const url_viewDashboard = "/ims/app/events/<event_id>/dashboard";
+const url_viewDashboardJS = "/ims/static/dashboard.js";
+const url_metrics = "/ims/api/events/<event_id>/metrics";

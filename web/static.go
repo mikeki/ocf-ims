@@ -34,4 +34,5 @@ import "embed"
 //go:embed static/ext/datatables/dataTables.bootstrap5.min.css
 //go:embed static/ext/flatpickr/flatpickr.min.css
 //go:embed static/ext/flatpickr/flatpickr.min.js
+//go:embed static/ext/chartjs/chart.umd.min.js
 var StaticFS embed.FS

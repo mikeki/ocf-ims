@@ -121,6 +121,20 @@ func main() {
 		))
 	}
 
+	// https://www.chartjs.org/docs/latest/getting-started/installation.html
+	// Self-contained UMD build (exposes the global `Chart`); used by the Phase 7
+	// dashboard page only. See docs/plans/70-dashboards.md.
+	chartjsVersion := "4.5.0"
+	{
+		chartjsDir := mustMakeSubRoot(staticExtRoot, "chartjs")
+		defer logClose(chartjsDir)
+		g.Go(existOrFetch(groupCtx, chartjsDir,
+			"chart.umd.min.js",
+			"https://cdn.jsdelivr.net/npm/chart.js@"+chartjsVersion+"/dist/chart.umd.min.js",
+			"sha384-XcdcwHqIPULERb2yDEM4R0XaQKU3YnDsrTmjACBZyfdVVqjh6xQ4/DCMd7XLcA6Y",
+		))
+	}
+
 	err = g.Wait()
 	if err != nil {
 		log.Fatal("Failed fetching build deps. See error above.")

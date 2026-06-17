@@ -567,3 +567,26 @@ test("people_event_nav", async ({ page }) => {
   await expect(page.locator("#event-name")).toBeEnabled();
   await expect(page.locator("#event-name")).toHaveValue("");
 })
+
+test("dashboard", async ({ page }) => {
+  test.slow();
+
+  await login(page);
+  const eventName: string = randomName("event");
+  await addEvent(page, eventName);
+
+  // From an event-scoped page, the nav shows a "Dashboard" link (admin-only)
+  // that lands on the event-scoped dashboard.
+  await page.goto(`http://localhost:8080/ims/app/events/${eventName}/incidents`);
+  await maybeOpenNav(page);
+  await page.getByRole("link", {name: "Dashboard", exact: true}).click();
+  expect(page.url()).toBe(`http://localhost:8080/ims/app/events/${eventName}/dashboard`);
+
+  // The page renders its headline counts (a fresh event has zero incidents) and
+  // a chart canvas draws (Chart.js gives the canvas a non-zero rendered size).
+  await expect(page.locator("#stat_total")).toHaveText("0");
+  await expect(page.locator("#chart_state")).toBeVisible();
+  const drew = await page.locator("#chart_state").evaluate(
+    (c: HTMLCanvasElement) => c.clientWidth > 0 && c.clientHeight > 0);
+  expect(drew).toBe(true);
+})

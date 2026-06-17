@@ -158,6 +158,17 @@ func AddToMux(mux *http.ServeMux, cfg *conf.IMSConfig) *http.ServeMux {
 			).ServeHTTP(w, r)
 		},
 	)
+	// Dashboard: a regular event-scoped page beside Incidents/Reports/Visits
+	// (admin-only for now via the nav-link + page gates). See
+	// docs/plans/70-dashboards.md.
+	mux.HandleFunc("GET /ims/app/events/{eventName}/dashboard",
+		func(w http.ResponseWriter, r *http.Request) {
+			AdaptTempl(
+				template.Dashboard(deployment, versionName, versionRef, r.PathValue("eventName")),
+				cfg.Core.CacheControlLong,
+			).ServeHTTP(w, r)
+		},
+	)
 	mux.HandleFunc("GET /ims/app/events/{eventName}",
 		func(w http.ResponseWriter, r *http.Request) {
 			ev := url.PathEscape(r.PathValue("eventName"))
