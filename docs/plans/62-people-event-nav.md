@@ -1,6 +1,16 @@
 # Phase 6 — People page → event navigation (slice 6e)
 
-> **Status:** Plan — for review. **Last updated:** 2026-06-16
+> **Status:** ✅ Built (PR #42). **Last updated:** 2026-06-16
+>
+> **As-built notes (PR #42):** Shipped as designed (P1–P6). Neutral rename done
+> (`adminpeople.templ`→`people.templ`/`template.People`, `admin_people.ts`→`people.ts`;
+> no collisions). One deviation from §3: the `active-event-people` nav link is **not**
+> tagged `.if-admin` — that class auto-unhides on every event-less admin page, which
+> would surface the link with no event context. Instead `setupNav` reveals it only when
+> an event is active **and** `authInfo.admin`, which satisfies "admins only, when an
+> event is active." `commonPageInit()` takes no args (event read from
+> `ims.pathIds.eventName`). Event doorway disables (locks) the picker pinned to the URL
+> event. Playwright `people_event_nav` spec added (not in CI; run locally).
 >
 > Surface the People registry in the regular **event navigation** (beside
 > Incidents / Reports / White Bird Visits), so people are seen as part of an event
