@@ -1,11 +1,22 @@
 # Phase 7 — Dashboards & Metrics
 
-> **Status:** Plan — for review. Scope locked 2026-06-16 (see Decisions). No code
-> yet; greenfield. **Last updated:** 2026-06-16
+> **Status:** ✅ Built. 7a (metrics API) shipped in PR #43; 7b (dashboard page +
+> Chart.js) in PR #44. Scope locked 2026-06-16 (see Decisions). **Last updated:**
+> 2026-06-16
 >
 > Management-facing reporting OCF will actually use (Maintainer ask). Builds on
 > the Phase 4 domain model (categories, areas, outcomes) and the Phase 5e people
 > work — all merged. Two slices, sequenced 7a → 7b; both land before the fair.
+>
+> **As-built notes (7b):** Chart.js v4.5.0 vendored via `fetchbuilddeps` →
+> `web/static/ext/chartjs/chart.umd.min.js` (UMD global `Chart`), embedded in
+> `web/static.go` and gated in `head.templ` behind a new `usesCharts` flag
+> (added as a 4th `Head(...)` param; all callers pass `false` except the
+> dashboard). The nav link (`active-event-dashboard`) reuses the People reveal
+> rule from 6e — revealed in `ims.ts` only when an event is active AND the viewer
+> is an admin, deliberately NOT tagged `.if-admin`. `dashboard.ts` stops on
+> `!authInfo.admin` (the D3 gate). Server-side render is smoke-covered by
+> `web.TestTemplEndpoints`; a `dashboard` Playwright spec was added (not in CI).
 
 ## 1. Objective & grounding
 

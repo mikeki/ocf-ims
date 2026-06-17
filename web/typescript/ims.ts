@@ -460,6 +460,18 @@ function renderCommonPageItems(authInfo: AuthInfo): void {
                 activeEventPeople.classList.add("active");
             }
         }
+
+        // Dashboard is admin-only for now (the refine-later seam in 70-dashboards.md):
+        // same reveal rule as People — only when an event is active AND admin.
+        const activeEventDashboard = document.getElementById("active-event-dashboard") as HTMLAnchorElement|null;
+        if (activeEventDashboard != null && authInfo.authenticated && authInfo.admin) {
+            activeEventDashboard.href = urlReplace(url_viewDashboard);
+            activeEventDashboard.classList.remove("hidden");
+
+            if (window.location.pathname.startsWith(urlReplace(url_viewDashboard))) {
+                activeEventDashboard.classList.add("active");
+            }
+        }
     }
 }
 

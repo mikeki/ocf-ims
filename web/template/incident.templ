@@ -19,7 +19,7 @@ package template
 templ Incident(deployment, versionName, versionRef, eventName string) {
 <!DOCTYPE html>
 <html lang="en">
-@Head("Incident Details | " + eventName, "incident.js", true, versionRef)
+@Head("Incident Details | " + eventName, "incident.js", true, false, versionRef)
 
 <body>
 <div class="container-fluid">

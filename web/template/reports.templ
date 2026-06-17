@@ -19,7 +19,7 @@ package template
 templ Reports(deployment, versionName, versionRef, eventName string) {
 <!DOCTYPE html>
 <html lang="en">
-@Head("Reports | " + eventName, "reports.js", true, versionRef)
+@Head("Reports | " + eventName, "reports.js", true, false, versionRef)
 
 <body>
 <div class="container-fluid">

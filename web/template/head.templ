@@ -16,7 +16,7 @@
 
 package template
 
-templ Head(title string, module string, usesDataTables bool, cacheVersion string) {
+templ Head(title string, module string, usesDataTables bool, usesCharts bool, cacheVersion string) {
 {{
     v := cacheVersion[:8]
     var esImports = map[string]any{
@@ -47,6 +47,9 @@ templ Head(title string, module string, usesDataTables bool, cacheVersion string
     if usesDataTables {
     <script src="/ims/static/ext/datatables/dataTables.min.js" defer></script>
     <script src="/ims/static/ext/datatables/dataTables.bootstrap5.min.js" defer></script>
+    }
+    if usesCharts {
+    <script src="/ims/static/ext/chartjs/chart.umd.min.js" defer></script>
     }
     <script src={"/ims/static/" + module + "?v=" + v} type="module"></script>
     <!-- theme.js should not be deferred, so add it last. -->
