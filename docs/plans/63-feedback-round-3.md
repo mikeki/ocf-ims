@@ -1,6 +1,7 @@
 # Phase 6 — Feedback Round 3 (post-Phase-7 review fixes)
 
-> **Status:** Plan — for review. **Owner:** TBD · **Last updated:** 2026-06-18
+> **Status:** ✅ Built — 6f (PR #47), 6h (PR #48), 6g (PR #49) all merged.
+> **Owner:** Miguel · **Last updated:** 2026-06-18
 >
 > Third feedback round: the **Maintainer's** own review of the latest shipped
 > work (the people registry **5e**, dashboards **7**, and people→event nav
@@ -26,7 +27,14 @@ cause** and are fixed together in **6f**.
 
 ## 2. Slices
 
-### 6f — Event context lost on event-scoped pages *(root-cause fix)*
+### 6f — Event context lost on event-scoped pages *(root-cause fix)* — ✅ Built (PR #47)
+
+> **As built.** Moved the `eventName`/`urlEvent` reads inside `initDashboard()` /
+> `initPeoplePage()`, after `await commonPageInit()`. Hardening also applied: the
+> top-level `pathIds` initializer is now `idsFromPath()` (both `idsFromPath` and
+> `parseInt10` are hoisted function declarations, so callable at module load), so
+> any page reading `pathIds` before init now gets real path values.
+
 
 **Symptoms (all three are the same bug):**
 1. Dashboard from an event → "No event selected."
@@ -83,7 +91,18 @@ specs are the natural guards (not in CI). Add assertions there that, from the
 event doorway, the dashboard renders stats (no "No event selected") and the
 People picker is `disabled` and equal to the URL event.
 
-### 6g — "Create new person" from the incident person combobox
+### 6g — "Create new person" from the incident person combobox — ✅ Built (PR #49)
+
+> **As built (both parts together, per decision).** Backend: added
+> `mustWriteJSONStatus(w, req, code, resp)` (sets Content-Type → `WriteHeader` →
+> body); `mustWriteJSON` delegates with 200; `CreatePerson` uses the status
+> variant. An `api/integration` assertion checks `POST /personnel` returns
+> `Content-Type: application/json`. UX: a shared `QuickAddPersonModal` templ
+> component (`web/template/quickaddperson.templ`, wired by
+> `ims.openQuickAddPersonModal`) is included on the incident and visit pages; the
+> combobox gained an optional `onCreate` hook that opens it pre-filled with the
+> typed text. Falls back to the (now-working) inline create when no hook is set.
+
 
 **Symptom.** On an incident, searching a person and clicking **"Create new
 person ____"** shows *"Failed to create person: null"* and nothing is created.
@@ -123,7 +142,12 @@ both together? Recommend: fix first, modal as 6g.2.
 schema change. Add an `api/integration` assertion that `POST /personnel` returns
 `Content-Type: application/json` and a parseable body.
 
-### 6h — Incident type add-dropdown ordering *(decision, not a clear bug)*
+### 6h — Incident type add-dropdown ordering *(decision, not a clear bug)* — ✅ Built (PR #48)
+
+> **Decision: flat alphabetical in this dropdown.** `drawIncidentTypesToAdd`
+> now sorts the datalist plain A→Z by name; category grouping is unchanged in the
+> grouped checklist and the type-info list.
+
 
 **Symptom.** The "Add:" incident-type input on a new incident
 (`incident.templ:223`, a `<datalist>`) "doesn't seem sorted."
@@ -148,14 +172,14 @@ one-line sort swap in `drawIncidentTypesToAdd` (`incident.ts:773`).
 
 ---
 
-## 3. Open decisions
+## 3. Decisions (resolved)
 
-1. **6g sequencing** — content-type fix now, add-person modal as a follow-up
-   (recommended), or both together?
-2. **6h ordering** — keep category-then-name, switch this dropdown to flat
-   alphabetical, or build a grouped custom combobox?
-3. **6f hardening** — also populate `pathIds` at `ims.ts` module load to prevent
-   recurrence, or keep the fix minimal (read-after-init only)?
+1. **6g sequencing** — **both together** (content-type fix + add-person modal in
+   one PR).
+2. **6h ordering** — **flat alphabetical** in this add-dropdown specifically;
+   category grouping stays elsewhere.
+3. **6f hardening** — **yes**: also populate `pathIds` at `ims.ts` module load
+   (via `idsFromPath()`) to prevent recurrence, in addition to read-after-init.
 
 ## 4. Notes
 

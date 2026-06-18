@@ -45,5 +45,5 @@ management system.
 | [60-feedback-round-1.md](60-feedback-round-1.md) | Phase 6 — Feedback round 1 (beta usage feedback) | Plan — for review |
 | [61-feedback-round-2.md](61-feedback-round-2.md) | Phase 6 — Feedback round 2 (structured stakeholder review) | Plan — for review |
 | [62-people-event-nav.md](62-people-event-nav.md) | Phase 6 — People page → event nav (slice 6e) | ✅ Built (PR #42) |
-| [63-feedback-round-3.md](63-feedback-round-3.md) | Phase 6 — Feedback round 3 (post-Phase-7 review fixes: 6f–6h) | Plan — for review |
+| [63-feedback-round-3.md](63-feedback-round-3.md) | Phase 6 — Feedback round 3 (post-Phase-7 review fixes: 6f–6h) | ✅ Built (6f PR #47, 6h PR #48, 6g PR #49) |
 | [70-dashboards.md](70-dashboards.md) | Phase 7 — Dashboards & metrics | ✅ Built (7a PR #43, 7b PR #44) |
