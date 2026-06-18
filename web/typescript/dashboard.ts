@@ -41,6 +41,7 @@ interface Metrics {
     open_follow_ups: MetricIncidentRef[];
     avg_time_to_close_seconds: number|null;
     closed_count: number;
+    generated_at_ms: number;
 }
 
 const el = {
@@ -55,7 +56,13 @@ const el = {
     followupsTableBody: ims.typedElement("followups_table_body", HTMLElement),
     followupRowTemplate: ims.typedElement("followup_row_template", HTMLTemplateElement),
     followupsEmpty: ims.typedElement("followups_empty", HTMLElement),
+    refreshButton: ims.typedElement("refresh_button", HTMLButtonElement),
+    autoRefreshInterval: ims.typedElement("auto_refresh_interval", HTMLSelectElement),
+    lastUpdated: ims.typedElement("last_updated", HTMLElement),
 };
+
+// Remembers the chosen auto-refresh cadence (seconds; "0" = off) across visits.
+const autoRefreshKey = "dashboard_auto_refresh_seconds";
 
 // A small categorical palette, reused across charts.
 const palette: string[] = [
@@ -86,19 +93,62 @@ async function initDashboard(): Promise<void> {
         return;
     }
 
-    const {json, err} = await ims.fetchNoThrow<Metrics>(
-        ims.urlReplace(url_metrics), {headers: {"Cache-Control": "no-cache"}},
-    );
-    if (err != null || json == null) {
-        const message = "Failed to load metrics:\n" + err;
-        console.error(message);
-        ims.setErrorMessage(message);
-        ims.hideLoadingOverlay();
+    // Manual refresh.
+    el.refreshButton.addEventListener("click", () => void loadMetrics());
+    // Auto-refresh: restore the saved cadence and (re)arm the timer on change.
+    el.autoRefreshInterval.value = localStorage.getItem(autoRefreshKey) ?? "0";
+    el.autoRefreshInterval.addEventListener("change", () => {
+        localStorage.setItem(autoRefreshKey, el.autoRefreshInterval.value);
+        applyAutoRefresh();
+    });
+    applyAutoRefresh();
+
+    await loadMetrics();
+    ims.hideLoadingOverlay();
+}
+
+// loadMetrics fetches the (server-cached) aggregate and redraws. Used for the
+// initial load, the Refresh button, and each auto-refresh tick.
+let refreshing = false;
+async function loadMetrics(): Promise<void> {
+    if (refreshing) {
         return;
     }
+    refreshing = true;
+    el.refreshButton.disabled = true;
+    try {
+        const {json, err} = await ims.fetchNoThrow<Metrics>(
+            ims.urlReplace(url_metrics), {headers: {"Cache-Control": "no-cache"}},
+        );
+        if (err != null || json == null) {
+            const message = "Failed to load metrics:\n" + err;
+            console.error(message);
+            ims.setErrorMessage(message);
+            return;
+        }
+        ims.clearErrorMessage();
+        render(json);
+        el.lastUpdated.textContent =
+            "Last updated: " + ims.longFormatDate(json.generated_at_ms);
+    } finally {
+        el.refreshButton.disabled = false;
+        refreshing = false;
+    }
+}
 
-    render(json);
-    ims.hideLoadingOverlay();
+// applyAutoRefresh (re)arms the polling timer from the dropdown selection. "0"
+// (Off) clears it. The cadence matches the server cache TTL, so most ticks are
+// served from cache without a database hit.
+let autoRefreshTimer: number = 0;
+function applyAutoRefresh(): void {
+    if (autoRefreshTimer !== 0) {
+        clearInterval(autoRefreshTimer);
+        autoRefreshTimer = 0;
+    }
+    const seconds = parseInt(el.autoRefreshInterval.value, 10);
+    if (seconds > 0) {
+        autoRefreshTimer = setInterval(() => void loadMetrics(), seconds * 1000);
+    }
 }
 
 function render(m: Metrics): void {
@@ -130,6 +180,9 @@ function makeChart(canvasId: string, config: object): void {
     if (canvas == null || typeof Chart === "undefined") {
         return;
     }
+    // Destroy any prior chart on this canvas first — on a refresh the canvas is
+    // reused, and Chart.js throws ("Canvas is already in use") otherwise.
+    Chart.getChart(canvas)?.destroy();
     new Chart(canvas, config);
 }
 

@@ -98,11 +98,17 @@ func eventFromFormValue(req *http.Request, imsDBQ *store.DBQ) (imsdb.Event, *her
 }
 
 func getEvent(req *http.Request, eventName string, imsDBQ *store.DBQ) (imsdb.Event, *herr.HTTPError) {
+	return getEventCtx(req.Context(), eventName, imsDBQ)
+}
+
+// getEventCtx is the context-only form of getEvent, for callers (e.g. the cached
+// metrics refresher) that run outside an *http.Request.
+func getEventCtx(ctx context.Context, eventName string, imsDBQ *store.DBQ) (imsdb.Event, *herr.HTTPError) {
 	var empty imsdb.Event
 	if eventName == "" {
 		return empty, herr.BadRequest("No eventName was provided", nil)
 	}
-	eventRow, err := imsDBQ.QueryEventID(req.Context(), imsDBQ, eventName)
+	eventRow, err := imsDBQ.QueryEventID(ctx, imsDBQ, eventName)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return empty, herr.NotFound("Event not found", err)

@@ -54,6 +54,12 @@ type Metrics struct {
 	// incidents; nil when none are closed (no meaningful average).
 	AvgTimeToCloseSeconds *float64 `json:"avg_time_to_close_seconds"`
 	ClosedCount           int64    `json:"closed_count"`
+
+	// GeneratedAtMS is the Unix-millis time the aggregate was computed on the
+	// server. Because the endpoint caches per event (see api/metrics.go), a
+	// response may be served from a recent cache entry, so this reflects the true
+	// age of the data — the dashboard shows it as "last updated".
+	GeneratedAtMS int64 `json:"generated_at_ms"`
 }
 
 // MetricCount is one labelled bucket. Key is a stable identifier (an enum value,

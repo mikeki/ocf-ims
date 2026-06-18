@@ -29,6 +29,21 @@ templ Dashboard(deployment, versionName, versionRef, eventName string) {
 @LoadingOverlay()
 @ErrorInfo()
 
+  <!-- Refresh controls -->
+  <div class="d-flex flex-wrap align-items-center gap-2 mb-3" id="dashboard_toolbar">
+    <button type="button" class="btn btn-sm btn-outline-secondary" id="refresh_button">Refresh</button>
+    <div class="d-flex align-items-center gap-1">
+      <label for="auto_refresh_interval" class="form-label mb-0 small text-body-secondary">Auto-refresh</label>
+      <select id="auto_refresh_interval" class="form-select form-select-sm w-auto" aria-label="Auto-refresh interval">
+        <option value="0">Off</option>
+        <option value="30">Every 30s</option>
+        <option value="60">Every 1m</option>
+        <option value="300">Every 5m</option>
+      </select>
+    </div>
+    <span class="text-body-secondary small ms-sm-auto" id="last_updated">Last updated: —</span>
+  </div>
+
   <!-- Headline counts -->
   <div class="row g-3 mb-3" id="summary_cards">
     <div class="col-6 col-md-3">
