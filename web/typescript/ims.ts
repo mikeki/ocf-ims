@@ -26,13 +26,7 @@ export let pathIds: {
     incidentNumber: number|null,
     reportNumber: number|null,
     visitNumber: number|null,
-} = {
-    eventName: null,
-    eventId: null,
-    incidentNumber: null,
-    reportNumber: null,
-    visitNumber: null,
-};
+} = idsFromPath();
 
 export let eventAccess: AuthInfoEventAccess|null = null;
 

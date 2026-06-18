@@ -71,7 +71,6 @@ const el = {
 //     the picker is locked to it.
 //   - admin doorway  (/ims/app/admin/people): no URL event, the user picks one
 //     (remembered in localStorage), and "— no event —" is allowed for global work.
-const urlEvent: string|null = ims.pathIds.eventName;
 
 initPeoplePage();
 
@@ -81,6 +80,8 @@ async function initPeoplePage(): Promise<void> {
         await ims.redirectToLogin();
         return;
     }
+    // Read the event from the path *after* commonPageInit() has populated pathIds.
+    const urlEvent: string|null = ims.pathIds.eventName;
     if (!initResult.authInfo.canManagePersonnel) {
         ims.setErrorMessage("You do not have permission to manage people.");
         ims.hideLoadingOverlay();
