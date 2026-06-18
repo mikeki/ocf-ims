@@ -17,18 +17,58 @@
 package api
 
 import (
+	"context"
 	"net/http"
 	"sort"
+	"sync"
 	"time"
 
 	"github.com/mikeki/ocf-ims/directory"
 	imsjson "github.com/mikeki/ocf-ims/json"
+	"github.com/mikeki/ocf-ims/lib/cache"
 	"github.com/mikeki/ocf-ims/lib/conv"
 	"github.com/mikeki/ocf-ims/lib/herr"
 	"github.com/mikeki/ocf-ims/store"
 	"github.com/mikeki/ocf-ims/store/imsdb"
 	"golang.org/x/sync/errgroup"
 )
+
+// metricsCacheTTL is how long a computed per-event aggregate is reused. The
+// dashboard auto-refreshes on roughly this cadence, so several admins watching
+// the same event share one set of (heavy GROUP BY) queries per minute rather than
+// each request hitting the database.
+const metricsCacheTTL = time.Minute
+
+// metricsCache memoizes the dashboard aggregate per event with a short TTL. Each
+// event gets its own cache.InMemory, which provides the TTL and single-flight
+// (concurrent requests for the same event coalesce onto one refresh) — so a busy
+// dashboard can't stampede the database.
+type metricsCache struct {
+	mu      sync.Mutex
+	byEvent map[string]*cache.InMemory[imsjson.Metrics]
+}
+
+func newMetricsCache() *metricsCache {
+	return &metricsCache{byEvent: map[string]*cache.InMemory[imsjson.Metrics]{}}
+}
+
+// get returns the cached aggregate for eventName, computing it via refresh on a
+// miss (or expiry). refresh is only consulted once per TTL per event even under
+// concurrent load; errors are not cached.
+func (c *metricsCache) get(
+	ctx context.Context,
+	eventName string,
+	refresh func(context.Context) (imsjson.Metrics, error),
+) (*imsjson.Metrics, error) {
+	c.mu.Lock()
+	entry, ok := c.byEvent[eventName]
+	if !ok {
+		entry = cache.New(metricsCacheTTL, refresh)
+		c.byEvent[eventName] = entry
+	}
+	c.mu.Unlock()
+	return entry.Get(ctx)
+}
 
 // GetMetrics serves the per-event dashboard aggregate (Phase 7). It is read-only
 // and admin-gated. The admin check is the single permission seam described in
@@ -38,6 +78,7 @@ import (
 type GetMetrics struct {
 	imsDBQ    *store.DBQ
 	userStore directory.UserStore
+	cache     *metricsCache
 }
 
 func (action GetMetrics) ServeHTTP(w http.ResponseWriter, req *http.Request) {
@@ -62,7 +103,26 @@ func (action GetMetrics) getMetrics(req *http.Request) (imsjson.Metrics, *herr.H
 		return resp, herr.Forbidden("The dashboard is restricted to administrators", nil)
 	}
 
-	event, errHTTP := getEvent(req, req.PathValue("eventName"), action.imsDBQ)
+	eventName := req.PathValue("eventName")
+	// The heavy work (event lookup + GROUP BY aggregation) goes through the
+	// per-event cache, so repeated dashboard loads within the TTL serve a cached
+	// payload without touching the database.
+	cached, err := action.cache.get(req.Context(), eventName,
+		func(ctx context.Context) (imsjson.Metrics, error) {
+			return action.computeMetrics(ctx, eventName)
+		})
+	if err != nil {
+		return resp, herr.AsHTTPError(err)
+	}
+	return *cached, nil
+}
+
+// computeMetrics resolves the event and runs the aggregate queries. It is the
+// cache's refresher, so it runs at most once per TTL per event.
+func (action GetMetrics) computeMetrics(ctx context.Context, eventName string) (imsjson.Metrics, error) {
+	var resp imsjson.Metrics
+
+	event, errHTTP := getEventCtx(ctx, eventName, action.imsDBQ)
 	if errHTTP != nil {
 		return resp, errHTTP.From("[getEvent]")
 	}
@@ -73,7 +133,7 @@ func (action GetMetrics) getMetrics(req *http.Request) (imsjson.Metrics, *herr.H
 		byType     []imsdb.MetricsIncidentCountByTypeRow
 		byArea     []imsdb.MetricsIncidentCountByAreaRow
 	)
-	group, groupCtx := errgroup.WithContext(req.Context())
+	group, groupCtx := errgroup.WithContext(ctx)
 	group.Go(func() error {
 		var err error
 		incidents, err = action.imsDBQ.MetricsIncidents(groupCtx, action.imsDBQ, event.ID)
@@ -108,10 +168,11 @@ func (action GetMetrics) getMetrics(req *http.Request) (imsjson.Metrics, *herr.H
 	})
 	err := group.Wait()
 	if err != nil {
-		return resp, herr.AsHTTPError(err)
+		return resp, err
 	}
 
 	resp = buildMetrics(event, incidents, byCategory, byType, byArea)
+	resp.GeneratedAtMS = time.Now().UnixMilli()
 	return resp, nil
 }
 

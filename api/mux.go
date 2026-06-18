@@ -407,7 +407,7 @@ func AddToMux(
 
 	mux.Handle("GET /ims/api/events/{eventName}/metrics",
 		Adapt(
-			GetMetrics{db, userStore},
+			GetMetrics{db, userStore, newMetricsCache()},
 			RecoverFromPanic(),
 			RequireAuthN(jwter),
 			LogRequest(false, actionLogger, userStore),
