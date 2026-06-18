@@ -98,8 +98,7 @@ func (action CreatePerson) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 		errHTTP.From("[createPerson]").WriteResponse(w)
 		return
 	}
-	w.WriteHeader(http.StatusCreated)
-	mustWriteJSON(w, req, resp)
+	mustWriteJSONStatus(w, req, http.StatusCreated, resp)
 }
 
 func (action CreatePerson) createPerson(req *http.Request) (imsjson.Person, *herr.HTTPError) {

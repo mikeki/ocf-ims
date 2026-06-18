@@ -113,12 +113,23 @@ func getEvent(req *http.Request, eventName string, imsDBQ *store.DBQ) (imsdb.Eve
 }
 
 func mustWriteJSON(w http.ResponseWriter, req *http.Request, resp any) (success bool) {
+	return mustWriteJSONStatus(w, req, http.StatusOK, resp)
+}
+
+// mustWriteJSONStatus writes resp as JSON with an explicit status code. The
+// Content-Type header MUST be set before WriteHeader — a header write after the
+// status line is committed is a silent no-op in net/http, which would emit the
+// body without an application/json content type and break clients that only
+// parse JSON responses. Callers that need a non-200 status (e.g. 201 Created)
+// must use this rather than WriteHeader-then-mustWriteJSON.
+func mustWriteJSONStatus(w http.ResponseWriter, req *http.Request, code int, resp any) (success bool) {
 	marshalled, err := json.Marshal(resp)
 	if err != nil {
 		herr.InternalServerError("Failed to marshal JSON", err).From("[Marshal]").WriteResponse(w)
 		return false
 	}
 	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(code)
 	// #nosec G705 // XSS via taint analysis
 	_, err = w.Write(marshalled)
 	if err != nil {
