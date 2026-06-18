@@ -1,0 +1,81 @@
+//
+// See the file COPYRIGHT for copyright information.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+//
+
+package template
+
+// QuickAddPersonModal is a reusable "add a new person" dialog for the
+// search-first person comboboxes on the incident and visit pages. When a search
+// finds no match, the combobox opens this modal (pre-filled with the typed text)
+// so the user can supply a handle/email/wristband/participation before the person
+// is created and attached — instead of the old silent name-only inline create.
+// Wired in ims.ts (setupQuickAddPersonModal); IDs are namespaced "quick_add_person_*"
+// to avoid colliding with the People page's own Add-Person modal.
+templ QuickAddPersonModal() {
+  <div class="modal no-print" id="quickAddPersonModal" tabindex="-1" aria-labelledby="quickAddPersonModalLabel" aria-hidden="true">
+    <div class="modal-dialog">
+      <div class="modal-content">
+        <div class="modal-header">
+          <p class="modal-title fs-5" id="quickAddPersonModalLabel">Add Person</p>
+          <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close" />
+        </div>
+        <div class="modal-body row">
+          <div class="form-floating mb-3">
+            <input id="quick_add_person_name" type="text" class="form-control" autocomplete="off" placeholder="Name" />
+            <label for="quick_add_person_name">Name</label>
+          </div>
+          <div class="form-floating mb-3">
+            <input id="quick_add_person_handle" type="text" class="form-control" autocomplete="off" placeholder="Handle" />
+            <label for="quick_add_person_handle">Handle (for login)</label>
+          </div>
+          <div class="form-floating mb-3">
+            <input id="quick_add_person_email" type="email" class="form-control" autocomplete="off" placeholder="Email" />
+            <label for="quick_add_person_email">Email (optional)</label>
+          </div>
+          <div class="form-floating mb-3">
+            <input id="quick_add_person_password" type="password" class="form-control" autocomplete="new-password" placeholder="Password" />
+            <label for="quick_add_person_password">Initial password (optional)</label>
+          </div>
+          <div class="form-check ms-2">
+            <input id="quick_add_person_onsite" type="checkbox" class="form-check-input" />
+            <label class="form-check-label" for="quick_add_person_onsite">On site</label>
+          </div>
+          <div id="quick_add_person_event_section" class="hidden mt-3">
+            <p class="text-body-secondary small mb-2">Participation for <strong id="quick_add_person_event_name"></strong></p>
+            <div class="form-floating mb-3">
+              <input id="quick_add_person_wristband" type="text" class="form-control" autocomplete="off" placeholder="Wristband" />
+              <label for="quick_add_person_wristband">Wristband (optional)</label>
+            </div>
+            <div class="form-floating mb-3">
+              <select id="quick_add_person_participation" class="form-select" aria-label="Participation">
+                <option value="">— none —</option>
+                <option value="public">public</option>
+                <option value="participant">participant</option>
+                <option value="crew">crew</option>
+              </select>
+              <label for="quick_add_person_participation">Participation</label>
+            </div>
+          </div>
+          <div class="form-text">A person needs a name or a handle. A handle (and password) lets them log in.</div>
+          <div id="quick_add_person_error" class="text-danger small mt-2 hidden"></div>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+          <button type="button" class="btn btn-primary" id="quick_add_person_submit">Add person</button>
+        </div>
+      </div>
+    </div>
+  </div>
+}

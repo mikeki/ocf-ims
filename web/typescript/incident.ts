@@ -732,12 +732,14 @@ function drawPeople() {
 
 
 function setupPersonAdd(): void {
+    const eventName = ims.pathIds.eventName ?? "";
     ims.setupPersonCombobox({
         input: el.personAdd,
         results: el.personAddResults,
-        eventName: ims.pathIds.eventName ?? "",
+        eventName: eventName,
         allowCreate: true,
         onPick: attachPersonToIncident,
+        onCreate: (name) => ims.openQuickAddPersonModal(name, eventName),
     });
 }
 

@@ -73,6 +73,10 @@ func TestCreateAndEditPerson(t *testing.T) {
 		Password: newPassword,
 	})
 	require.Equal(t, http.StatusCreated, resp.StatusCode)
+	// The 201 must carry an application/json content type, or the browser client's
+	// fetchNoThrow won't parse the body (it gates on the exact content type). This
+	// guards the slice-6g regression where the header was set after WriteHeader.
+	require.Equal(t, "application/json", resp.Header.Get("Content-Type"))
 	// Create returns the new person (with its server-assigned person_id), which is
 	// the URL key for the edits below.
 	var created imsjson.Person

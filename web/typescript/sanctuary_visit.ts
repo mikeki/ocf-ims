@@ -484,12 +484,14 @@ async function editParentIncident(): Promise<void> {
 }
 
 function setupGuestPicker(): void {
+    const eventName = ims.pathIds.eventName ?? "";
     ims.setupPersonCombobox({
         input: el.guestAdd,
         results: el.guestAddResults,
-        eventName: ims.pathIds.eventName ?? "",
+        eventName: eventName,
         allowCreate: true,
         onPick: setGuestPerson,
+        onCreate: (name) => ims.openQuickAddPersonModal(name, eventName),
     });
 }
 
@@ -676,12 +678,14 @@ async function attachPersonToVisit(person: ims.PersonSearchResult): Promise<void
 }
 
 function setupPersonAdd(): void {
+    const eventName = ims.pathIds.eventName ?? "";
     ims.setupPersonCombobox({
         input: el.personAdd,
         results: el.personAddResults,
-        eventName: ims.pathIds.eventName ?? "",
+        eventName: eventName,
         allowCreate: true,
         onPick: attachPersonToVisit,
+        onCreate: (name) => ims.openQuickAddPersonModal(name, eventName),
     });
 }
 

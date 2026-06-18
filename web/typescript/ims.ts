@@ -653,6 +653,104 @@ export async function createRegistryPerson(name: string, eventName: string): Pro
     return json;
 }
 
+// openQuickAddPersonModal shows the shared QuickAddPersonModal (web/template/quickaddperson.templ)
+// pre-filled with the typed text, lets the user supply handle/email/password/onsite and
+// (when an event is named) wristband/participation, then creates the person and resolves
+// with it. Resolves null if the user cancels or creation fails (the error is shown inline
+// in the modal, which stays open so they can retry). Pages must include @QuickAddPersonModal().
+export function openQuickAddPersonModal(prefillName: string, eventName: string): Promise<PersonSearchResult|null> {
+    const modalEl = typedElement("quickAddPersonModal", HTMLElement);
+    const nameEl = typedElement("quick_add_person_name", HTMLInputElement);
+    const handleEl = typedElement("quick_add_person_handle", HTMLInputElement);
+    const emailEl = typedElement("quick_add_person_email", HTMLInputElement);
+    const passwordEl = typedElement("quick_add_person_password", HTMLInputElement);
+    const onsiteEl = typedElement("quick_add_person_onsite", HTMLInputElement);
+    const eventSectionEl = typedElement("quick_add_person_event_section", HTMLElement);
+    const eventNameEl = typedElement("quick_add_person_event_name", HTMLElement);
+    const wristbandEl = typedElement("quick_add_person_wristband", HTMLInputElement);
+    const participationEl = typedElement("quick_add_person_participation", HTMLSelectElement);
+    const errorEl = typedElement("quick_add_person_error", HTMLElement);
+    const submitEl = typedElement("quick_add_person_submit", HTMLButtonElement);
+
+    // Reset the form to a clean state, seeded with the typed text.
+    nameEl.value = prefillName;
+    handleEl.value = "";
+    emailEl.value = "";
+    passwordEl.value = "";
+    onsiteEl.checked = false;
+    wristbandEl.value = "";
+    participationEl.value = "";
+    errorEl.textContent = "";
+    errorEl.classList.add("hidden");
+    // Per-event fields only make sense when scoped to an actual event.
+    eventSectionEl.classList.toggle("hidden", !eventName);
+    eventNameEl.textContent = eventName;
+
+    const modal = bsModal(modalEl);
+
+    return new Promise<PersonSearchResult|null>((resolve): void => {
+        let settled = false;
+
+        function showError(msg: string): void {
+            errorEl.textContent = msg;
+            errorEl.classList.remove("hidden");
+        }
+
+        function cleanup(): void {
+            submitEl.removeEventListener("click", onSubmit);
+            modalEl.removeEventListener("hidden.bs.modal", onHidden);
+        }
+
+        // Dismiss (Cancel / × / backdrop) resolves null unless a create already settled.
+        function onHidden(): void {
+            if (settled) {
+                return;
+            }
+            settled = true;
+            cleanup();
+            resolve(null);
+        }
+
+        async function onSubmit(): Promise<void> {
+            const name = nameEl.value.trim();
+            const handle = handleEl.value.trim();
+            if (!name && !handle) {
+                showError("A name or handle is required.");
+                return;
+            }
+            const body: Record<string, unknown> = {
+                name: name,
+                handle: handle,
+                email: emailEl.value.trim(),
+                password: passwordEl.value,
+                onsite: onsiteEl.checked,
+            };
+            if (eventName) {
+                body["event"] = eventName;
+                body["wristband"] = wristbandEl.value.trim();
+                body["participation_type"] = participationEl.value;
+            }
+            submitEl.disabled = true;
+            const {json, err} = await fetchNoThrow<PersonSearchResult>(urlReplace(url_personnel), {
+                body: JSON.stringify(body),
+            });
+            submitEl.disabled = false;
+            if (err != null || json == null) {
+                showError(`Failed to create person: ${err ?? "no response"}`);
+                return;
+            }
+            settled = true;
+            cleanup();
+            modal.hide();
+            resolve(json);
+        }
+
+        submitEl.addEventListener("click", onSubmit);
+        modalEl.addEventListener("hidden.bs.modal", onHidden);
+        modal.show();
+    });
+}
+
 export type PersonComboboxConfig = {
     // The text input the user types into.
     input: HTMLInputElement;
@@ -664,6 +762,12 @@ export type PersonComboboxConfig = {
     allowCreate: boolean;
     // Called with the picked (or freshly created) person.
     onPick: (person: PersonSearchResult) => void | Promise<void>;
+    // Optional override for the "create new person" path. When set, it's called
+    // with the typed text and must resolve to the created person (or null if the
+    // user cancelled / it failed). Pages that include the QuickAddPersonModal pass
+    // openQuickAddPersonModal here so the user can fill in handle/email/wristband
+    // before creating. When omitted, a name-only inline create is used.
+    onCreate?: (typedName: string) => Promise<PersonSearchResult|null>;
 };
 
 // setupPersonCombobox turns a text input + a results container into a search-first
@@ -750,7 +854,9 @@ export function setupPersonCombobox(cfg: PersonComboboxConfig): void {
         if (row.person != null) {
             await cfg.onPick(row.person);
         } else if (row.createName != null) {
-            const created = await createRegistryPerson(row.createName, cfg.eventName);
+            const created = cfg.onCreate != null
+                ? await cfg.onCreate(row.createName)
+                : await createRegistryPerson(row.createName, cfg.eventName);
             if (created != null) {
                 await cfg.onPick(created);
             }
