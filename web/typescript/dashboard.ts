@@ -128,8 +128,11 @@ async function loadMetrics(): Promise<void> {
         }
         ims.clearErrorMessage();
         render(json);
-        el.lastUpdated.textContent =
-            "Last updated: " + ims.longFormatDate(json.generated_at_ms);
+        // Show the time of THIS fetch so the label visibly ticks on every
+        // (auto-)refresh. The data itself may be served from the server's
+        // per-event cache (up to ~1 min old); surface that true age on hover.
+        el.lastUpdated.textContent = "Last updated: " + ims.longFormatDate(Date.now());
+        el.lastUpdated.title = "Data computed: " + ims.longFormatDate(json.generated_at_ms);
     } finally {
         el.refreshButton.disabled = false;
         refreshing = false;
