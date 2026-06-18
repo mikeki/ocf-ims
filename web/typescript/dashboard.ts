@@ -63,8 +63,6 @@ const palette: string[] = [
     "#edc948", "#b07aa1", "#ff9da7", "#9c755f", "#bab0ac",
 ];
 
-const eventName: string|null = ims.pathIds.eventName;
-
 initDashboard();
 
 async function initDashboard(): Promise<void> {
@@ -73,6 +71,8 @@ async function initDashboard(): Promise<void> {
         await ims.redirectToLogin();
         return;
     }
+    // Read the event from the path *after* commonPageInit() has populated pathIds.
+    const eventName: string|null = ims.pathIds.eventName;
     // Admin-only for now (the refine-later permission seam, docs/plans/70-dashboards.md).
     // This single check is the one line a future role swaps in.
     if (!authInfo.admin) {
