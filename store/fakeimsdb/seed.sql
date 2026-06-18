@@ -68,6 +68,7 @@ insert into AREA (EVENT, SLUG, NAME, PARENT_SLUG, SORT_ORDER)
 values  (1, 'main-stage',            'Main Stage',                 null,          0),
         (1, 'dragon-plaza',          'Dragon Plaza',               null,          1),
         (1, 'xavanadu',              'Xavanadu',                   null,          2),
+        (1, 'little-wing',           'Little Wing',                'xavanadu',    0),
         (1, 'chela-mela',            'Chela Mela',                 null,          3),
         (1, 'community-village',     'Community Village',          null,          4),
         (1, 'energy-park',           'Energy Park',                null,          5),
@@ -88,10 +89,10 @@ values  (1, 'main-stage',            'Main Stage',                 null,        
         (1, 'blue-moon-stage',       'Blue Moon Stage',            null,         19),
         (1, 'youth-stage',           'Youth Stage',                null,         20),
         (1, 'vaudeville-palace',     'Vaudeville Palace',          null,         21),
-        -- White Bird (Rock Medicine) + its stations
+        -- White Bird (Rock Medicine) + its stations (Little Wing is a stage in
+        -- Xavanadu, not a White Bird station — listed above under xavanadu)
         (1, 'white-bird',            'White Bird',                 null,         22),
         (1, 'big-bird',              'Big Bird',                   'white-bird',  0),
-        (1, 'little-wing',           'Little Wing',                'white-bird',  1),
         -- Operational zones
         (1, 'far-side',              'Far Side',                   null,         23),
         (1, 'the-hub',               'The Hub',                    null,         24),

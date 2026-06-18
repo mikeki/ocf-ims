@@ -76,7 +76,15 @@ nowhere natural to live, so it's either promoted to top-level or left out.
 |---|---|---|
 | White Bird | `white-bird` | — |
 | Big Bird | `big-bird` | White Bird |
-| Little Wing | `little-wing` | White Bird |
+
+### Xavanadu — *parent*
+
+| Name | Slug | Parent |
+|---|---|---|
+| Xavanadu | `xavanadu` | — |
+| Little Wing | `little-wing` | Xavanadu |
+
+(Little Wing is the stage in Xavanadu — not a White Bird station.)
 
 ### Operational zones
 
@@ -124,8 +132,9 @@ local's confirmation**.
 
 > ⚠️ **Single-level consequences to decide:**
 > - **White Bird** wants to be both a child of *Main Stage* (it sits in the
->   meadow) *and* a parent of *Big Bird* / *Little Wing*. Can't do both — below it
->   stays its own top-level parent.
+>   meadow) *and* a parent of its station *Big Bird*. Can't do both — below it
+>   stays its own top-level parent. (Little Wing is a stage in *Xavanadu*, not a
+>   White Bird station.)
 > - A **street can't nest under a neighborhood** (that's two levels). Streets and
 >   neighborhoods are siblings at the top.
 > - **Camping** stays a flat parent of the camps, same as Option A.
@@ -141,7 +150,7 @@ local's confirmation**.
 | **Energy Park** | Kesey Stage · Solar Architecture · Garden Showers · Recycling **(confirm)** |
 | **Community Village** | *(self-contained; no sub-areas needed)* |
 | **Peace Park** | Organic Fruit Coop **(confirm)** |
-| **Xavanadu** | Caravan Stage · Morning Glory Stage **(confirm)** |
+| **Xavanadu** | Little Wing · Caravan Stage · Morning Glory Stage **(confirm)** |
 | **Chela Mela** | *(meadow; no sub-areas)* |
 | **Far Side** | *(meadow/ops; no sub-areas)* |
 
@@ -162,7 +171,7 @@ local's confirmation**.
 
 | Parent | Children |
 |---|---|
-| **White Bird** | Big Bird · Little Wing |
+| **White Bird** | Big Bird |
 | **Camping** | Main Camp · Big Oak Camp · Sol Creek Camp · Miss Piggy · SCOF · South Woods |
 | **The Hub** | *(ops zone; no sub-areas)* |
 | **Trotter's Field** | *(ops zone; no sub-areas)* **(confirm)** |
