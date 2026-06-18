@@ -773,12 +773,16 @@ function drawIncidentTypes() {
 function drawIncidentTypesToAdd() {
     el.incidentTypes.replaceChildren();
     el.incidentTypes.append(document.createElement("option"));
-    for (const incidentType of allIncidentTypes) {
-        if (incidentType.hidden || !incidentType.name) {
-            continue;
-        }
+    // allIncidentTypes is pre-sorted by category-then-name (for the grouped
+    // checklist above). This flat <datalist> has no group headers, so a category
+    // ordering reads as "unsorted" when scanning for a name — sort it plain
+    // alphabetically here instead (slice 6h).
+    const sorted = allIncidentTypes
+        .filter(t => !t.hidden && t.name)
+        .sort((a, b) => (a.name??"").localeCompare(b.name??""));
+    for (const incidentType of sorted) {
         const option: HTMLOptionElement = document.createElement("option");
-        option.value = incidentType.name;
+        option.value = incidentType.name!;
         el.incidentTypes.append(option);
     }
 }
