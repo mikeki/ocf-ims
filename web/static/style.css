@@ -410,3 +410,22 @@ h1 {
 .hover-placeholder:hover::placeholder {
   opacity: 1;
 }
+
+/* Dashboard refresh highlight: a brief ring pulse on a card whose data just
+   changed, so the eye is drawn to what moved instead of the whole page
+   repainting. The semi-transparent ring reads in both light and dark themes. */
+@keyframes glow-pulse {
+  0% {
+    box-shadow: 0 0 0 0 rgba(13, 110, 253, 0);
+  }
+  20% {
+    box-shadow: 0 0 0 4px rgba(13, 110, 253, 0.55);
+  }
+  100% {
+    box-shadow: 0 0 0 0 rgba(13, 110, 253, 0);
+  }
+}
+
+.glow-changed {
+  animation: glow-pulse 1.6s ease-out;
+}

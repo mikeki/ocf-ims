@@ -70,6 +70,16 @@ const palette: string[] = [
     "#edc948", "#b07aa1", "#ff9da7", "#9c755f", "#bab0ac",
 ];
 
+// Chart instances, created once and updated in place on each refresh so only the
+// data that changed animates — instead of destroying and recreating every canvas
+// (which repaints the whole dashboard). Keyed by canvas id.
+const charts = new Map<string, any>();
+
+// The previous render's metrics, used to detect which pieces changed so only
+// those cards get a transient highlight "glow". Null until the first render,
+// which establishes the baseline and never glows.
+let prev: Metrics|null = null;
+
 initDashboard();
 
 async function initDashboard(): Promise<void> {
@@ -160,6 +170,10 @@ function render(m: Metrics): void {
         Chart.defaults.color = getComputedStyle(document.body).color;
     }
 
+    const p = prev;
+    const first = p == null;
+
+    // Headline counts.
     el.statTotal.textContent = m.total.toString();
     el.statOpen.textContent = m.open.toString();
     el.statClosed.textContent = m.closed.toString();
@@ -167,6 +181,7 @@ function render(m: Metrics): void {
         m.avg_time_to_close_seconds == null ? "—" : formatDuration(m.avg_time_to_close_seconds);
     el.statAvgCloseN.textContent = m.closed_count.toString();
 
+    // Charts: created on the first render, updated in place thereafter.
     doughnut("chart_state", m.by_state);
     bar("chart_priority", m.by_priority, "Incidents");
     doughnut("chart_category", m.by_category);
@@ -174,19 +189,91 @@ function render(m: Metrics): void {
     bar("chart_area", m.by_area, "Incidents", "y");
     line("chart_byday", m.by_day);
 
+    // Tables.
     drawAreaTable(m.by_area);
     drawFollowUps(m.open_follow_ups);
+
+    // Glow only the cards whose data actually changed — and never on the first
+    // render (everything is "new" then, which would light up the whole page).
+    if (!first) {
+        if (p.total !== m.total) {
+            glowCard("stat_total");
+        }
+        if (p.open !== m.open) {
+            glowCard("stat_open");
+        }
+        if (p.closed !== m.closed) {
+            glowCard("stat_closed");
+        }
+        if (p.avg_time_to_close_seconds !== m.avg_time_to_close_seconds
+            || p.closed_count !== m.closed_count) {
+            glowCard("stat_avg_close");
+        }
+        if (diff(p.by_state, m.by_state)) {
+            glowCard("chart_state");
+        }
+        if (diff(p.by_priority, m.by_priority)) {
+            glowCard("chart_priority");
+        }
+        if (diff(p.by_category, m.by_category)) {
+            glowCard("chart_category");
+        }
+        if (diff(p.by_type, m.by_type)) {
+            glowCard("chart_type");
+        }
+        if (diff(p.by_area, m.by_area)) {
+            glowCard("chart_area");
+            glowCard("area_table_body");
+        }
+        if (diff(p.by_day, m.by_day)) {
+            glowCard("chart_byday");
+        }
+        if (diff(p.open_follow_ups, m.open_follow_ups)) {
+            glowCard("followups_table_body");
+        }
+    }
+
+    prev = m;
 }
 
-function makeChart(canvasId: string, config: object): void {
+// diff reports whether two metric pieces differ, by value. The arrays are small
+// and serialize deterministically (fixed field order), so a stringify compare is
+// both correct and cheap here.
+function diff(a: unknown, b: unknown): boolean {
+    return JSON.stringify(a) !== JSON.stringify(b);
+}
+
+// glowCard briefly highlights the Bootstrap card enclosing the element `id`. The
+// class is removed when the animation ends so it can re-fire on a later refresh.
+function glowCard(id: string): void {
+    const card = document.getElementById(id)?.closest(".card");
+    if (card == null) {
+        return;
+    }
+    card.classList.remove("glow-changed");
+    // Force a reflow so re-adding the class restarts the animation.
+    void (card as HTMLElement).offsetWidth;
+    card.classList.add("glow-changed");
+    card.addEventListener(
+        "animationend", () => card.classList.remove("glow-changed"), {once: true},
+    );
+}
+
+// makeChart creates a chart on its first call for a canvas and, on every later
+// call, updates that same instance in place (swapping in the new data and
+// animating only the delta) instead of recreating it.
+function makeChart(canvasId: string, config: {type: string; data: object; options: object}): void {
     const canvas = document.getElementById(canvasId) as HTMLCanvasElement|null;
     if (canvas == null || typeof Chart === "undefined") {
         return;
     }
-    // Destroy any prior chart on this canvas first — on a refresh the canvas is
-    // reused, and Chart.js throws ("Canvas is already in use") otherwise.
-    Chart.getChart(canvas)?.destroy();
-    new Chart(canvas, config);
+    const existing = charts.get(canvasId);
+    if (existing != null) {
+        existing.data = config.data;
+        existing.update();
+        return;
+    }
+    charts.set(canvasId, new Chart(canvas, config));
 }
 
 function doughnut(canvasId: string, buckets: MetricCount[]): void {
