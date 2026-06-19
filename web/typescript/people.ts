@@ -69,11 +69,10 @@ const el = {
     editPersonParticipation: ims.typedElement("edit_person_participation", HTMLSelectElement),
     showAllWrap: ims.typedElement("show_all_people_wrap", HTMLElement),
     showAllCheckbox: ims.typedElement("show-all-people", HTMLInputElement),
-    addToEventSection: ims.typedElement("add_to_event_section", HTMLElement),
-    addToEventName: ims.typedElement("add_to_event_name", HTMLElement),
-    addToEventSearch: ims.typedElement("add_to_event_search", HTMLInputElement),
-    addToEventResults: ims.typedElement("add_to_event_results", HTMLElement),
-    addToEventParticipation: ims.typedElement("add_to_event_participation", HTMLSelectElement),
+    addPersonSearchSection: ims.typedElement("add_person_search_section", HTMLElement),
+    addPersonSearchEvent: ims.typedElement("add_person_search_event", HTMLElement),
+    addPersonSearch: ims.typedElement("add_person_search", HTMLInputElement),
+    addPersonSearchResults: ims.typedElement("add_person_search_results", HTMLElement),
     removeFromEventModal: ims.typedElement("removeFromEventModal", HTMLElement),
     removePersonLabel: ims.typedElement("remove_person_label", HTMLElement),
     removeEventName: ims.typedElement("remove_event_name", HTMLElement),
@@ -135,15 +134,14 @@ async function initPeoplePage(): Promise<void> {
     }
     reflectEventSelection();
 
-    // "Add a person to <event>" — a search-first picker over the whole registry
-    // that enrolls the chosen (existing) person into the current event. Creating a
-    // brand-new person stays on the "Add person" button, so no create-fallback here.
-    // The combobox's event scope only decorates the result badges; enrollPerson
-    // reads the live currentEvent, so a changed picker still enrolls into the right
-    // event.
+    // The Add Person modal is search-first: typing searches the whole registry; an
+    // existing person is enrolled into the current event, and if no one matches the
+    // form below creates a new person. allowCreate is false because that create path
+    // IS the form, not a dropdown row. The combobox's event scope only decorates the
+    // result badges; enrollPerson reads the live currentEvent.
     ims.setupPersonCombobox({
-        input: el.addToEventSearch,
-        results: el.addToEventResults,
+        input: el.addPersonSearch,
+        results: el.addPersonSearchResults,
         eventName: currentEvent,
         allowCreate: false,
         onPick: enrollPerson,
@@ -210,8 +208,9 @@ function reflectEventSelection(): void {
     el.addPersonEventName.textContent = currentEvent;
     el.editPersonEventName.textContent = currentEvent;
     el.showAllWrap.classList.toggle("hidden", !hasEvent);
-    el.addToEventSection.classList.toggle("hidden", !hasEvent);
-    el.addToEventName.textContent = currentEvent;
+    // The "add an existing person" search only makes sense with an event to add to.
+    el.addPersonSearchSection.classList.toggle("hidden", !hasEvent);
+    el.addPersonSearchEvent.textContent = currentEvent;
 }
 
 async function loadAndDrawPeople(): Promise<void> {
@@ -420,6 +419,7 @@ async function submitSetPassword(): Promise<void> {
 }
 
 function showAddPersonModal(): void {
+    el.addPersonSearch.value = "";
     el.addPersonName.value = "";
     el.addPersonHandle.value = "";
     el.addPersonEmail.value = "";
@@ -512,17 +512,17 @@ function participationUrl(personId: string): string {
         + "?event=" + encodeURIComponent(currentEvent);
 }
 
-// enrollPerson adds an existing registry person to the current event's roster with
-// the participation type chosen in the add-to-event picker (no wristband initially;
-// it can be set later via Edit). Backs the "Add a person to <event>" combobox.
+// enrollPerson adds an existing registry person picked from the Add Person modal's
+// search to the current event's roster, using the wristband + participation type
+// entered in that modal. Backs the search-first half of the Add Person flow.
 async function enrollPerson(person: ims.PersonSearchResult): Promise<void> {
     if (!currentEvent) {
         return;
     }
     const {err} = await ims.fetchNoThrow(participationUrl((person.person_id ?? "").toString()), {
         body: JSON.stringify({
-            "participation_type": el.addToEventParticipation.value,
-            "wristband": "",
+            "participation_type": el.addPersonParticipation.value,
+            "wristband": el.addPersonWristband.value.trim(),
         }),
     });
     if (err != null) {
@@ -531,8 +531,8 @@ async function enrollPerson(person: ims.PersonSearchResult): Promise<void> {
         ims.setErrorMessage(message);
         return;
     }
+    ims.bsModal(el.addPersonModal).hide();
     ims.clearErrorMessage();
-    el.addToEventSearch.value = "";
     await loadAndDrawPeople();
 }
 

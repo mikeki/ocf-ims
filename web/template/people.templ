@@ -62,6 +62,17 @@ templ People(deployment, versionName, versionRef, eventName string) {
             <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close" />
           </div>
           <div class="modal-body row">
+            <div id="add_person_search_section" class="hidden mb-2">
+              <label for="add_person_search" class="form-label">Add an existing person to <strong id="add_person_search_event"></strong></label>
+              <div class="position-relative">
+                <input id="add_person_search" type="search" class="form-control" autocomplete="off" placeholder="Search by name, handle, or wristband…" />
+                <div id="add_person_search_results"
+                     class="list-group position-absolute w-100 shadow-sm hidden"
+                     style="z-index: 1100; max-height: 16rem; overflow-y: auto;"></div>
+              </div>
+              <div class="form-text">Pick someone to add them to this event. Not listed? Create them with the form below.</div>
+              <hr />
+            </div>
             <div class="form-floating mb-3">
               <input id="add_person_name" type="text" class="form-control" autocomplete="off" placeholder="Name" />
               <label for="add_person_name">Name</label>
@@ -94,6 +105,8 @@ templ People(deployment, versionName, versionRef, eventName string) {
                   <option value="public">public</option>
                   <option value="participant">participant</option>
                   <option value="crew">crew</option>
+                  <option value="not_present">not present</option>
+                  <option value="ejected">ejected</option>
                 </select>
                 <label for="add_person_participation">Participation</label>
               </div>
@@ -152,6 +165,8 @@ templ People(deployment, versionName, versionRef, eventName string) {
                   <option value="public">public</option>
                   <option value="participant">participant</option>
                   <option value="crew">crew</option>
+                  <option value="not_present">not present</option>
+                  <option value="ejected">ejected</option>
                 </select>
                 <label for="edit_person_participation">Participation</label>
               </div>
@@ -216,34 +231,6 @@ templ People(deployment, versionName, versionRef, eventName string) {
       <div id="show_all_people_wrap" class="form-check hidden">
         <input id="show-all-people" type="checkbox" class="form-check-input" onchange="changeShowAll();" />
         <label class="form-check-label" for="show-all-people">Show all people (not just this event's roster)</label>
-      </div>
-    </div>
-  </div>
-
-  <div id="add_to_event_section" class="row mb-3 hidden">
-    <div class="col-12">
-      <div class="card">
-        <div class="card-body">
-          <label for="add_to_event_search" class="form-label">Add a person to <strong id="add_to_event_name"></strong></label>
-          <div class="row g-2">
-            <div class="col-sm-4">
-              <select id="add_to_event_participation" class="form-select" aria-label="Participation for the added person">
-                <option value="public">public</option>
-                <option value="participant">participant</option>
-                <option value="crew">crew</option>
-              </select>
-            </div>
-            <div class="col-sm-8">
-              <div class="position-relative">
-                <input id="add_to_event_search" type="search" class="form-control" autocomplete="off" placeholder="Search people by name, handle, or wristband…" />
-                <div id="add_to_event_results"
-                     class="list-group position-absolute w-100 shadow-sm hidden"
-                     style="z-index: 1000; max-height: 16rem; overflow-y: auto;"></div>
-              </div>
-            </div>
-          </div>
-          <div class="form-text">Pick an existing person to add them to this event's roster. To create a brand-new person, use “Add person”.</div>
-        </div>
       </div>
     </div>
   </div>
