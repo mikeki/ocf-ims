@@ -164,6 +164,42 @@ templ People(deployment, versionName, versionRef, eventName string) {
       </div>
     </div>
 
+    <div class="modal no-print" id="removeFromEventModal" tabindex="-1" aria-labelledby="removeFromEventModalLabel" aria-hidden="true">
+      <div class="modal-dialog">
+        <div class="modal-content">
+          <div class="modal-header">
+            <p class="modal-title fs-5" id="removeFromEventModalLabel">Remove from event</p>
+            <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close" />
+          </div>
+          <div class="modal-body">
+            <p>Remove <strong id="remove_person_label"></strong> from <strong id="remove_event_name"></strong>?</p>
+            <p class="text-body-secondary small">
+              The person stays in the registry, and any incidents or visits that reference
+              them are untouched — only their participation in this event changes. Choose
+              how to record it:
+            </p>
+            <div class="d-grid gap-2">
+              <button type="button" class="btn btn-outline-secondary text-start" id="remove_mark_not_present" onclick="submitMarkParticipation('not_present')">
+                <strong>Mark as not present</strong>
+                <div class="small text-body-secondary">Known person, not participating this year. Kept on the roster, marked inactive.</div>
+              </button>
+              <button type="button" class="btn btn-outline-warning text-start" id="remove_mark_ejected" onclick="submitMarkParticipation('ejected')">
+                <strong>Mark as ejected</strong>
+                <div class="small text-body-secondary">Removed from the event (kicked out). Kept for the record.</div>
+              </button>
+              <button type="button" class="btn btn-outline-danger text-start" id="remove_delete" onclick="submitRemoveFromEvent()">
+                <strong>Remove — added by mistake</strong>
+                <div class="small text-body-secondary">Deletes their participation entirely, as if never added.</div>
+              </button>
+            </div>
+          </div>
+          <div class="modal-footer">
+            <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
   <div class="row mb-3">
     <div class="col-sm-6 col-md-4 mb-2">
       <label for="event-name" class="form-label">Event</label>
@@ -175,6 +211,40 @@ templ People(deployment, versionName, versionRef, eventName string) {
     <div class="col-sm-6 col-md-4 mb-2">
       <label for="people-search" class="form-label">Search</label>
       <input id="people-search" type="search" class="form-control" autocomplete="off" placeholder="Name, handle, or wristband" oninput="filterPeople();" />
+    </div>
+    <div class="col-sm-6 col-md-4 mb-2 align-self-end">
+      <div id="show_all_people_wrap" class="form-check hidden">
+        <input id="show-all-people" type="checkbox" class="form-check-input" onchange="changeShowAll();" />
+        <label class="form-check-label" for="show-all-people">Show all people (not just this event's roster)</label>
+      </div>
+    </div>
+  </div>
+
+  <div id="add_to_event_section" class="row mb-3 hidden">
+    <div class="col-12">
+      <div class="card">
+        <div class="card-body">
+          <label for="add_to_event_search" class="form-label">Add a person to <strong id="add_to_event_name"></strong></label>
+          <div class="row g-2">
+            <div class="col-sm-4">
+              <select id="add_to_event_participation" class="form-select" aria-label="Participation for the added person">
+                <option value="public">public</option>
+                <option value="participant">participant</option>
+                <option value="crew">crew</option>
+              </select>
+            </div>
+            <div class="col-sm-8">
+              <div class="position-relative">
+                <input id="add_to_event_search" type="search" class="form-control" autocomplete="off" placeholder="Search people by name, handle, or wristband…" />
+                <div id="add_to_event_results"
+                     class="list-group position-absolute w-100 shadow-sm hidden"
+                     style="z-index: 1000; max-height: 16rem; overflow-y: auto;"></div>
+              </div>
+            </div>
+          </div>
+          <div class="form-text">Pick an existing person to add them to this event's roster. To create a brand-new person, use “Add person”.</div>
+        </div>
+      </div>
     </div>
   </div>
 
@@ -196,6 +266,9 @@ templ People(deployment, versionName, versionRef, eventName string) {
               </button>
               <button class="show-edit-modal badge btn btn-secondary float-end me-2">
                 Edit
+              </button>
+              <button class="show-remove-modal badge btn btn-outline-danger float-end me-2 hidden">
+                Remove from event
               </button>
               <span class="person-name"></span>
               <span class="person-handle text-body-secondary ms-2 font-monospace small"></span>

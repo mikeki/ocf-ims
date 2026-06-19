@@ -291,11 +291,18 @@ func defaultParticipation(wristband string) imsdb.PersonEventParticipationType {
 }
 
 // validParticipation validates a participation_type string against the enum.
+// validParticipation recognizes every PARTICIPATION_TYPE value. crew/participant/
+// public are the active roster roles; not_present/ejected are the kept-but-inactive
+// states set by the roster's "remove" flow (eject / not present), recorded on the
+// row rather than deleting it (slice 6j). The UI's role picker offers only the
+// active roles; the inactive states are reached through the remove action.
 func validParticipation(s string) (imsdb.PersonEventParticipationType, bool) {
 	switch imsdb.PersonEventParticipationType(s) {
 	case imsdb.PersonEventParticipationTypeCrew,
 		imsdb.PersonEventParticipationTypeParticipant,
-		imsdb.PersonEventParticipationTypePublic:
+		imsdb.PersonEventParticipationTypePublic,
+		imsdb.PersonEventParticipationTypeNotPresent,
+		imsdb.PersonEventParticipationTypeEjected:
 		return imsdb.PersonEventParticipationType(s), true
 	}
 	return "", false
@@ -489,4 +496,148 @@ func wristbandConflict(err error) *herr.HTTPError {
 		return herr.Conflict("That wristband is already assigned for this event", nil)
 	}
 	return herr.InternalServerError("Failed to set participation", err).From("[setPersonEvent]")
+}
+
+// SetPersonParticipation upserts a person's per-event participation WITHOUT touching
+// their global profile (slice 6j). It backs the roster's "add to event" (enroll an
+// existing person) and "mark not present / ejected" actions. EditPerson also writes
+// participation, but always rewrites the profile (status/on-site) too, so it's wrong
+// for these profile-neutral changes — hence this dedicated endpoint, symmetric with
+// the DELETE. The event rides as a ?event= query param (identity is global).
+type SetPersonParticipation struct {
+	imsDBQ    *store.DBQ
+	userStore directory.UserStore
+}
+
+// SetParticipationRequest carries only the per-event fields. A blank
+// participation_type defaults from the wristband (present -> participant, absent ->
+// public); a blank wristband clears it (so callers preserving a wristband — e.g. on
+// eject — resend the current value).
+type SetParticipationRequest struct {
+	Wristband         string `json:"wristband"`
+	ParticipationType string `json:"participation_type"`
+}
+
+func (action SetPersonParticipation) ServeHTTP(w http.ResponseWriter, req *http.Request) {
+	errHTTP := action.setParticipation(req)
+	if errHTTP != nil {
+		errHTTP.From("[setParticipation]").WriteResponse(w)
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
+}
+
+func (action SetPersonParticipation) setParticipation(req *http.Request) *herr.HTTPError {
+	_, globalPermissions, errHTTP := getGlobalPermissions(req, action.imsDBQ, action.userStore)
+	if errHTTP != nil {
+		return errHTTP.From("[getGlobalPermissions]")
+	}
+	if globalPermissions&authz.GlobalAdministratePersonnel == 0 {
+		return herr.Forbidden("The requestor does not have GlobalAdministratePersonnel permission", nil)
+	}
+
+	person, errHTTP := personByIDFromPath(req.Context(), action.imsDBQ, req)
+	if errHTTP != nil {
+		return errHTTP
+	}
+
+	eventName := strings.TrimSpace(req.FormValue("event"))
+	if eventName == "" {
+		return herr.BadRequest("An event is required", nil)
+	}
+	event, errHTTP := getEvent(req, eventName, action.imsDBQ)
+	if errHTTP != nil {
+		return errHTTP.From("[getEvent]")
+	}
+
+	body, errHTTP := readBodyAs[SetParticipationRequest](req)
+	if errHTTP != nil {
+		return errHTTP.From("[readBodyAs]")
+	}
+	wristband := strings.TrimSpace(body.Wristband)
+	if len(wristband) > maxWristbandLength {
+		return herr.BadRequest("Wristband is too long", nil)
+	}
+	participation := defaultParticipation(wristband)
+	if ptStr := strings.TrimSpace(body.ParticipationType); ptStr != "" {
+		pt, ok := validParticipation(ptStr)
+		if !ok {
+			return herr.BadRequest("Unknown participation_type: "+ptStr, nil)
+		}
+		participation = pt
+	}
+
+	var wristbandNull sql.NullString
+	if wristband != "" {
+		wristbandNull = conv.StringToSql(&wristband, maxWristbandLength)
+	}
+	errHTTP = setPersonEvent(req.Context(), action.imsDBQ, person.ID, event.ID, wristbandNull, participation)
+	if errHTTP != nil {
+		return errHTTP
+	}
+
+	action.userStore.InvalidateUsers()
+
+	// #nosec G706 // log injection
+	slog.Info("Set participation", "person_id", person.ID, "handle", person.Handle.String, "event", eventName, "participation", string(participation))
+	return nil
+}
+
+// RemovePersonEvent deletes a person's participation row for an event — the "added
+// by mistake" removal (slice 6j). The global PERSON and any incident/visit links
+// are on independent tables and untouched, so the person stays in the registry and
+// can be re-added later. To instead record an ejection (kept for the record), the
+// client sets PARTICIPATION_TYPE to 'ejected'/'not_present' via EditPerson and the
+// row is kept. The event rides as a ?event= query param (identity is global, so the
+// personnel API stays global and is decorated per-event rather than nested).
+type RemovePersonEvent struct {
+	imsDBQ    *store.DBQ
+	userStore directory.UserStore
+}
+
+func (action RemovePersonEvent) ServeHTTP(w http.ResponseWriter, req *http.Request) {
+	errHTTP := action.removePersonEvent(req)
+	if errHTTP != nil {
+		errHTTP.From("[removePersonEvent]").WriteResponse(w)
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
+}
+
+func (action RemovePersonEvent) removePersonEvent(req *http.Request) *herr.HTTPError {
+	_, globalPermissions, errHTTP := getGlobalPermissions(req, action.imsDBQ, action.userStore)
+	if errHTTP != nil {
+		return errHTTP.From("[getGlobalPermissions]")
+	}
+	if globalPermissions&authz.GlobalAdministratePersonnel == 0 {
+		return herr.Forbidden("The requestor does not have GlobalAdministratePersonnel permission", nil)
+	}
+
+	person, errHTTP := personByIDFromPath(req.Context(), action.imsDBQ, req)
+	if errHTTP != nil {
+		return errHTTP
+	}
+
+	eventName := strings.TrimSpace(req.FormValue("event"))
+	if eventName == "" {
+		return herr.BadRequest("An event is required", nil)
+	}
+	event, errHTTP := getEvent(req, eventName, action.imsDBQ)
+	if errHTTP != nil {
+		return errHTTP.From("[getEvent]")
+	}
+
+	err := action.imsDBQ.DeletePersonEvent(req.Context(), action.imsDBQ, imsdb.DeletePersonEventParams{
+		PersonID: person.ID,
+		Event:    event.ID,
+	})
+	if err != nil {
+		return herr.InternalServerError("Failed to remove participation", err).From("[DeletePersonEvent]")
+	}
+
+	action.userStore.InvalidateUsers()
+
+	// #nosec G706 // log injection
+	slog.Info("Removed person from event", "person_id", person.ID, "handle", person.Handle.String, "event", eventName)
+	return nil
 }

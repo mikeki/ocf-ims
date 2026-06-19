@@ -21,11 +21,14 @@ import * as ims from "./ims.ts";
 declare global {
     interface Window {
         changeEvent: ()=>Promise<void>;
+        changeShowAll: ()=>Promise<void>;
         filterPeople: ()=>void;
         submitSetPassword: ()=>Promise<void>;
         showAddPersonModal: ()=>void;
         submitCreatePerson: ()=>Promise<void>;
         submitEditPerson: ()=>Promise<void>;
+        submitMarkParticipation: (participation: string)=>Promise<void>;
+        submitRemoveFromEvent: ()=>Promise<void>;
     }
 }
 
@@ -64,6 +67,16 @@ const el = {
     editPersonEventName: ims.typedElement("edit_person_event_name", HTMLElement),
     editPersonWristband: ims.typedElement("edit_person_wristband", HTMLInputElement),
     editPersonParticipation: ims.typedElement("edit_person_participation", HTMLSelectElement),
+    showAllWrap: ims.typedElement("show_all_people_wrap", HTMLElement),
+    showAllCheckbox: ims.typedElement("show-all-people", HTMLInputElement),
+    addToEventSection: ims.typedElement("add_to_event_section", HTMLElement),
+    addToEventName: ims.typedElement("add_to_event_name", HTMLElement),
+    addToEventSearch: ims.typedElement("add_to_event_search", HTMLInputElement),
+    addToEventResults: ims.typedElement("add_to_event_results", HTMLElement),
+    addToEventParticipation: ims.typedElement("add_to_event_participation", HTMLSelectElement),
+    removeFromEventModal: ims.typedElement("removeFromEventModal", HTMLElement),
+    removePersonLabel: ims.typedElement("remove_person_label", HTMLElement),
+    removeEventName: ims.typedElement("remove_event_name", HTMLElement),
 };
 
 // The page serves two doorways (docs/plans/62-people-event-nav.md):
@@ -89,11 +102,14 @@ async function initPeoplePage(): Promise<void> {
     }
 
     window.changeEvent = changeEvent;
+    window.changeShowAll = changeShowAll;
     window.filterPeople = filterPeople;
     window.submitSetPassword = submitSetPassword;
     window.showAddPersonModal = showAddPersonModal;
     window.submitCreatePerson = submitCreatePerson;
     window.submitEditPerson = submitEditPerson;
+    window.submitMarkParticipation = submitMarkParticipation;
+    window.submitRemoveFromEvent = submitRemoveFromEvent;
 
     await loadEventOptions();
 
@@ -118,6 +134,20 @@ async function initPeoplePage(): Promise<void> {
         currentEvent = el.eventName.value.trim();
     }
     reflectEventSelection();
+
+    // "Add a person to <event>" — a search-first picker over the whole registry
+    // that enrolls the chosen (existing) person into the current event. Creating a
+    // brand-new person stays on the "Add person" button, so no create-fallback here.
+    // The combobox's event scope only decorates the result badges; enrollPerson
+    // reads the live currentEvent, so a changed picker still enrolls into the right
+    // event.
+    ims.setupPersonCombobox({
+        input: el.addToEventSearch,
+        results: el.addToEventResults,
+        eventName: currentEvent,
+        allowCreate: false,
+        onPick: enrollPerson,
+    });
 
     await loadAndDrawPeople();
     ims.hideLoadingOverlay();
@@ -146,6 +176,10 @@ async function loadEventOptions(): Promise<void> {
 // the per-event editor in the modals.
 let currentEvent: string = "";
 let people: ims.Personnel[]|null = null;
+// With an event selected the listing defaults to that event's roster; this flips
+// to listing every person (so anyone can be found and added). Off by default and
+// only meaningful when an event is selected.
+let showAllPeople: boolean = false;
 
 async function changeEvent(): Promise<void> {
     currentEvent = el.eventName.value.trim();
@@ -153,18 +187,31 @@ async function changeEvent(): Promise<void> {
         localStorage.setItem(lastEventKey, currentEvent);
     } else {
         localStorage.removeItem(lastEventKey);
+        // No event → there is no roster to scope to; reset the toggle.
+        showAllPeople = false;
+        el.showAllCheckbox.checked = false;
     }
     reflectEventSelection();
     await loadAndDrawPeople();
 }
 
-// reflectEventSelection shows/hides the per-event editor blocks in both modals and
-// labels them with the selected event.
+async function changeShowAll(): Promise<void> {
+    showAllPeople = el.showAllCheckbox.checked;
+    await loadAndDrawPeople();
+}
+
+// reflectEventSelection shows/hides the per-event editor blocks in both modals, the
+// roster-only controls (the show-all toggle + the add-to-event picker), and labels
+// them with the selected event.
 function reflectEventSelection(): void {
-    el.addPersonEventSection.classList.toggle("hidden", !currentEvent);
-    el.editPersonEventSection.classList.toggle("hidden", !currentEvent);
+    const hasEvent = currentEvent !== "";
+    el.addPersonEventSection.classList.toggle("hidden", !hasEvent);
+    el.editPersonEventSection.classList.toggle("hidden", !hasEvent);
     el.addPersonEventName.textContent = currentEvent;
     el.editPersonEventName.textContent = currentEvent;
+    el.showAllWrap.classList.toggle("hidden", !hasEvent);
+    el.addToEventSection.classList.toggle("hidden", !hasEvent);
+    el.addToEventName.textContent = currentEvent;
 }
 
 async function loadAndDrawPeople(): Promise<void> {
@@ -176,6 +223,10 @@ async function loadPeople(): Promise<{err:string|null}> {
     let url = url_personnel + "?all=true";
     if (currentEvent) {
         url += "&event=" + encodeURIComponent(currentEvent);
+        // Default to the event roster; the toggle asks for everyone instead.
+        if (showAllPeople) {
+            url += "&showAll=true";
+        }
     }
     const {json, err} = await ims.fetchNoThrow<ims.Personnel[]>(url, {
         headers: {"Cache-Control": "no-cache"},
@@ -224,8 +275,14 @@ function drawPeople(): void {
         }
         const participation: HTMLElement = entryItem.querySelector(".person-participation")!;
         if (person.participation_type) {
-            participation.textContent = person.participation_type;
+            participation.textContent = person.participation_type.replace("_", " ");
             participation.classList.remove("hidden");
+            // Draw attention to the kept-but-inactive states (slice 6j).
+            if (person.participation_type === "ejected") {
+                participation.classList.replace("text-bg-light", "text-bg-warning");
+            } else if (person.participation_type === "not_present") {
+                participation.classList.replace("text-bg-light", "text-bg-secondary");
+            }
         }
 
         const showPassword: HTMLElement = entryItem.querySelector(".show-set-password-modal")!;
@@ -266,6 +323,24 @@ function drawPeople(): void {
                 ims.bsModal(el.editPersonModal).show();
             },
         );
+
+        // "Remove from event" applies only to someone on the event roster (they have
+        // a participation row), so it's shown only with an event selected and a type.
+        const showRemove: HTMLElement = entryItem.querySelector(".show-remove-modal")!;
+        if (currentEvent && person.participation_type) {
+            showRemove.classList.remove("hidden");
+            showRemove.addEventListener("click",
+                function (_e: MouseEvent): void {
+                    el.removeFromEventModal.dataset["personId"] = (person.person_id ?? "").toString();
+                    // Carry the current wristband so an eject preserves it (the eject
+                    // path upserts and would otherwise clear an omitted wristband).
+                    el.removeFromEventModal.dataset["wristband"] = person.wristband ?? "";
+                    el.removePersonLabel.textContent = label;
+                    el.removeEventName.textContent = currentEvent;
+                    ims.bsModal(el.removeFromEventModal).show();
+                },
+            );
+        }
 
         container.append(entryItemFrag);
     }
@@ -426,6 +501,81 @@ async function submitEditPerson(): Promise<void> {
         return;
     }
     ims.bsModal(el.editPersonModal).hide();
+    ims.clearErrorMessage();
+    await loadAndDrawPeople();
+}
+
+// participationUrl builds the per-event participation endpoint for a person, with
+// the event as a query param (the personnel API stays global, decorated per-event).
+function participationUrl(personId: string): string {
+    return url_personnelParticipation.replace("<person_id>", encodeURIComponent(personId))
+        + "?event=" + encodeURIComponent(currentEvent);
+}
+
+// enrollPerson adds an existing registry person to the current event's roster with
+// the participation type chosen in the add-to-event picker (no wristband initially;
+// it can be set later via Edit). Backs the "Add a person to <event>" combobox.
+async function enrollPerson(person: ims.PersonSearchResult): Promise<void> {
+    if (!currentEvent) {
+        return;
+    }
+    const {err} = await ims.fetchNoThrow(participationUrl((person.person_id ?? "").toString()), {
+        body: JSON.stringify({
+            "participation_type": el.addToEventParticipation.value,
+            "wristband": "",
+        }),
+    });
+    if (err != null) {
+        const message = `Failed to add person to event:\n${err}`;
+        console.error(message);
+        ims.setErrorMessage(message);
+        return;
+    }
+    ims.clearErrorMessage();
+    el.addToEventSearch.value = "";
+    await loadAndDrawPeople();
+}
+
+// submitMarkParticipation records a "kept" removal — not present or ejected — by
+// upserting the participation type while preserving the current wristband. The row
+// stays so the state is visible in the roster; who/when is captured by the action log.
+async function submitMarkParticipation(participation: string): Promise<void> {
+    const personId = el.removeFromEventModal.dataset["personId"];
+    if (!personId || !currentEvent) {
+        return;
+    }
+    const {err} = await ims.fetchNoThrow(participationUrl(personId), {
+        body: JSON.stringify({
+            "participation_type": participation,
+            "wristband": el.removeFromEventModal.dataset["wristband"] ?? "",
+        }),
+    });
+    if (err != null) {
+        const message = `Failed to update participation:\n${err}`;
+        console.error(message);
+        ims.setErrorMessage(message);
+        return;
+    }
+    ims.bsModal(el.removeFromEventModal).hide();
+    ims.clearErrorMessage();
+    await loadAndDrawPeople();
+}
+
+// submitRemoveFromEvent deletes the participation row entirely — the "added by
+// mistake" removal. The global person and any incident/visit links are untouched.
+async function submitRemoveFromEvent(): Promise<void> {
+    const personId = el.removeFromEventModal.dataset["personId"];
+    if (!personId || !currentEvent) {
+        return;
+    }
+    const {err} = await ims.fetchNoThrow(participationUrl(personId), {method: "DELETE"});
+    if (err != null) {
+        const message = `Failed to remove from event:\n${err}`;
+        console.error(message);
+        ims.setErrorMessage(message);
+        return;
+    }
+    ims.bsModal(el.removeFromEventModal).hide();
     ims.clearErrorMessage();
     await loadAndDrawPeople();
 }

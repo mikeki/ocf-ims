@@ -505,6 +505,28 @@ func AddToMux(
 		),
 	)
 
+	mux.Handle("POST /ims/api/personnel/{personId}/participation",
+		Adapt(
+			SetPersonParticipation{db, userStore},
+			RecoverFromPanic(),
+			RequireAuthN(jwter),
+			LogRequest(true, actionLogger, userStore),
+			LimitRequestBytes(cfg.Core.MaxRequestBytes),
+		),
+	)
+
+	mux.Handle("DELETE /ims/api/personnel/{personId}/participation",
+		Adapt(
+			RemovePersonEvent{db, userStore},
+			RecoverFromPanic(),
+			RequireAuthN(jwter),
+			// Logged: this is the audit trail for who removed/ejected whom from an
+			// event (the eject case keeps the row via the POST above, also logged).
+			LogRequest(true, actionLogger, userStore),
+			LimitRequestBytes(cfg.Core.MaxRequestBytes),
+		),
+	)
+
 	mux.Handle("GET /ims/api/eventsource",
 		Adapt(
 			es.Server.Handler(EventSourceChannel),
