@@ -764,6 +764,27 @@ update PERSON__EVENT
 set WRISTBAND = ?, PARTICIPATION_TYPE = ?
 where PERSON_ID = ? and EVENT = ?;
 
+-- EventRoster returns only the people who have a participation row for the given
+-- event (the per-event roster). It mirrors AllPeople's columns so the People page
+-- renders both the same way; the "Show all people" toggle switches to AllPeople.
+-- It includes the kept-but-inactive states (not_present/ejected) so an ejection
+-- stays visible in the roster rather than disappearing.
+-- name: EventRoster :many
+select
+    p.ID, p.HANDLE, p.NAME, p.EMAIL, p.STATUS, p.ON_SITE, p.IS_ADMIN,
+    pe.WRISTBAND, pe.PARTICIPATION_TYPE
+from PERSON p
+    join PERSON__EVENT pe on pe.PERSON_ID = p.ID and pe.EVENT = sqlc.arg(event)
+order by coalesce(p.NAME, p.HANDLE);
+
+-- DeletePersonEvent removes a person's participation row for an event entirely —
+-- the "added by mistake" removal. The global PERSON and any incident/visit links
+-- are untouched (independent tables). To instead record an ejection, keep the row
+-- and set PARTICIPATION_TYPE to 'ejected'/'not_present' via UpdatePersonEvent.
+-- name: DeletePersonEvent :exec
+delete from PERSON__EVENT
+where PERSON_ID = ? and EVENT = ?;
+
 -- name: PeoplePositions :many
 select PERSON_ID, POSITION_ID
 from PERSON__POSITION;

@@ -242,3 +242,120 @@ func TestEditPersonProfileAndParticipation(t *testing.T) {
 	require.Equal(t, http.StatusForbidden, resp.StatusCode)
 	require.NoError(t, resp.Body.Close())
 }
+
+// TestEventRosterAddRemove exercises the per-event participation roster (slice 6j):
+// enrolling an existing person, the roster-vs-show-all listings, recording an
+// ejection (the row is kept and the wristband preserved), deleting a participation
+// row ("added by mistake" — the global person and an incident link both survive),
+// and the validation + gating on the new participation endpoints.
+func TestEventRosterAddRemove(t *testing.T) {
+	t.Parallel()
+	ctx := t.Context()
+
+	apisAdmin := ApiHelper{t: t, serverURL: shared.serverURL, jwt: jwtForAdmin(ctx, t)}
+	apisAlice := ApiHelper{t: t, serverURL: shared.serverURL, jwt: jwtForAlice(t, ctx)}
+
+	eventName := rand.NonCryptoText()
+	_, resp := apisAdmin.createEvent(ctx, imsjson.Event{Name: &eventName})
+	require.Equal(t, http.StatusNoContent, resp.StatusCode)
+	require.NoError(t, resp.Body.Close())
+	// Being an admin confers only global permissions; the event-scoped incident write
+	// below still needs an explicit grant.
+	resp = apisAdmin.addWriter(ctx, eventName, userAdminHandle)
+	require.Equal(t, http.StatusNoContent, resp.StatusCode)
+	require.NoError(t, resp.Body.Close())
+
+	makePerson := func(handle string) int64 {
+		r := apisAdmin.createPerson(ctx, api.CreatePersonRequest{Handle: handle, Password: handle + "-pw-12345"})
+		require.Equal(t, http.StatusCreated, r.StatusCode)
+		var p imsjson.Person
+		require.NoError(t, json.NewDecoder(r.Body).Decode(&p))
+		require.NoError(t, r.Body.Close())
+		return p.PersonID
+	}
+	ivanID := makePerson("IvanRosterTester")
+	juliaID := makePerson("JuliaRosterTester")
+
+	containsPerson := func(people []imsjson.Person, id int64) bool {
+		return slices.ContainsFunc(people, func(p imsjson.Person) bool { return p.PersonID == id })
+	}
+
+	// A fresh event's roster is empty, though both people exist globally.
+	roster, resp := apisAdmin.getEventRoster(ctx, eventName)
+	require.Equal(t, http.StatusOK, resp.StatusCode)
+	require.NoError(t, resp.Body.Close())
+	require.False(t, containsPerson(roster, ivanID))
+	require.False(t, containsPerson(roster, juliaID))
+
+	// Enroll Ivan (only) as crew.
+	resp = apisAdmin.setParticipation(ctx, ivanID, eventName, api.SetParticipationRequest{ParticipationType: "crew"})
+	require.Equal(t, http.StatusNoContent, resp.StatusCode)
+	require.NoError(t, resp.Body.Close())
+
+	roster, resp = apisAdmin.getEventRoster(ctx, eventName)
+	require.NoError(t, resp.Body.Close())
+	require.True(t, containsPerson(roster, ivanID))
+	require.False(t, containsPerson(roster, juliaID))
+	require.Equal(t, "crew", findPerson(t, roster, ivanID).ParticipationType)
+
+	// "Show all" lists everyone for the event, enrolled or not.
+	all, resp := apisAdmin.getAllPersonnelForEvent(ctx, eventName)
+	require.NoError(t, resp.Body.Close())
+	require.True(t, containsPerson(all, ivanID))
+	require.True(t, containsPerson(all, juliaID))
+
+	// Eject Ivan, resending the wristband so it's preserved on the kept row.
+	resp = apisAdmin.setParticipation(ctx, ivanID, eventName, api.SetParticipationRequest{Wristband: "W-1", ParticipationType: "crew"})
+	require.Equal(t, http.StatusNoContent, resp.StatusCode)
+	require.NoError(t, resp.Body.Close())
+	resp = apisAdmin.setParticipation(ctx, ivanID, eventName, api.SetParticipationRequest{Wristband: "W-1", ParticipationType: "ejected"})
+	require.Equal(t, http.StatusNoContent, resp.StatusCode)
+	require.NoError(t, resp.Body.Close())
+
+	roster, resp = apisAdmin.getEventRoster(ctx, eventName)
+	require.NoError(t, resp.Body.Close())
+	ivan := findPerson(t, roster, ivanID)
+	require.Equal(t, "ejected", ivan.ParticipationType) // kept, not removed
+	require.Equal(t, "W-1", ivan.Wristband)             // preserved, not cleared
+
+	// Attach Ivan to an incident so we can prove removal leaves that link intact.
+	num := apisAdmin.newIncidentSuccess(ctx, imsjson.Incident{
+		Event: eventName, State: "new", Priority: 3, Summary: new("roster test incident"),
+	})
+	resp = apisAdmin.attachPersonToIncident(ctx, eventName, num, ivanID)
+	require.Equal(t, http.StatusNoContent, resp.StatusCode)
+	require.NoError(t, resp.Body.Close())
+
+	// Remove Ivan's participation ("added by mistake"): gone from the roster, but the
+	// global person and his incident link both survive.
+	resp = apisAdmin.removeParticipation(ctx, ivanID, eventName)
+	require.Equal(t, http.StatusNoContent, resp.StatusCode)
+	require.NoError(t, resp.Body.Close())
+
+	roster, resp = apisAdmin.getEventRoster(ctx, eventName)
+	require.NoError(t, resp.Body.Close())
+	require.False(t, containsPerson(roster, ivanID))
+
+	allGlobal, resp := apisAdmin.getAllPersonnel(ctx)
+	require.NoError(t, resp.Body.Close())
+	require.True(t, containsPerson(allGlobal, ivanID), "removing participation must not delete the global person")
+
+	incident, resp := apisAdmin.getIncident(ctx, eventName, num)
+	require.Equal(t, http.StatusOK, resp.StatusCode)
+	require.NoError(t, resp.Body.Close())
+	require.Len(t, *incident.People, 1, "incident person link must survive participation removal")
+
+	// --- validation + gating ---
+	// Unknown participation type is rejected.
+	resp = apisAdmin.setParticipation(ctx, juliaID, eventName, api.SetParticipationRequest{ParticipationType: "bogus"})
+	require.Equal(t, http.StatusBadRequest, resp.StatusCode)
+	require.NoError(t, resp.Body.Close())
+
+	// A non-admin can neither set nor remove participation.
+	resp = apisAlice.setParticipation(ctx, juliaID, eventName, api.SetParticipationRequest{ParticipationType: "crew"})
+	require.Equal(t, http.StatusForbidden, resp.StatusCode)
+	require.NoError(t, resp.Body.Close())
+	resp = apisAlice.removeParticipation(ctx, ivanID, eventName)
+	require.Equal(t, http.StatusForbidden, resp.StatusCode)
+	require.NoError(t, resp.Body.Close())
+}

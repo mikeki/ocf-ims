@@ -127,17 +127,47 @@ func (a ApiHelper) getAllPersonnel(ctx context.Context) ([]imsjson.Person, *http
 	return a.getAllPersonnelForEvent(ctx, "")
 }
 
-// getAllPersonnelForEvent fetches the admin People listing scoped to an event, so
-// each person carries that event's wristband + participation type. An empty event
-// name fetches the unscoped listing.
+// getAllPersonnelForEvent fetches the admin People listing of EVERY person, scoped
+// to an event so each person carries that event's wristband + participation type. An
+// empty event name fetches the unscoped listing. (With an event the endpoint defaults
+// to the roster, so this passes showAll=true to keep the "all people" semantics; use
+// getEventRoster for the roster-only listing.)
 func (a ApiHelper) getAllPersonnelForEvent(ctx context.Context, eventName string) ([]imsjson.Person, *http.Response) {
 	a.t.Helper()
 	path := a.serverURL.JoinPath("/ims/api/personnel").String() + "?all=true"
 	if eventName != "" {
-		path += "&event=" + url.QueryEscape(eventName)
+		path += "&event=" + url.QueryEscape(eventName) + "&showAll=true"
 	}
 	bod, resp := a.imsGet(ctx, path, &[]imsjson.Person{})
 	return *bod.(*[]imsjson.Person), resp
+}
+
+// getEventRoster fetches only the people participating in the event (those with a
+// PERSON__EVENT row), the People page's default event-scoped view (slice 6j).
+func (a ApiHelper) getEventRoster(ctx context.Context, eventName string) ([]imsjson.Person, *http.Response) {
+	a.t.Helper()
+	path := a.serverURL.JoinPath("/ims/api/personnel").String() +
+		"?all=true&event=" + url.QueryEscape(eventName)
+	bod, resp := a.imsGet(ctx, path, &[]imsjson.Person{})
+	return *bod.(*[]imsjson.Person), resp
+}
+
+// setParticipation upserts a person's per-event participation via the dedicated
+// endpoint (enroll / mark not-present / eject), without touching their profile.
+func (a ApiHelper) setParticipation(ctx context.Context, personID int64, eventName string, body api.SetParticipationRequest) *http.Response {
+	a.t.Helper()
+	path := a.serverURL.JoinPath("/ims/api/personnel", strconv.FormatInt(personID, 10), "participation").String() +
+		"?event=" + url.QueryEscape(eventName)
+	return a.imsPost(ctx, body, path)
+}
+
+// removeParticipation deletes a person's per-event participation row entirely.
+func (a ApiHelper) removeParticipation(ctx context.Context, personID int64, eventName string) *http.Response {
+	a.t.Helper()
+	path := a.serverURL.JoinPath("/ims/api/personnel", strconv.FormatInt(personID, 10), "participation").String() +
+		"?event=" + url.QueryEscape(eventName)
+	_, resp := a.imsDelete(ctx, path, nil)
+	return resp
 }
 
 func (a ApiHelper) editType(ctx context.Context, req imsjson.IncidentType) (*int32, *http.Response) {

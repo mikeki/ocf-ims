@@ -83,6 +83,33 @@ func (action GetPersonnel) getPersonnel(req *http.Request) (GetPersonnelResponse
 			}
 			eventID = event.ID
 		}
+
+		// With an event selected, the People page defaults to that event's roster
+		// (only people with a participation row). The "Show all people" toggle sends
+		// ?showAll=true to list every person instead; without an event there is no
+		// roster to scope to, so we always list everyone. See slice 6j.
+		if eventID != 0 && !strings.EqualFold(req.FormValue("showAll"), "true") {
+			rows, err := action.imsDBQ.EventRoster(req.Context(), action.imsDBQ, eventID)
+			if err != nil {
+				return response, herr.InternalServerError("Failed to get personnel", err).From("[EventRoster]")
+			}
+			for _, person := range rows {
+				response = append(response, imsjson.Person{
+					Handle: person.Handle.String,
+					Name:   person.Name.String,
+					// Email goes only to this admin-gated listing so it can be edited.
+					Email:             person.Email.String,
+					Status:            person.Status,
+					Onsite:            person.OnSite,
+					IsAdmin:           person.IsAdmin,
+					PersonID:          int64(person.ID),
+					Wristband:         person.Wristband.String,
+					ParticipationType: string(person.ParticipationType),
+				})
+			}
+			return response, nil
+		}
+
 		rows, err := action.imsDBQ.AllPeople(req.Context(), action.imsDBQ, eventID)
 		if err != nil {
 			return response, herr.InternalServerError("Failed to get personnel", err).From("[AllPeople]")

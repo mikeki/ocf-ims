@@ -6,7 +6,7 @@ create table SCHEMA_INFO (
 -- This value must be updated when you make a new migration file.
 --
 
-insert into SCHEMA_INFO (VERSION) values (44);
+insert into SCHEMA_INFO (VERSION) values (45);
 
 
 create table `EVENT` (
@@ -133,11 +133,14 @@ create table PERSON__TEAM (
 -- (loaded from a crew roster, or met on an incident/visit). WRISTBAND reissues
 -- each fair and is unique within the event (nullable: public folks have none).
 -- PARTICIPATION_TYPE is an explicit classification, NOT derived from the login.
+-- crew/participant/public are the active roster; not_present/ejected are the
+-- kept-but-inactive states (a known person not here this year, or one removed
+-- from the event but kept for the record — see the People roster, slice 6j).
 create table PERSON__EVENT (
     PERSON_ID          integer not null,
     EVENT              integer not null,
     WRISTBAND          varchar(32),
-    PARTICIPATION_TYPE enum('crew', 'participant', 'public') not null default 'public',
+    PARTICIPATION_TYPE enum('crew', 'participant', 'public', 'not_present', 'ejected') not null default 'public',
 
     primary key (PERSON_ID, EVENT),
     unique key (EVENT, WRISTBAND),
