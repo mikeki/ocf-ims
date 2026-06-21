@@ -1,22 +1,11 @@
 -- 00001_baseline.sql
 --
 -- Flattened baseline: the full IMS schema, squashed from the former
--- store/schema/current.sql. This is the single schema artifact read by sqlc
--- and (once the runner is swapped) applied by goose on boot.
--- See docs/plans/08-db-migration-tooling.md.
+-- store/schema/current.sql, minus the old SCHEMA_INFO version-cursor table
+-- (goose_db_version replaces it). This is the single schema artifact read by
+-- sqlc and applied by goose on boot. See docs/plans/08-db-migration-tooling.md.
 
 -- +goose Up
-
-create table SCHEMA_INFO (
-    VERSION smallint not null
-) DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
-
---
--- This value must be updated when you make a new migration file.
---
-
-insert into SCHEMA_INFO (VERSION) values (45);
-
 
 create table `EVENT` (
     ID      integer      not null auto_increment,
@@ -463,5 +452,4 @@ DROP TABLE IF EXISTS `POSITION`;
 DROP TABLE IF EXISTS `PERSON`;
 DROP TABLE IF EXISTS `INCIDENT_TYPE`;
 DROP TABLE IF EXISTS `EVENT`;
-DROP TABLE IF EXISTS `SCHEMA_INFO`;
 SET FOREIGN_KEY_CHECKS = 1;

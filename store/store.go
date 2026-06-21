@@ -27,11 +27,11 @@ import (
 	"log/slog"
 )
 
-//go:embed schema/current.sql
-var CurrentSchema string
-
-//go:embed schema/*-from-*.sql
-var Migrations embed.FS
+// migrationsFS holds the goose migrations applied on boot (and read by sqlc for
+// codegen — see sqlc.yaml). This is the single schema source of truth.
+//
+//go:embed schema/migrations/*.sql
+var migrationsFS embed.FS
 
 func SqlDB(ctx context.Context, dbStoreCfg conf.DBStore, migrateDB bool) (*sql.DB, error) {
 	var mariaCfg conf.DBStoreMaria
