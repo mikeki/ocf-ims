@@ -8,11 +8,20 @@
 > a **single source of truth**: one `store/schema/migrations/` directory that is
 > both applied at runtime by goose *and* read by sqlc for codegen.
 >
-> Triggered by a deliberate flatten: the schema will be squashed to its current
-> state (v44) as `00001_baseline.sql`, so the project starts the new system with
-> one migration. The eventual production target is a **single VM running the app
-> and a local MariaDB**, brought up "very similar to dev mode" — so this plan also
-> unifies how schema is applied across dev / CI / prod into one path.
+> Triggered by a deliberate flatten: the schema is squashed to its current state
+> (v44) as `00001_baseline.sql`, so the new system starts from a single baseline
+> migration. A one-time **adoption** path lets the existing pre-goose database
+> (the dev DB) cross over to goose in place — without re-running the baseline DDL
+> over its already-present tables — and is removed once the crossover is done.
+>
+> The integration follows goose's own recommended model — **migrations embedded
+> in the binary and applied on boot over the app's DB connection**. That model is
+> **independent of deployment topology**: whether MariaDB ends up co-located with
+> the app (a single VM, like dev) or on a separate host is purely a
+> connection-string concern and is deliberately **not** assumed here. The plan
+> still unifies how schema is applied across dev / CI / prod into one path, but
+> the rationale is "the app owns schema application" (goose's model), not "prod
+> looks like dev."
 
 ## 1. Objective & grounding
 
@@ -110,18 +119,56 @@ store/schema/migrations/        ← the ONLY schema artifact
   into the app, gated by an env flag and made idempotent, so the demo/VM seeds
   itself on boot the same way migrations run on boot (see §4).
 
+### 2.1 Migrating from the old (pre-goose) database — one-time adoption
+
+Fresh databases are easy: goose creates `goose_db_version`, applies
+`00001_baseline.sql`, then anything newer. The wrinkle is the **existing dev
+database**, which already carries the full v44 schema under the old system (a
+populated `SCHEMA_INFO`, no `goose_db_version`). Running `goose.Up` against it
+blind would try to apply the baseline DDL over tables that already exist, and
+fail. goose has **no built-in "baseline/stamp/fake-apply" command** (unlike
+Flyway/Django), so we handle the crossover explicitly.
+
+`MigrateDB` gains a small, explicitly temporary **adoption** step that runs
+*before* `goose.Up`:
+
+1. **Detect** the legacy state: `goose_db_version` is absent **and**
+   `SCHEMA_INFO` is present.
+2. **Assert** `SCHEMA_INFO.VERSION == <baseline version>` (44). If the DB is
+   behind, **fail loudly** telling the operator to bring it up to v44 under the
+   previous release first — we do not re-implement the old chain. (Fail closed:
+   a behind-baseline DB is never silently stamped as baseline.)
+3. **Adopt without re-running DDL:** let goose create its own
+   `goose_db_version` table (e.g. via `goose.EnsureDBVersion` /
+   `GetDBVersion`, which also seeds the v0 row — letting goose own that DDL so
+   the shim isn't coupled to goose's internal table layout), then record the
+   baseline as already applied
+   (`insert into goose_db_version (version_id, is_applied) values (1, true)`),
+   and drop the now-defunct `SCHEMA_INFO`.
+4. **Fall through** to the normal `goose.Up`, which now sees the baseline as
+   applied and runs only anything newer.
+
+This path is **one-time and removable**: it only fires on a DB that still has
+`SCHEMA_INFO`. Once the dev DB has crossed over (and since CI/prod start fresh),
+nothing triggers it — we delete the shim and its transition fixture/test in a
+later cleanup (tracked in §6). It is the data-preserving alternative to wiping
+the dev data dir: the dev DB keeps its existing rows (incl. prior seed data),
+which the idempotent seeder (§4) then leaves untouched.
+
 ## 3. Decisions (proposed — confirm before build)
 
 | # | Decision | Outcome |
 |---|---|---|
 | D1 | Tool | **goose** (`github.com/pressly/goose/v3`), embedded and run in-process on boot. Chosen over golang-migrate (goose's dir-as-schema + Go-migration escape hatch fit better) and over Atlas (declarative diffing is more tool/concept than we want for a soon-to-be-rebuilt system). |
 | D2 | Source of truth | **The `migrations/` directory.** `current.sql` is deleted; sqlc's `schema:` repoints at the directory. One artifact. |
-| D3 | Flatten | **Squash to `00001_baseline.sql` = the v44 schema.** The whole `NN-from-MM.sql` chain and `current.sql` are deleted. No ledger backfill: the demo DB is disposable (reset), and the VM/prod DB will be fresh. |
+| D3 | Flatten | **Squash to `00001_baseline.sql` = the v44 schema.** The whole `NN-from-MM.sql` chain and `current.sql` are deleted. The existing dev DB is **adopted in place** (§2.1), not reset — preserving its data; CI/prod start fresh. (Wiping the dev data dir remains a clean-slate fallback.) |
 | D4 | Version scheme | **goose sequential integers, zero-padded width 5** (`00001_…`), `-- +goose Up` / `-- +goose Down` annotated. (Timestamps avoid branch collisions but are noisier; for a near-single-maintainer repo sequential is clearer. Revisit if parallel migration authoring becomes common.) |
 | D5 | Migrations are schema-only | **Unchanged rule.** Migrations contain DDL only — no seed/data. (Carries forward today's invariant; OCF launches fresh.) `Down` migrations are written best-effort for dev convenience but are **not** relied on in prod. |
 | D6 | Seed | **App-owned, on boot, env-gated, idempotent** (`IMS_SEED_DEMO`). Replaces the dev compose init-script seed. See §4. |
 | D7 | Apply on boot | **Keep.** `MigrateDB` still runs on every `serve` boot (`SqlDB(..., true)`); only its internals change. |
-| D8 | Docker unification | **App owns schema in every environment.** Remove the `current.sql` init mount from `docker-compose.dev.yml`; dev/CI/prod all get schema from `goose.Up` on boot. |
+| D8 | Schema-application model | **The app owns schema application in every environment**, per goose's embedded-on-boot model — *not* premised on any deployment topology. The DB being co-located (single VM, like dev) or remote is just a DSN and changes nothing here. Concretely: remove the `current.sql` init mount from `docker-compose.dev.yml` so dev matches the same app-owns-schema path as CI/prod. |
+| D9 | Old-DB crossover | **A one-time, removable adoption shim** (§2.1) stamps the baseline as applied on a pre-goose DB instead of re-running it; behind-baseline DBs are rejected, not auto-upgraded. Removed once the dev DB has crossed over. |
+| D10 | goose API surface | **Lean toward the Provider API** (`goose.NewProvider`, context-aware, no global mutable `SetDialect`/`SetBaseFS` state) as goose recommends; the legacy package-level API is an acceptable fallback. Finalize in Slice B — both support embedded FS and the manual baseline stamp. |
 
 ## 4. Seed-on-boot design
 
@@ -163,21 +210,34 @@ Sequenced so each step is independently verifiable. Suggested PR boundaries.
    diff clean). This proves the baseline faithfully reproduces v44 before we
    trust it at runtime. *(Acceptance gate for Slice A.)*
 
-### Slice B — Swap the runner
+### Slice B — Swap the runner (incl. one-time adoption)
 1. Rewrite `store/migrate.go`: `MigrateDB(ctx, db)` keeps its signature but now
-   sets the goose dialect (`mysql`), points goose at the embedded migrations FS
-   (`goose.SetBaseFS`), and calls `goose.Up`. Delete `repoSchemaVersion`,
-   `dbSchemaVersion`, the `SCHEMA_INFO` reads, and the string-parsing.
-2. Update the embeds in `store/store.go`: replace `//go:embed
+   configures goose for `mysql`, points it at the embedded migrations FS, and
+   applies up-to-head (Provider API preferred per D10, legacy `goose.Up`
+   acceptable). Delete `repoSchemaVersion`, `dbSchemaVersion`, the `SCHEMA_INFO`
+   reads, and the string-parsing.
+2. Add the **adoption shim** (§2.1) ahead of the goose apply: detect
+   legacy state (`SCHEMA_INFO` present, `goose_db_version` absent), assert
+   `SCHEMA_INFO.VERSION == 44` (else fail loudly), let goose create its version
+   table, stamp baseline `version_id=1` as applied, drop `SCHEMA_INFO`. Keep it
+   clearly fenced/commented as temporary (removed in a later cleanup).
+3. Update the embeds in `store/store.go`: replace `//go:embed
    schema/current.sql` and `//go:embed schema/*-from-*.sql` with a single
    `//go:embed schema/migrations/*.sql`.
-3. Drop the now-unused `SchemaVersion` sqlc query (`store/queries.sql` /
+4. Drop the now-unused `SchemaVersion` sqlc query (`store/queries.sql` /
    regenerate) if nothing else references it.
-4. Replace `store/integration/migrate_test.go`: new test brings up one fresh
-   MariaDB container, runs `MigrateDB`, asserts (a) no error, (b) a second
-   `MigrateDB` is a clean no-op (goose reports nothing pending), (c) the expected
-   tables exist. Retire `36.sql` and the chain-vs-current drift comparison
-   (there is no longer a second artifact to drift against).
+5. Replace `store/integration/migrate_test.go` with tests covering **both
+   entry paths**:
+   - *Fresh:* empty MariaDB → `MigrateDB` → no error; a second `MigrateDB` is a
+     clean no-op (goose reports nothing pending); expected tables exist.
+   - *Adoption:* load a frozen v44 snapshot (the old `current.sql`, copied to
+     `store/integration/44-legacy.sql` **before** it is deleted in Slice D) →
+     `MigrateDB` → the shim stamps baseline, drops `SCHEMA_INFO`, leaves the
+     schema intact, and a re-run is a no-op. Also assert a **behind-baseline**
+     snapshot is rejected.
+   Retire `36.sql` and the chain-vs-`current.sql` drift comparison (there is no
+   longer a second artifact to drift against). The adoption test + `44-legacy.sql`
+   fixture are themselves temporary — they go when the shim does.
 
 ### Slice C — Seed on boot
 1. Embed `store/fakeimsdb/seed.sql`; add an app-side seeder that runs after
@@ -191,21 +251,33 @@ Sequenced so each step is independently verifiable. Suggested PR boundaries.
    schema, and that a restart does not duplicate data.
 
 ### Slice D — Unify docker + flatten cleanup
-1. **`docker-compose.dev.yml`:** remove the `current.sql` →
+1. **Freeze the v44 fixture first:** copy `store/schema/current.sql` to
+   `store/integration/44-legacy.sql` (the adoption test's input) **before** the
+   deletion in step 4, so the snapshot survives.
+2. **`docker-compose.dev.yml`:** remove the `current.sql` →
    `docker-entrypoint-initdb.d/1.schema.sql` mount and the `seed.sql` →
    `2.seed.sql` mount (lines ~85–86). Set `IMS_SEED_DEMO: "true"` in the `ims-go`
-   service env. Dev now gets schema from the app on boot, identical to prod.
-2. **`docker-compose.cicd.yml`:** already app-owns-schema; confirm it still comes
+   service env. Dev now gets schema from the app on boot, same path as CI/prod.
+3. **`docker-compose.cicd.yml`:** already app-owns-schema; confirm it still comes
    up green (the app now uses goose, otherwise unchanged). Leave `IMS_SEED_DEMO`
    unset/off.
-3. **Delete** `store/schema/current.sql` and every `store/schema/NN-from-MM.sql`.
+4. **Delete** `store/schema/current.sql` and every `store/schema/NN-from-MM.sql`.
    Grep for stragglers referencing them (`current.sql`, `SCHEMA_INFO`,
    `from-`, the `Migrations`/`CurrentSchema` vars).
-4. **Reset the demo DB:** drop `./.docker/mysql/data-ims/` so the next `docker
-   compose up` brings up a fresh DB that `goose.Up` + seed-on-boot populates.
-5. **Docs:** update `CLAUDE.md` (the "Database Migrations" + "Configuration"
-   sections), this README row, and add VM bring-up notes (MariaDB on the box →
-   app migrates + seeds on boot via `IMS_SEED_DEMO`).
+5. **Cross over the dev DB in place:** on next boot the adoption shim (§2.1)
+   stamps the existing dev DB and it continues with its data intact — **no reset
+   required**. (Wiping `./.docker/mysql/data-ims/` remains a clean-slate option.)
+6. **Docs:** update `CLAUDE.md` (the "Database Migrations" + "Configuration"
+   sections) and this README row. Document the deployment model as
+   *topology-agnostic*: the app migrates (and optionally seeds) on boot over its
+   DB connection, whether MariaDB is co-located or on a separate host.
+
+### Slice E — Remove the adoption shim (after crossover)
+Once the dev DB has crossed over and no pre-goose DB remains anywhere, delete the
+§2.1 adoption shim from `store/migrate.go`, plus the `44-legacy.sql` fixture and
+its adoption test. `MigrateDB` is then a thin goose-apply with no special cases.
+(Separate, low-risk PR — sequenced after Slice D has actually run against the dev
+DB.)
 
 ## 6. Risks & caveats
 
@@ -218,12 +290,17 @@ Sequenced so each step is independently verifiable. Suggested PR boundaries.
 - **sqlc must parse the migration dir.** sqlc supports goose-annotated migration
   directories, but confirm in Slice A that codegen output is byte-identical
   before deleting `current.sql`. (Acceptance gate.)
-- **Existing dev/demo DBs.** Any already-initialized data dir has no
-  `goose_db_version` table; goose would try to apply `00001_baseline` over an
-  existing schema and fail. Because the demo DB is disposable we **reset** it
-  (Slice D.4) rather than backfilling the ledger. (If we ever needed to preserve
-  a populated DB across the switch, the move would be to pre-insert a
-  `goose_db_version` row marking `00001` applied — noted, not needed.)
+- **Existing pre-goose DBs.** A populated data dir has no `goose_db_version`
+  table; a blind `goose.Up` would re-run `00001_baseline` over existing tables
+  and fail. Handled by the one-time **adoption shim** (§2.1, §D9), which stamps
+  the baseline instead of running it. Its safety hinges on the
+  `SCHEMA_INFO.VERSION == 44` assertion — a behind-baseline DB is **rejected**,
+  never silently stamped. The shim (and its fixture/test) is deleted in Slice E.
+- **Deployment topology is not a dependency.** The on-boot model works whether
+  MariaDB is co-located or remote — it only needs a DB connection. Nothing in
+  this design assumes the single-VM layout; that remains a free deployment
+  choice. Operationally, note only that **on-boot migration means the app must
+  reach the DB at startup** (already true today).
 - **Down migrations.** Written best-effort for dev; not part of the prod
   rollback story (we roll forward). Don't let anyone wire prod rollback to
   `goose down`.
@@ -232,6 +309,8 @@ Sequenced so each step is independently verifiable. Suggested PR boundaries.
 
 - Atlas / declarative schema management (considered, not chosen — see D1).
 - Production rollback tooling / `goose down` in prod.
+- **Deciding the deployment topology** (single VM vs. separate DB host). The
+  design works for both; picking one is a separate operational decision.
 - Any change to the schema itself: the baseline is a faithful squash of v44, not
   a redesign.
 - The broader "system regenerated from scratch" effort — this plan makes the
@@ -244,6 +323,9 @@ Sequenced so each step is independently verifiable. Suggested PR boundaries.
       byte-identical (Slice A gate).
 - [ ] `MigrateDB` (goose) brings a fresh MariaDB to head; a second call is a
       no-op; integration test green.
+- [ ] **Adoption:** a frozen v44 (`SCHEMA_INFO`-based) DB crosses over in place —
+      baseline stamped, `SCHEMA_INFO` dropped, schema intact, re-run a no-op; a
+      behind-baseline DB is rejected.
 - [ ] `IMS_SEED_DEMO=true` seeds on boot, idempotent across restarts; off ⇒
       schema-only.
 - [ ] `docker compose -f docker-compose.dev.yml up` on a wiped data dir yields a
@@ -251,4 +333,7 @@ Sequenced so each step is independently verifiable. Suggested PR boundaries.
 - [ ] `docker-compose.cicd.yml` comes up green.
 - [ ] `current.sql` and the `NN-from-MM.sql` chain are gone; no dangling
       references; `go test ./...` + lint green.
-- [ ] `CLAUDE.md`, this README, and VM bring-up notes updated.
+- [ ] `CLAUDE.md` + this README updated; deployment documented as
+      topology-agnostic (app migrates/seeds on boot over its DB connection).
+- [ ] (Slice E, post-crossover) adoption shim + `44-legacy.sql` fixture/test
+      removed; `MigrateDB` has no special cases.
