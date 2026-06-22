@@ -117,6 +117,11 @@ func mustStartServer(ctx context.Context, unvalidatedCfg *conf.IMSConfig, printC
 
 	imsDB, err := store.SqlDB(ctx, imsCfg.Store, true)
 	must(err)
+	// Load the selected seed dataset into an empty DB on boot (idempotent).
+	// Defaults to none in production, which gets a schema-only database.
+	if imsCfg.Store.Type == conf.DBStoreTypeMaria {
+		must(store.Seed(ctx, imsDB, imsCfg.Core.Seed))
+	}
 	imsDBQ := store.NewDBQ(imsDB, imsdb.New())
 
 	// The user/personnel directory is the local IMS-DB people tables
