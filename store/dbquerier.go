@@ -17,7 +17,6 @@
 package store
 
 import (
-	"context"
 	"database/sql"
 
 	"github.com/mikeki/ocf-ims/store/imsdb"
@@ -34,10 +33,4 @@ func NewDBQ(sqlDB *sql.DB, querier imsdb.Querier) *DBQ {
 		DB:      sqlDB,
 		Querier: querier,
 	}
-}
-
-func (l DBQ) SchemaVersion(ctx context.Context, db imsdb.DBTX) (int16, error) {
-	// This function is a demonstration of how calls into the Querier can be intercepted,
-	// e.g. for logging/instrumenting purposes.
-	return l.Querier.SchemaVersion(ctx, db)
 }
