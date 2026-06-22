@@ -452,8 +452,21 @@ async function loadOneReport(reportNumber: number): Promise<{err: string|null}> 
 
 let allVisits: ims.Visit[]|null|undefined = null;
 
+// White Bird Visits is disabled for this year (we haven't connected with the
+// White Bird team yet — see nav.templ). Keeping the visit list empty makes every
+// visit surface on the incident form vanish cleanly: no options in the
+// "Attached Reports/Visits" add dropdown, no attached visits drawn, and no visit
+// text mixed into the cross-reference search. The backend and visit page code are
+// intact — flip this back to true (and restore the labels in incident.templ) to
+// re-enable next year.
+const visitsEnabled = false;
+
 async function loadAllVisits(): Promise<{err: string|null}> {
     if (allVisits === undefined) {
+        return {err: null};
+    }
+    if (!visitsEnabled) {
+        allVisits = [];
         return {err: null};
     }
 
@@ -486,6 +499,9 @@ async function loadAllVisits(): Promise<{err: string|null}> {
 
 async function loadOneVisit(visitNumber: number): Promise<{err: string|null}> {
     if (allVisits === undefined) {
+        return {err: null};
+    }
+    if (!visitsEnabled) {
         return {err: null};
     }
 

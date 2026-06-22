@@ -135,13 +135,13 @@ templ Nav(eventName string) {
              }
              href="">Reports</a>
         </li>
+        <!-- White Bird Visits is disabled for this year: we haven't connected
+             with the White Bird team yet. Kept hidden (not removed) so it can be
+             re-enabled next year by restoring the eventSet class toggle here and
+             the reveal block in ims.ts setupNav. -->
         <li class="nav-item">
           <a id="active-event-visits"
-             if eventSet {
-               class="nav-link"
-             } else {
-               class="nav-link hidden"
-             }
+             class="nav-link hidden"
              href="">White Bird Visits</a>
         </li>
         <!-- People: admin-only for now, so unlike the links above it stays hidden

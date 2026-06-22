@@ -433,15 +433,20 @@ function renderCommonPageItems(authInfo: AuthInfo): void {
             }
         }
 
-        const activeEventVisits = document.getElementById("active-event-visits") as HTMLAnchorElement|null;
-        if (activeEventVisits != null) {
-            activeEventVisits.href = urlReplace(url_viewVisits);
-            activeEventVisits.classList.remove("hidden");
-
-            if (window.location.pathname.startsWith(urlReplace(url_viewVisits))) {
-                activeEventVisits.classList.add("active");
-            }
-        }
+        // White Bird Visits is disabled for now: we haven't connected with the
+        // White Bird team yet, so the section is hidden from the UI for this year.
+        // The backend and page code are intact — to re-enable, restore the reveal
+        // block below (and the nav link/Settings control). See nav.templ.
+        //
+        // const activeEventVisits = document.getElementById("active-event-visits") as HTMLAnchorElement|null;
+        // if (activeEventVisits != null) {
+        //     activeEventVisits.href = urlReplace(url_viewVisits);
+        //     activeEventVisits.classList.remove("hidden");
+        //
+        //     if (window.location.pathname.startsWith(urlReplace(url_viewVisits))) {
+        //         activeEventVisits.classList.add("active");
+        //     }
+        // }
 
         // People is admin-only for now (the refine-later seam in 62-people-event-nav.md):
         // reveal it only when an event is active AND the viewer is an admin.
