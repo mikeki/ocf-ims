@@ -290,7 +290,7 @@ templ Incident(deployment, versionName, versionRef, eventName string) {
     <div class="row">
       <div class="col-sm-12">
         <div class="card">
-          <label class="control-label card-header">Entries from Incident and attached Reports/Visits</label>
+          <label class="control-label card-header">Entries from Incident and attached Reports</label>
           <div id="journal_entry_well" class="card-body">
             <label class="control-label">
               <input id="history_checkbox" type="checkbox" onchange="toggleShowHistory()"/>
@@ -338,9 +338,12 @@ templ Incident(deployment, versionName, versionRef, eventName string) {
     <div class="row py-2">
       <div class="col-sm-6">
         <div class="card">
-          <label class="control-label card-header">Attached Reports/Visits</label>
+          <!-- White Bird Visits is disabled this year (see nav.templ / the
+               visitsEnabled flag in incident.ts), so this widget links Reports
+               only. Restore the "/Visits" wording when re-enabling. -->
+          <label class="control-label card-header">Attached Reports</label>
           <div class="small text-body-secondary px-3 pt-2 no-print">
-            Link existing Reports or Visits that relate to this incident.
+            Link existing Reports that relate to this incident.
           </div>
           <ul id="attached_reports" class="list-group list-group-small card-body list-group-flush">
             <template id="attached_report_li_template">
