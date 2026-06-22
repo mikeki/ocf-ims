@@ -1,6 +1,8 @@
 # Platform — DB migration tooling (goose)
 
-> **Status:** Plan — for review. **Last updated:** 2026-06-21
+> **Status:** In progress. Slice A ✅ (PR #56), B ✅ (PR #57), C ✅ (PR #58),
+> D in PR (this work); E (remove the adoption shim) pending the dev-DB crossover.
+> **Last updated:** 2026-06-22
 >
 > Replace the hand-rolled migration system (`current.sql` + an append-only
 > `XX-from-YY.sql` chain + a manually-bumped `SCHEMA_INFO.VERSION`) with

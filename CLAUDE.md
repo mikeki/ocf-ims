@@ -150,45 +150,73 @@ it reads the local `PERSON`/`POSITION`/`TEAM` tables that live in the IMS schema
 `docs/plans/32-retire-clubhouse.md` — the external Clubhouse directory was retired).
 
 The IMS database uses **sqlc** for type-safe SQL code generation:
-- SQL schema: `store/schema/current.sql`
+- SQL schema: the `store/schema/migrations/` directory (the goose migrations are
+  the single schema source — sqlc reads them, see `sqlc.yaml`)
 - SQL queries: `store/queries.sql` (incidents, field reports, **and** the local
   people-directory queries)
 - Generated Go code: `store/imsdb/`
 
 ### Database Migrations
 
-To modify the IMS database schema:
+Schema changes are managed with [**goose**](https://github.com/pressly/goose).
+There is a **single schema source of truth**: the `store/schema/migrations/`
+directory. goose applies it on boot (`store.MigrateDB`, called from
+`cmd/serve.go`), and sqlc reads the same directory for codegen — so there is no
+separate `current.sql` to keep in sync. See `docs/plans/08-db-migration-tooling.md`.
 
-1. Create a new migration file in `store/schema/` following the pattern `XX-from-YY.sql`
-2. Update the schema version in the migration:
-   ```sql
-   update `SCHEMA_INFO` set `VERSION` = XX;
+To modify the schema:
+
+1. Scaffold a new migration with goose — this gets the sequential numbering and
+   the `Up`/`Down` annotations right, and needs no database:
+   ```bash
+   go run github.com/pressly/goose/v3/cmd/goose@v3.27.1 \
+       -dir store/schema/migrations -s create <description> sql
    ```
-3. Apply the same changes to `store/schema/current.sql` (update version there too)
-4. Run the migration test: `go test ./store/integration`
-5. Regenerate sqlc code: `go tool sqlc generate`
-6. Update `store/queries.sql` if you modified existing tables/columns
-7. Fix any broken Go code and run `go test ./...`
+   (Run from the repo root. Pin the goose version to the one in `go.mod`. The
+   ad-hoc `@version` form is used deliberately — it keeps goose's heavy
+   multi-driver CLI deps out of our `go.mod`. This writes
+   `store/schema/migrations/NNNNN_<description>.sql`.)
+2. Fill in the generated `-- +goose Up` / `-- +goose Down` sections with your DDL
+   (one logical change — see conventions below).
+3. Regenerate sqlc code: `go tool sqlc generate` — it builds its schema model
+   from the migrations' `Up` sections, so this also fails on SQL that doesn't
+   parse.
+4. Update `store/queries.sql` if you changed tables/columns it touches; fix any
+   broken Go.
+5. `go test ./...` — `go test ./store/integration` **applies the new migration to
+   a real MariaDB**, the authoritative check that it migrates cleanly and that a
+   fresh DB and an adopted one still converge.
 
-**Migrations are append-only history.** Each `XX-from-YY.sql` file represents
-the exact transformation applied to a database at that version, so existing
-files are never edited or deleted. Add a new migration rather than touching an
-old one. Only `current.sql` describes the present-day schema for fresh installs,
-and migrations are **schema-only** — they don't seed or transform domain data
-(OCF launches on a fresh DB seeded from `current.sql`, so there's no production
-data to migrate; see `docs/plans/40-domain-model.md`).
+Optional quick static check of the migration files (no DB):
+```bash
+go run github.com/pressly/goose/v3/cmd/goose@v3.27.1 -dir store/schema/migrations validate
+```
 
-**Migration test (re-baselined at v36).** `store/integration` verifies that
-*future* migrations stay consistent with `current.sql`: `TestMigrateSameAsCurrentSchema`
-loads the frozen OCF baseline (`store/integration/36.sql`, a snapshot of the
-schema OCF launched on), applies every migration from v37 onward, and checks the
-result still matches `current.sql` (structurally — the comparison strips each
-table's `AUTO_INCREMENT` counter, so growing the reference-data seeds in
-`current.sql`, e.g. adding an incident type, stays migration-free). The pre-OCF Burning Man upgrade chain is
-**not** replayed — OCF starts fresh from `current.sql` and never runs that legacy
-path, so the old `06.sql` fixture was retired. The baseline `36.sql` is itself a
-frozen fixture: leave it as-is. (When the schema diverges far enough that a fresh
-baseline is useful, freeze a new `NN.sql` snapshot and re-point the test.)
+Conventions:
+- **No manual version bookkeeping.** goose tracks applied migrations in its own
+  `goose_db_version` table — there is no `SCHEMA_INFO` and nothing to hand-bump.
+- **Append-only.** Past migrations are immutable history; never edit or delete an
+  applied one. Add a new migration instead.
+- **One logical DDL change per migration**, kept small: MariaDB DDL is **not
+  transactional**, so a multi-statement migration that fails partway can't be
+  cleanly rolled back.
+- **Schema-only** — migrations don't seed or transform domain data. Reference
+  data shipped to *every* environment (e.g. the `INCIDENT_TYPE` taxonomy) lives
+  in the baseline migration. Environment-specific seed data is loaded separately
+  (see `IMS_SEED` under Configuration; `store.Seed`).
+- **`Down` migrations** are written best-effort for dev convenience; production
+  rolls forward, never `goose down`.
+
+**Migration test.** `store/integration/migrate_test.go` brings up MariaDB via
+testcontainers and checks that a fresh DB and a (one-time) adopted pre-goose DB
+both migrate to the same schema, and that `MigrateDB` is idempotent.
+
+**One-time adoption shim (temporary).** `store.MigrateDB` contains an
+`adoptLegacyDBIfNeeded` step that crosses a pre-goose database (old `SCHEMA_INFO`
+cursor, no goose ledger) over to goose without re-running the baseline. It is
+explicitly temporary and will be removed once the dev DB has crossed over
+(`docs/plans/08-db-migration-tooling.md`, Slice E). New/fresh databases never
+touch it.
 
 ### Configuration
 
@@ -197,6 +225,10 @@ Configuration uses environment variables loaded from a `.env` file (copy from `.
 Key configuration concepts:
 - **User directory**: always the local IMS-DB `PERSON` table (dev users seeded from `store/fakeimsdb/seed.sql`); there is no directory-type selector
 - **DB store types**: `MariaDB` (persistent storage) or `noop` (no-op for testing only)
+- **Seed profile** (`IMS_SEED`): `none` (default — schema-only, used in prod) or
+  `demo` (loads `store/fakeimsdb/seed.sql` into an empty DB on boot, idempotent;
+  set in `docker-compose.dev.yml`). New profiles (e.g. a future secret-free
+  `prod` bootstrap) plug into `conf.SeedProfile` + `store.Seed`.
 - **Attachments stores**: `local` (filesystem) or `s3` (AWS S3)
 
 To add demo/test users to the local directory, use the `add-demo-user` repo skill at `.claude/skills/add-demo-user/SKILL.md` — it covers password hashing, the seed file edit, applying inserts to a live `ims-db` container, and the 5-min user-cache TTL.
