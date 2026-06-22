@@ -67,6 +67,24 @@ go test ./store/integration
 go test ./api/integration
 ```
 
+Run TypeScript tests (Vitest, in `web/typescripttest/`; requires `npm install`):
+```bash
+npm test
+# or
+make test/ts
+```
+These run the real `web/typescript` modules in happy-dom against templ-rendered
+HTML fixtures, with `fetch`/`EventSource`/`flatpickr`/Bootstrap mocked. The
+fixtures are regenerated automatically by the `pretest` script
+(`bin/rendertestfixtures`) into the gitignored `web/typescripttest/fixtures/`
+directory, so a templ generate must have run (CI does this; locally `npm test`
+needs generated code present — run a build once first). Coverage is reported on
+`web/typescript/**`. NOTE: per-module tests for modules that diverged from
+upstream (e.g. `admin_types`, the `incident` page, and the "field report" →
+"report" / "report entry" → "journal entry" / visit-guest helpers in `ims.ts`)
+are an incremental follow-up — the harness ships with smoke tests for `fetch`,
+`theme`, `login`, and the stable `ims.ts` helpers.
+
 Run Playwright browser tests (requires Playwright installed):
 ```bash
 cd playwright
@@ -244,6 +262,7 @@ The web UI uses:
 
 - **Unit tests**: Throughout the codebase using `testify` assertions
 - **Integration tests**: `store/integration/` and `api/integration/` use testcontainers to spin up real MariaDB
+- **TypeScript tests**: Vitest tests in `web/typescripttest/` (run with `npm test`), exercising the real TypeScript against templ-rendered HTML fixtures in happy-dom, with fetch/EventSource mocked
 - **Playwright tests**: Browser automation tests in `playwright/tests/`
 
 ### Code Generation Tools

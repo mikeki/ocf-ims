@@ -218,3 +218,58 @@ jobs:
         run: ./bin/test_docker
         env:
           IMAGE_TAG: ${{ github.sha }}
+
+
+  typescript-test:
+
+    name: TypeScript tests
+
+    runs-on: ubuntu-latest
+
+    steps:
+
+      - name: Harden Runner
+        uses: step-security/harden-runner@v2.19.4
+        with:
+          egress-policy: block
+          allowed-endpoints: >
+            *.github.com:443
+            *.githubusercontent.com:443
+            *.go.dev:443
+            *.golang.org:443
+            cdn.datatables.net:443
+            cdn.jsdelivr.net:443
+            code.jquery.com:443
+            dl.google.com:443
+            github.com:443
+            go.dev:443
+            golang.org:443
+            registry.npmjs.org:443
+            storage.googleapis.com:443
+
+      - name: Checkout source code
+        uses: actions/checkout@v6
+
+      - name: Set up Go
+        uses: actions/setup-go@v6
+        with:
+          go-version-file: "go.mod"
+
+      - name: Generate code (sqlc, templ, tsgo)
+        # The fixtures renderer (bin/rendertestfixtures, run by the "pretest"
+        # npm script) imports web/template, whose templ code is generated and
+        # not committed. Produce it before npm test.
+        run: go run bin/build/build.go -generate-only
+
+      - name: Set up Node
+        uses: actions/setup-node@v6
+        with:
+          node-version-file: ".nvmrc"
+
+      - name: Install npm dependencies
+        run: npm ci
+
+      # The "pretest" npm script renders the templ HTML fixtures (via Go)
+      # that the Vitest tests run against; `npm test` runs it automatically.
+      - name: Run TypeScript tests
+        run: npm test
