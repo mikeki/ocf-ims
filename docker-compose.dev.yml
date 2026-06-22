@@ -5,12 +5,14 @@
 # Here's some helpful information:
 #
 # 1. The server will rebuild and restart on any code update, thanks to air.
-# 2. When the compose stack is first brought up, the IMS database will be created,
-#    DDLed to the latest schema, then seeded with data for local development
-#    (including the local PERSON directory). Search for "docker-entrypoint-initdb.d"
-#    below for more info.
+# 2. The app owns the schema and the seed: on boot it runs goose migrations and,
+#    because IMS_SEED=demo is set below, loads the dev seed (local PERSON
+#    directory + demo data) into an empty database. Both are idempotent, so a
+#    restart against a populated database is a no-op. (There are no
+#    docker-entrypoint-initdb.d scripts — the app, not MariaDB, sets everything
+#    up.)
 # 3. If you ever want to delete the database and start fresh, then you just need to
-#    delete ./.docker/mysql/data-ims/, and the stack will re-create and re-seed the
+#    delete ./.docker/mysql/data-ims/, and the app will re-migrate and re-seed the
 #    database when you next `docker compose up`.
 
 services:
@@ -38,9 +40,12 @@ services:
     # 2. ./.env file, if present, which is overridden by
     # 3. The environment values here.
     environment:
-      # The user directory is the local IMS-DB PERSON table, seeded from
-      # store/fakeimsdb/seed.sql. See docs/plans/32-retire-clubhouse.md. Demo
-      # logins: Miguel / ShadowDancer / TeamMember (password == handle).
+      # The user directory is the local IMS-DB PERSON table. IMS_SEED=demo makes
+      # the app load store/fakeimsdb/seed.sql into an empty DB on boot (idempotent
+      # — see store.Seed). Demo logins: Miguel / ShadowDancer / TeamMember
+      # (password == handle). See docs/plans/32-retire-clubhouse.md and
+      # docs/plans/08-db-migration-tooling.md.
+      IMS_SEED: "demo"
       #
       # The bind-mounted /src often has a UID that doesn't match the in-container
       # user, which trips git's "dubious ownership" check and makes `go build`
@@ -82,8 +87,6 @@ services:
       - "3306"
     volumes:
       - ./.docker/mysql/data-ims/:/var/lib/mysql
-      - ./store/schema/current.sql:/docker-entrypoint-initdb.d/1.schema.sql
-      - ./store/fakeimsdb/seed.sql:/docker-entrypoint-initdb.d/2.seed.sql
     healthcheck:
       test: [ "CMD", "healthcheck.sh", "--connect", "--innodb_initialized" ]
       interval: 1s
