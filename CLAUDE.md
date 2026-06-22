@@ -208,15 +208,8 @@ Conventions:
   rolls forward, never `goose down`.
 
 **Migration test.** `store/integration/migrate_test.go` brings up MariaDB via
-testcontainers and checks that a fresh DB and a (one-time) adopted pre-goose DB
-both migrate to the same schema, and that `MigrateDB` is idempotent.
-
-**One-time adoption shim (temporary).** `store.MigrateDB` contains an
-`adoptLegacyDBIfNeeded` step that crosses a pre-goose database (old `SCHEMA_INFO`
-cursor, no goose ledger) over to goose without re-running the baseline. It is
-explicitly temporary and will be removed once the dev DB has crossed over
-(`docs/plans/08-db-migration-tooling.md`, Slice E). New/fresh databases never
-touch it.
+testcontainers and checks that goose migrates a fresh DB to head, that
+`MigrateDB` is idempotent, and that the baseline's tables exist.
 
 ### Configuration
 

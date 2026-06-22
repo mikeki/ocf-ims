@@ -31,7 +31,7 @@ management system.
 | [05-platform-stack.md](05-platform-stack.md) | Foundation — proto-first polyglot monorepo | Decisions locked |
 | [06-go-workspace-restructure.md](06-go-workspace-restructure.md) | Platform — move Go into `go/ims` + `go.work` | Deferred (after beta) |
 | [07-proto-integration.md](07-proto-integration.md) | Platform — proto-first API contract (buf + Connect-Go) | ⏸️ PARKED post-fair — reverted from master; preserved on `archive/proto-integration`. generate-at-build convention kept on master. |
-| [08-db-migration-tooling.md](08-db-migration-tooling.md) | Platform — DB migration tooling (goose, single source of truth) | A ✅ (#56), B ✅ (#57), C ✅ (#58), D in PR; E (remove adoption shim) pending |
+| [08-db-migration-tooling.md](08-db-migration-tooling.md) | Platform — DB migration tooling (goose, single source of truth) | ✅ Done (A #56, B #57, C #58, D #59, E in PR) |
 | [10-cleanup-pass.md](10-cleanup-pass.md) | Phase 1 — Preparation & clean-up | ✅ Done (PRs #1–#5) |
 | [11-remove-concentric-streets.md](11-remove-concentric-streets.md) | Phase 1 — Remove Concentric Streets | ✅ Done (PR #1) |
 | [20-terminology.md](20-terminology.md) | Phase 2 — Terminology | 2a ✅ (PR #13), 2c ✅ (PR #14); 2b → Phase 3; 2d awaiting OCF wording |

@@ -1,7 +1,9 @@
 # Platform — DB migration tooling (goose)
 
-> **Status:** In progress. Slice A ✅ (PR #56), B ✅ (PR #57), C ✅ (PR #58),
-> D in PR (this work); E (remove the adoption shim) pending the dev-DB crossover.
+> **Status:** ✅ Done. Slice A (PR #56), B (PR #57), C (PR #58), D (PR #59), and
+> E — remove the one-time adoption shim — in PR. goose is the single schema
+> source (applied on boot + read by sqlc); `current.sql` and the old chain are
+> gone; the dev DB crossed over and the adoption shim has been retired.
 > **Last updated:** 2026-06-22
 >
 > Replace the hand-rolled migration system (`current.sql` + an append-only
