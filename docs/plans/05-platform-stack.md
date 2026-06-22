@@ -1,7 +1,7 @@
 # Platform Stack: proto-first polyglot monorepo
 
 > **Status:** Draft / architecture proposal &nbsp;·&nbsp; **Parent:** [00-master-plan.md](00-master-plan.md)
-> &nbsp;·&nbsp; **Last updated:** 2026-06-05
+> &nbsp;·&nbsp; **Last updated:** 2026-06-22
 
 This document is **self-contained**: it assumes no prior knowledge of any other
 project. It defines the target architecture ("the platform stack") for OCF IMS
@@ -139,6 +139,35 @@ event deadline.
 - `.npmrc` with `inject-workspace-packages=true` so Expo's Metro bundler resolves
   workspace packages correctly under pnpm.
 
+#### Frontend test harness — defer until the pnpm workspace exists (decided 2026-06-22)
+
+There is **no JS package manager in the repo today** — the legacy web UI is
+compiled by `go tool tsgo`, with zero `package.json`/`node_modules` footprint.
+Upstream (burningmantech) added a [Vitest](https://vitest.dev) unit-test harness
+for its TypeScript (their #654/#662), and we hand-ported it to this fork as
+**PR #64** (branch `feat/vitest-ts-harness`, kept for reference). On reflection
+we are **not merging it yet**, because a standalone harness now conflicts with
+this platform track on two counts:
+
+1. **Package manager.** That port introduces a plain **npm** root `package.json`
+   + `package-lock.json`. The platform stack standardises on a single **pnpm**
+   workspace root (`pnpm-workspace.yaml`, `packageManager` pin, catalog — §2/§3e).
+   Bringing in an npm root first means re-doing it (lockfile, `npm ci` CI job)
+   when P0 lands pnpm.
+2. **Investing in the legacy UI.** Per §6 we deliberately don't over-invest in the
+   server-rendered `templ`/`web/typescript` UI, which the Expo web build is slated
+   to replace. A test harness bolted onto that pipeline is effort aimed at the
+   layer we're migrating away from.
+
+**Decision:** defer frontend unit testing until the **P0 workspace skeleton**
+exists, then adopt it **inside the pnpm workspace**, aligned with Biome (D6) and
+targeting the generated Connect client + Expo interface (the code that will
+actually live on, §3b/§3d) rather than the legacy `web/typescript`. The ported
+Vitest work on `feat/vitest-ts-harness` is a useful reference for the mechanics
+(happy-dom, templ-rendered fixtures via `bin/rendertestfixtures`, mocking
+`fetch`/`EventSource`) if we want any legacy-UI coverage in the interim, but it
+should be re-expressed under pnpm, not merged as an npm island. See P0 in §5.
+
 ## 4. Key decisions
 
 Status as of 2026-06-05. **D1 and the web-UI fate (§6) are now decided.**
@@ -152,6 +181,7 @@ Status as of 2026-06-05. **D1 and the web-UI fate (§6) are now decided.**
 | D5 | Proto domain naming | ◻️ Use **current backend terms** (Incident, FieldReport…) initially | OCF terminology rename is a separate effort ([master plan](00-master-plan.md) Phase 2). Don't pre-bake undecided names into the contract. |
 | D6 | Lint/format | ✅ **Biome for new TS packages**, leave legacy web UI as-is | Don't churn the existing pipeline; isolate the new stack. |
 | D7 | `go.work` | ✅ **Yes, now** (implied by D1) | Required once the Go app lives in `go/ims/` and generated Go is a second module. |
+| D8 | Frontend test harness | ✅ **Defer** the Vitest harness (PR #64) until the pnpm workspace (P0); adopt it under pnpm, not as a standalone npm root | Avoids an npm island we'd redo under pnpm, and avoids investing in the legacy `templ` UI we're replacing (§3e, §6). |
 
 ## 5. Phased rollout
 
@@ -159,7 +189,11 @@ Each phase is independently shippable and keeps `go build`/`go test` green.
 
 - **P0 — Workspace skeleton.** Add `pnpm-workspace.yaml`, root `package.json`,
   `.npmrc`, `.nvmrc`, `biome.json`. Empty `packages/`. Prove `pnpm install` works
-  and doesn't disturb the Go build or the `tsgo` web UI build.
+  and doesn't disturb the Go build or the `tsgo` web UI build. **This is also where
+  frontend testing lands** (D8): once the pnpm workspace exists, set up Vitest under
+  it — reusing the mechanics from the deferred `feat/vitest-ts-harness` branch
+  (happy-dom + templ-rendered fixtures + fetch/EventSource mocks) — rather than
+  merging that branch's npm root.
 - **P1 — Proto pipeline.** Add `buf.yaml`, `buf.gen.yaml`, a minimal
   `proto/ocf/ims/v1/` (start with the core `Incident`/`Location` messages,
   mirroring `json/incident.go`). Wire `proto:gen`. Generate TS into
