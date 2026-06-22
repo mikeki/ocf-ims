@@ -47,6 +47,7 @@ func DefaultIMS() *IMSConfig {
 			CacheControlLong:     2 * time.Hour,
 			MaxRequestBytes:      100 * mib,
 			ActionLogEnabled:     true,
+			Seed:                 SeedNone,
 		},
 		Store: DBStore{
 			Type: DBStoreTypeMaria,
@@ -74,6 +75,7 @@ func (c *IMSConfig) Validate() error {
 
 	// IMS database
 	errs = append(errs, c.Store.Type.Validate())
+	errs = append(errs, c.Core.Seed.Validate())
 	if c.Store.Type != DBStoreTypeMaria {
 		c.Store.MariaDB = DBStoreMaria{}
 	}
@@ -132,6 +134,11 @@ type DeploymentType string
 
 type DBStoreType string
 
+// SeedProfile selects which (if any) seed dataset is loaded into an empty
+// database on boot. New profiles (e.g. a secret-free "prod" bootstrap) plug in
+// by adding a const here, a Validate case, and a mapping in store.Seed.
+type SeedProfile string
+
 // All these consts should have lowercase values to allow case-insensitive matching.
 const (
 	AttachmentsStoreLocal    AttachmentsStoreType = "local"
@@ -143,6 +150,10 @@ const (
 	DeploymentTypeProduction DeploymentType       = "production"
 	DBStoreTypeMaria         DBStoreType          = "mariadb"
 	DBStoreTypeNoOp          DBStoreType          = "noop"
+	// SeedNone loads nothing (production default until a prod seed exists).
+	SeedNone SeedProfile = "none"
+	// SeedDemo loads the dev/demo fixture (store/fakeimsdb/seed.sql).
+	SeedDemo SeedProfile = "demo"
 )
 
 func (d DBStoreType) Validate() error {
@@ -169,6 +180,15 @@ func (d DeploymentType) Validate() error {
 		return nil
 	default:
 		return fmt.Errorf("unknown deployment type %v", d)
+	}
+}
+
+func (s SeedProfile) Validate() error {
+	switch s {
+	case SeedNone, SeedDemo:
+		return nil
+	default:
+		return fmt.Errorf("unknown seed profile %v", s)
 	}
 }
 
@@ -201,6 +221,11 @@ type ConfigCore struct {
 
 	// ActionLogEnabled is a global toggle switch for enabling writing to the ACTION_LOG table.
 	ActionLogEnabled bool
+
+	// Seed selects which seed dataset (if any) is loaded into an empty database
+	// on boot. Defaults to SeedNone; "demo" loads the dev fixture. The load is
+	// idempotent — see store.Seed.
+	Seed SeedProfile
 }
 
 type DBStore struct {
