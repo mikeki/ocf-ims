@@ -27,6 +27,13 @@ import (
 
 const compactIntBase = 62
 
+// TokenType values for the "tok" claim. These distinguish access tokens from
+// refresh tokens, so that one can never be used in place of the other.
+const (
+	TokenTypeAccess  = "access"
+	TokenTypeRefresh = "refresh"
+)
+
 type IMSClaims struct {
 	jwt.RegisteredClaims
 
@@ -36,6 +43,7 @@ type IMSClaims struct {
 	Onsite         bool   `json:"ons"`
 	Admin          bool   `json:"adm,omitempty"`
 	OnDutyPosition *int64 `json:"dut,omitempty"`
+	TokenType      string `json:"tok,omitempty"`
 }
 
 func unmarshalBigInt(s string) *big.Int {
@@ -122,6 +130,11 @@ func (c IMSClaims) WithPersonTeams(teams ...int64) IMSClaims {
 
 func (c IMSClaims) WithPersonOnDutyPosition(pos *int64) IMSClaims {
 	c.OnDutyPosition = pos
+	return c
+}
+
+func (c IMSClaims) WithTokenType(tokenType string) IMSClaims {
+	c.TokenType = tokenType
 	return c
 }
 
