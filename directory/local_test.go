@@ -55,9 +55,9 @@ func TestLocalUserStore(t *testing.T) {
 	require.NoError(t, err)
 
 	_, err = sqlDB.ExecContext(ctx, `
-		insert into PERSON (ID, HANDLE, EMAIL, PASSWORD, STATUS, ON_SITE, CREATED) values
-			(1, 'Alice', 'alice@example.com', 'hashA', 'active', true, 0),
-			(2, 'Bob',   'bob@example.com',   'hashB', 'active', false, 0);
+		insert into PERSON (ID, HANDLE, EMAIL, PASSWORD, CREATED) values
+			(1, 'Alice', 'alice@example.com', 'hashA', 0),
+			(2, 'Bob',   'bob@example.com',   'hashB', 0);
 		insert into `+"`POSITION`"+` (ID, NAME) values (10, 'Driver'), (11, 'Dancer');
 		insert into TEAM (ID, NAME) values (20, 'Green Team');
 		insert into PERSON__POSITION (PERSON_ID, POSITION_ID) values (1, 10), (1, 11);
@@ -77,7 +77,6 @@ func TestLocalUserStore(t *testing.T) {
 	require.Equal(t, "Alice", alice.Handle)
 	require.Equal(t, "alice@example.com", alice.Email)
 	require.Equal(t, "hashA", alice.Password)
-	require.True(t, alice.Onsite)
 	require.ElementsMatch(t, []int64{10, 11}, alice.PositionIDs)
 	require.ElementsMatch(t, []string{"Driver", "Dancer"}, alice.PositionNames)
 	require.Empty(t, alice.TeamIDs)
@@ -85,7 +84,6 @@ func TestLocalUserStore(t *testing.T) {
 	bob := users[2]
 	require.NotNil(t, bob)
 	require.Equal(t, "Bob", bob.Handle)
-	require.False(t, bob.Onsite)
 	require.ElementsMatch(t, []int64{20}, bob.TeamIDs)
 	require.ElementsMatch(t, []string{"Green Team"}, bob.TeamNames)
 

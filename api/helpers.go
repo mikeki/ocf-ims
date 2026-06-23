@@ -240,7 +240,8 @@ func permissionsByEvent(ctx context.Context, jwtCtx JWTContext, imsDBQ *store.DB
 	permissionsByEvent, _ := authz.ManyEventPermissions(
 		accessRowByEventID,
 		jwtCtx.Claims.PersonHandle(),
-		jwtCtx.Claims.PersonOnSite(),
+		// On-site is retired (plan 52a); see EventPermissions.
+		false,
 		jwtCtx.Claims.PersonAdmin(),
 		userPosNames,
 		userTeamNames,

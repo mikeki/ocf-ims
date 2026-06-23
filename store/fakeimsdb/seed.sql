@@ -1,17 +1,16 @@
 -- Local people for demo/dev. The 600-602 accounts are loginable (each password
 -- equals the case-sensitive handle); 603-606 are referenced by the historical
 -- incident/report seed data below and need no login.
-insert into PERSON (ID, HANDLE, EMAIL, PASSWORD, STATUS, ON_SITE, CREATED)
-values  (600, 'Miguel',       'miguel@example.com',       '$argon2id$v=19$m=8192,t=4,p=1$tL68tr5BXPSUKD+2m4fx5A$h+JZLy1t+Ch1NnM+xro0REQrSAfq7Egtc/RgfOfzWYo', 'active', true,  0),
-        (601, 'ShadowDancer', 'shadowdancer@example.com', '$argon2id$v=19$m=8192,t=4,p=1$pZevNxeYuILQUIzHBHmEcQ$1tUEWKGlpmEHakHQXoz3UYQ5EyL01qHmlVfBfuq5oj0', 'active', true,  0),
-        (602, 'TeamMember',   'teammember@example.com',   '$argon2id$v=19$m=8192,t=4,p=1$aeRknlIpDHICmM6mD7DyUA$nGvCg3AIwmWAiT1M2HBqlScDS0cEHEIoE93w71DzqlI', 'active', true,  0),
-        (603, 'Abraham',      null, null, 'active', false, 0),
-        (604, 'Hardware',     null, null, 'active', false, 0),
-        (605, 'Defect',       null, null, 'active', false, 0),
-        (606, 'Loosy',        null, null, 'active', false, 0);
+insert into PERSON (ID, HANDLE, EMAIL, PASSWORD, CREATED)
+values  (600, 'Miguel',       'miguel@example.com',       '$argon2id$v=19$m=8192,t=4,p=1$tL68tr5BXPSUKD+2m4fx5A$h+JZLy1t+Ch1NnM+xro0REQrSAfq7Egtc/RgfOfzWYo', 0),
+        (601, 'ShadowDancer', 'shadowdancer@example.com', '$argon2id$v=19$m=8192,t=4,p=1$pZevNxeYuILQUIzHBHmEcQ$1tUEWKGlpmEHakHQXoz3UYQ5EyL01qHmlVfBfuq5oj0', 0),
+        (602, 'TeamMember',   'teammember@example.com',   '$argon2id$v=19$m=8192,t=4,p=1$aeRknlIpDHICmM6mD7DyUA$nGvCg3AIwmWAiT1M2HBqlScDS0cEHEIoE93w71DzqlI', 0),
+        (603, 'Abraham',      null, null, 0),
+        (604, 'Hardware',     null, null, 0),
+        (605, 'Defect',       null, null, 0),
+        (606, 'Loosy',        null, null, 0);
 
--- Miguel is a local (in-app) administrator, exercising the PERSON.IS_ADMIN path
--- in addition to any IMS_ADMINS env bootstrap.
+-- Miguel is a local (in-app) administrator, exercising the PERSON.IS_ADMIN path.
 update PERSON set IS_ADMIN = true where ID = 600;
 
 -- 5e unified people registry. Backfill preferred/display names for the existing
@@ -30,8 +29,8 @@ update PERSON set NAME = case ID
 end
 where ID between 600 and 606;
 
-insert into PERSON (ID, HANDLE, NAME, STATUS, ON_SITE, CREATED)
-values (607, null, 'River Quinn', 'active', false, 0);
+insert into PERSON (ID, HANDLE, NAME, CREATED)
+values (607, null, 'River Quinn', 0);
 
 insert into `POSITION` (ID, NAME) values (701, 'Driver'), (702, 'Dancer');
 insert into TEAM (ID, NAME) values (800, 'Driving Team');
@@ -556,9 +555,9 @@ values
 -- the visit points at the guest via GUEST_PERSON_ID. Two are handle-less people met
 -- at the fair (a participant with a wristband, a public guest); the third reuses the
 -- registry-only person 607 seeded above.
-insert into PERSON (ID, HANDLE, NAME, STATUS, ON_SITE, CREATED)
-values  (6100, null, 'Cedar',      'active', false, 0),
-        (6101, null, 'Dust Devil', 'active', false, 0);
+insert into PERSON (ID, HANDLE, NAME, CREATED)
+values  (6100, null, 'Cedar',      0),
+        (6101, null, 'Dust Devil', 0);
 
 insert into PERSON__EVENT (PERSON_ID, EVENT, WRISTBAND, PARTICIPATION_TYPE)
 values  (6100, 1, 'P-3001', 'participant'),

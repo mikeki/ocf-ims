@@ -33,7 +33,6 @@ func TestCreateAndGetValidJWT(t *testing.T) {
 		[]int64{10, 20, 40, 150},
 		[]int64{15, 25, 45, 155},
 		true,
-		true,
 		new(int64(20)),
 		time.Now().Add(1*time.Hour),
 	)
@@ -46,7 +45,6 @@ func TestCreateAndGetValidJWT(t *testing.T) {
 	require.Equal(t, "12345", sub)
 	require.Equal(t, []int64{10, 20, 40, 150}, claims.PersonPositions())
 	require.Equal(t, []int64{15, 25, 45, 155}, claims.PersonTeams())
-	require.True(t, claims.PersonOnSite())
 	require.True(t, claims.PersonAdmin())
 }
 
@@ -59,7 +57,6 @@ func TestCreateAndGetInvalidJWTs(t *testing.T) {
 			1,
 			nil,
 			nil,
-			true,
 			false,
 			new(int64(20)),
 			time.Now().Add(-1*time.Hour),
@@ -76,7 +73,6 @@ func TestCreateAndGetInvalidJWTs(t *testing.T) {
 			1,
 			nil,
 			nil,
-			true,
 			false,
 			new(int64(20)),
 			time.Now().Add(1*time.Hour),
@@ -93,7 +89,6 @@ func TestCreateAndGetInvalidJWTs(t *testing.T) {
 			12345,
 			nil,
 			nil,
-			true,
 			false,
 			new(int64(20)),
 			time.Now().Add(1*time.Hour),
@@ -114,7 +109,6 @@ func TestTokenTypesAreNotInterchangeable(t *testing.T) {
 		12345,
 		nil,
 		nil,
-		true,
 		false,
 		new(int64(20)),
 		time.Now().Add(1*time.Hour),

@@ -40,7 +40,6 @@ type IMSClaims struct {
 	Handle         string `json:"han"`
 	Positions      string `json:"pos"`
 	Teams          string `json:"tea"`
-	Onsite         bool   `json:"ons"`
 	Admin          bool   `json:"adm,omitempty"`
 	OnDutyPosition *int64 `json:"dut,omitempty"`
 	TokenType      string `json:"tok,omitempty"`
@@ -108,11 +107,6 @@ func (c IMSClaims) WithPersonHandle(s string) IMSClaims {
 	return c
 }
 
-func (c IMSClaims) WithPersonOnSite(onsite bool) IMSClaims {
-	c.Onsite = onsite
-	return c
-}
-
 func (c IMSClaims) WithPersonAdmin(admin bool) IMSClaims {
 	c.Admin = admin
 	return c
@@ -140,10 +134,6 @@ func (c IMSClaims) WithTokenType(tokenType string) IMSClaims {
 
 func (c IMSClaims) PersonHandle() string {
 	return c.Handle
-}
-
-func (c IMSClaims) PersonOnSite() bool {
-	return c.Onsite
 }
 
 func (c IMSClaims) PersonAdmin() bool {

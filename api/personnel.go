@@ -99,8 +99,6 @@ func (action GetPersonnel) getPersonnel(req *http.Request) (GetPersonnelResponse
 					Name:   person.Name.String,
 					// Email goes only to this admin-gated listing so it can be edited.
 					Email:             person.Email.String,
-					Status:            person.Status,
-					Onsite:            person.OnSite,
 					IsAdmin:           person.IsAdmin,
 					PersonID:          int64(person.ID),
 					Wristband:         person.Wristband.String,
@@ -120,8 +118,6 @@ func (action GetPersonnel) getPersonnel(req *http.Request) (GetPersonnelResponse
 				Name:   person.Name.String,
 				// Email goes only to this admin-gated listing so it can be edited.
 				Email:     person.Email.String,
-				Status:    person.Status,
-				Onsite:    person.OnSite,
 				IsAdmin:   person.IsAdmin,
 				PersonID:  int64(person.ID),
 				Wristband: person.Wristband.String,
@@ -148,8 +144,6 @@ func (action GetPersonnel) getPersonnel(req *http.Request) (GetPersonnelResponse
 			// Don't send passwords in the API
 			// This is also done as a backstop in imsjson.Person itself, with `json:"-"`
 			Password: "",
-			Status:   person.Status,
-			Onsite:   person.Onsite,
 			IsAdmin:  person.IsAdmin,
 			PersonID: person.PersonID,
 		})

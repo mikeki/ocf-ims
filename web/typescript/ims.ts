@@ -589,21 +589,7 @@ export async function fetchPersonnel(): Promise<{personnel: PersonnelMap|null, e
     }
     const personnel: PersonnelMap = {};
     for (const record of json!) {
-        switch (record.status) {
-            case "active":
-            case "alpha":
-            case "inactive":
-            case "inactive extension":
-            case "prospective":
-                personnel[record.handle] = record;
-                break
-            case "auditor":
-                // Don't add auditors to the personnel list.
-                break;
-            default:
-                console.log(`unrecognized status: ${record.status satisfies never}`);
-                break;
-        }
+        personnel[record.handle] = record;
     }
     return {personnel: personnel, err: null};
 }
@@ -653,7 +639,7 @@ export async function createRegistryPerson(name: string, eventName: string): Pro
 }
 
 // openQuickAddPersonModal shows the shared QuickAddPersonModal (web/template/quickaddperson.templ)
-// pre-filled with the typed text, lets the user supply handle/email/password/onsite and
+// pre-filled with the typed text, lets the user supply handle/email/password and
 // (when an event is named) wristband/participation, then creates the person and resolves
 // with it. Resolves null if the user cancels or creation fails (the error is shown inline
 // in the modal, which stays open so they can retry). Pages must include @QuickAddPersonModal().
@@ -663,7 +649,6 @@ export function openQuickAddPersonModal(prefillName: string, eventName: string):
     const handleEl = typedElement("quick_add_person_handle", HTMLInputElement);
     const emailEl = typedElement("quick_add_person_email", HTMLInputElement);
     const passwordEl = typedElement("quick_add_person_password", HTMLInputElement);
-    const onsiteEl = typedElement("quick_add_person_onsite", HTMLInputElement);
     const eventSectionEl = typedElement("quick_add_person_event_section", HTMLElement);
     const eventNameEl = typedElement("quick_add_person_event_name", HTMLElement);
     const wristbandEl = typedElement("quick_add_person_wristband", HTMLInputElement);
@@ -676,7 +661,6 @@ export function openQuickAddPersonModal(prefillName: string, eventName: string):
     handleEl.value = "";
     emailEl.value = "";
     passwordEl.value = "";
-    onsiteEl.checked = false;
     wristbandEl.value = "";
     participationEl.value = "";
     errorEl.textContent = "";
@@ -722,7 +706,6 @@ export function openQuickAddPersonModal(prefillName: string, eventName: string):
                 handle: handle,
                 email: emailEl.value.trim(),
                 password: passwordEl.value,
-                onsite: onsiteEl.checked,
             };
             if (eventName) {
                 body["event"] = eventName;
@@ -2476,13 +2459,10 @@ export type Personnel = {
     email?: string|null;
     person_id?: number|null;
     is_admin?: boolean;
-    onsite?: boolean;
     // wristband and participation_type are per-event; the admin listing populates
     // them when scoped to an event (?event=). See docs/plans/51-people-registry.md.
     wristband?: string|null;
     participation_type?: string|null;
-    // These are the person statuses IMS recognizes (from the local PERSON table).
-    status: "active"|"alpha"|"auditor"|"inactive extension"|"inactive"|"prospective";
 }
 
 // This is a simple wrapper to help with typing on BroadcastChannels. It's
