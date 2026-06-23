@@ -134,7 +134,7 @@ func (action GetEventAccesses) getEventsAccess(ctx context.Context) (imsjson.Eve
 					if person.OnDutyPositionName != nil {
 						onDutyPosition = *person.OnDutyPositionName
 					}
-					if authz.PersonMatches(access, person.Handle, person.PositionNames, person.TeamNames, person.Onsite, onDutyPosition) {
+					if authz.PersonMatches(access, person.Handle, person.PositionNames, person.TeamNames, false, onDutyPosition) {
 						rule.DebugInfo.MatchesUsers = append(rule.DebugInfo.MatchesUsers, person.Handle)
 					}
 				}

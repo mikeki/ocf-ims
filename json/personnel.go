@@ -25,8 +25,6 @@ type Person struct {
 	// is never serialized.
 	Email    string `json:"email,omitempty"`
 	Password string `json:"-"`
-	Status   string `json:"status"`
-	Onsite   bool   `json:"onsite"`
 	IsAdmin  bool   `json:"is_admin"`
 	PersonID int64  `json:"person_id,omitzero"`
 	// Wristband and ParticipationType are per-event and only populated by the

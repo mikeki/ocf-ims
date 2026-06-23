@@ -52,7 +52,6 @@ const el = {
     addPersonHandle: ims.typedElement("add_person_handle", HTMLInputElement),
     addPersonEmail: ims.typedElement("add_person_email", HTMLInputElement),
     addPersonPassword: ims.typedElement("add_person_password", HTMLInputElement),
-    addPersonOnsite: ims.typedElement("add_person_onsite", HTMLInputElement),
     addPersonEventSection: ims.typedElement("add_person_event_section", HTMLElement),
     addPersonEventName: ims.typedElement("add_person_event_name", HTMLElement),
     addPersonWristband: ims.typedElement("add_person_wristband", HTMLInputElement),
@@ -61,8 +60,6 @@ const el = {
     editPersonHandle: ims.typedElement("edit_person_handle", HTMLElement),
     editPersonName: ims.typedElement("edit_person_name", HTMLInputElement),
     editPersonEmail: ims.typedElement("edit_person_email", HTMLInputElement),
-    editPersonStatus: ims.typedElement("edit_person_status", HTMLSelectElement),
-    editPersonOnsite: ims.typedElement("edit_person_onsite", HTMLInputElement),
     editPersonEventSection: ims.typedElement("edit_person_event_section", HTMLElement),
     editPersonEventName: ims.typedElement("edit_person_event_name", HTMLElement),
     editPersonWristband: ims.typedElement("edit_person_wristband", HTMLInputElement),
@@ -264,8 +261,6 @@ function drawPeople(): void {
         // their handle as the label.
         entryItem.getElementsByClassName("person-handle")[0]!.textContent =
             (person.name && person.handle) ? person.handle : "";
-        entryItem.getElementsByClassName("person-status")[0]!.textContent =
-            person.status + (person.onsite ? " · on site" : "");
 
         const wristband: HTMLElement = entryItem.querySelector(".person-wristband")!;
         if (person.wristband) {
@@ -315,8 +310,6 @@ function drawPeople(): void {
                 el.editPersonHandle.textContent = label;
                 el.editPersonName.value = person.name ?? "";
                 el.editPersonEmail.value = person.email ?? "";
-                el.editPersonStatus.value = person.status;
-                el.editPersonOnsite.checked = person.onsite ?? false;
                 el.editPersonWristband.value = person.wristband ?? "";
                 el.editPersonParticipation.value = person.participation_type ?? "";
                 ims.bsModal(el.editPersonModal).show();
@@ -424,7 +417,6 @@ function showAddPersonModal(): void {
     el.addPersonHandle.value = "";
     el.addPersonEmail.value = "";
     el.addPersonPassword.value = "";
-    el.addPersonOnsite.checked = false;
     el.addPersonWristband.value = "";
     el.addPersonParticipation.value = "";
     ims.bsModal(el.addPersonModal).show();
@@ -450,7 +442,6 @@ async function submitCreatePerson(): Promise<void> {
         "handle": handle,
         "email": el.addPersonEmail.value.trim(),
         "password": password,
-        "onsite": el.addPersonOnsite.checked,
     };
     if (currentEvent) {
         body["event"] = currentEvent;
@@ -481,8 +472,6 @@ async function submitEditPerson(): Promise<void> {
     const body: Record<string, unknown> = {
         "name": el.editPersonName.value.trim(),
         "email": el.editPersonEmail.value.trim(),
-        "status": el.editPersonStatus.value,
-        "onsite": el.editPersonOnsite.checked,
     };
     if (currentEvent) {
         body["event"] = currentEvent;

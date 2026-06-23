@@ -89,10 +89,6 @@ templ People(deployment, versionName, versionRef, eventName string) {
               <input id="add_person_password" type="password" class="form-control" autocomplete="new-password" placeholder="Password" />
               <label for="add_person_password">Initial password (optional)</label>
             </div>
-            <div class="form-check ms-2">
-              <input id="add_person_onsite" type="checkbox" class="form-check-input" />
-              <label class="form-check-label" for="add_person_onsite">On site</label>
-            </div>
             <div id="add_person_event_section" class="hidden mt-3">
               <p class="text-body-secondary small mb-2">Participation for <strong id="add_person_event_name"></strong></p>
               <div class="form-floating mb-3">
@@ -136,21 +132,6 @@ templ People(deployment, versionName, versionRef, eventName string) {
             <div class="form-floating mb-3">
               <input id="edit_person_email" type="email" class="form-control" autocomplete="off" placeholder="Email" />
               <label for="edit_person_email">Email</label>
-            </div>
-            <div class="form-floating mb-3">
-              <select id="edit_person_status" class="form-select" aria-label="Status">
-                <option value="active">active</option>
-                <option value="alpha">alpha</option>
-                <option value="auditor">auditor</option>
-                <option value="prospective">prospective</option>
-                <option value="inactive extension">inactive extension</option>
-                <option value="inactive">inactive</option>
-              </select>
-              <label for="edit_person_status">Status</label>
-            </div>
-            <div class="form-check ms-2">
-              <input id="edit_person_onsite" type="checkbox" class="form-check-input" />
-              <label class="form-check-label" for="edit_person_onsite">On site</label>
             </div>
             <div id="edit_person_event_section" class="hidden mt-3">
               <hr />
@@ -261,7 +242,6 @@ templ People(deployment, versionName, versionRef, eventName string) {
               <span class="person-handle text-body-secondary ms-2 font-monospace small"></span>
               <span class="person-wristband badge text-bg-secondary ms-2 hidden"></span>
               <span class="person-participation badge text-bg-light ms-2 hidden"></span>
-              <div class="person-status text-body-secondary ms-3"></div>
             </li>
           </template>
         </ul>

@@ -46,30 +46,18 @@ const (
 // dupEntryError is the MariaDB error number for a unique-constraint violation.
 const dupEntryError = 1062
 
-// validPersonStatuses are the PERSON.STATUS values IMS recognizes. Only 'active'
-// people appear in the login directory and the attach-person autocompletes; the
-// others are inactive/peripheral and are visible only on the admin People page.
-var validPersonStatuses = map[string]bool{
-	"active":             true,
-	"alpha":              true,
-	"auditor":            true,
-	"inactive":           true,
-	"inactive extension": true,
-	"prospective":        true,
-}
-
 // CreatePerson adds a new person to the registry. Gating has two tiers (D-P1):
 //   - A "full" create — anything touching login or profile (handle, email,
-//     password, on-site) — requires GlobalAdministratePersonnel, as before
-//     (onboarding login-capable people is personnel management, distinct from
-//     minting admins, which stays on SetPersonAdmin).
+//     password) — requires GlobalAdministratePersonnel, as before (onboarding
+//     login-capable people is personnel management, distinct from minting admins,
+//     which stays on SetPersonAdmin).
 //   - A "minimal" registry create (name, optionally an event + wristband) may be
 //     done by an event writer from the field, so people met at an incident/visit
 //     can be registered ad-hoc without a personnel admin.
 //
-// New people are status 'active'. A password is optional (without one the person
-// can't log in until an admin sets one). The created person is returned as JSON so
-// an inline-create from the attach picker can immediately attach the new person.
+// A password is optional (without one the person can't log in until an admin sets
+// one). The created person is returned as JSON so an inline-create from the attach
+// picker can immediately attach the new person.
 type CreatePerson struct {
 	imsDBQ    *store.DBQ
 	userStore directory.UserStore
@@ -81,7 +69,6 @@ type CreatePersonRequest struct {
 	Email  string `json:"email"`
 	// #nosec G117 // Exported secret field
 	Password string `json:"password"`
-	Onsite   bool   `json:"onsite"`
 	// Event-scoped participation (all optional). When an event is named a
 	// PERSON__EVENT row is written so the new person carries a wristband and
 	// classification for that fair. participation_type is honored explicitly only
@@ -140,11 +127,11 @@ func (action CreatePerson) createPerson(req *http.Request) (imsjson.Person, *her
 	// D-P1 gating. A "full" create touches login/profile fields and stays
 	// admin-only; a "minimal" create (name + optional per-event wristband) may be
 	// done by a writer on the named event.
-	fullCreate := handle != "" || email != "" || body.Password != "" || body.Onsite
+	fullCreate := handle != "" || email != "" || body.Password != ""
 	var eventID int32
 	if !isPersonnelAdmin {
 		if fullCreate {
-			return empty, herr.Forbidden("Setting a handle, email, password, or on-site flag requires GlobalAdministratePersonnel", nil)
+			return empty, herr.Forbidden("Setting a handle, email, or password requires GlobalAdministratePersonnel", nil)
 		}
 		eventID, errHTTP = action.eventForFieldCreate(req, jwtCtx, body.Event)
 		if errHTTP != nil {
@@ -208,8 +195,6 @@ func (action CreatePerson) createPerson(req *http.Request) (imsjson.Person, *her
 		Handle:   handleNull,
 		Name:     nameNull,
 		Email:    emailNull,
-		Status:   "active",
-		OnSite:   body.Onsite,
 		Password: passwordNull,
 		Created:  conv.TimeToFloat(time.Now()),
 	})
@@ -225,8 +210,6 @@ func (action CreatePerson) createPerson(req *http.Request) (imsjson.Person, *her
 		PersonID: newID,
 		Handle:   handle,
 		Name:     name,
-		Status:   "active",
-		Onsite:   body.Onsite,
 	}
 
 	// Write the per-event participation row when an event was named. The person is
@@ -326,8 +309,6 @@ type EditPerson struct {
 type EditPersonRequest struct {
 	Name              *string `json:"name"`
 	Email             *string `json:"email"`
-	Status            string  `json:"status"`
-	Onsite            bool    `json:"onsite"`
 	Event             string  `json:"event"`
 	Wristband         string  `json:"wristband"`
 	ParticipationType string  `json:"participation_type"`
@@ -355,12 +336,9 @@ func (action EditPerson) editPerson(req *http.Request) *herr.HTTPError {
 	if errHTTP != nil {
 		return errHTTP.From("[readBodyAs]")
 	}
-	if !validPersonStatuses[body.Status] {
-		return herr.BadRequest("Unknown status: "+body.Status, nil)
-	}
 
-	// The person is addressed by stable ID in the URL path (any status, so inactive
-	// people stay editable; registry people may have no handle since 5e).
+	// The person is addressed by stable ID in the URL path (registry people may have
+	// no handle since 5e).
 	person, errHTTP := personByIDFromPath(req.Context(), action.imsDBQ, req)
 	if errHTTP != nil {
 		return errHTTP
@@ -390,11 +368,9 @@ func (action EditPerson) editPerson(req *http.Request) *herr.HTTPError {
 	}
 
 	err := action.imsDBQ.EditPerson(req.Context(), action.imsDBQ, imsdb.EditPersonParams{
-		Name:   name,
-		Email:  email,
-		Status: body.Status,
-		OnSite: body.Onsite,
-		ID:     person.ID,
+		Name:  name,
+		Email: email,
+		ID:    person.ID,
 	})
 	if err != nil {
 		var mysqlErr *mysql.MySQLError
@@ -416,7 +392,7 @@ func (action EditPerson) editPerson(req *http.Request) *herr.HTTPError {
 	action.userStore.InvalidateUsers()
 
 	// #nosec G706 // log injection
-	slog.Info("Edited person", "person_id", person.ID, "handle", person.Handle.String, "status", body.Status, "onsite", body.Onsite)
+	slog.Info("Edited person", "person_id", person.ID, "handle", person.Handle.String)
 	return nil
 }
 
@@ -501,7 +477,7 @@ func wristbandConflict(err error) *herr.HTTPError {
 // SetPersonParticipation upserts a person's per-event participation WITHOUT touching
 // their global profile (slice 6j). It backs the roster's "add to event" (enroll an
 // existing person) and "mark not present / ejected" actions. EditPerson also writes
-// participation, but always rewrites the profile (status/on-site) too, so it's wrong
+// participation, but always rewrites the profile (name/email) too, so it's wrong
 // for these profile-neutral changes — hence this dedicated endpoint, symmetric with
 // the DELETE. The event rides as a ?event= query param (identity is global).
 type SetPersonParticipation struct {

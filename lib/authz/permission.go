@@ -158,7 +158,9 @@ func EventPermissions(
 	eventPermissions, globalPermissions = ManyEventPermissions(
 		accessByEvent,
 		claims.PersonHandle(),
-		claims.PersonOnSite(),
+		// On-site is retired (plan 52a); no one is ever on-site, so 'onsite'
+		// access-rule validity never matches. EVENT_ACCESS itself is retired in 52c.
+		false,
 		claims.PersonAdmin(),
 		userPosNames,
 		userTeamNames,

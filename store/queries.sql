@@ -649,26 +649,24 @@ limit 1;
 --
 
 -- name: People :many
-select ID, HANDLE, EMAIL, STATUS, ON_SITE, PASSWORD, IS_ADMIN
-from PERSON
-where STATUS = 'active';
+select ID, HANDLE, EMAIL, PASSWORD, IS_ADMIN
+from PERSON;
 
--- AllPeople returns every person regardless of status, for the admin People page
--- (so admins can see and reactivate inactive people). It LEFT JOINs PERSON__EVENT
--- for the given event so each row carries that event's wristband + participation
--- type — null when the person has no row for the event yet, or when no event is
--- selected (event = 0 matches nothing). The login directory and the attach-person
--- autocompletes use the active-only People query instead.
+-- AllPeople returns every person, for the admin People page. It LEFT JOINs
+-- PERSON__EVENT for the given event so each row carries that event's wristband +
+-- participation type — null when the person has no row for the event yet, or when
+-- no event is selected (event = 0 matches nothing). The login directory and the
+-- attach-person autocompletes use the People query instead.
 -- name: AllPeople :many
 select
-    p.ID, p.HANDLE, p.NAME, p.EMAIL, p.STATUS, p.ON_SITE, p.IS_ADMIN,
+    p.ID, p.HANDLE, p.NAME, p.EMAIL, p.IS_ADMIN,
     pe.WRISTBAND, pe.PARTICIPATION_TYPE
 from PERSON p
     left join PERSON__EVENT pe on pe.PERSON_ID = p.ID and pe.EVENT = sqlc.arg(event)
 order by coalesce(p.NAME, p.HANDLE);
 
 -- name: PersonByHandle :one
-select ID, HANDLE, EMAIL, STATUS, ON_SITE, IS_ADMIN
+select ID, HANDLE, EMAIL, IS_ADMIN
 from PERSON
 where HANDLE = ?;
 
@@ -676,13 +674,13 @@ where HANDLE = ?;
 -- addresses people by person_id (registry people may have no handle), so the
 -- attach/detach and personnel-edit handlers look people up here.
 -- name: PersonByID :one
-select ID, HANDLE, NAME, EMAIL, STATUS, ON_SITE, IS_ADMIN
+select ID, HANDLE, NAME, EMAIL, IS_ADMIN
 from PERSON
 where ID = ?;
 
 -- name: CreatePerson :execlastid
-insert into PERSON (HANDLE, NAME, EMAIL, STATUS, ON_SITE, PASSWORD, CREATED)
-values (?, ?, ?, ?, ?, ?, ?);
+insert into PERSON (HANDLE, NAME, EMAIL, PASSWORD, CREATED)
+values (?, ?, ?, ?, ?);
 
 -- EditPerson updates a person's editable profile fields. NAME and EMAIL are
 -- nullable identity fields the admin People page can change (the email gap closed
@@ -691,7 +689,7 @@ values (?, ?, ?, ?, ?, ?, ?);
 -- UpsertPersonEvent, not here.
 -- name: EditPerson :exec
 update PERSON
-set NAME = ?, EMAIL = ?, STATUS = ?, ON_SITE = ?
+set NAME = ?, EMAIL = ?
 where ID = ?;
 
 -- name: SetPersonPassword :exec
@@ -713,9 +711,8 @@ where IS_ADMIN = true;
 -- search). It matches the query term against handle, display name, and — when an
 -- event is given — that event's wristband, LEFT JOINing PERSON__EVENT so each hit
 -- carries the event's wristband + participation type (null when the person has no
--- row for the event yet). Active people only, mirroring the attach autocompletes;
--- pass event = 0 to search without per-event fields. Caller supplies the LIKE
--- wildcards in `query` (e.g. "%term%").
+-- row for the event yet). Pass event = 0 to search without per-event fields. Caller
+-- supplies the LIKE wildcards in `query` (e.g. "%term%").
 -- name: SearchPeople :many
 select
     p.ID,
@@ -726,12 +723,9 @@ select
 from PERSON p
     left join PERSON__EVENT pe on pe.PERSON_ID = p.ID and pe.EVENT = sqlc.arg(event)
 where
-    p.STATUS = 'active'
-    and (
-        coalesce(p.HANDLE, '') like sqlc.arg(query)
-        or coalesce(p.NAME, '') like sqlc.arg(query)
-        or coalesce(pe.WRISTBAND, '') like sqlc.arg(query)
-    )
+    coalesce(p.HANDLE, '') like sqlc.arg(query)
+    or coalesce(p.NAME, '') like sqlc.arg(query)
+    or coalesce(pe.WRISTBAND, '') like sqlc.arg(query)
 order by coalesce(p.NAME, p.HANDLE)
 limit 25;
 
@@ -768,7 +762,7 @@ where PERSON_ID = ? and EVENT = ?;
 -- stays visible in the roster rather than disappearing.
 -- name: EventRoster :many
 select
-    p.ID, p.HANDLE, p.NAME, p.EMAIL, p.STATUS, p.ON_SITE, p.IS_ADMIN,
+    p.ID, p.HANDLE, p.NAME, p.EMAIL, p.IS_ADMIN,
     pe.WRISTBAND, pe.PARTICIPATION_TYPE
 from PERSON p
     join PERSON__EVENT pe on pe.PERSON_ID = p.ID and pe.EVENT = sqlc.arg(event)
