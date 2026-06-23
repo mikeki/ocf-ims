@@ -24,6 +24,10 @@ happen; we pick one level of grouping.
 > the draft in `store/fakeimsdb/seed.sql` and becomes the canonical seed. Rows
 > flagged **(confirm)** are where the map label was ambiguous or the area's
 > usefulness as an incident location is uncertain.
+>
+> For a clean, share-friendly view of each option on its own, see
+> [`ocf-areas-option-a.md`](ocf-areas-option-a.md) and
+> [`ocf-areas-option-b.md`](ocf-areas-option-b.md).
 
 ---
 
