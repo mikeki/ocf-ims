@@ -40,7 +40,7 @@ This plan removes the dead knobs and reshapes access into a single per-event
 - Removing `ON_SITE` makes the `EVENT_ACCESS.VALIDITY = 'onsite'` option dead — it
   goes too (moot anyway, see Issue 2: `EVENT_ACCESS` is retired).
 - **Keep** `PERSON__EVENT.WRISTBAND` + `PARTICIPATION_TYPE`. Inert today, but the
-  "is this person crew / public / ejected" record matters once real people exist.
+  "is this person participant / public / ejected" record matters once real people exist.
 
 **Issue 2 — roles**
 - A person's per-event standing becomes a **single ladder** (merge role *into*
@@ -69,22 +69,25 @@ One `PERSON__EVENT` field carries both "who is this person at the fair" and "wha
 can they do," top (most access) to bottom:
 
 ```
-writer       → crew member, full incident + report access + dashboard
-reporter     → crew member, own-reports only (default for promoted volunteers)
-crew         → crew member, no IMS access
-participant  → volunteer / booth, no access
+writer       → participant, full incident + report access + dashboard
+reporter     → participant, own-reports only (default for promoted volunteers)
+participant  → at the fair (crew / volunteer / booth), no IMS access
 public       → attendee / person on an incident (default for picker-created people)
 not_present  → known person, not here this year
 ejected      → removed from the event, kept for the record
 ```
 
+- **`crew` is folded into `participant`** (decided 2026-06-23) — for the beta the
+  distinction is meaningless, so there is one "at the fair, working it" tier.
+  Existing `crew` rows migrate to `participant`.
 - **Admin is not in this list** — it's the global `IS_ADMIN` flag. An admin needs
   no per-event row to act.
 - **Access derives from the top two rungs only.** `writer`/`reporter` grant the
-  masks below; everything from `crew` down is `EventNoPermissions`.
-- **Trade-off accepted:** you can't independently record "crew *and* writer" —
-  `writer` already implies crew-level trust. The crew/participant distinction only
-  matters for people *without* access, which the lower rungs still capture.
+  masks below; everything from `participant` down is `EventNoPermissions`.
+- **Trade-off accepted:** you can't independently record "participant *and* writer" —
+  `writer` already implies participant-level trust. The participant/public
+  distinction only matters for people *without* access, which the lower rungs
+  still capture.
 - **Naming:** keep the column `PARTICIPATION_TYPE` (least churn) but it now also
   encodes the access tier; the enum gains `writer` and `reporter`. (Open: rename to
   `ROLE`? Lean keep.)
@@ -93,7 +96,10 @@ ejected      → removed from the event, kept for the record
 
 **Schema** (`store/schema/migrations/`, new migrations):
 - Drop `PERSON.STATUS`, `PERSON.ON_SITE`.
-- Extend `PERSON__EVENT.PARTICIPATION_TYPE` enum with `writer`, `reporter`.
+- Reshape `PERSON__EVENT.PARTICIPATION_TYPE`: add `writer`, `reporter`; **drop
+  `crew`** (fold into `participant`), migrating any existing `crew` rows to
+  `participant` in the same migration. Final enum:
+  `('writer','reporter','participant','public','not_present','ejected')`.
 - Retire `EVENT_ACCESS` (drop table) and its `VALIDITY`/`EXPIRES` machinery.
   (POSITION/TEAM/PERSON__POSITION/PERSON__TEAM tables **stay** — descriptive, no
   longer drive access.)
