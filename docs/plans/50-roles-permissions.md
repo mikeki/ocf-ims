@@ -17,6 +17,12 @@ already exist rather than inventing a parallel model.
 
 ## 2. Scope (decided 2026-06-07)
 
+> **Update (2026-06-23):** the beta is taking a leaner path than the 5b–5d
+> crews/role-tiers/crew-leaders model sketched here. See
+> [`52-roles-and-access-model.md`](52-roles-and-access-model.md): a single
+> per-event role ladder derived from `PERSON__EVENT`, `EVENT_ACCESS` retired,
+> `STATUS`/`ON_SITE` removed. 5b–5d below are deferred; 5a stays as shipped.
+
 The chosen beta scope is **"plumbing + crews model"**: slices **5a–5d** below.
 
 **In scope for the beta:**
