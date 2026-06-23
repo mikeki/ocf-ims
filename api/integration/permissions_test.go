@@ -46,9 +46,11 @@ func TestAdminOnlyEndpoints(t *testing.T) {
 		{http.MethodPost, "/ims/api/access"},
 		{http.MethodGet, "/ims/api/actionlogs"},
 		{http.MethodPost, "/ims/api/events"},
-		// It doesn't matter that this event doesn't exist, because the endpoint will deny access to
-		// a non-admin before it checks whether the event even exists.
-		{http.MethodPost, "/ims/api/events/SomeFakeEvent/areas"},
+		// NOTE: POST .../areas is intentionally not listed here. It is no longer
+		// strictly admin-only — creating an area is allowed for event writers,
+		// while editing an existing area stays admin-only. Its authorization is
+		// covered by area_test.go (TestAreaMutationRequiresAdmin and
+		// TestAreaCreateAllowedForEventWriter).
 		{http.MethodPost, "/ims/api/incident_types"},
 		{http.MethodGet, "/ims/api/debug/buildinfo"},
 		{http.MethodGet, "/ims/api/debug/runtimemetrics"},
