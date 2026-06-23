@@ -186,66 +186,39 @@ func getGlobalPermissions(req *http.Request, imsDBQ *store.DBQ, userStore direct
 	return jwtCtx, globalPermissions, nil
 }
 
-func permissionsByEvent(ctx context.Context, jwtCtx JWTContext, imsDBQ *store.DBQ, userStore directory.UserStore) (
+// permissionsByEvent computes the caller's permission mask for every event,
+// deriving each from their PERSON__EVENT participation tier (plan 52b). Admins
+// bypass per-event roles, so they get full permissions on every event. userStore
+// is retained in the signature pending the broader EVENT_ACCESS cleanup (52c).
+func permissionsByEvent(ctx context.Context, jwtCtx JWTContext, imsDBQ *store.DBQ, _ directory.UserStore) (
 	map[int32]authz.EventPermissionMask, *herr.HTTPError,
 ) {
-	// This query doesn't know about parent groups. We'll start by accumulating EventAccesses directly referencing
-	// events, then worry about parent groups below.
-	accessRows, err := imsDBQ.EventAccessAll(ctx, imsDBQ)
-	if err != nil {
-		return nil, herr.InternalServerError("Failed to fetch event access", err).From("[EventAccessAll]")
-	}
-	accessRowByEventID := make(map[int32][]imsdb.EventAccess)
-	for _, ar := range accessRows {
-		accessRowByEventID[ar.EventAccess.Event] = append(accessRowByEventID[ar.EventAccess.Event], ar.EventAccess)
-	}
-
-	// Now add in parent group EventAccesses.
-	events, err := imsDBQ.Events(ctx, imsDBQ)
-	if err != nil {
-		return nil, herr.InternalServerError("Failed to fetch Events", err).From("[Events]")
-	}
-	for _, e := range events {
-		child := e.Event
-		// No parent, nothing to do
-		if !child.ParentGroup.Valid {
-			continue
+	claims := jwtCtx.Claims
+	if claims.PersonAdmin() {
+		// Admin bypass: full access on every event, no participation row needed.
+		events, err := imsDBQ.Events(ctx, imsDBQ)
+		if err != nil {
+			return nil, herr.InternalServerError("Failed to fetch Events", err).From("[Events]")
 		}
-		// Has a parent. Add in all the EventAccesses from the parent.
-		for _, ar := range accessRowByEventID[child.ParentGroup.Int32] {
-			accessRowByEventID[child.ID] = append(accessRowByEventID[child.ID], ar)
+		perms := make(map[int32]authz.EventPermissionMask, len(events))
+		for _, e := range events {
+			perms[e.Event.ID] = authz.EventAllPermissions
 		}
+		return perms, nil
 	}
 
-	allPositions, allTeams, err := userStore.GetPositionsAndTeams(ctx)
+	rows, err := imsDBQ.PersonEventsForPerson(ctx, imsDBQ, claims.PersonID())
 	if err != nil {
-		return nil, herr.InternalServerError("Failed to fetch positions and teams", err).From("[GetPositionsAndTeams]")
+		return nil, herr.InternalServerError("Failed to fetch participation", err).From("[PersonEventsForPerson]")
 	}
-	userPosIDs := jwtCtx.Claims.PersonPositions()
-	userPosNames := make([]string, 0, len(userPosIDs))
-	for _, userPosID := range userPosIDs {
-		userPosNames = append(userPosNames, allPositions[userPosID])
+	participationByEvent := make(map[int32]imsdb.PersonEventParticipationType, len(rows))
+	for _, r := range rows {
+		participationByEvent[r.Event] = r.ParticipationType
 	}
-	userTeamIDs := jwtCtx.Claims.PersonTeams()
-	userTeamNames := make([]string, 0, len(userTeamIDs))
-	for _, userTeamID := range userTeamIDs {
-		userTeamNames = append(userTeamNames, allTeams[userTeamID])
-	}
-	onDutyPosition := ""
-	onDutyPositionID := jwtCtx.Claims.PersonOnDutyPosition()
-	if onDutyPositionID != nil {
-		onDutyPosition = allPositions[*onDutyPositionID]
-	}
-
 	permissionsByEvent, _ := authz.ManyEventPermissions(
-		accessRowByEventID,
-		jwtCtx.Claims.PersonHandle(),
-		// On-site is retired (plan 52a); see EventPermissions.
+		participationByEvent,
+		claims.PersonHandle(),
 		false,
-		jwtCtx.Claims.PersonAdmin(),
-		userPosNames,
-		userTeamNames,
-		onDutyPosition,
 	)
 	return permissionsByEvent, nil
 }

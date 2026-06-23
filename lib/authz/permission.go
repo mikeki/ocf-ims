@@ -18,6 +18,8 @@ package authz
 
 import (
 	"context"
+	"database/sql"
+	"errors"
 	"fmt"
 	"slices"
 	"strings"
@@ -31,25 +33,11 @@ import (
 
 type Role string
 
+// validity* are retained for PersonMatches, which still backs the (now
+// authz-ignored) EVENT_ACCESS admin UI until that table is retired in 52c.
 const (
 	validityAlways = imsdb.EventAccessValidityAlways
 	validityOnsite = imsdb.EventAccessValidityOnsite
-)
-
-const (
-	modeRead        = imsdb.EventAccessModeRead
-	modeWrite       = imsdb.EventAccessModeWrite
-	modeReport      = imsdb.EventAccessModeReport
-	modeWriteVisits = imsdb.EventAccessModeWriteVisits
-)
-
-var (
-	modeToRole = map[imsdb.EventAccessMode]Role{
-		modeRead:        EventReader,
-		modeWrite:       EventWriter,
-		modeReport:      EventReporter,
-		modeWriteVisits: EventVisitWriter,
-	}
 )
 
 const (
@@ -68,6 +56,12 @@ const (
 	EventNoPermissions  EventPermissionMask  = 0
 	GlobalNoPermissions GlobalPermissionMask = 0
 )
+
+// EventAllPermissions is every event-specific permission bit OR'd together. An
+// admin bypasses per-event roles and gets this on any event (plan 52b).
+const EventAllPermissions = EventReadIncidents | EventWriteIncidents |
+	EventReadAllReports | EventReadOwnReports | EventWriteAllReports | EventWriteOwnReports |
+	EventReadEventName | EventReadVisits | EventWriteVisits | EventReadAreas
 
 const (
 	// Event-specific permissions.
@@ -107,6 +101,10 @@ var RolesToGlobalPerms = map[Role]GlobalPermissionMask{
 	Administrator:        GlobalAdministrateEvents | GlobalAdministrateIncidentTypes | GlobalAdministrateDebugging | GlobalAdministratePersonnel | GlobalAdministrateAreas,
 }
 
+// RolesToEventPerms maps an access role to the event permissions it grants. As of
+// plan 52b only EventWriter and EventReporter are reachable (the per-event ladder's
+// top two rungs); EventReader and EventVisitWriter are kept for the EVENT_ACCESS
+// admin UI's role labels until that table is retired in 52c.
 var RolesToEventPerms = map[Role]EventPermissionMask{
 	EventReporter:    EventReadEventName | EventReadOwnReports | EventWriteOwnReports | EventReadAreas,
 	EventReader:      EventReadEventName | EventReadIncidents | EventReadOwnReports | EventReadAllReports | EventReadVisits | EventReadAreas,
@@ -114,69 +112,70 @@ var RolesToEventPerms = map[Role]EventPermissionMask{
 	EventVisitWriter: EventReadEventName | EventReadVisits | EventWriteVisits | EventReadAreas,
 }
 
+// participationToEventPerms maps a person's per-event participation tier to the
+// event permissions it grants (plan 52b). Only the top two rungs carry access;
+// participant/public/not_present/ejected — and any unrecognized value — grant
+// nothing.
+func participationToEventPerms(pt imsdb.PersonEventParticipationType) EventPermissionMask {
+	switch pt {
+	case imsdb.PersonEventParticipationTypeWriter:
+		return RolesToEventPerms[EventWriter]
+	case imsdb.PersonEventParticipationTypeReporter:
+		return RolesToEventPerms[EventReporter]
+	default:
+		return EventNoPermissions
+	}
+}
+
+// EventPermissions computes the caller's permissions. With eventID set it also
+// resolves that event's permission mask from the caller's PERSON__EVENT
+// participation row (plan 52b: access derives from the per-event role, not from
+// EVENT_ACCESS). Admins bypass the per-event role entirely (see ManyEventPermissions).
+// userStore is retained in the signature pending the broader EVENT_ACCESS cleanup
+// (52c); it is no longer consulted here.
 func EventPermissions(
 	ctx context.Context,
 	eventID *int32, // nil for no event
 	imsDBQ *store.DBQ,
-	userStore directory.UserStore,
+	_ directory.UserStore,
 	claims IMSClaims,
 ) (eventPermissions map[int32]EventPermissionMask, globalPermissions GlobalPermissionMask, err error) {
-	accessByEvent := make(map[int32][]imsdb.EventAccess)
+	participationByEvent := make(map[int32]imsdb.PersonEventParticipationType)
 	if eventID != nil {
-		// If the eventID is the ID for an event group, this query returns no rows.
-		// This prevents users from adding entities under event groups, which we don't want.
-		accessRows, err := imsDBQ.EventAndParentAccess(ctx, imsDBQ, imsdb.EventAndParentAccessParams{EventID: *eventID})
-		if err != nil {
-			return nil, GlobalNoPermissions, fmt.Errorf("[EventAccess]: %w", err)
+		// Record the event key unconditionally so the result always carries an
+		// explicit mask for it: an admin gets the bypass and a non-admin without a
+		// participation row gets EventNoPermissions. A group event simply has no
+		// PERSON__EVENT rows, so non-admins get nothing there.
+		participationByEvent[*eventID] = ""
+		pe, err := imsDBQ.PersonEvent(ctx, imsDBQ, imsdb.PersonEventParams{
+			PersonID: claims.PersonID(),
+			Event:    *eventID,
+		})
+		switch {
+		case errors.Is(err, sql.ErrNoRows):
+			// No participation row → no derived access (admin bypass still applies).
+		case err != nil:
+			return nil, GlobalNoPermissions, fmt.Errorf("[PersonEvent]: %w", err)
+		default:
+			participationByEvent[*eventID] = pe.ParticipationType
 		}
-		// this collects EventAccesses from the Event itself and from an optional parent Event
-		for _, ea := range accessRows {
-			accessByEvent[*eventID] = append(accessByEvent[*eventID], ea.EventAccess)
-		}
 	}
-	allPositions, allTeams, err := userStore.GetPositionsAndTeams(ctx)
-	if err != nil {
-		return nil, GlobalNoPermissions, fmt.Errorf("[GetPositionsAndTeams]: %w", err)
-	}
-
-	userPosIDs := claims.PersonPositions()
-	userPosNames := make([]string, 0, len(userPosIDs))
-	for _, userPosID := range userPosIDs {
-		userPosNames = append(userPosNames, allPositions[userPosID])
-	}
-	userTeamIDs := claims.PersonTeams()
-	userTeamNames := make([]string, 0, len(userTeamIDs))
-	for _, userTeamID := range userTeamIDs {
-		userTeamNames = append(userTeamNames, allTeams[userTeamID])
-	}
-	onDutyPosition := ""
-	onDutyPositionID := claims.PersonOnDutyPosition()
-	if onDutyPositionID != nil {
-		onDutyPosition = allPositions[*onDutyPositionID]
-	}
-
 	eventPermissions, globalPermissions = ManyEventPermissions(
-		accessByEvent,
+		participationByEvent,
 		claims.PersonHandle(),
-		// On-site is retired (plan 52a); no one is ever on-site, so 'onsite'
-		// access-rule validity never matches. EVENT_ACCESS itself is retired in 52c.
-		false,
 		claims.PersonAdmin(),
-		userPosNames,
-		userTeamNames,
-		onDutyPosition,
 	)
 	return eventPermissions, globalPermissions, nil
 }
 
+// ManyEventPermissions computes per-event and global permissions from the caller's
+// per-event participation tiers (plan 52b). Each event in participationByEvent gets
+// the mask its tier grants; admins bypass the tier and get EventAllPermissions on
+// every event in the map.
 func ManyEventPermissions(
-	accessByEvent map[int32][]imsdb.EventAccess, // eventID as key
+	participationByEvent map[int32]imsdb.PersonEventParticipationType, // eventID as key
 	handle string,
-	onsite bool,
 	isAdmin bool,
-	positions []string,
-	teams []string,
-	onDutyPosition string,
 ) (eventPermissions map[int32]EventPermissionMask, globalPermissions GlobalPermissionMask) {
 	eventPermissions = make(map[int32]EventPermissionMask)
 	globalPermissions = GlobalNoPermissions
@@ -194,13 +193,15 @@ func ManyEventPermissions(
 		globalPermissions |= RolesToGlobalPerms[Administrator]
 	}
 
-	for eventID, accesses := range accessByEvent {
-		eventPermissions[eventID] = EventNoPermissions
-		for _, ea := range accesses {
-			if PersonMatches(ea, handle, positions, teams, onsite, onDutyPosition) {
-				eventPermissions[eventID] |= RolesToEventPerms[modeToRole[ea.Mode]]
-			}
+	for eventID, pt := range participationByEvent {
+		if isAdmin {
+			// Admins bypass per-event roles: full access regardless of their
+			// participation tier (they may carry a row, e.g. marked 'writer', but
+			// it does not gate them).
+			eventPermissions[eventID] = EventAllPermissions
+			continue
 		}
+		eventPermissions[eventID] = participationToEventPerms(pt)
 	}
 	return eventPermissions, globalPermissions
 }

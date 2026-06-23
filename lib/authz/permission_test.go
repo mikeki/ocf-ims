@@ -24,196 +24,69 @@ import (
 )
 
 const (
-	readerPerm             = EventReadEventName | EventReadIncidents | EventReadOwnReports | EventReadAllReports | EventReadVisits | EventReadAreas
 	writerPerm             = EventReadEventName | EventReadIncidents | EventWriteIncidents | EventReadAllReports | EventReadOwnReports | EventWriteAllReports | EventWriteOwnReports | EventReadVisits | EventWriteVisits | EventReadAreas
 	reporterPerm           = EventReadEventName | EventReadOwnReports | EventWriteOwnReports | EventReadAreas
-	visitWriterPerm        = EventReadEventName | EventReadVisits | EventWriteVisits | EventReadAreas
 	authenticatedUserPerms = GlobalListEvents | GlobalReadIncidentTypes | GlobalReadPersonnel
 	adminGlobalPerms       = GlobalAdministrateEvents | GlobalAdministrateIncidentTypes | GlobalAdministrateDebugging | GlobalAdministratePersonnel | GlobalAdministrateAreas
 )
 
-func addPerm(m map[int32][]imsdb.EventAccess, eventID int32, expr string, mode imsdb.EventAccessMode, validity imsdb.EventAccessValidity) {
-	m[eventID] = append(m[eventID],
-		imsdb.EventAccess{
-			Event:      eventID,
-			Expression: expr,
-			Mode:       mode,
-			Validity:   validity,
-		},
-	)
+// TestManyEventPermissions_participationLadder verifies access is derived from a
+// person's per-event participation tier (plan 52b): writer/reporter carry access,
+// everything below grants nothing.
+func TestManyEventPermissions_participationLadder(t *testing.T) {
+	t.Parallel()
+	cases := []struct {
+		participation imsdb.PersonEventParticipationType
+		want          EventPermissionMask
+	}{
+		{imsdb.PersonEventParticipationTypeWriter, writerPerm},
+		{imsdb.PersonEventParticipationTypeReporter, reporterPerm},
+		{imsdb.PersonEventParticipationTypeParticipant, EventNoPermissions},
+		{imsdb.PersonEventParticipationTypePublic, EventNoPermissions},
+		{imsdb.PersonEventParticipationTypeNotPresent, EventNoPermissions},
+		{imsdb.PersonEventParticipationTypeEjected, EventNoPermissions},
+		{imsdb.PersonEventParticipationType(""), EventNoPermissions},
+	}
+	for _, tc := range cases {
+		permissions, globalPermissions := ManyEventPermissions(
+			map[int32]imsdb.PersonEventParticipationType{123: tc.participation},
+			"SomeHandle",
+			false,
+		)
+		require.Equalf(t, tc.want, permissions[123], "participation %q", tc.participation)
+		require.Equal(t, authenticatedUserPerms, globalPermissions)
+	}
 }
 
-func TestManyEventPermissions_personRules(t *testing.T) {
+// TestManyEventPermissions_adminBypass verifies a flagged admin gets full access on
+// every event regardless of their participation tier (or absence of a row), plus
+// the Administrator global perms.
+func TestManyEventPermissions_adminBypass(t *testing.T) {
 	t.Parallel()
-	accessByEvent := make(map[int32][]imsdb.EventAccess)
-	addPerm(accessByEvent, 999, "person:SomeoneElse", modeRead, validityAlways)
-	addPerm(accessByEvent, 123, "person:EventReaderGuy", modeRead, validityAlways)
-	addPerm(accessByEvent, 123, "person:EventWriterGal", modeWrite, validityAlways)
-	addPerm(accessByEvent, 123, "person:EventReporterPerson", modeReport, validityAlways)
-	addPerm(accessByEvent, 123, "person:EventVisitWriterPerson", modeWriteVisits, validityAlways)
-
 	permissions, globalPermissions := ManyEventPermissions(
-		accessByEvent,
-		"EventReaderGuy",
-		true,
-		false,
-		[]string{},
-		[]string{},
-		"",
-	)
-	require.Equal(t, EventNoPermissions, permissions[999])
-	require.Equal(t, readerPerm, permissions[123])
-	require.Equal(t, authenticatedUserPerms, globalPermissions)
-
-	permissions, globalPermissions = ManyEventPermissions(
-		accessByEvent,
-		"EventWriterGal",
-		true,
-		false,
-		[]string{},
-		[]string{},
-		"",
-	)
-	require.Equal(t, EventNoPermissions, permissions[999])
-	require.Equal(t, writerPerm, permissions[123])
-	require.Equal(t, authenticatedUserPerms, globalPermissions)
-
-	permissions, globalPermissions = ManyEventPermissions(
-		accessByEvent,
-		"EventReporterPerson",
-		true,
-		false,
-		[]string{},
-		[]string{},
-		"",
-	)
-	require.Equal(t, EventNoPermissions, permissions[999])
-	require.Equal(t, reporterPerm, permissions[123])
-	require.Equal(t, authenticatedUserPerms, globalPermissions)
-
-	permissions, globalPermissions = ManyEventPermissions(
-		accessByEvent,
-		"EventVisitWriterPerson",
-		true,
-		false,
-		[]string{},
-		[]string{},
-		"",
-	)
-	require.Equal(t, EventNoPermissions, permissions[999])
-	require.Equal(t, visitWriterPerm, permissions[123])
-	require.Equal(t, authenticatedUserPerms, globalPermissions)
-
-	// A flagged admin (isAdmin=true) gets the Administrator global perms even with
-	// no matching event-access rows.
-	permissions, globalPermissions = ManyEventPermissions(
-		accessByEvent,
+		map[int32]imsdb.PersonEventParticipationType{
+			123: imsdb.PersonEventParticipationTypePublic,
+			999: imsdb.PersonEventParticipationTypeParticipant,
+		},
 		"FlaggedAdmin",
 		true,
-		true,
-		[]string{},
-		[]string{},
-		"",
 	)
-	require.Equal(t, EventNoPermissions, permissions[999])
-	require.Equal(t, EventNoPermissions, permissions[123])
+	require.Equal(t, EventAllPermissions, permissions[123])
+	require.Equal(t, EventAllPermissions, permissions[999])
 	require.Equal(t, authenticatedUserPerms|adminGlobalPerms, globalPermissions)
 }
 
-func TestManyEventPermissions_positionRules(t *testing.T) {
+// TestManyEventPermissions_unauthenticated verifies an empty handle grants no global
+// permissions (and no per-event ones).
+func TestManyEventPermissions_unauthenticated(t *testing.T) {
 	t.Parallel()
-	accessByEvent := make(map[int32][]imsdb.EventAccess)
-	addPerm(accessByEvent, 123, "person:Running Ranger", modeReport, validityAlways)
-	addPerm(accessByEvent, 123, "position:Runner", modeRead, validityAlways)
-	addPerm(accessByEvent, 999, "position:Non-Runner", modeRead, validityAlways)
-
-	// this user matches both a person and a position rule on event 123
 	permissions, globalPermissions := ManyEventPermissions(
-		accessByEvent,
-		"Running Ranger",
-		true,
-		false,
-		[]string{"Runner", "Swimmer"},
-		[]string{},
+		map[int32]imsdb.PersonEventParticipationType{123: imsdb.PersonEventParticipationTypeWriter},
 		"",
-	)
-	require.Equal(t, EventNoPermissions, permissions[999])
-	require.Equal(t, readerPerm|reporterPerm, permissions[123])
-	require.Equal(t, authenticatedUserPerms, globalPermissions)
-}
-
-func TestManyEventPermissions_teamRules(t *testing.T) {
-	t.Parallel()
-	accessByEvent := make(map[int32][]imsdb.EventAccess)
-	addPerm(accessByEvent, 123, "position:Runner", modeReport, validityAlways)
-	addPerm(accessByEvent, 123, "team:Running Squad", modeRead, validityAlways)
-	addPerm(accessByEvent, 999, "team:Non-Runner", modeRead, validityAlways)
-
-	// this user matches both a team and position rule on event 123
-	permissions, globalPermissions := ManyEventPermissions(
-		accessByEvent,
-		"Running Ranger",
-		true,
 		false,
-		[]string{"Runner", "Swimmer"},
-		[]string{"Running Squad", "Swimming Squad"},
-		"",
 	)
-	require.Equal(t, EventNoPermissions, permissions[999])
-	require.Equal(t, readerPerm|reporterPerm, permissions[123])
-	require.Equal(t, authenticatedUserPerms, globalPermissions)
-}
-
-func TestManyEventPermissions_onDutyRules(t *testing.T) {
-	t.Parallel()
-	accessByEvent := make(map[int32][]imsdb.EventAccess)
-	addPerm(accessByEvent, 123, "person:Running Ranger", modeReport, validityAlways)
-	addPerm(accessByEvent, 123, "onduty:Runner", modeRead, validityAlways)
-	addPerm(accessByEvent, 999, "position:Runner", modeRead, validityAlways)
-
-	// this user matches both a person and an onduty rule on event 123
-	permissions, globalPermissions := ManyEventPermissions(
-		accessByEvent,
-		"Running Ranger",
-		true,
-		false,
-		[]string{},
-		[]string{},
-		"Runner",
-	)
-	require.Equal(t, EventNoPermissions, permissions[999])
-	require.Equal(t, readerPerm|reporterPerm, permissions[123])
-	require.Equal(t, authenticatedUserPerms, globalPermissions)
-}
-
-func TestManyEventPermissions_wildcardValidity(t *testing.T) {
-	t.Parallel()
-	accessByEvent := make(map[int32][]imsdb.EventAccess)
-	addPerm(accessByEvent, 123, "*", modeReport, validityOnsite)
-
-	permissions, globalPermissions := ManyEventPermissions(
-		accessByEvent,
-		"Onsite Ranger",
-		true,
-		false,
-		[]string{"Runner", "Swimmer"},
-		[]string{"Running Squad", "Swimming Squad"},
-		"",
-	)
-	require.Equal(t, reporterPerm, permissions[123])
-	require.Equal(t, authenticatedUserPerms, globalPermissions)
-
-	permissions, globalPermissions = ManyEventPermissions(
-		accessByEvent,
-		"Offsite Ranger",
-		false,
-		false,
-		[]string{"Runner", "Swimmer"},
-		[]string{"Running Squad", "Swimming Squad"},
-		"",
-	)
-	require.Equal(t, EventNoPermissions, permissions[123])
-	require.Equal(t, authenticatedUserPerms, globalPermissions)
+	require.Equal(t, writerPerm, permissions[123])
+	require.Equal(t, GlobalNoPermissions, globalPermissions)
 }
 
 // TestManyEventPermissions_isAdminRules verifies the local IS_ADMIN flag is what
@@ -221,29 +94,20 @@ func TestManyEventPermissions_wildcardValidity(t *testing.T) {
 // not get them.
 func TestManyEventPermissions_isAdminRules(t *testing.T) {
 	t.Parallel()
-	accessByEvent := make(map[int32][]imsdb.EventAccess)
 
 	// Flagged local admin → gets admin global perms.
 	_, globalPermissions := ManyEventPermissions(
-		accessByEvent,
+		map[int32]imsdb.PersonEventParticipationType{},
 		"LocalAdmin",
 		true,
-		true,
-		[]string{},
-		[]string{},
-		"",
 	)
 	require.Equal(t, authenticatedUserPerms|adminGlobalPerms, globalPermissions)
 
 	// Same handle without the flag → ordinary authenticated user only.
 	_, globalPermissions = ManyEventPermissions(
-		accessByEvent,
+		map[int32]imsdb.PersonEventParticipationType{},
 		"LocalAdmin",
-		true,
 		false,
-		[]string{},
-		[]string{},
-		"",
 	)
 	require.Equal(t, authenticatedUserPerms, globalPermissions)
 }

@@ -98,13 +98,14 @@ templ People(deployment, versionName, versionRef, eventName string) {
               <div class="form-floating mb-3">
                 <select id="add_person_participation" class="form-select" aria-label="Participation">
                   <option value="">— none —</option>
-                  <option value="public">public</option>
+                  <option value="writer">writer (full access)</option>
+                  <option value="reporter">reporter (own reports)</option>
                   <option value="participant">participant</option>
-                  <option value="crew">crew</option>
+                  <option value="public">public</option>
                   <option value="not_present">not present</option>
                   <option value="ejected">ejected</option>
                 </select>
-                <label for="add_person_participation">Participation</label>
+                <label for="add_person_participation">Role</label>
               </div>
             </div>
             <div class="form-text">A person needs a name or a handle. A handle (and password) lets them log in.</div>
@@ -143,13 +144,14 @@ templ People(deployment, versionName, versionRef, eventName string) {
               <div class="form-floating mb-3">
                 <select id="edit_person_participation" class="form-select" aria-label="Participation">
                   <option value="">— none —</option>
-                  <option value="public">public</option>
+                  <option value="writer">writer (full access)</option>
+                  <option value="reporter">reporter (own reports)</option>
                   <option value="participant">participant</option>
-                  <option value="crew">crew</option>
+                  <option value="public">public</option>
                   <option value="not_present">not present</option>
                   <option value="ejected">ejected</option>
                 </select>
-                <label for="edit_person_participation">Participation</label>
+                <label for="edit_person_participation">Role</label>
               </div>
             </div>
           </div>

@@ -45,18 +45,25 @@ insert into EVENT (ID, NAME, IS_GROUP, PARENT_GROUP)
 values  (2, '2025', false, 6),
         (1, '2026', false, 6);
 
+-- EVENT_ACCESS is retired as the authorization source (plan 52b: access derives
+-- from PERSON__EVENT below). These rows are kept only so the Admin → Events access
+-- UI still has data to display until the table is dropped in 52c; they no longer
+-- grant anything.
 insert into EVENT_ACCESS (ID, EVENT, EXPRESSION, MODE, VALIDITY)
 values  (1, 6, '*', 'write', 'always'),
         (2, 2, '*', 'read', 'always');
 
--- 5e per-event participation for the 2026 fair (event 1): wristband + explicit
--- classification. Crew and participants carry wristbands (unique within the
--- event); the registry-only guest (607) is public with no wristband. Identity is
+-- 5e/52b per-event participation for the 2026 fair (event 1): wristband + the
+-- single access ladder. 601 is a writer (full incident + report access + the
+-- dashboard); 602 is a reporter (own reports only). 600 (Miguel) is also marked
+-- 'writer', but his access comes from PERSON.IS_ADMIN — an admin bypasses the
+-- per-event role regardless of the tier on the row. 603 is a plain participant and
+-- the registry-only guest (607) is public; neither gets IMS access. Identity is
 -- global (PERSON); this relationship is per-event and changes each fair.
 insert into PERSON__EVENT (PERSON_ID, EVENT, WRISTBAND, PARTICIPATION_TYPE)
-values  (600, 1, 'A-1001', 'crew'),
-        (601, 1, 'A-1002', 'crew'),
-        (602, 1, 'B-2001', 'participant'),
+values  (600, 1, 'A-1001', 'writer'),
+        (601, 1, 'A-1002', 'writer'),
+        (602, 1, 'B-2001', 'reporter'),
         (603, 1, 'B-2002', 'participant'),
         (607, 1, null,     'public');
 

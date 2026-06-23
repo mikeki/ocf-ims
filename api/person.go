@@ -264,8 +264,8 @@ func (action CreatePerson) eventForFieldCreate(req *http.Request, jwtCtx JWTCont
 }
 
 // defaultParticipation classifies a new person from their wristband: someone with
-// a wristband is a participant; without one, public. Admins can override and crew
-// is set when loading rosters. See R3.
+// a wristband is a participant; without one, public. Admins can override (e.g. to
+// promote a volunteer to reporter/writer on the People page). See R3.
 func defaultParticipation(wristband string) imsdb.PersonEventParticipationType {
 	if strings.TrimSpace(wristband) != "" {
 		return imsdb.PersonEventParticipationTypeParticipant
@@ -274,14 +274,15 @@ func defaultParticipation(wristband string) imsdb.PersonEventParticipationType {
 }
 
 // validParticipation validates a participation_type string against the enum.
-// validParticipation recognizes every PARTICIPATION_TYPE value. crew/participant/
-// public are the active roster roles; not_present/ejected are the kept-but-inactive
-// states set by the roster's "remove" flow (eject / not present), recorded on the
-// row rather than deleting it (slice 6j). The UI's role picker offers only the
-// active roles; the inactive states are reached through the remove action.
+// validParticipation recognizes every PARTICIPATION_TYPE value (plan 52b's single
+// access ladder): writer/reporter are the access-bearing rungs an admin promotes
+// to; participant/public are the no-access roster roles; not_present/ejected are
+// the kept-but-inactive states set by the roster's "remove" flow (eject / not
+// present), recorded on the row rather than deleting it (slice 6j).
 func validParticipation(s string) (imsdb.PersonEventParticipationType, bool) {
 	switch imsdb.PersonEventParticipationType(s) {
-	case imsdb.PersonEventParticipationTypeCrew,
+	case imsdb.PersonEventParticipationTypeWriter,
+		imsdb.PersonEventParticipationTypeReporter,
 		imsdb.PersonEventParticipationTypeParticipant,
 		imsdb.PersonEventParticipationTypePublic,
 		imsdb.PersonEventParticipationTypeNotPresent,

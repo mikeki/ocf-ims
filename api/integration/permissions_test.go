@@ -105,7 +105,12 @@ func TestEventEndpoints_ForNoEventPerms(t *testing.T) {
 	t.Parallel()
 	ctx := t.Context()
 
+	// The admin creates the event and grants roles; the subject under test is a
+	// non-admin (Alice). Admins now bypass per-event roles entirely (plan 52b), so
+	// a non-admin is the only way to exercise the no-perms → reporter → writer
+	// progression.
 	apisAdmin := ApiHelper{t: t, serverURL: shared.serverURL, jwt: jwtForAdmin(ctx, t)}
+	apisAlice := ApiHelper{t: t, serverURL: shared.serverURL, jwt: jwtForAlice(t, ctx)}
 	apisNotAuthenticated := ApiHelper{t: t, serverURL: shared.serverURL, jwt: ""}
 
 	eventName := rand.NonCryptoText()
@@ -178,25 +183,8 @@ func TestEventEndpoints_ForNoEventPerms(t *testing.T) {
 		postReportRE,
 		getAreas,
 	}
-	reader := []MethodURL{
-		getIncidents,
-		getIncident,
-		getIncidentAttachment,
-		getReports,
-		getReport,
-		getReportAttachment,
-		getVisits,
-		getVisit,
-		getVisitAttachment,
-		getAreas,
-	}
 
-	// TODO: section for visit writers?
-
-	// these are per-event endpoints that admins can access by virtue of being admins
-	adminGlobal := []MethodURL{
-		getAreas,
-	}
+	// The 52b ladder has no read-only rung: a non-writer/non-reporter sees nothing.
 	writer := slices.Clone(allPerms)
 
 	for _, api := range allPerms {
@@ -205,25 +193,15 @@ func TestEventEndpoints_ForNoEventPerms(t *testing.T) {
 		require.True(t, unauthorized(code), "%v %v wanted 401 status code, got %v", api.Method, api.Path, code)
 	}
 
-	// to begin, the user has almost no permissions
+	// to begin, the non-admin user has no permissions on this event (no
+	// participation row), so every per-event endpoint is forbidden.
 	for _, api := range allPerms {
-		if slices.Contains(adminGlobal, api) {
-			continue
-		}
-		// forbidden
-		code := apiCall(t, api, apisAdmin)
+		code := apiCall(t, api, apisAlice)
 		require.True(t, forbidden(code), "%v %v wanted 403 status code, got %v", api.Method, api.Path, code)
 	}
 
-	// make the user a reporter
-	resp = apisAdmin.editAccess(ctx, imsjson.EventsAccess{
-		eventName: imsjson.EventAccess{
-			Reporters: []imsjson.AccessRule{{
-				Expression: "person:" + userAdminHandle,
-				Validity:   "always",
-			}},
-		}},
-	)
+	// make the user a reporter (per-event PERSON__EVENT role)
+	resp = apisAdmin.addReporter(ctx, eventName, userAliceHandle)
 	require.Equal(t, http.StatusNoContent, resp.StatusCode)
 	require.NoError(t, resp.Body.Close())
 
@@ -234,53 +212,21 @@ func TestEventEndpoints_ForNoEventPerms(t *testing.T) {
 			// the user won't be able to write to an FR for which they're not an author,
 			// e.g. the one in this dummy call, so we should expect a 403 or 404, but we
 			// can confirm they got the right error message
-			code := apiCall(t, api, apisAdmin)
+			code := apiCall(t, api, apisAlice)
 			require.True(t, forbiddenOrNotFound(code), "%v %v wanted 403/404 status code, got %v", api.Method, api.Path, code)
 		case slices.Contains(reporter, api):
 			// permitted
-			code := apiCall(t, api, apisAdmin)
+			code := apiCall(t, api, apisAlice)
 			require.True(t, permitted(code), "%v %v wanted non-401/403 status code, got %v", api.Method, api.Path, code)
 		default:
 			// forbidden
-			code := apiCall(t, api, apisAdmin)
-			require.True(t, forbidden(code), "%v %v wanted 403 status code, got %v", api.Method, api.Path, code)
-		}
-	}
-
-	// make the user a reader
-	resp = apisAdmin.editAccess(ctx, imsjson.EventsAccess{
-		eventName: imsjson.EventAccess{
-			Readers: []imsjson.AccessRule{{
-				Expression: "person:" + userAdminHandle,
-				Validity:   "always",
-			}},
-		}},
-	)
-	require.Equal(t, http.StatusNoContent, resp.StatusCode)
-	require.NoError(t, resp.Body.Close())
-
-	// now the user can hit some other endpoints
-	for _, api := range allPerms {
-		if slices.Contains(reader, api) {
-			// permitted
-			code := apiCall(t, api, apisAdmin)
-			require.True(t, permitted(code), "%v %v wanted non-401/403 status code, got %v", api.Method, api.Path, code)
-		} else {
-			// forbidden
-			code := apiCall(t, api, apisAdmin)
+			code := apiCall(t, api, apisAlice)
 			require.True(t, forbidden(code), "%v %v wanted 403 status code, got %v", api.Method, api.Path, code)
 		}
 	}
 
 	// finally, make the user a writer
-	resp = apisAdmin.editAccess(ctx, imsjson.EventsAccess{
-		eventName: imsjson.EventAccess{
-			Writers: []imsjson.AccessRule{{
-				Expression: "person:" + userAdminHandle,
-				Validity:   "always",
-			}},
-		}},
-	)
+	resp = apisAdmin.addWriter(ctx, eventName, userAliceHandle)
 	require.Equal(t, http.StatusNoContent, resp.StatusCode)
 	require.NoError(t, resp.Body.Close())
 
@@ -288,11 +234,11 @@ func TestEventEndpoints_ForNoEventPerms(t *testing.T) {
 	for _, api := range allPerms {
 		if slices.Contains(writer, api) {
 			// permitted
-			code := apiCall(t, api, apisAdmin)
+			code := apiCall(t, api, apisAlice)
 			require.True(t, permitted(code), "%v %v wanted non-401/403 status code, got %v", api.Method, api.Path, code)
 		} else {
 			// forbidden
-			code := apiCall(t, api, apisAdmin)
+			code := apiCall(t, api, apisAlice)
 			require.True(t, forbidden(code), "%v %v wanted 403 status code, got %v", api.Method, api.Path, code)
 		}
 	}
