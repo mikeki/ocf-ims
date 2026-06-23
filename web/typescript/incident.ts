@@ -24,6 +24,7 @@ declare global {
         editOutcome: ()=>Promise<void>;
         editIncidentSummary: ()=>Promise<void>;
         editLocationArea: ()=>Promise<void>;
+        createLocationArea: ()=>Promise<void>;
         editLocationBooth: ()=>Promise<void>;
         editLocationDescription: ()=>Promise<void>;
         removePerson: (el: HTMLElement)=>void;
@@ -48,7 +49,7 @@ let allIncidentTypes: ims.IncidentType[] = [];
 
 let allEvents: ims.EventData[]|null = null;
 
-// The current event's areas, used to populate the location <select> (Phase 4c).
+// The current event's areas, used to populate the location Area combobox.
 let eventAreas: ims.Area[] = [];
 
 //
@@ -63,7 +64,10 @@ const el = {
     startedDatetime: ims.typedElement("started_datetime", HTMLInputElement) as ims.FlatpickrHTMLInputElement,
     startedDatetimeTz: ims.typedElement("started_datetime_tz", HTMLSpanElement),
 
-    locationArea: ims.typedElement("incident_location_area", HTMLSelectElement),
+    locationArea: ims.typedElement("incident_location_area", HTMLInputElement),
+    locationAreaList: ims.typedElement("incident_location_areas", HTMLDataListElement),
+    locationAreaCreate: ims.typedElement("incident_location_area_create", HTMLDivElement),
+    locationAreaCreateName: ims.typedElement("incident_location_area_create_name", HTMLSpanElement),
     locationBooth: ims.typedElement("incident_location_booth", HTMLInputElement),
     locationDescription: ims.typedElement("incident_location_description", HTMLInputElement),
 
@@ -117,6 +121,7 @@ async function initIncidentPage(): Promise<void> {
     window.editOutcome = editOutcome;
     window.editIncidentSummary = editIncidentSummary;
     window.editLocationArea = editLocationArea;
+    window.createLocationArea = createLocationArea;
     window.editLocationBooth = editLocationBooth;
     window.editLocationDescription = editLocationDescription;
     window.removePerson = removePerson;
@@ -848,51 +853,65 @@ async function loadEventAreas(): Promise<void> {
     eventAreas = json;
 }
 
-// compareAreas orders areas by sort_order, then by name.
-function compareAreas(a: ims.Area, b: ims.Area): number {
-    const diff = (a.sort_order??0) - (b.sort_order??0);
-    if (diff !== 0) {
-        return diff;
-    }
-    return (a.name??"").localeCompare(b.name??"");
-}
-
-// drawAreaOptions rebuilds the location <select> from the event's areas: each
-// top-level area followed by its children (single-level hierarchy), children
-// indented. The leading "(none)" option clears the area.
+// drawAreaOptions rebuilds the Area datalist from the event's areas. The Area
+// field is a type-to-filter combobox (like Incident Types): the datalist holds
+// every area name, alphabetically, and the browser narrows the list as the user
+// types. The datalist's option values are area *names* (what the user sees and
+// types); editLocationArea maps the chosen name back to its slug.
 function drawAreaOptions(): void {
-    const select = el.locationArea;
-    select.replaceChildren();
+    const datalist = el.locationAreaList;
+    datalist.replaceChildren();
 
-    const none = document.createElement("option");
-    none.value = "";
-    none.textContent = "(none)";
-    select.append(none);
-
-    const topLevel = eventAreas.filter(a => !a.parent_slug).sort(compareAreas);
-    for (const area of topLevel) {
-        select.append(areaOption(area, false));
-        const children = eventAreas
-            .filter(a => a.parent_slug === area.slug)
-            .sort(compareAreas);
-        for (const child of children) {
-            select.append(areaOption(child, true));
-        }
+    const sorted = eventAreas.slice()
+        .sort((a, b) => (a.name??"").localeCompare(b.name??""));
+    for (const area of sorted) {
+        const opt = document.createElement("option");
+        opt.value = area.name??"";
+        datalist.append(opt);
     }
 }
 
-function areaOption(area: ims.Area, indent: boolean): HTMLOptionElement {
-    const opt = document.createElement("option");
-    opt.value = area.slug??"";
-    opt.textContent = indent ? `  — ${area.name??""}` : (area.name??"");
-    return opt;
+// areaByName returns the area whose name matches the given text (case- and
+// whitespace-insensitive), or null if none does.
+function areaByName(name: string): ims.Area|null {
+    const wanted = name.trim().toLowerCase();
+    return eventAreas.find(a => (a.name??"").trim().toLowerCase() === wanted)??null;
 }
 
-// drawLocationArea repopulates the options (the area list is event-scoped and
-// loaded once) and selects the incident's current area, if any.
+
+// drawLocationArea repopulates the datalist (the area list is event-scoped and
+// loaded once) and shows the incident's current area name, if any.
 function drawLocationArea(): void {
     drawAreaOptions();
-    el.locationArea.value = incident?.location?.area_slug??"";
+    hideAreaCreateOffer();
+    const slug = incident?.location?.area_slug;
+    const current = slug ? eventAreas.find(a => a.slug === slug) : null;
+    el.locationArea.value = current?.name??"";
+}
+
+// The name typed into the Area field that didn't match any existing area, kept
+// so the "Create it for this event" button knows what to create.
+let pendingAreaName = "";
+
+function showAreaCreateOffer(name: string): void {
+    pendingAreaName = name;
+    el.locationAreaCreateName.textContent = name;
+    el.locationAreaCreate.classList.remove("hidden");
+}
+
+function hideAreaCreateOffer(): void {
+    pendingAreaName = "";
+    el.locationAreaCreate.classList.add("hidden");
+}
+
+// sendAreaSlug persists the incident's location area (empty string clears it).
+async function sendAreaSlug(slug: string): Promise<void> {
+    const {err} = await sendEdits({location: {area_slug: slug}});
+    if (err != null) {
+        ims.controlHasError(el.locationArea);
+    } else {
+        ims.controlHasSuccess(el.locationArea);
+    }
 }
 
 function drawLocationBooth() {
@@ -1198,8 +1217,64 @@ async function editIncidentSummary(): Promise<void> {
 }
 
 
+// editLocationArea runs when the Area combobox commits a value. An empty value
+// clears the area; an exact (case-insensitive) name match selects that area;
+// anything else offers to create a new area with the typed name for this event.
 async function editLocationArea(): Promise<void> {
-    await ims.editFromElement(el.locationArea, "location.area_slug");
+    hideAreaCreateOffer();
+    const typed = el.locationArea.value.trim();
+    if (typed === "") {
+        await sendAreaSlug("");
+        return;
+    }
+    const match = areaByName(typed);
+    if (match != null) {
+        // Normalize the field to the canonical area name, then persist its slug.
+        el.locationArea.value = match.name??"";
+        await sendAreaSlug(match.slug??"");
+        return;
+    }
+    // No existing area matches — offer to create one with this name.
+    showAreaCreateOffer(typed);
+}
+
+// createLocationArea creates a new area named with the unmatched text the user
+// typed, then selects it for this incident. Allowed for any incident editor.
+async function createLocationArea(): Promise<void> {
+    const name = pendingAreaName.trim();
+    if (name === "") {
+        return;
+    }
+    el.locationArea.disabled = true;
+    // Place the new area after the existing ones in sort order; the datalist is
+    // rendered alphabetically by name regardless.
+    const maxSort = eventAreas.reduce((m, a) => Math.max(m, a.sort_order??0), -1);
+    const {resp, err} = await ims.fetchNoThrow(
+        ims.urlReplace(url_areas),
+        {body: JSON.stringify({name: name, sort_order: maxSort + 1})},
+    );
+    if (err != null || resp == null) {
+        ims.setErrorMessage(`Failed to create area: ${err}`);
+        ims.controlHasError(el.locationArea);
+        el.locationArea.disabled = false;
+        return;
+    }
+    const newSlug = resp.headers.get("IMS-Area-Slug");
+    if (!newSlug) {
+        ims.setErrorMessage("Area was created but no slug was returned.");
+        el.locationArea.disabled = false;
+        return;
+    }
+    // Reload the event's areas so the new one is available to the datalist and
+    // future lookups, then select it.
+    await loadEventAreas();
+    drawAreaOptions();
+    hideAreaCreateOffer();
+    const created = eventAreas.find(a => a.slug === newSlug);
+    el.locationArea.value = created?.name??name;
+    el.locationArea.disabled = false;
+    await sendAreaSlug(newSlug);
+    el.locationArea.focus();
 }
 
 async function editLocationBooth(): Promise<void> {

@@ -95,16 +95,13 @@ func (action EditAreas) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 
 func (action EditAreas) run(req *http.Request) (newSlug string, errHTTP *herr.HTTPError) {
 	ctx := req.Context()
+	event, _, eventPermissions, errHTTP := getEventPermissions(req, action.imsDBQ, action.userStore)
+	if errHTTP != nil {
+		return "", errHTTP.From("[getEventPermissions]")
+	}
 	_, globalPermissions, errHTTP := getGlobalPermissions(req, action.imsDBQ, action.userStore)
 	if errHTTP != nil {
 		return "", errHTTP.From("[getGlobalPermissions]")
-	}
-	if globalPermissions&authz.GlobalAdministrateAreas == 0 {
-		return "", herr.Forbidden("The requestor does not have GlobalAdministrateAreas permission", nil)
-	}
-	event, errHTTP := getEvent(req, req.PathValue("eventName"), action.imsDBQ)
-	if errHTTP != nil {
-		return "", errHTTP.From("[getEvent]")
 	}
 	areaReq, errHTTP := readBodyAs[imsjson.Area](req)
 	if errHTTP != nil {
@@ -112,7 +109,18 @@ func (action EditAreas) run(req *http.Request) (newSlug string, errHTTP *herr.HT
 	}
 
 	if areaReq.Slug == "" {
+		// Creating a new area is allowed for incident editors (so a Ranger can
+		// add a missing location on the fly from the incident form) as well as
+		// for area admins.
+		if globalPermissions&authz.GlobalAdministrateAreas == 0 &&
+			eventPermissions&authz.EventWriteIncidents == 0 {
+			return "", herr.Forbidden("The requestor may not create Areas", nil)
+		}
 		return action.create(ctx, event.ID, areaReq)
+	}
+	// Editing an existing area (rename / reparent / reorder) stays admin-only.
+	if globalPermissions&authz.GlobalAdministrateAreas == 0 {
+		return "", herr.Forbidden("The requestor does not have GlobalAdministrateAreas permission", nil)
 	}
 	return "", action.update(ctx, event.ID, areaReq)
 }
