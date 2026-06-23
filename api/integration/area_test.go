@@ -154,16 +154,17 @@ func TestAreaHierarchy(t *testing.T) {
 	require.NoError(t, resp.Body.Close())
 }
 
-// TestAreaMutationRequiresAdmin verifies that a non-admin authenticated user
-// cannot create or edit areas: the mutating endpoint is gated by
-// GlobalAdministrateAreas, which only Administrators hold.
+// TestAreaMutationRequiresAdmin verifies that a user with no write access to the
+// event cannot create or edit areas. Creating an area is allowed for incident
+// editors (see TestAreaCreateAllowedForEventWriter); editing an existing area
+// stays gated by GlobalAdministrateAreas, which only Administrators hold.
 func TestAreaMutationRequiresAdmin(t *testing.T) {
 	t.Parallel()
 	ctx := t.Context()
 	admin := ApiHelper{t: t, serverURL: shared.serverURL, jwt: jwtForAdmin(ctx, t)}
 	eventName := makeEvent(ctx, t, admin)
 
-	// Alice is a regular (non-admin) user.
+	// Alice is a regular (non-admin) user with no access to this event.
 	alice := ApiHelper{t: t, serverURL: shared.serverURL, jwt: jwtForAlice(t, ctx)}
 	name := "Sneaky Area"
 	slug, resp := alice.editArea(ctx, eventName, imsjson.Area{Name: &name})
@@ -176,6 +177,42 @@ func TestAreaMutationRequiresAdmin(t *testing.T) {
 	require.Equal(t, http.StatusOK, resp.StatusCode)
 	require.NoError(t, resp.Body.Close())
 	assert.Empty(t, areas)
+}
+
+// TestAreaCreateAllowedForEventWriter verifies that an event writer (a Ranger
+// who can edit incidents) may create a new area on the fly, but still may not
+// edit an existing area (that remains admin-only).
+func TestAreaCreateAllowedForEventWriter(t *testing.T) {
+	t.Parallel()
+	ctx := t.Context()
+	admin := ApiHelper{t: t, serverURL: shared.serverURL, jwt: jwtForAdmin(ctx, t)}
+	eventName := makeEvent(ctx, t, admin)
+
+	// Grant Alice write access to the event, then re-auth so her JWT carries it.
+	resp := admin.addWriter(ctx, eventName, userAliceHandle)
+	require.Equal(t, http.StatusNoContent, resp.StatusCode)
+	require.NoError(t, resp.Body.Close())
+	alice := ApiHelper{t: t, serverURL: shared.serverURL, jwt: jwtForAlice(t, ctx)}
+
+	// She can create a new area.
+	name := "Found Spot"
+	slug, resp := alice.editArea(ctx, eventName, imsjson.Area{Name: &name})
+	require.Equal(t, http.StatusNoContent, resp.StatusCode)
+	require.NoError(t, resp.Body.Close())
+	require.NotEmpty(t, slug)
+
+	// The area is visible to everyone with the event.
+	areas, resp := admin.getAreas(ctx, eventName)
+	require.Equal(t, http.StatusOK, resp.StatusCode)
+	require.NoError(t, resp.Body.Close())
+	require.Len(t, areas, 1)
+	assert.Equal(t, slug, areas[0].Slug)
+
+	// But she may not rename it — editing an existing area is still admin-only.
+	newName := "Renamed Spot"
+	_, resp = alice.editArea(ctx, eventName, imsjson.Area{Slug: slug, Name: &newName})
+	assert.Equal(t, http.StatusForbidden, resp.StatusCode)
+	require.NoError(t, resp.Body.Close())
 }
 
 func TestAreaRequiresNameOnCreate(t *testing.T) {
