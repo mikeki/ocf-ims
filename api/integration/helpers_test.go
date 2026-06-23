@@ -391,40 +391,47 @@ func (a ApiHelper) getEvents(ctx context.Context) (imsjson.Events, *http.Respons
 	return *bod.(*imsjson.Events), resp
 }
 
+// addWriter / addReporter grant a per-event role by setting the person's
+// PERSON__EVENT participation tier (plan 52b: access derives from participation,
+// not EVENT_ACCESS). They return 204, matching the old editAccess-based helpers.
 func (a ApiHelper) addWriter(ctx context.Context, eventName, handle string) *http.Response {
 	a.t.Helper()
-	return a.editAccess(ctx, imsjson.EventsAccess{
-		eventName: imsjson.EventAccess{
-			Writers: []imsjson.AccessRule{{
-				Expression: "person:" + handle,
-				Validity:   "always",
-			}},
-		},
-	})
+	return a.setParticipation(ctx, personIDForHandle(a.t, handle), eventName,
+		api.SetParticipationRequest{ParticipationType: "writer"})
 }
 
 func (a ApiHelper) addReporter(ctx context.Context, eventName, handle string) *http.Response {
 	a.t.Helper()
-	return a.editAccess(ctx, imsjson.EventsAccess{
-		eventName: imsjson.EventAccess{
-			Reporters: []imsjson.AccessRule{{
-				Expression: "person:" + handle,
-				Validity:   "always",
-			}},
-		},
-	})
+	return a.setParticipation(ctx, personIDForHandle(a.t, handle), eventName,
+		api.SetParticipationRequest{ParticipationType: "reporter"})
 }
 
+// addVisitWriter grants the writer tier. The 52b ladder has no visit-only rung
+// (writer already covers visits), so this is a thin alias kept for the existing
+// visit tests; visits themselves are disabled for the beta.
 func (a ApiHelper) addVisitWriter(ctx context.Context, eventName, handle string) *http.Response {
 	a.t.Helper()
-	return a.editAccess(ctx, imsjson.EventsAccess{
-		eventName: imsjson.EventAccess{
-			VisitWriters: []imsjson.AccessRule{{
-				Expression: "person:" + handle,
-				Validity:   "always",
-			}},
-		},
-	})
+	return a.setParticipation(ctx, personIDForHandle(a.t, handle), eventName,
+		api.SetParticipationRequest{ParticipationType: "writer"})
+}
+
+// personIDForHandle maps the suite's fixed login handles to their seeded PERSON.ID
+// so role-granting helpers can target the per-event participation endpoint (which
+// is keyed by person id).
+func personIDForHandle(t *testing.T, handle string) int64 {
+	t.Helper()
+	switch handle {
+	case userAdminHandle:
+		return userAdminPersonID
+	case userAliceHandle:
+		return userAlicePersonID
+	case userBobHandle:
+		return userBobPersonID
+	case userCarolHandle:
+		return userCarolPersonID
+	}
+	t.Fatalf("personIDForHandle: unknown handle %q", handle)
+	return 0
 }
 
 func (a ApiHelper) editAccess(ctx context.Context, req imsjson.EventsAccess) *http.Response {

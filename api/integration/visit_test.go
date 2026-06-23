@@ -109,19 +109,15 @@ func TestVisitAPIAuthorization(t *testing.T) {
 	require.Equal(t, http.StatusForbidden, resp.StatusCode)
 	require.NoError(t, resp.Body.Close())
 
-	// For an admin user without permissions on the event
-	// (an admin has no special privileges on each event)
+	// An admin bypasses per-event roles (plan 52b): full access on the event with no
+	// participation row. Reads succeed (a missing visit is 404, not 403). We only
+	// read here to avoid creating a visit that would shift the numbering of the
+	// writer-access checks below.
 	_, resp = adminUser.getVisits(ctx, eventName)
-	require.Equal(t, http.StatusForbidden, resp.StatusCode)
+	require.Equal(t, http.StatusOK, resp.StatusCode)
 	require.NoError(t, resp.Body.Close())
 	_, resp = adminUser.getVisit(ctx, eventName, 1)
-	require.Equal(t, http.StatusForbidden, resp.StatusCode)
-	require.NoError(t, resp.Body.Close())
-	resp = adminUser.newVisit(ctx, imsjson.Visit{Event: eventName})
-	require.Equal(t, http.StatusForbidden, resp.StatusCode)
-	require.NoError(t, resp.Body.Close())
-	resp = adminUser.updateVisit(ctx, eventName, 1, imsjson.Visit{})
-	require.Equal(t, http.StatusForbidden, resp.StatusCode)
+	require.Equal(t, http.StatusNotFound, resp.StatusCode)
 	require.NoError(t, resp.Body.Close())
 
 	// make Alice a writer

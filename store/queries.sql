@@ -740,6 +740,14 @@ select PERSON_ID, EVENT, WRISTBAND, PARTICIPATION_TYPE
 from PERSON__EVENT
 where PERSON_ID = ? and EVENT = ?;
 
+-- PersonEventsForPerson returns every per-event participation row for one person.
+-- It backs the cross-event permission map (plan 52b: access derives from
+-- PARTICIPATION_TYPE), so the caller can map each event's tier to a role.
+-- name: PersonEventsForPerson :many
+select EVENT, PARTICIPATION_TYPE
+from PERSON__EVENT
+where PERSON_ID = ?;
+
 -- InsertPersonEvent creates a person's per-event row. A wristband already taken in
 -- the event violates the (EVENT, WRISTBAND) unique key (a real conflict the caller
 -- maps to 409); null wristbands don't collide (MySQL allows multiple NULLs).

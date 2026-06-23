@@ -121,20 +121,11 @@ func TestGetAuthWithEvent(t *testing.T) {
 
 	apisAdmin := ApiHelper{t: t, serverURL: shared.serverURL, jwt: jwtForAdmin(ctx, t)}
 
-	// create event and give this user permissions on it
+	// create an event. The admin needs no per-event role: admins bypass per-event
+	// checks (plan 52b), so getAuth reports full access on any event.
 	eventName := rand.NonCryptoText()
 	_, resp := apisAdmin.createEvent(ctx, imsjson.Event{
 		Name: &eventName,
-	})
-	require.Equal(t, http.StatusNoContent, resp.StatusCode)
-	require.NoError(t, resp.Body.Close())
-	resp = apisAdmin.editAccess(ctx, imsjson.EventsAccess{
-		eventName: imsjson.EventAccess{
-			Readers: []imsjson.AccessRule{{
-				Expression: "person:" + userAdminHandle,
-				Validity:   "always",
-			}},
-		},
 	})
 	require.Equal(t, http.StatusNoContent, resp.StatusCode)
 	require.NoError(t, resp.Body.Close())
@@ -152,10 +143,10 @@ func TestGetAuthWithEvent(t *testing.T) {
 			eventName: {
 				EventID:        eventID,
 				ReadIncidents:  true,
-				WriteIncidents: false,
-				WriteReports:   false,
+				WriteIncidents: true,
+				WriteReports:   true,
 				ReadVisits:     true,
-				WriteVisits:    false,
+				WriteVisits:    true,
 				AttachFiles:    true,
 			},
 		},
