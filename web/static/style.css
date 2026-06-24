@@ -163,6 +163,13 @@ h1, h2, h3, h4, h5, h6 {
   font-size: var(--font-size-smaller);
 }
 
+/* An @mention inside a rendered journal entry (plan 81). Styled, not yet linked
+   (there's no person view to link to). */
+.journal-mention {
+  font-weight: 600;
+  color: var(--bs-link-color);
+}
+
 .journal_entry_metadata {
   font-size: var(--font-size-smallest);
   font-weight: bold;

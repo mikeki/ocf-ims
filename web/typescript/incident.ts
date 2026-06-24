@@ -169,6 +169,7 @@ async function initIncidentPage(): Promise<void> {
     }
     drawPeople();
     setupPersonAdd();
+    ims.setupJournalMentionAutocomplete(ims.pathIds.eventName ?? "");
     drawIncidentTypesToAdd();
     drawIncidentTypeInfo();
     renderReportData();
