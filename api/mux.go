@@ -507,6 +507,38 @@ func AddToMux(
 		),
 	)
 
+	// Notifications (plan 82): per-person (the caller's own), so only
+	// authentication is required — no event scoping.
+	mux.Handle("GET /ims/api/notifications",
+		Adapt(
+			GetNotifications{db, userStore, cfg.Core.CacheControlShort},
+			RecoverFromPanic(),
+			RequireAuthN(jwter),
+			LogRequest(false, actionLogger, userStore),
+			LimitRequestBytes(cfg.Core.MaxRequestBytes),
+		),
+	)
+
+	mux.Handle("POST /ims/api/notifications/read",
+		Adapt(
+			MarkNotificationsRead{db, userStore},
+			RecoverFromPanic(),
+			RequireAuthN(jwter),
+			LogRequest(true, actionLogger, userStore),
+			LimitRequestBytes(cfg.Core.MaxRequestBytes),
+		),
+	)
+
+	mux.Handle("POST /ims/api/notifications/{notificationId}/read",
+		Adapt(
+			MarkNotificationsRead{db, userStore},
+			RecoverFromPanic(),
+			RequireAuthN(jwter),
+			LogRequest(true, actionLogger, userStore),
+			LimitRequestBytes(cfg.Core.MaxRequestBytes),
+		),
+	)
+
 	mux.Handle("GET /ims/api/eventsource",
 		Adapt(
 			es.Server.Handler(EventSourceChannel),

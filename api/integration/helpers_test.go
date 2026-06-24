@@ -679,6 +679,18 @@ func (a ApiHelper) addCrewLeader(ctx context.Context, eventName, handle string) 
 		api.SetParticipationRequest{ParticipationType: "crew_leader"})
 }
 
+func (a ApiHelper) getNotifications(ctx context.Context) (imsjson.NotificationList, *http.Response) {
+	a.t.Helper()
+	path := a.serverURL.JoinPath("/ims/api/notifications").String()
+	bod, resp := a.imsGet(ctx, path, &imsjson.NotificationList{})
+	return *bod.(*imsjson.NotificationList), resp
+}
+
+func (a ApiHelper) markAllNotificationsRead(ctx context.Context) *http.Response {
+	a.t.Helper()
+	return a.imsPost(ctx, struct{}{}, a.serverURL.JoinPath("/ims/api/notifications/read").String())
+}
+
 func jwtForAdmin(ctx context.Context, t *testing.T) string {
 	t.Helper()
 	apisNotAuthenticated := ApiHelper{t: t, serverURL: shared.serverURL, jwt: ""}
