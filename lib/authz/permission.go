@@ -47,7 +47,8 @@ const (
 // admin bypasses per-event roles and gets this on any event (plan 52b).
 const EventAllPermissions = EventReadIncidents | EventWriteIncidents |
 	EventReadAllReports | EventReadOwnReports | EventWriteAllReports | EventWriteOwnReports |
-	EventReadEventName | EventReadVisits | EventWriteVisits | EventReadAreas
+	EventReadEventName | EventReadVisits | EventWriteVisits | EventReadAreas |
+	EventInviteReporters
 
 const (
 	// Event-specific permissions.
@@ -62,6 +63,12 @@ const (
 	EventReadVisits
 	EventWriteVisits
 	EventReadAreas
+	// EventInviteReporters allows a caller to invite a person to this event as a
+	// reporter — create their login and set reporter (or non-access) participation
+	// (plan 53a). Held by 'writer' and 'crew_leader' rungs (and admins via bypass).
+	// The anti-escalation ceiling (never assign writer/crew_leader) is enforced at
+	// the endpoints, not by this bit.
+	EventInviteReporters
 )
 
 const (
@@ -92,17 +99,21 @@ var RolesToGlobalPerms = map[Role]GlobalPermissionMask{
 // + report + visit access) and EventReporter (own reports only).
 var RolesToEventPerms = map[Role]EventPermissionMask{
 	EventReporter: EventReadEventName | EventReadOwnReports | EventWriteOwnReports | EventReadAreas,
-	EventWriter:   EventReadEventName | EventReadIncidents | EventWriteIncidents | EventReadAllReports | EventReadOwnReports | EventWriteAllReports | EventWriteOwnReports | EventReadVisits | EventWriteVisits | EventReadAreas,
+	EventWriter:   EventReadEventName | EventReadIncidents | EventWriteIncidents | EventReadAllReports | EventReadOwnReports | EventWriteAllReports | EventWriteOwnReports | EventReadVisits | EventWriteVisits | EventReadAreas | EventInviteReporters,
 }
 
 // participationToEventPerms maps a person's per-event participation tier to the
-// event permissions it grants (plan 52b). Only the top two rungs carry access;
-// participant/public/not_present/ejected — and any unrecognized value — grant
-// nothing.
+// event permissions it grants (plans 52b, 53a). 'writer' carries full access;
+// 'reporter' carries own-reports-only; 'crew_leader' has reporter-level access
+// plus the invite-reporters power. participant/public/not_present/ejected — and
+// any unrecognized value — grant nothing.
 func participationToEventPerms(pt imsdb.PersonEventParticipationType) EventPermissionMask {
 	switch pt {
 	case imsdb.PersonEventParticipationTypeWriter:
 		return RolesToEventPerms[EventWriter]
+	case imsdb.PersonEventParticipationTypeCrewLeader:
+		// reporter-level access plus the ability to invite reporters (plan 53a).
+		return RolesToEventPerms[EventReporter] | EventInviteReporters
 	case imsdb.PersonEventParticipationTypeReporter:
 		return RolesToEventPerms[EventReporter]
 	default:

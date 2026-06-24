@@ -141,13 +141,14 @@ func TestGetAuthWithEvent(t *testing.T) {
 		CanManagePersonnel: true,
 		EventAccess: map[string]api.AccessForEvent{
 			eventName: {
-				EventID:        eventID,
-				ReadIncidents:  true,
-				WriteIncidents: true,
-				WriteReports:   true,
-				ReadVisits:     true,
-				WriteVisits:    true,
-				AttachFiles:    true,
+				EventID:         eventID,
+				ReadIncidents:   true,
+				WriteIncidents:  true,
+				WriteReports:    true,
+				ReadVisits:      true,
+				WriteVisits:     true,
+				AttachFiles:     true,
+				InviteReporters: true,
 			},
 		},
 	}, authResp)

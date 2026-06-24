@@ -24,8 +24,9 @@ import (
 )
 
 const (
-	writerPerm             = EventReadEventName | EventReadIncidents | EventWriteIncidents | EventReadAllReports | EventReadOwnReports | EventWriteAllReports | EventWriteOwnReports | EventReadVisits | EventWriteVisits | EventReadAreas
+	writerPerm             = EventReadEventName | EventReadIncidents | EventWriteIncidents | EventReadAllReports | EventReadOwnReports | EventWriteAllReports | EventWriteOwnReports | EventReadVisits | EventWriteVisits | EventReadAreas | EventInviteReporters
 	reporterPerm           = EventReadEventName | EventReadOwnReports | EventWriteOwnReports | EventReadAreas
+	crewLeaderPerm         = reporterPerm | EventInviteReporters
 	authenticatedUserPerms = GlobalListEvents | GlobalReadIncidentTypes | GlobalReadPersonnel
 	adminGlobalPerms       = GlobalAdministrateEvents | GlobalAdministrateIncidentTypes | GlobalAdministrateDebugging | GlobalAdministratePersonnel | GlobalAdministrateAreas
 )
@@ -40,6 +41,7 @@ func TestManyEventPermissions_participationLadder(t *testing.T) {
 		want          EventPermissionMask
 	}{
 		{imsdb.PersonEventParticipationTypeWriter, writerPerm},
+		{imsdb.PersonEventParticipationTypeCrewLeader, crewLeaderPerm},
 		{imsdb.PersonEventParticipationTypeReporter, reporterPerm},
 		{imsdb.PersonEventParticipationTypeParticipant, EventNoPermissions},
 		{imsdb.PersonEventParticipationTypePublic, EventNoPermissions},

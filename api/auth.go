@@ -202,6 +202,10 @@ type AccessForEvent struct {
 	// Incidents nav/list (filtered to granted incidents) for an involved reporter,
 	// without flipping ReadIncidents (which gates write controls elsewhere).
 	ReadIncidentsViaGrant bool `json:"readIncidentsViaGrant"`
+	// InviteReporters (53a) is true when the caller may invite reporters to this
+	// event — create a login-capable reporter and set reporter participation. Held
+	// by writers and crew leaders (and admins). Reveals the People tab + invite UI.
+	InviteReporters bool `json:"inviteReporters"`
 }
 
 func (action GetAuth) ServeHTTP(w http.ResponseWriter, req *http.Request) {
@@ -289,6 +293,7 @@ func (action GetAuth) getAuth(req *http.Request) (GetAuthResponse, *herr.HTTPErr
 				WriteVisits:           eventPermissions[event.ID]&authz.EventWriteVisits != 0,
 				AttachFiles:           action.attachmentsEnabled,
 				ReadIncidentsViaGrant: readIncidentsViaGrant,
+				InviteReporters:       eventPermissions[event.ID]&authz.EventInviteReporters != 0,
 			},
 		}
 	}
