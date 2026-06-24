@@ -46,16 +46,19 @@ const (
 // dupEntryError is the MariaDB error number for a unique-constraint violation.
 const dupEntryError = 1062
 
-// CreatePerson adds a new person to the registry. Gating has two tiers (D-P1):
-//   - A "full" create — anything touching login or profile (handle, email,
-//     password) — requires GlobalAdministratePersonnel, as before (onboarding
-//     login-capable people is personnel management, distinct from minting admins,
-//     which stays on SetPersonAdmin).
-//   - A "minimal" registry create (name, optionally an event + wristband) may be
-//     done by an event writer from the field, so people met at an incident/visit
-//     can be registered ad-hoc without a personnel admin.
+// CreatePerson adds a new person to the registry. Gating has two tiers:
+//   - A personnel admin (GlobalAdministratePersonnel) may create anyone:
+//     login-capable, any participation rung, optionally on an event. Minting admins
+//     stays separate (SetPersonAdmin).
+//   - A non-admin must name an event they may invite reporters to
+//     (EventInviteReporters — writers and crew leaders, plan 53b). On that event
+//     they too may create a login-capable person (the crew-leader invite), but the
+//     participation they assign is ceilinged to reporter / no-access rungs (never
+//     writer or crew_leader — see mayAssignParticipation). This path also serves
+//     the 5e "name-only field create" (writers registering someone met at an
+//     incident/visit), since writers carry the invite bit.
 //
-// A password is optional (without one the person can't log in until an admin sets
+// A password is optional (without one the person can't log in until someone sets
 // one). The created person is returned as JSON so an inline-create from the attach
 // picker can immediately attach the new person.
 type CreatePerson struct {
@@ -124,16 +127,15 @@ func (action CreatePerson) createPerson(req *http.Request) (imsjson.Person, *her
 
 	isPersonnelAdmin := globalPermissions&authz.GlobalAdministratePersonnel != 0
 
-	// D-P1 gating. A "full" create touches login/profile fields and stays
-	// admin-only; a "minimal" create (name + optional per-event wristband) may be
-	// done by a writer on the named event.
-	fullCreate := handle != "" || email != "" || body.Password != ""
+	// Gating tiers. A personnel admin may create anyone — login-capable, any rung,
+	// optionally on an event. A non-admin must name an event they may invite
+	// reporters to (plan 53b: EventInviteReporters, held by writers and crew
+	// leaders); on that event they may create a login-capable person, but the
+	// participation they assign is ceilinged (no writer/crew_leader). This subsumes
+	// the original 5e "name-only field create" path, since writers carry the bit.
 	var eventID int32
 	if !isPersonnelAdmin {
-		if fullCreate {
-			return empty, herr.Forbidden("Setting a handle, email, or password requires GlobalAdministratePersonnel", nil)
-		}
-		eventID, errHTTP = action.eventForFieldCreate(req, jwtCtx, body.Event)
+		eventID, errHTTP = action.eventForInvite(req, jwtCtx, body.Event)
 		if errHTTP != nil {
 			return empty, errHTTP
 		}
@@ -146,13 +148,18 @@ func (action CreatePerson) createPerson(req *http.Request) (imsjson.Person, *her
 		eventID = event.ID
 	}
 
-	// Per-event participation type: honored explicitly only for personnel admins;
-	// otherwise defaulted from the wristband.
+	// Per-event participation type: honored explicitly for admins and non-admin
+	// inviters alike, but a non-admin is ceilinged to reporter / no-access rungs
+	// (never writer or crew_leader). Absent an explicit type, default from the
+	// wristband (present -> participant, absent -> public).
 	participation := defaultParticipation(wristband)
-	if isPersonnelAdmin && strings.TrimSpace(body.ParticipationType) != "" {
-		pt, ok := validParticipation(body.ParticipationType)
+	if ptStr := strings.TrimSpace(body.ParticipationType); ptStr != "" {
+		pt, ok := validParticipation(ptStr)
 		if !ok {
-			return empty, herr.BadRequest("Unknown participation_type: "+body.ParticipationType, nil)
+			return empty, herr.BadRequest("Unknown participation_type: "+ptStr, nil)
+		}
+		if !mayAssignParticipation(isPersonnelAdmin, pt) {
+			return empty, herr.Forbidden("Only an admin may assign the writer or crew_leader role", nil)
 		}
 		participation = pt
 	}
@@ -241,13 +248,15 @@ func (action CreatePerson) createPerson(req *http.Request) (imsjson.Person, *her
 	return resp, nil
 }
 
-// eventForFieldCreate authorizes a minimal (event-writer) create: the caller must
-// name an event they can write incidents or visits to. Returns that event's ID for
-// the PERSON__EVENT row. See D-P1.
-func (action CreatePerson) eventForFieldCreate(req *http.Request, jwtCtx JWTContext, eventName string) (int32, *herr.HTTPError) {
+// eventForInvite authorizes a non-admin create: the caller must name an event they
+// may invite reporters to (EventInviteReporters — writers and crew leaders, plan
+// 53b). Returns that event's ID for the PERSON__EVENT row. Both the 5e field create
+// (writers registering someone met at an incident/visit) and the crew-leader invite
+// take this path.
+func (action CreatePerson) eventForInvite(req *http.Request, jwtCtx JWTContext, eventName string) (int32, *herr.HTTPError) {
 	eventName = strings.TrimSpace(eventName)
 	if eventName == "" {
-		return 0, herr.Forbidden("Creating a person requires GlobalAdministratePersonnel, or an event you can write to", nil)
+		return 0, herr.Forbidden("Creating a person requires GlobalAdministratePersonnel, or invite-reporters access on a named event", nil)
 	}
 	event, errHTTP := getEvent(req, eventName, action.imsDBQ)
 	if errHTTP != nil {
@@ -257,8 +266,8 @@ func (action CreatePerson) eventForFieldCreate(req *http.Request, jwtCtx JWTCont
 	if err != nil {
 		return 0, herr.InternalServerError("Failed to compute permissions", err).From("[EventPermissions]")
 	}
-	if perms[event.ID]&(authz.EventWriteIncidents|authz.EventWriteVisits) == 0 {
-		return 0, herr.Forbidden("You do not have write access to that event", nil)
+	if perms[event.ID]&authz.EventInviteReporters == 0 {
+		return 0, herr.Forbidden("You do not have invite-reporters access to that event", nil)
 	}
 	return event.ID, nil
 }
@@ -293,6 +302,24 @@ func validParticipation(s string) (imsdb.PersonEventParticipationType, bool) {
 		return imsdb.PersonEventParticipationType(s), true
 	}
 	return "", false
+}
+
+// mayAssignParticipation enforces the anti-escalation ceiling (plan 53b). An admin
+// (GlobalAdministratePersonnel) may assign any rung. A non-admin inviter
+// (EventInviteReporters) may assign only 'reporter' or a no-access rung
+// (participant/public/not_present/ejected) — NEVER 'writer' or 'crew_leader', so a
+// crew leader can't mint other inviters/writers. This is the authoritative
+// server-side boundary; the UI restrictions in 53d are convenience only.
+func mayAssignParticipation(callerIsAdmin bool, target imsdb.PersonEventParticipationType) bool {
+	if callerIsAdmin {
+		return true
+	}
+	switch target {
+	case imsdb.PersonEventParticipationTypeWriter, imsdb.PersonEventParticipationTypeCrewLeader:
+		return false
+	default:
+		return true
+	}
 }
 
 // EditPerson updates a person's editable profile and, when an event is named, that
@@ -508,13 +535,11 @@ func (action SetPersonParticipation) ServeHTTP(w http.ResponseWriter, req *http.
 }
 
 func (action SetPersonParticipation) setParticipation(req *http.Request) *herr.HTTPError {
-	_, globalPermissions, errHTTP := getGlobalPermissions(req, action.imsDBQ, action.userStore)
+	jwtCtx, globalPermissions, errHTTP := getGlobalPermissions(req, action.imsDBQ, action.userStore)
 	if errHTTP != nil {
 		return errHTTP.From("[getGlobalPermissions]")
 	}
-	if globalPermissions&authz.GlobalAdministratePersonnel == 0 {
-		return herr.Forbidden("The requestor does not have GlobalAdministratePersonnel permission", nil)
-	}
+	isPersonnelAdmin := globalPermissions&authz.GlobalAdministratePersonnel != 0
 
 	person, errHTTP := personByIDFromPath(req.Context(), action.imsDBQ, req)
 	if errHTTP != nil {
@@ -528,6 +553,18 @@ func (action SetPersonParticipation) setParticipation(req *http.Request) *herr.H
 	event, errHTTP := getEvent(req, eventName, action.imsDBQ)
 	if errHTTP != nil {
 		return errHTTP.From("[getEvent]")
+	}
+
+	// Authorization (plan 53b). A personnel admin may set any participation. A
+	// non-admin needs the invite-reporters bit on THIS event (writer / crew leader).
+	if !isPersonnelAdmin {
+		perms, _, err := authz.EventPermissions(req.Context(), &event.ID, action.imsDBQ, *jwtCtx.Claims)
+		if err != nil {
+			return herr.InternalServerError("Failed to compute permissions", err).From("[EventPermissions]")
+		}
+		if perms[event.ID]&authz.EventInviteReporters == 0 {
+			return herr.Forbidden("Setting participation requires GlobalAdministratePersonnel or invite-reporters access for this event", nil)
+		}
 	}
 
 	body, errHTTP := readBodyAs[SetParticipationRequest](req)
@@ -545,6 +582,29 @@ func (action SetPersonParticipation) setParticipation(req *http.Request) *herr.H
 			return herr.BadRequest("Unknown participation_type: "+ptStr, nil)
 		}
 		participation = pt
+	}
+
+	// Anti-escalation ceiling for a non-admin inviter: they may assign only
+	// reporter / no-access rungs, and may not touch a person who is already a writer
+	// or crew_leader on the event (acting only on reporter-or-below targets).
+	if !isPersonnelAdmin {
+		if !mayAssignParticipation(false, participation) {
+			return herr.Forbidden("Only an admin may assign the writer or crew_leader role", nil)
+		}
+		current, err := action.imsDBQ.PersonEvent(req.Context(), action.imsDBQ, imsdb.PersonEventParams{
+			PersonID: person.ID,
+			Event:    event.ID,
+		})
+		switch {
+		case errors.Is(err, sql.ErrNoRows):
+			// No participation row yet — enrolling a new participant is allowed.
+		case err != nil:
+			return herr.InternalServerError("Failed to read participation", err).From("[PersonEvent]")
+		default:
+			if !mayAssignParticipation(false, current.ParticipationType) {
+				return herr.Forbidden("You may not modify a writer or crew leader", nil)
+			}
+		}
 	}
 
 	var wristbandNull sql.NullString

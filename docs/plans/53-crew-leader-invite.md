@@ -163,11 +163,17 @@ both problems worse, so the redesign tackles **readability** and
   and surfaced `inviteReporters` in `AccessForEvent` (+ TS `AuthInfoEventAccess`). No
   behavior change yet (no caller uses the bit). Tests: authz derivation per rung;
   migration apply (`migrate_test` bumped to v6).
-- **53b — backend invite.** Scope `CreatePerson` + `SetPersonParticipation` to
-  `EventInviteReporters` with the non-admin reporter-ceiling + anti-escalation.
-  Tests: a writer/crew-leader can create a login-capable reporter and set reporter
-  participation on their event; cannot set writer/crew_leader (403); cannot act on
-  an event they lack the bit on (403); admin path unchanged.
+- **53b — backend invite.** ✅ Done. Scoped `CreatePerson` + `SetPersonParticipation`
+  to `EventInviteReporters` (the old admin-only `eventForFieldCreate` write-gate
+  became `eventForInvite`, checking the invite bit — writers still qualify, so the 5e
+  field-create path is preserved). Shared `mayAssignParticipation(callerIsAdmin,
+  target)` ceiling enforced server-side on both endpoints; `SetPersonParticipation`
+  additionally refuses to modify a target already at writer/crew_leader. Seeded a
+  crew-leader test user (Erin, 6005). Tests (`TestCrewLeaderInvite`): a crew leader
+  and a writer can each create a login-capable reporter (who can log in) and set
+  reporter participation; cannot assign writer/crew_leader (403); cannot touch a
+  writer target (403); cannot act on an event lacking the bit (403); admin path
+  unchanged.
 - **53c — People table redesign (admin-only first).** Convert the list to the
   roster table + per-row `⋯` kebab, with the existing admin actions inside it. No
   access change yet — keeps the page admin-only so the layout lands independently
