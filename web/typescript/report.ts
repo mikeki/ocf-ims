@@ -38,6 +38,7 @@ let report: ims.Report|null = null;
 
 const el = {
     reportNumber: ims.typedElement("report_number", HTMLInputElement),
+    reportNumberField: ims.typedElement("report_number_field", HTMLElement),
     reportSummary: ims.typedElement("report_summary", HTMLInputElement),
     incidentNumber: ims.typedElement("incident_number", HTMLInputElement),
     incidentNumberField: ims.typedElement("incident_number_field", HTMLElement),
@@ -289,8 +290,12 @@ function drawTitle(): void {
 //
 
 function drawNumber(): void {
-    const number: number|string = report!.number??"(new)";
-    el.reportNumber.value = number.toString();
+    // On a brand-new Report there's no number yet, so a "(new)" placeholder is
+    // meaningless — hide the Report # field until the Report is saved (mirrors
+    // the IMS# field handling in drawIncident).
+    const isNewReport = report!.number == null;
+    el.reportNumberField.classList.toggle("hidden", isNewReport);
+    el.reportNumber.value = (report!.number ?? "").toString();
 }
 
 //
