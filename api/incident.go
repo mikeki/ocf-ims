@@ -901,6 +901,12 @@ func updateIncident(ctx context.Context, imsDBQ *store.DBQ, es *EventSourcerer, 
 		if errHTTP != nil {
 			return errHTTP.From("[addJournalEntryMentions]")
 		}
+		// Notify the mentioned people (plan 82). Driven by the persisted mention
+		// rows, so it's after the rows are written; the author is skipped.
+		errHTTP = generateMentionNotifications(ctx, imsDBQ, txn, newIncident.EventID, newIncident.Number, entryID, authorPersonID)
+		if errHTTP != nil {
+			return errHTTP.From("[generateMentionNotifications]")
+		}
 	}
 
 	err = txn.Commit()
@@ -1060,6 +1066,18 @@ func (action AttachPersonToIncident) attachPerson(req *http.Request) *herr.HTTPE
 	}
 	defer rollback(txn)
 
+	// Attach is a detach-then-reattach replace, so we can't tell a new add from an
+	// involvement edit afterwards. Check up front: only a genuine new add fires an
+	// "added_to_incident" notification (plan 82), not every involvement save.
+	alreadyAttached, err := action.imsDBQ.IncidentHasPerson(ctx, txn, imsdb.IncidentHasPersonParams{
+		Event:          event.ID,
+		IncidentNumber: incidentNumber,
+		PersonID:       personID,
+	})
+	if err != nil {
+		return herr.InternalServerError("Failed to check incident person", err).From("[IncidentHasPerson]")
+	}
+
 	err = action.imsDBQ.DetachPersonFromIncident(ctx, txn, imsdb.DetachPersonFromIncidentParams{
 		Event:          event.ID,
 		IncidentNumber: incidentNumber,
@@ -1089,6 +1107,15 @@ func (action AttachPersonToIncident) attachPerson(req *http.Request) *herr.HTTPE
 	if errHTTP != nil {
 		return errHTTP.From("[addIncidentJournalEntry]")
 	}
+
+	// Notify the person they were added — only on a genuine new attach (plan 82).
+	if !alreadyAttached {
+		errHTTP = generateAddedToIncidentNotification(ctx, action.imsDBQ, txn, event.ID, incidentNumber, personID, jwtCtx.Claims.PersonID())
+		if errHTTP != nil {
+			return errHTTP.From("[generateAddedToIncidentNotification]")
+		}
+	}
+
 	err = txn.Commit()
 	if err != nil {
 		return herr.InternalServerError("Failed to commit transaction", err).From("[Commit]")
