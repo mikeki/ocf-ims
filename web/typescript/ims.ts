@@ -368,6 +368,7 @@ export async function commonPageInit(): Promise<PageInitResult> {
                     return null;
                 }
                 renderNavEvents(result.json);
+                updateHomeLink(result.json);
                 return result.json;
             }
         );
@@ -663,6 +664,18 @@ function setupNotifications(): void {
 // later-seeded older year can have a higher id — so choosing by id sent users to
 // the wrong year (2025 instead of 2026). We fall back to the newest by id only
 // when no event name is numeric.
+//
+// updateHomeLink repoints the navbar home/brand link at the active (latest)
+// event's incidents page, so "home" always lands on the current fair rather than
+// the intermediate app landing page. No-ops if there's no event or no link.
+function updateHomeLink(eds: EventData[]): void {
+    const home = document.getElementById("nav-home-link") as HTMLAnchorElement|null;
+    const newest = newestEvent(eds);
+    if (home != null && newest != null) {
+        home.href = url_viewIncidents.replace("<event_id>", encodeURIComponent(newest.name));
+    }
+}
+
 export function newestEvent(eds: EventData[]): EventData|null {
     if (eds.length === 0) {
         return null;
