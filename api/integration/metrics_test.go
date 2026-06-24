@@ -198,4 +198,12 @@ func TestMetricsAggregation(t *testing.T) {
 	// By day: all three created today, one bucket.
 	require.Len(t, m.ByDay, 1)
 	assert.Equal(t, int64(3), m.ByDay[0].Count)
+
+	// By role: the only person on this event's roster is the admin, granted the
+	// writer rung above. The breakdown is zero-filled in ladder order (all 7 rungs).
+	assert.Len(t, m.ByRole, 7)
+	assert.Equal(t, int64(1), countFor(m.ByRole, "writer"))
+	assert.Equal(t, int64(0), countFor(m.ByRole, "crew_leader"))
+	assert.Equal(t, int64(0), countFor(m.ByRole, "reporter"))
+	assert.Equal(t, "writer", m.ByRole[0].Key) // ladder order: writer first
 }

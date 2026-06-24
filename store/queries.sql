@@ -867,3 +867,14 @@ from INCIDENT i
 where i.EVENT = ?
 group by i.LOCATION_AREA_SLUG, a.NAME
 order by COUNT desc, a.NAME;
+
+-- MetricsParticipationCountByEvent counts the people on an event's roster, grouped
+-- by their participation rung. Each person has at most one PERSON__EVENT row per
+-- event, so these counts partition the roster.
+-- name: MetricsParticipationCountByEvent :many
+select
+    PARTICIPATION_TYPE as PARTICIPATION,
+    count(*) as COUNT
+from PERSON__EVENT
+where EVENT = ?
+group by PARTICIPATION_TYPE;

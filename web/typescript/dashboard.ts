@@ -36,6 +36,7 @@ interface Metrics {
     by_priority: MetricCount[];
     by_category: MetricCount[];
     by_type: MetricCount[];
+    by_role: MetricCount[];
     by_area: MetricCount[];
     by_day: MetricDay[];
     open_follow_ups: MetricIncidentRef[];
@@ -189,6 +190,7 @@ function render(m: Metrics): void {
     doughnut("chart_category", m.by_category);
     bar("chart_type", m.by_type, "Incidents", "y");
     bar("chart_area", m.by_area, "Incidents", "y");
+    doughnut("chart_role", m.by_role);
     line("chart_byday", m.by_day);
 
     // Tables.
@@ -226,6 +228,9 @@ function render(m: Metrics): void {
         if (diff(p.by_area, m.by_area)) {
             glowCard("chart_area");
             glowCard("area_table_body");
+        }
+        if (diff(p.by_role, m.by_role)) {
+            glowCard("chart_role");
         }
         if (diff(p.by_day, m.by_day)) {
             glowCard("chart_byday");

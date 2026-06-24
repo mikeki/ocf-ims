@@ -136,6 +136,7 @@ func (action GetMetrics) computeMetrics(ctx context.Context, eventName string) (
 		byCategory []imsdb.MetricsIncidentCountByCategoryRow
 		byType     []imsdb.MetricsIncidentCountByTypeRow
 		byArea     []imsdb.MetricsIncidentCountByAreaRow
+		byRole     []imsdb.MetricsParticipationCountByEventRow
 	)
 	group, groupCtx := errgroup.WithContext(ctx)
 	group.Go(func() error {
@@ -170,12 +171,20 @@ func (action GetMetrics) computeMetrics(ctx context.Context, eventName string) (
 		}
 		return nil
 	})
+	group.Go(func() error {
+		var err error
+		byRole, err = action.imsDBQ.MetricsParticipationCountByEvent(groupCtx, action.imsDBQ, event.ID)
+		if err != nil {
+			return herr.InternalServerError("Failed to fetch role counts", err).From("[MetricsParticipationCountByEvent]")
+		}
+		return nil
+	})
 	err := group.Wait()
 	if err != nil {
 		return resp, err
 	}
 
-	resp = buildMetrics(event, incidents, byCategory, byType, byArea)
+	resp = buildMetrics(event, incidents, byCategory, byType, byArea, byRole)
 	resp.GeneratedAtMS = time.Now().UnixMilli()
 	return resp, nil
 }
@@ -189,6 +198,7 @@ func buildMetrics(
 	byCategory []imsdb.MetricsIncidentCountByCategoryRow,
 	byType []imsdb.MetricsIncidentCountByTypeRow,
 	byArea []imsdb.MetricsIncidentCountByAreaRow,
+	byRole []imsdb.MetricsParticipationCountByEventRow,
 ) imsjson.Metrics {
 	resp := imsjson.Metrics{
 		Event:   event.Name,
@@ -289,6 +299,21 @@ func buildMetrics(
 		})
 	}
 
+	// by-role: the event roster grouped by participation rung, in ladder order and
+	// zero-filled so the chart shape is stable across refreshes.
+	roleCounts := make(map[imsdb.PersonEventParticipationType]int64, len(byRole))
+	for _, row := range byRole {
+		roleCounts[row.Participation] = row.Count
+	}
+	resp.ByRole = make([]imsjson.MetricCount, 0, len(participationLadder))
+	for _, rung := range participationLadder {
+		resp.ByRole = append(resp.ByRole, imsjson.MetricCount{
+			Key:   string(rung.rung),
+			Label: rung.label,
+			Count: roleCounts[rung.rung],
+		})
+	}
+
 	// by-day: sorted ascending by date so the line chart reads left-to-right.
 	resp.ByDay = make([]imsjson.MetricDay, 0, len(dayCounts))
 	for day, count := range dayCounts {
@@ -312,6 +337,22 @@ func buildMetrics(
 // priorityKey buckets an incident's numeric priority into the three named tiers.
 // Priority runs High=5 .. Low=1 (see json.IncidentPriority*); 4-5 are High, 3 is
 // Normal, and 1-2 are Low.
+// participationLadder is the per-event rung order (most → least privileged) with
+// display labels, used to render the dashboard's by-role breakdown in a stable,
+// zero-filled order (plan 53 ladder).
+var participationLadder = []struct {
+	rung  imsdb.PersonEventParticipationType
+	label string
+}{
+	{imsdb.PersonEventParticipationTypeWriter, "Writer"},
+	{imsdb.PersonEventParticipationTypeCrewLeader, "Crew leader"},
+	{imsdb.PersonEventParticipationTypeReporter, "Reporter"},
+	{imsdb.PersonEventParticipationTypeParticipant, "Participant"},
+	{imsdb.PersonEventParticipationTypePublic, "Public"},
+	{imsdb.PersonEventParticipationTypeNotPresent, "Not present"},
+	{imsdb.PersonEventParticipationTypeEjected, "Ejected"},
+}
+
 func priorityKey(priority int8) string {
 	switch {
 	case priority >= 4:

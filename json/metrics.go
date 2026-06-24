@@ -37,6 +37,12 @@ type Metrics struct {
 	ByCategory []MetricCount `json:"by_category"`
 	ByType     []MetricCount `json:"by_type"`
 
+	// ByRole is the event roster broken down by participation rung (writer,
+	// crew_leader, reporter, participant, public, not_present, ejected), in ladder
+	// order and zero-filled, so the chart has a stable shape. Each person has at most
+	// one rung per event, so these partition the roster.
+	ByRole []MetricCount `json:"by_role"`
+
 	// ByArea is a clean partition — each incident has at most one area, so these
 	// sum to Total (incidents with no area land in the "Unassigned" bucket). It is
 	// ordered busiest-first, so it doubles as the repeat-locations ranking.
