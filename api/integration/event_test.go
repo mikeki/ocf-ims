@@ -42,33 +42,6 @@ func TestGetAndEditEvent(t *testing.T) {
 	require.Equal(t, http.StatusNoContent, resp.StatusCode)
 	require.NoError(t, resp.Body.Close())
 
-	accessReq := imsjson.EventsAccess{
-		testEventName: {
-			Writers: []imsjson.AccessRule{
-				{
-					Expression: "person:" + userAdminHandle,
-					Validity:   "always",
-				},
-			},
-		},
-	}
-	resp = apisAdmin.editAccess(ctx, accessReq)
-	require.Equal(t, http.StatusNoContent, resp.StatusCode)
-	require.NoError(t, resp.Body.Close())
-
-	expectedAccessResult := imsjson.EventAccess{
-		Writers:      accessReq[testEventName].Writers,
-		Readers:      []imsjson.AccessRule{},
-		Reporters:    []imsjson.AccessRule{},
-		VisitWriters: []imsjson.AccessRule{},
-	}
-	expectedAccessResult.Writers[0].DebugInfo.MatchesUsers = []string{userAdminHandle}
-	expectedAccessResult.Writers[0].DebugInfo.KnownTarget = true
-	accessResult, httpResp := apisAdmin.getAccess(ctx)
-	require.Equal(t, http.StatusOK, httpResp.StatusCode)
-	require.Equal(t, expectedAccessResult, accessResult[testEventName])
-	require.NoError(t, httpResp.Body.Close())
-
 	events, resp := apisAdmin.getEvents(ctx)
 	require.Equal(t, http.StatusOK, resp.StatusCode)
 	require.NoError(t, resp.Body.Close())

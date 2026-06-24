@@ -136,14 +136,17 @@ note, and the `validPersonStatuses` map (`api/person.go`).
 
 ## 5. Suggested slices
 
-- **52a — Remove dead flags.** Drop `PERSON.STATUS` + `ON_SITE` and all their reads
-  (migration + JSON + directory + JWT claim + People-page fields). Self-contained,
-  pure removal. Does **not** touch access yet.
-- **52b — Role ladder + derive access from `PERSON__EVENT`.** Extend the enum;
-  switch `ManyEventPermissions` to read `PERSON__EVENT`; keep `EVENT_ACCESS` rows
-  present-but-ignored for one step to de-risk the cutover. People-page role editor.
-- **52c — Retire `EVENT_ACCESS`.** Delete the table, the access API, and the
-  Admin → Events access UI once 52b is proven.
+- **52a — Remove dead flags.** ✅ shipped. Drop `PERSON.STATUS` + `ON_SITE` and all
+  their reads (migration + JSON + directory + JWT claim + People-page fields).
+  Self-contained, pure removal. Does **not** touch access yet.
+- **52b — Role ladder + derive access from `PERSON__EVENT`.** ✅ shipped. Extend the
+  enum; switch `ManyEventPermissions` to read `PERSON__EVENT`; keep `EVENT_ACCESS`
+  rows present-but-ignored for one step to de-risk the cutover. People-page role editor.
+- **52c — Retire `EVENT_ACCESS`.** ✅ shipped. Dropped the table (migration 00004),
+  the access API + queries, the Admin → Events access UI, `PersonMatches`/validity/
+  `EventReader`/`EventVisitWriter`, and slimmed `authz.EventPermissions` (no more
+  `directory.UserStore`). The api-layer permission helpers keep an unused
+  `directory.UserStore` param to avoid churning ~30 call sites.
 - **52d — Dashboard to writers.** Widen the metrics gate + nav reveal.
 - **52e — Inline role editing on the People roster.** Make changing a person's
   per-event role a **single interaction** on the row itself, instead of today's

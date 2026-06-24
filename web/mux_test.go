@@ -35,7 +35,6 @@ var templEndpoints = []string{
 	"/ims/app",
 	"/ims/app/admin",
 	"/ims/app/admin/areas",
-	"/ims/app/admin/events",
 	"/ims/app/admin/types",
 	"/ims/app/events/SomeEvent/reports",
 	"/ims/app/events/SomeEvent/reports/123",

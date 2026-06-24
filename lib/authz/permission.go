@@ -21,31 +21,17 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
-	"slices"
-	"strings"
-	"time"
 
-	"github.com/mikeki/ocf-ims/directory"
-	"github.com/mikeki/ocf-ims/lib/conv"
 	"github.com/mikeki/ocf-ims/store"
 	"github.com/mikeki/ocf-ims/store/imsdb"
 )
 
 type Role string
 
-// validity* are retained for PersonMatches, which still backs the (now
-// authz-ignored) EVENT_ACCESS admin UI until that table is retired in 52c.
-const (
-	validityAlways = imsdb.EventAccessValidityAlways
-	validityOnsite = imsdb.EventAccessValidityOnsite
-)
-
 const (
 	AnyAuthenticatedUser Role = "AnyAuthenticatedUser"
 	EventReporter        Role = "EventReporter"
-	EventReader          Role = "EventReader"
 	EventWriter          Role = "EventWriter"
-	EventVisitWriter     Role = "EventVisitWriter"
 	Administrator        Role = "Administrator"
 )
 
@@ -101,15 +87,12 @@ var RolesToGlobalPerms = map[Role]GlobalPermissionMask{
 	Administrator:        GlobalAdministrateEvents | GlobalAdministrateIncidentTypes | GlobalAdministrateDebugging | GlobalAdministratePersonnel | GlobalAdministrateAreas,
 }
 
-// RolesToEventPerms maps an access role to the event permissions it grants. As of
-// plan 52b only EventWriter and EventReporter are reachable (the per-event ladder's
-// top two rungs); EventReader and EventVisitWriter are kept for the EVENT_ACCESS
-// admin UI's role labels until that table is retired in 52c.
+// RolesToEventPerms maps an access role to the event permissions it grants. Only the
+// per-event ladder's top two rungs carry access (plan 52b): EventWriter (full incident
+// + report + visit access) and EventReporter (own reports only).
 var RolesToEventPerms = map[Role]EventPermissionMask{
-	EventReporter:    EventReadEventName | EventReadOwnReports | EventWriteOwnReports | EventReadAreas,
-	EventReader:      EventReadEventName | EventReadIncidents | EventReadOwnReports | EventReadAllReports | EventReadVisits | EventReadAreas,
-	EventWriter:      EventReadEventName | EventReadIncidents | EventWriteIncidents | EventReadAllReports | EventReadOwnReports | EventWriteAllReports | EventWriteOwnReports | EventReadVisits | EventWriteVisits | EventReadAreas,
-	EventVisitWriter: EventReadEventName | EventReadVisits | EventWriteVisits | EventReadAreas,
+	EventReporter: EventReadEventName | EventReadOwnReports | EventWriteOwnReports | EventReadAreas,
+	EventWriter:   EventReadEventName | EventReadIncidents | EventWriteIncidents | EventReadAllReports | EventReadOwnReports | EventWriteAllReports | EventWriteOwnReports | EventReadVisits | EventWriteVisits | EventReadAreas,
 }
 
 // participationToEventPerms maps a person's per-event participation tier to the
@@ -129,15 +112,12 @@ func participationToEventPerms(pt imsdb.PersonEventParticipationType) EventPermi
 
 // EventPermissions computes the caller's permissions. With eventID set it also
 // resolves that event's permission mask from the caller's PERSON__EVENT
-// participation row (plan 52b: access derives from the per-event role, not from
-// EVENT_ACCESS). Admins bypass the per-event role entirely (see ManyEventPermissions).
-// userStore is retained in the signature pending the broader EVENT_ACCESS cleanup
-// (52c); it is no longer consulted here.
+// participation row (plan 52b: access derives from the per-event role). Admins
+// bypass the per-event role entirely (see ManyEventPermissions).
 func EventPermissions(
 	ctx context.Context,
 	eventID *int32, // nil for no event
 	imsDBQ *store.DBQ,
-	_ directory.UserStore,
 	claims IMSClaims,
 ) (eventPermissions map[int32]EventPermissionMask, globalPermissions GlobalPermissionMask, err error) {
 	participationByEvent := make(map[int32]imsdb.PersonEventParticipationType)
@@ -204,45 +184,4 @@ func ManyEventPermissions(
 		eventPermissions[eventID] = participationToEventPerms(pt)
 	}
 	return eventPermissions, globalPermissions
-}
-
-func PersonMatches(
-	ea imsdb.EventAccess,
-	handle string,
-	positions []string,
-	teams []string,
-	onsite bool,
-	onDutyPosition string,
-) bool {
-	if ea.Expires.Valid && conv.FloatToTime(ea.Expires.Float64).Before(time.Now()) {
-		return false
-	}
-	matchExpr := false
-	if ea.Expression == "*" {
-		matchExpr = true
-	}
-	if strings.HasPrefix(ea.Expression, "person:") &&
-		strings.TrimPrefix(ea.Expression, "person:") == handle {
-		matchExpr = true
-	}
-	if strings.HasPrefix(ea.Expression, "position:") &&
-		slices.Contains(positions, strings.TrimPrefix(ea.Expression, "position:")) {
-		matchExpr = true
-	}
-	if strings.HasPrefix(ea.Expression, "onduty:") &&
-		onDutyPosition == strings.TrimPrefix(ea.Expression, "onduty:") {
-		matchExpr = true
-	}
-	if strings.HasPrefix(ea.Expression, "team:") &&
-		slices.Contains(teams, strings.TrimPrefix(ea.Expression, "team:")) {
-		matchExpr = true
-	}
-	matchValidity := false
-	if ea.Validity == validityAlways {
-		matchValidity = true
-	}
-	if ea.Validity == validityOnsite && onsite {
-		matchValidity = true
-	}
-	return matchExpr && matchValidity
 }

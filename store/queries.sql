@@ -19,44 +19,6 @@ set
 where ID = ?
 ;
 
--- This returns access for a target event, as well as for that event's
--- parent group, if any. If the target event *is* a group, this query
--- will return nothing. That's intentional, and it helps prevent people
--- from adding incidents or FRs to event groups as though those were events.
--- name: EventAndParentAccess :many
-select sqlc.embed(ea)
-from `EVENT` e
-    join EVENT_ACCESS ea
-        on e.ID = ea.EVENT
-where e.ID = sqlc.arg(event_id)
-    and not e.IS_GROUP
-union all
-select sqlc.embed(ea)
-from `EVENT` e
-    join EVENT_ACCESS ea
-        on e.PARENT_GROUP = ea.EVENT
-where e.ID = sqlc.arg(event_id)
-    and e.PARENT_GROUP is not null
-;
-
-
--- name: EventAccessAll :many
-select sqlc.embed(ea)
-from EVENT_ACCESS ea
-;
-
--- name: ClearEventAccessForMode :exec
-delete from EVENT_ACCESS
-where EVENT = ? and MODE = ?;
-
--- name: ClearEventAccessForExpression :exec
-delete from EVENT_ACCESS
-where EVENT = ? and EXPRESSION = ?;
-
--- name: AddEventAccess :execlastid
-insert into EVENT_ACCESS (EVENT, EXPRESSION, MODE, VALIDITY, EXPIRES)
-values (?, ?, ?, ?, ?);
-
 -- name: CreateIncident :execlastid
 insert into INCIDENT (
     EVENT,

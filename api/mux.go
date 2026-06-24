@@ -54,26 +54,6 @@ func AddToMux(
 	jwter := authz.JWTer{SecretKey: cfg.Core.JWTSecret}
 	attachmentsEnabled := cfg.AttachmentsStore.Type != conf.AttachmentsStoreNone
 
-	mux.Handle("GET /ims/api/access",
-		Adapt(
-			GetEventAccesses{db, userStore},
-			RecoverFromPanic(),
-			RequireAuthN(jwter),
-			LogRequest(true, actionLogger, userStore),
-			LimitRequestBytes(cfg.Core.MaxRequestBytes),
-		),
-	)
-
-	mux.Handle("POST /ims/api/access",
-		Adapt(
-			PostEventAccess{db, userStore},
-			RecoverFromPanic(),
-			RequireAuthN(jwter),
-			LogRequest(true, actionLogger, userStore),
-			LimitRequestBytes(cfg.Core.MaxRequestBytes),
-		),
-	)
-
 	mux.Handle("GET /ims/api/actionlogs",
 		Adapt(
 			GetActionLogs{db, userStore},
