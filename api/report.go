@@ -219,6 +219,29 @@ func fetchReport(ctx context.Context, imsDBQ *store.DBQ, eventID, reportNumber i
 	for _, rer := range journalEntryRows {
 		journalEntries = append(journalEntries, journalEntryToJSON(rer.JournalEntry, rer.Author.String, attachmentsEnabled))
 	}
+	// Attach @mention rows (plan 81) to their entries for rendering/linking.
+	mentionRows, err := imsDBQ.Report_JournalEntryMentions(ctx, imsDBQ,
+		imsdb.Report_JournalEntryMentionsParams{
+			Event:        eventID,
+			ReportNumber: reportNumber,
+		},
+	)
+	if err != nil {
+		return imsdb.Report{}, nil, herr.InternalServerError("Failed to fetch journal entry mentions", err).From("[Report_JournalEntryMentions]")
+	}
+	mentionsByEntry := make(map[int32][]imsjson.Mention, len(mentionRows))
+	for _, m := range mentionRows {
+		mentionsByEntry[m.JournalEntry] = append(mentionsByEntry[m.JournalEntry], imsjson.Mention{
+			PersonID: m.PersonID,
+			Handle:   m.Handle.String,
+			Name:     m.Name.String,
+		})
+	}
+	for i := range journalEntries {
+		if ms, ok := mentionsByEntry[journalEntries[i].ID]; ok {
+			journalEntries[i].Mentions = ms
+		}
+	}
 	return reportRow.Report, journalEntries, nil
 }
 
@@ -329,9 +352,13 @@ func (action EditReport) editReport(req *http.Request) *herr.HTTPError {
 		if entry.Text == "" {
 			continue
 		}
-		_, errHTTP := addJournalEntry(ctx, action.imsDBQ, txn, event.ID, storedReport.Number, authorPersonID, entry.Text, false, "", "", "")
+		entryID, errHTTP := addJournalEntry(ctx, action.imsDBQ, txn, event.ID, storedReport.Number, authorPersonID, entry.Text, false, "", "", "")
 		if errHTTP != nil {
 			return errHTTP.From("[addJournalEntry]")
+		}
+		errHTTP = addJournalEntryMentions(ctx, action.imsDBQ, txn, entryID, entry.MentionedPersonIDs)
+		if errHTTP != nil {
+			return errHTTP.From("[addJournalEntryMentions]")
 		}
 	}
 
@@ -503,9 +530,13 @@ func (action NewReport) newReport(req *http.Request) (reportNumber int32, locati
 		if entry.Text == "" {
 			continue
 		}
-		_, errHTTP := addJournalEntry(ctx, action.imsDBQ, txn, event.ID, report.Number, authorPersonID, entry.Text, false, "", "", "")
+		entryID, errHTTP := addJournalEntry(ctx, action.imsDBQ, txn, event.ID, report.Number, authorPersonID, entry.Text, false, "", "", "")
 		if errHTTP != nil {
 			return 0, "", errHTTP.From("[addJournalEntry]")
+		}
+		errHTTP = addJournalEntryMentions(ctx, action.imsDBQ, txn, entryID, entry.MentionedPersonIDs)
+		if errHTTP != nil {
+			return 0, "", errHTTP.From("[addJournalEntryMentions]")
 		}
 	}
 

@@ -171,13 +171,19 @@ templ Report(deployment, versionName, versionRef, eventName string) {
           </label>
           <div id="journal_entries"></div>
           <div class="card-footer">
-            <textarea
-                    id="journal_entry_add"
-                    aria-label="New journal entry text"
-                    class="form-control no-print input-sm"
-                    placeholder="Press &quot;a&quot; to add journal text"
-                    onchange="journalEntryEdited()"
-            ></textarea>
+            <div class="position-relative">
+              <textarea
+                      id="journal_entry_add"
+                      aria-label="New journal entry text"
+                      class="form-control no-print input-sm"
+                      placeholder="Press &quot;a&quot; to add journal text. Type @ to mention someone."
+                      onchange="journalEntryEdited()"
+              ></textarea>
+              <!-- @mention typeahead dropdown (plan 81); populated by ims.ts. -->
+              <div id="journal_mention_results"
+                   class="list-group position-absolute w-100 shadow hidden no-print"
+                   style="z-index: 1080; max-height: 14rem; overflow-y: auto;"></div>
+            </div>
             <span id="journal_draft_restored" class="text-body-secondary small hidden no-print">Unsaved draft restored.</span>
             <div class="d-flex justify-content-between">
               <div class="btn-group my-1 no-print" role="group">

@@ -167,6 +167,7 @@ async function initReportPage(): Promise<void> {
         ims.handleJournalKeydown(e, !el.journalEntrySubmit.classList.contains("disabled"));
     });
     ims.setupJournalSubmitMode();
+    ims.setupJournalMentionAutocomplete(ims.pathIds.eventName ?? "");
 }
 
 //

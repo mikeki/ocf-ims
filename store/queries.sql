@@ -352,6 +352,20 @@ from INCIDENT__JOURNAL_ENTRY ije
 where ije.EVENT = ? and ije.INCIDENT_NUMBER = ?
 ;
 
+-- name: Report_JournalEntryMentions :many
+-- All mentions across the journal entries of one field report, scoped through
+-- REPORT__JOURNAL_ENTRY (the report-side mirror of Incident_JournalEntryMentions).
+select
+    jem.JOURNAL_ENTRY,
+    jem.PERSON_ID,
+    p.HANDLE,
+    p.NAME
+from REPORT__JOURNAL_ENTRY rje
+    join JOURNAL_ENTRY__MENTION jem on jem.JOURNAL_ENTRY = rje.JOURNAL_ENTRY
+    join PERSON p on p.ID = jem.PERSON_ID
+where rje.EVENT = ? and rje.REPORT_NUMBER = ?
+;
+
 --
 -- The "stricken" queries seem bloated at first blush, because the whole
 -- "where ID in (..." could just be "where ID =". What it's doing though is
