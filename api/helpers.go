@@ -153,7 +153,11 @@ func getJwtCtx(req *http.Request) (JWTContext, *herr.HTTPError) {
 	return jwtCtx, nil
 }
 
-func getEventPermissions(req *http.Request, imsDBQ *store.DBQ, userStore directory.UserStore) (
+// getEventPermissions keeps the directory.UserStore parameter even though authz no
+// longer consults it (plan 52c retired the EVENT_ACCESS positions/teams lookup) —
+// dropping it would churn ~30 call sites for no behavior change, and the unused
+// parameter is lint-clean. Same for getGlobalPermissions and permissionsByEvent.
+func getEventPermissions(req *http.Request, imsDBQ *store.DBQ, _ directory.UserStore) (
 	imsdb.Event, JWTContext, authz.EventPermissionMask, *herr.HTTPError,
 ) {
 	event, errHTTP := getEvent(req, req.PathValue("eventName"), imsDBQ)
@@ -164,14 +168,14 @@ func getEventPermissions(req *http.Request, imsDBQ *store.DBQ, userStore directo
 	if errHTTP != nil {
 		return imsdb.Event{}, JWTContext{}, 0, errHTTP.From("[getJwtCtx]")
 	}
-	eventPermissions, _, err := authz.EventPermissions(req.Context(), &event.ID, imsDBQ, userStore, *jwtCtx.Claims)
+	eventPermissions, _, err := authz.EventPermissions(req.Context(), &event.ID, imsDBQ, *jwtCtx.Claims)
 	if err != nil {
 		return imsdb.Event{}, JWTContext{}, 0, herr.InternalServerError("Failed to compute permissions", err).From("[EventPermissions]")
 	}
 	return event, jwtCtx, eventPermissions[event.ID], nil
 }
 
-func getGlobalPermissions(req *http.Request, imsDBQ *store.DBQ, userStore directory.UserStore) (
+func getGlobalPermissions(req *http.Request, imsDBQ *store.DBQ, _ directory.UserStore) (
 	JWTContext, authz.GlobalPermissionMask, *herr.HTTPError,
 ) {
 	empty := JWTContext{}
@@ -179,7 +183,7 @@ func getGlobalPermissions(req *http.Request, imsDBQ *store.DBQ, userStore direct
 	if errHTTP != nil {
 		return empty, 0, errHTTP.From("[getJwtCtx]")
 	}
-	_, globalPermissions, err := authz.EventPermissions(req.Context(), nil, imsDBQ, userStore, *jwtCtx.Claims)
+	_, globalPermissions, err := authz.EventPermissions(req.Context(), nil, imsDBQ, *jwtCtx.Claims)
 	if err != nil {
 		return empty, 0, herr.InternalServerError("Failed to compute permissions", err).From("[EventPermissions]")
 	}
@@ -188,8 +192,9 @@ func getGlobalPermissions(req *http.Request, imsDBQ *store.DBQ, userStore direct
 
 // permissionsByEvent computes the caller's permission mask for every event,
 // deriving each from their PERSON__EVENT participation tier (plan 52b). Admins
-// bypass per-event roles, so they get full permissions on every event. userStore
-// is retained in the signature pending the broader EVENT_ACCESS cleanup (52c).
+// bypass per-event roles, so they get full permissions on every event. The
+// directory.UserStore parameter is unused (see getEventPermissions) but kept to
+// avoid churning call sites.
 func permissionsByEvent(ctx context.Context, jwtCtx JWTContext, imsDBQ *store.DBQ, _ directory.UserStore) (
 	map[int32]authz.EventPermissionMask, *herr.HTTPError,
 ) {

@@ -392,8 +392,8 @@ func (a ApiHelper) getEvents(ctx context.Context) (imsjson.Events, *http.Respons
 }
 
 // addWriter / addReporter grant a per-event role by setting the person's
-// PERSON__EVENT participation tier (plan 52b: access derives from participation,
-// not EVENT_ACCESS). They return 204, matching the old editAccess-based helpers.
+// PERSON__EVENT participation tier (plan 52b: access derives from participation).
+// They return 204.
 func (a ApiHelper) addWriter(ctx context.Context, eventName, handle string) *http.Response {
 	a.t.Helper()
 	return a.setParticipation(ctx, personIDForHandle(a.t, handle), eventName,
@@ -432,17 +432,6 @@ func personIDForHandle(t *testing.T, handle string) int64 {
 	}
 	t.Fatalf("personIDForHandle: unknown handle %q", handle)
 	return 0
-}
-
-func (a ApiHelper) editAccess(ctx context.Context, req imsjson.EventsAccess) *http.Response {
-	a.t.Helper()
-	return a.imsPost(ctx, req, a.serverURL.JoinPath("/ims/api/access").String())
-}
-
-func (a ApiHelper) getAccess(ctx context.Context) (imsjson.EventsAccess, *http.Response) {
-	a.t.Helper()
-	bod, resp := a.imsGet(ctx, a.serverURL.JoinPath("/ims/api/access").String(), &imsjson.EventsAccess{})
-	return *bod.(*imsjson.EventsAccess), resp
 }
 
 func (a ApiHelper) attachFileToIncident(ctx context.Context, eventName string, incident int32, fileBytes []byte) (int32, *http.Response) {

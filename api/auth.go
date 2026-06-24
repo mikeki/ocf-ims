@@ -221,7 +221,7 @@ func (action GetAuth) getAuth(req *http.Request) (GetAuthResponse, *herr.HTTPErr
 	handle := claims.PersonHandle()
 	// Compute global permissions via the shared path so UI-gating flags stay in step
 	// with the authoritative endpoint checks (and with any future non-admin grants).
-	_, globalPermissions, err := authz.EventPermissions(req.Context(), nil, action.imsDBQ, action.userStore, *claims)
+	_, globalPermissions, err := authz.EventPermissions(req.Context(), nil, action.imsDBQ, *claims)
 	if err != nil {
 		return resp, herr.InternalServerError("Failed to fetch permissions", err).From("[EventPermissions]")
 	}
@@ -256,7 +256,7 @@ func (action GetAuth) getAuth(req *http.Request) (GetAuthResponse, *herr.HTTPErr
 			}
 		}
 
-		eventPermissions, _, err := authz.EventPermissions(req.Context(), &event.ID, action.imsDBQ, action.userStore, *claims)
+		eventPermissions, _, err := authz.EventPermissions(req.Context(), &event.ID, action.imsDBQ, *claims)
 		if err != nil {
 			return resp, herr.InternalServerError("Failed to fetch event permissions", err).From("[EventPermissions]")
 		}

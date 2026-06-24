@@ -253,7 +253,7 @@ func (action CreatePerson) eventForFieldCreate(req *http.Request, jwtCtx JWTCont
 	if errHTTP != nil {
 		return 0, errHTTP.From("[getEvent]")
 	}
-	perms, _, err := authz.EventPermissions(req.Context(), &event.ID, action.imsDBQ, action.userStore, *jwtCtx.Claims)
+	perms, _, err := authz.EventPermissions(req.Context(), &event.ID, action.imsDBQ, *jwtCtx.Claims)
 	if err != nil {
 		return 0, herr.InternalServerError("Failed to compute permissions", err).From("[EventPermissions]")
 	}

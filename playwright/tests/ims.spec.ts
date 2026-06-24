@@ -134,46 +134,6 @@ test("admin_incident_types", async ({ page }) => {
   await expect(newLi.getByRole("button", {name: "Hidden"})).toBeVisible();
 });
 
-test("admin_events", async ({ browser }) => {
-  const ctx = await browser.newContext();
-  const page = await ctx.newPage()
-  await login(page);
-
-  const eventName: string = randomName("event");
-  await addEvent(page, eventName);
-  await addWriter(page, eventName, "person:SomeGuy");
-
-  const writers = page.locator("div.card").filter({has: page.getByText(`Full writers for ${eventName}`)});
-  // it's hard to tell on the client side when this has completed, hence the toPass block below
-  await writers.locator("select").selectOption("On-Site");
-
-  const page2 = await ctx.newPage();
-  await login(page2);
-  await eventsPage(page2);
-  await expect(async (): Promise<void> => {
-    const writers = page2.locator("div.card").filter({has: page2.getByText(`Full writers for ${eventName}`)});
-    await expect(writers).toBeVisible();
-    await expect(writers.getByText("person:SomeGuy")).toBeVisible();
-    await expect(writers.locator("select")).toHaveValue("onsite");
-    await expect(writers).not.toContainText("Expired");
-    await expect(writers).toContainText("Unknown");
-
-    await writers.getByRole("button", { name: "Set expiration" }).click();
-    const expirationTime = writers.getByRole("textbox", {name: "Expiration time"});
-    await expect(expirationTime).toBeVisible();
-    await expirationTime.fill("2025-05-05T05:55");
-    // focus anywhere else, so that the expirationTime oninput fires
-    await writers.getByRole("textbox", { name: "person:Tool" }).focus();
-    await expect(writers).toContainText("Expired");
-    await expect(writers).toContainText("Unknown");
-
-  }).toPass();
-
-  await page2.close();
-  await page.close();
-  await ctx.close();
-})
-
 test("incidents", async ({ page, browser }) => {
   test.slow();
 

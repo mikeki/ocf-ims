@@ -42,8 +42,6 @@ func TestAdminOnlyEndpoints(t *testing.T) {
 	apisNotAuthenticated := ApiHelper{t: t, serverURL: shared.serverURL, jwt: ""}
 
 	adminOnly := []MethodURL{
-		{http.MethodGet, "/ims/api/access"},
-		{http.MethodPost, "/ims/api/access"},
 		{http.MethodGet, "/ims/api/actionlogs"},
 		{http.MethodPost, "/ims/api/events"},
 		// NOTE: POST .../areas is intentionally not listed here. It is no longer
