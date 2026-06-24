@@ -1054,44 +1054,43 @@ func (action AttachPersonToIncident) attachPerson(req *http.Request) *herr.HTTPE
 	if errHTTP != nil {
 		return errHTTP.From("[readBodyAs]")
 	}
-	txn, err := action.imsDBQ.Begin()
-	if err != nil {
-		return herr.InternalServerError("Failed to start transaction", err).From("[Begin]")
-	}
-	defer rollback(txn)
+	// Run in a retrying transaction: attach is a detach-then-reattach replace and
+	// can deadlock against a concurrent attach/detach on the same incident, so the
+	// whole transaction is retried on a transient deadlock / lock-wait timeout.
+	runErr := action.imsDBQ.RunInTx(ctx, func(txn *sql.Tx) error {
+		txErr := action.imsDBQ.DetachPersonFromIncident(ctx, txn, imsdb.DetachPersonFromIncidentParams{
+			Event:          event.ID,
+			IncidentNumber: incidentNumber,
+			PersonID:       personID,
+		})
+		if txErr != nil {
+			return herr.InternalServerError("Failed to detach person from Incident", txErr).From("[DetachPersonFromIncident]")
+		}
 
-	err = action.imsDBQ.DetachPersonFromIncident(ctx, txn, imsdb.DetachPersonFromIncidentParams{
-		Event:          event.ID,
-		IncidentNumber: incidentNumber,
-		PersonID:       personID,
+		txErr = action.imsDBQ.AttachPersonToIncident(ctx, txn, imsdb.AttachPersonToIncidentParams{
+			Event:          event.ID,
+			IncidentNumber: incidentNumber,
+			PersonID:       personID,
+			Involvement:    conv.StringToSql(body.Involvement, 128),
+			// 52f: per-incident access grant for an involved reporter (writer-gated here).
+			GrantedAccess: body.GrantedAccess,
+		})
+		if txErr != nil {
+			return herr.InternalServerError("Failed to attach person to Incident", txErr).From("[AttachPersonToIncident]")
+		}
+
+		_, errJournal := addIncidentJournalEntry(
+			ctx, action.imsDBQ, txn, event.ID, incidentNumber,
+			jwtCtx.Claims.PersonID(), fmt.Sprintf("Added person: %v", personDisplayName(person)),
+			true, "", "", "",
+		)
+		if errJournal != nil {
+			return errJournal.From("[addIncidentJournalEntry]")
+		}
+		return nil
 	})
-	if err != nil {
-		return herr.InternalServerError("Failed to detach person from Incident", err).From("[DetachPersonFromIncident]")
-	}
-
-	err = action.imsDBQ.AttachPersonToIncident(ctx, txn, imsdb.AttachPersonToIncidentParams{
-		Event:          event.ID,
-		IncidentNumber: incidentNumber,
-		PersonID:       personID,
-		Involvement:    conv.StringToSql(body.Involvement, 128),
-		// 52f: per-incident access grant for an involved reporter (writer-gated here).
-		GrantedAccess: body.GrantedAccess,
-	})
-	if err != nil {
-		return herr.InternalServerError("Failed to attach person to Incident", err).From("[AttachPersonToIncident]")
-	}
-
-	_, errHTTP = addIncidentJournalEntry(
-		ctx, action.imsDBQ, txn, event.ID, incidentNumber,
-		jwtCtx.Claims.PersonID(), fmt.Sprintf("Added person: %v", personDisplayName(person)),
-		true, "", "", "",
-	)
-	if errHTTP != nil {
-		return errHTTP.From("[addIncidentJournalEntry]")
-	}
-	err = txn.Commit()
-	if err != nil {
-		return herr.InternalServerError("Failed to commit transaction", err).From("[Commit]")
+	if runErr != nil {
+		return herr.AsHTTPError(runErr).From("[RunInTx]")
 	}
 
 	action.es.notifyIncidentUpdate(event.ID, incidentNumber)
@@ -1135,32 +1134,30 @@ func (action DetachPersonFromIncident) detachPerson(req *http.Request) *herr.HTT
 	}
 	personID := person.ID
 
-	txn, err := action.imsDBQ.Begin()
-	if err != nil {
-		return herr.InternalServerError("Failed to start transaction", err).From("[Begin]")
-	}
-	defer rollback(txn)
-
-	err = action.imsDBQ.DetachPersonFromIncident(ctx, txn, imsdb.DetachPersonFromIncidentParams{
-		Event:          event.ID,
-		IncidentNumber: incidentNumber,
-		PersonID:       personID,
+	// Run in a retrying transaction so a transient deadlock / lock-wait timeout
+	// against a concurrent attach/detach on the same incident is retried rather
+	// than surfaced as a 500.
+	runErr := action.imsDBQ.RunInTx(ctx, func(txn *sql.Tx) error {
+		txErr := action.imsDBQ.DetachPersonFromIncident(ctx, txn, imsdb.DetachPersonFromIncidentParams{
+			Event:          event.ID,
+			IncidentNumber: incidentNumber,
+			PersonID:       personID,
+		})
+		if txErr != nil {
+			return herr.InternalServerError("Failed to detach person from Incident", txErr).From("[DetachPersonFromIncident]")
+		}
+		_, errJournal := addIncidentJournalEntry(
+			ctx, action.imsDBQ, txn, event.ID, incidentNumber,
+			jwtCtx.Claims.PersonID(), fmt.Sprintf("Removed person: %v", personDisplayName(person)),
+			true, "", "", "",
+		)
+		if errJournal != nil {
+			return errJournal.From("[addIncidentJournalEntry]")
+		}
+		return nil
 	})
-	if err != nil {
-		return herr.InternalServerError("Failed to detach person from Incident", err).From("[DetachPersonFromIncident]")
-	}
-	_, errHTTP = addIncidentJournalEntry(
-		ctx, action.imsDBQ, txn, event.ID, incidentNumber,
-		jwtCtx.Claims.PersonID(), fmt.Sprintf("Removed person: %v", personDisplayName(person)),
-		true, "", "", "",
-	)
-	if errHTTP != nil {
-		return errHTTP.From("[addIncidentJournalEntry]")
-	}
-
-	err = txn.Commit()
-	if err != nil {
-		return herr.InternalServerError("Failed to commit transaction", err).From("[Commit]")
+	if runErr != nil {
+		return herr.AsHTTPError(runErr).From("[RunInTx]")
 	}
 
 	action.es.notifyIncidentUpdate(event.ID, incidentNumber)
