@@ -679,6 +679,36 @@ func (a ApiHelper) addCrewLeader(ctx context.Context, eventName, handle string) 
 		api.SetParticipationRequest{ParticipationType: "crew_leader"})
 }
 
+func (a ApiHelper) getNotifications(ctx context.Context) (imsjson.NotificationList, *http.Response) {
+	a.t.Helper()
+	path := a.serverURL.JoinPath("/ims/api/notifications").String()
+	bod, resp := a.imsGet(ctx, path, &imsjson.NotificationList{})
+	return *bod.(*imsjson.NotificationList), resp
+}
+
+func (a ApiHelper) markAllNotificationsRead(ctx context.Context) *http.Response {
+	a.t.Helper()
+	return a.imsPost(ctx, struct{}{}, a.serverURL.JoinPath("/ims/api/notifications/read").String())
+}
+
+// notificationsForEvent fetches the caller's notifications and returns only those
+// for the given event. Notifications are global per person and seed users are
+// shared across parallel tests, so a test must scope to its own (unique) event
+// rather than asserting a global count.
+func (a ApiHelper) notificationsForEvent(ctx context.Context, eventName string) []imsjson.Notification {
+	a.t.Helper()
+	list, resp := a.getNotifications(ctx)
+	require.Equal(a.t, http.StatusOK, resp.StatusCode)
+	require.NoError(a.t, resp.Body.Close())
+	var out []imsjson.Notification
+	for _, n := range list.Notifications {
+		if n.Event == eventName {
+			out = append(out, n)
+		}
+	}
+	return out
+}
+
 func jwtForAdmin(ctx context.Context, t *testing.T) string {
 	t.Helper()
 	apisNotAuthenticated := ApiHelper{t: t, serverURL: shared.serverURL, jwt: ""}

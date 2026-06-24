@@ -336,6 +336,62 @@ insert ignore into JOURNAL_ENTRY__MENTION (
     ?, ?
 );
 
+-- name: IncidentHasPerson :one
+-- Whether a person is already attached to an incident — used to fire an
+-- "added_to_incident" notification only on a genuine new add, not on every
+-- involvement edit (attach is a detach-then-reattach replace).
+select exists (
+    select 1 from INCIDENT__PERSON
+    where EVENT = ? and INCIDENT_NUMBER = ? and PERSON_ID = ?
+) as HAS_PERSON;
+
+-- name: JournalEntryMentionPersonIDs :many
+-- The (deduped) person IDs mentioned by one journal entry — the recipients of
+-- "mentioned" notifications (plan 82). Read back from the persisted rows so the
+-- IDs are guaranteed valid (the insert was insert-ignore).
+select PERSON_ID from JOURNAL_ENTRY__MENTION where JOURNAL_ENTRY = ?;
+
+-- name: CreateNotification :exec
+insert into NOTIFICATION (
+    RECIPIENT_PERSON_ID, TYPE, EVENT, INCIDENT_NUMBER, REPORT_NUMBER, JOURNAL_ENTRY, ACTOR_PERSON_ID, CREATED
+) values (
+    ?, ?, ?, ?, ?, ?, ?, ?
+);
+
+-- name: NotificationsForPerson :many
+-- A person's most recent notifications, enriched for display (event name,
+-- incident or report summary, actor handle/name).
+select
+    n.ID, n.TYPE, n.EVENT, n.INCIDENT_NUMBER, n.REPORT_NUMBER, n.JOURNAL_ENTRY,
+    n.ACTOR_PERSON_ID, n.CREATED, n.READ_AT,
+    e.NAME as EVENT_NAME,
+    i.SUMMARY as INCIDENT_SUMMARY,
+    r.SUMMARY as REPORT_SUMMARY,
+    actor.HANDLE as ACTOR_HANDLE,
+    actor.NAME as ACTOR_NAME
+from NOTIFICATION n
+    left join `EVENT` e on e.ID = n.EVENT
+    left join INCIDENT i on i.EVENT = n.EVENT and i.NUMBER = n.INCIDENT_NUMBER
+    left join REPORT r on r.EVENT = n.EVENT and r.NUMBER = n.REPORT_NUMBER
+    left join PERSON actor on actor.ID = n.ACTOR_PERSON_ID
+where n.RECIPIENT_PERSON_ID = ?
+order by n.CREATED desc
+limit 200;
+
+-- name: UnreadNotificationCountForPerson :one
+select count(*) as UNREAD from NOTIFICATION
+where RECIPIENT_PERSON_ID = ? and READ_AT is null;
+
+-- name: MarkNotificationRead :exec
+-- Mark one notification read, scoped to its recipient so a caller can only mark
+-- their own.
+update NOTIFICATION set READ_AT = ?
+where ID = ? and RECIPIENT_PERSON_ID = ? and READ_AT is null;
+
+-- name: MarkAllNotificationsRead :exec
+update NOTIFICATION set READ_AT = ?
+where RECIPIENT_PERSON_ID = ? and READ_AT is null;
+
 -- name: Incident_JournalEntryMentions :many
 -- All mentions across the journal entries of one incident, with the mentioned
 -- person's handle/name for display. Joined through INCIDENT__JOURNAL_ENTRY so
