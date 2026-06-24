@@ -653,12 +653,36 @@ function setupNotifications(): void {
     void refreshNotifications();
 }
 
-// newestEvent returns the "active" event — the newest (highest id) among the
-// given events — or null if there are none. The events list from the API is
-// already permission-filtered and excludes groups, so the newest by id is the
-// current fair. Used to send users to the active event (login redirect, home-page
-// link) instead of a hardcoded year.
+// newestEvent returns the "active" event — the current fair — among the given
+// events, or null if there are none. The events list from the API is already
+// permission-filtered and excludes groups. Used to send users to the active
+// event (login redirect, home-page link) instead of a hardcoded year.
+//
+// Events are named by year (e.g. "2025", "2026"), so we first pick the event
+// with the largest numeric name. Event ids do NOT reliably track year order — a
+// later-seeded older year can have a higher id — so choosing by id sent users to
+// the wrong year (2025 instead of 2026). We fall back to the newest by id only
+// when no event name is numeric.
 export function newestEvent(eds: EventData[]): EventData|null {
+    if (eds.length === 0) {
+        return null;
+    }
+
+    // Prefer the event with the largest year-like (numeric) name.
+    let bestNumbered: EventData|null = null;
+    let bestYear = Number.NEGATIVE_INFINITY;
+    for (const ed of eds) {
+        const year = Number(ed.name);
+        if (ed.name.trim() !== "" && Number.isFinite(year) && year > bestYear) {
+            bestNumbered = ed;
+            bestYear = year;
+        }
+    }
+    if (bestNumbered != null) {
+        return bestNumbered;
+    }
+
+    // No numeric names: fall back to the newest by id.
     let newest: EventData|null = null;
     for (const ed of eds) {
         if (newest == null || ed.id > newest.id) {
