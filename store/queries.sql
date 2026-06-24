@@ -327,6 +327,31 @@ set INCIDENT_NUMBER = ?
 where EVENT = ? and NUMBER = ?
 ;
 
+-- name: CreateJournalEntryMention :exec
+-- Record that a journal entry @mentions a person (plan 81). Insert-ignore so a
+-- duplicate person in one entry's mention list is a no-op rather than an error.
+insert ignore into JOURNAL_ENTRY__MENTION (
+    JOURNAL_ENTRY, PERSON_ID
+) values (
+    ?, ?
+);
+
+-- name: Incident_JournalEntryMentions :many
+-- All mentions across the journal entries of one incident, with the mentioned
+-- person's handle/name for display. Joined through INCIDENT__JOURNAL_ENTRY so
+-- the event+incident scope is enforced (an entry's mentions are only readable
+-- via the incident it belongs to).
+select
+    jem.JOURNAL_ENTRY,
+    jem.PERSON_ID,
+    p.HANDLE,
+    p.NAME
+from INCIDENT__JOURNAL_ENTRY ije
+    join JOURNAL_ENTRY__MENTION jem on jem.JOURNAL_ENTRY = ije.JOURNAL_ENTRY
+    join PERSON p on p.ID = jem.PERSON_ID
+where ije.EVENT = ? and ije.INCIDENT_NUMBER = ?
+;
+
 --
 -- The "stricken" queries seem bloated at first blush, because the whole
 -- "where ID in (..." could just be "where ID =". What it's doing though is
