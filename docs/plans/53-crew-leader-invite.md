@@ -157,10 +157,12 @@ both problems worse, so the redesign tackles **readability** and
 
 ## 4. Slices
 
-- **53a — schema + authz.** Add the `crew_leader` enum value, the
-  `EventInviteReporters` bit, derive it for writer/crew_leader, surface
-  `inviteReporters` in `AccessForEvent`. No behavior change yet (no caller uses the
-  bit). Tests: authz derivation per rung; migration apply.
+- **53a — schema + authz.** ✅ Done. Added the `crew_leader` enum value (migration
+  `00006`, goose v6), the `EventInviteReporters` bit (in `EventAllPermissions` for
+  the admin bypass), derived it for writer/crew_leader in `participationToEventPerms`,
+  and surfaced `inviteReporters` in `AccessForEvent` (+ TS `AuthInfoEventAccess`). No
+  behavior change yet (no caller uses the bit). Tests: authz derivation per rung;
+  migration apply (`migrate_test` bumped to v6).
 - **53b — backend invite.** Scope `CreatePerson` + `SetPersonParticipation` to
   `EventInviteReporters` with the non-admin reporter-ceiling + anti-escalation.
   Tests: a writer/crew-leader can create a login-capable reporter and set reporter

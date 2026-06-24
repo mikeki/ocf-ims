@@ -2598,6 +2598,9 @@ export type AuthInfoEventAccess = {
     // 52f: caller lacks event-wide incident read but has ≥1 per-incident grant in
     // this event — reveal the Incidents nav/list (filtered to granted incidents).
     readIncidentsViaGrant: boolean,
+    // 53a: caller may invite reporters to this event (writer/crew_leader/admin) —
+    // reveals the People tab + invite UI.
+    inviteReporters: boolean,
 }
 
 export type Personnel = {
