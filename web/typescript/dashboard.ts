@@ -90,15 +90,17 @@ async function initDashboard(): Promise<void> {
     }
     // Read the event from the path *after* commonPageInit() has populated pathIds.
     const eventName: string|null = ims.pathIds.eventName;
-    // Admin-only for now (the refine-later permission seam, docs/plans/70-dashboards.md).
-    // This single check is the one line a future role swaps in.
-    if (!authInfo.admin) {
-        ims.setErrorMessage("The dashboard is restricted to administrators.");
+    if (eventName == null) {
+        ims.setErrorMessage("No event selected.");
         ims.hideLoadingOverlay();
         return;
     }
-    if (eventName == null) {
-        ims.setErrorMessage("No event selected.");
+    // The dashboard opens to admins and per-event writers (plan 52d). A writer gets
+    // writeIncidents on this event; admins get it everywhere. This is the single
+    // permission seam a future role swaps in (docs/plans/70-dashboards.md).
+    const mayView = authInfo.admin || (authInfo.event_access?.[eventName]?.writeIncidents ?? false);
+    if (!mayView) {
+        ims.setErrorMessage("The dashboard is restricted to administrators and event writers.");
         ims.hideLoadingOverlay();
         return;
     }

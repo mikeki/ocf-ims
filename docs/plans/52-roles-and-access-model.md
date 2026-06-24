@@ -147,7 +147,13 @@ note, and the `validPersonStatuses` map (`api/person.go`).
   `EventReader`/`EventVisitWriter`, and slimmed `authz.EventPermissions` (no more
   `directory.UserStore`). The api-layer permission helpers keep an unused
   `directory.UserStore` param to avoid churning ~30 call sites.
-- **52d — Dashboard to writers.** Widen the metrics gate + nav reveal.
+- **52d — Dashboard to writers.** ✅ shipped. Widened the metrics gate from
+  admin-only to admin-or-per-event-writer: `GetMetrics.getMetrics` now resolves the
+  event and checks `EventWriteIncidents` (writers get it from their tier, admins via
+  the bypass — one bit covers both) instead of `PersonAdmin()`. The dashboard nav
+  link (`ims.ts` `setupNav`) and the page gate (`dashboard.ts`) reveal to admins and
+  writers of the active event via `event_access[event].writeIncidents`. No
+  schema/API-shape change.
 - **52e — Inline role editing on the People roster.** Make changing a person's
   per-event role a **single interaction** on the row itself, instead of today's
   two-click detour (Edit → modal → change the `Role` select → Save). Today the row

@@ -151,9 +151,10 @@ templ Nav(eventName string) {
         <li class="nav-item">
           <a id="active-event-people" class="nav-link hidden" href="">People</a>
         </li>
-        <!-- Dashboard: admin-only for now (same reveal rule as People above —
-             stays hidden until setupNav unhides it only when an event is active
-             AND the viewer is an admin). Not tagged .if-admin for the same reason. -->
+        <!-- Dashboard: opens to admins and per-event writers (plan 52d). Stays
+             hidden until setupNav unhides it only when an event is active AND the
+             viewer is an admin or a writer of that event. Not tagged .if-admin
+             for the same reason as People above. -->
         <li class="nav-item">
           <a id="active-event-dashboard" class="nav-link hidden" href="">Dashboard</a>
         </li>

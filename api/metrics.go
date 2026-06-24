@@ -25,6 +25,7 @@ import (
 
 	"github.com/mikeki/ocf-ims/directory"
 	imsjson "github.com/mikeki/ocf-ims/json"
+	"github.com/mikeki/ocf-ims/lib/authz"
 	"github.com/mikeki/ocf-ims/lib/cache"
 	"github.com/mikeki/ocf-ims/lib/conv"
 	"github.com/mikeki/ocf-ims/lib/herr"
@@ -71,10 +72,11 @@ func (c *metricsCache) get(
 }
 
 // GetMetrics serves the per-event dashboard aggregate (Phase 7). It is read-only
-// and admin-gated. The admin check is the single permission seam described in
-// docs/plans/70-dashboards.md (D3): when Phase 5 roles grow, only this check
-// changes — a future GlobalViewDashboard or per-event read swaps in here and the
-// page does not move.
+// and open to admins and per-event writers (plan 52d): writers get
+// EventWriteIncidents from their PERSON__EVENT tier and admins get it via the
+// admin bypass, so a single write-bit check gates both. This is the single
+// permission seam described in docs/plans/70-dashboards.md (D3): when roles grow
+// further, only this check changes and the page does not move.
 type GetMetrics struct {
 	imsDBQ    *store.DBQ
 	userStore directory.UserStore
@@ -93,23 +95,25 @@ func (action GetMetrics) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 func (action GetMetrics) getMetrics(req *http.Request) (imsjson.Metrics, *herr.HTTPError) {
 	var resp imsjson.Metrics
 
-	// Gate on admin BEFORE resolving the event, so the endpoint never reveals
-	// whether an event exists to a non-admin (they always get a flat 403).
-	jwtCtx, errHTTP := getJwtCtx(req)
+	// The dashboard opens to admins and per-event writers (plan 52d). Resolving the
+	// event here (rather than gating before it, as the admin-only version did) is
+	// fine: event names aren't secret — every authenticated user sees them in the
+	// nav — and writers get EventWriteIncidents from their tier while admins get it
+	// via the bypass, so the one write-bit check covers both.
+	event, _, eventPermissions, errHTTP := getEventPermissions(req, action.imsDBQ, action.userStore)
 	if errHTTP != nil {
-		return resp, errHTTP.From("[getJwtCtx]")
+		return resp, errHTTP.From("[getEventPermissions]")
 	}
-	if !jwtCtx.Claims.PersonAdmin() {
-		return resp, herr.Forbidden("The dashboard is restricted to administrators", nil)
+	if eventPermissions&authz.EventWriteIncidents == 0 {
+		return resp, herr.Forbidden("The dashboard is restricted to administrators and event writers", nil)
 	}
 
-	eventName := req.PathValue("eventName")
 	// The heavy work (event lookup + GROUP BY aggregation) goes through the
 	// per-event cache, so repeated dashboard loads within the TTL serve a cached
 	// payload without touching the database.
-	cached, err := action.cache.get(req.Context(), eventName,
+	cached, err := action.cache.get(req.Context(), event.Name,
 		func(ctx context.Context) (imsjson.Metrics, error) {
-			return action.computeMetrics(ctx, eventName)
+			return action.computeMetrics(ctx, event.Name)
 		})
 	if err != nil {
 		return resp, herr.AsHTTPError(err)
