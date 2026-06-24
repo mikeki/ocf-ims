@@ -438,6 +438,8 @@ func personIDForHandle(t *testing.T, handle string) int64 {
 		return userCarolPersonID
 	case userDaveHandle:
 		return userDavePersonID
+	case userErinHandle:
+		return userErinPersonID
 	}
 	t.Fatalf("personIDForHandle: unknown handle %q", handle)
 	return 0
@@ -656,6 +658,25 @@ func jwtForDave(t *testing.T, ctx context.Context) string {
 	})
 	require.Equal(t, http.StatusOK, statusCode)
 	return token
+}
+
+func jwtForErin(t *testing.T, ctx context.Context) string {
+	t.Helper()
+	apisNotAuthenticated := ApiHelper{t: t, serverURL: shared.serverURL, jwt: ""}
+	statusCode, _, token := apisNotAuthenticated.postAuth(ctx, api.PostAuthRequest{
+		Identification: userErinEmail,
+		Password:       userErinPassword,
+	})
+	require.Equal(t, http.StatusOK, statusCode)
+	return token
+}
+
+// addCrewLeader grants the crew_leader tier (plan 53b: reporter-level access plus
+// the invite-reporters power) by setting the person's PERSON__EVENT participation.
+func (a ApiHelper) addCrewLeader(ctx context.Context, eventName, handle string) *http.Response {
+	a.t.Helper()
+	return a.setParticipation(ctx, personIDForHandle(a.t, handle), eventName,
+		api.SetParticipationRequest{ParticipationType: "crew_leader"})
 }
 
 func jwtForAdmin(ctx context.Context, t *testing.T) string {
