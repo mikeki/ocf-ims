@@ -29,6 +29,7 @@ declare global {
         editLocationDescription: ()=>Promise<void>;
         removePerson: (el: HTMLElement)=>void;
         setPersonInvolvement: (el: HTMLInputElement)=>void;
+        setPersonGrant: (el: HTMLInputElement)=>void;
         removeIncidentType: (el: HTMLElement)=>Promise<void>;
         detachReport: (el: HTMLElement)=>Promise<void>;
         attachReport: ()=>Promise<void>;
@@ -109,7 +110,9 @@ async function initIncidentPage(): Promise<void> {
         await ims.redirectToLogin();
         return;
     }
-    if (!ims.eventAccess!.readIncidents) {
+    // 52f: a reporter granted per-incident access reaches the page via
+    // readIncidentsViaGrant; the per-incident GET then enforces which one they may see.
+    if (!ims.eventAccess!.readIncidents && !ims.eventAccess!.readIncidentsViaGrant) {
         ims.setErrorMessage(
             `You're not currently authorized to view Incidents in Event "${ims.pathIds.eventName}".`
         );
@@ -126,6 +129,7 @@ async function initIncidentPage(): Promise<void> {
     window.editLocationDescription = editLocationDescription;
     window.removePerson = removePerson;
     window.setPersonInvolvement = setPersonInvolvement;
+    window.setPersonGrant = setPersonGrant;
     window.removeIncidentType = removeIncidentType;
     window.detachReport = detachReport;
     window.attachReport = attachReport;
@@ -361,6 +365,10 @@ function displayIncident(): void {
 
     if (ims.eventAccess?.writeIncidents) {
         ims.enableEditing();
+    } else if (incident?.viewer_may_add_journal) {
+        // 52f: a granted reporter may add journal entries but edit nothing else, so
+        // enable just the journal-add textarea (the submit button toggles on input).
+        el.journalEntryAdd.removeAttribute("disabled");
     }
 
     if (ims.eventAccess?.attachFiles) {
@@ -745,6 +753,22 @@ function drawPeople() {
         involvementInput.ariaLabel = `Involvement for ${label}`;
         if (person.involvement) {
             involvementInput.value = person.involvement;
+        }
+
+        // 52f: per-incident access. Track the current grant on the row so editing
+        // involvement (a full-replace on the server) doesn't clobber it. Grant
+        // controls are writer-only; for an involved *user* (has a handle) we either
+        // show the toggle (if they lack event access) or a "has access" hint.
+        personLi.dataset["grantedAccess"] = person.granted_access ? "true" : "";
+        if (person.handle && ims.eventAccess?.writeIncidents) {
+            if (person.has_event_access) {
+                personLi.querySelector(".person-has-access")!.classList.remove("hidden");
+            } else {
+                const grantLabel = personLi.querySelector(".person-grant-access") as HTMLElement;
+                const grantCheckbox = grantLabel.querySelector("input") as HTMLInputElement;
+                grantCheckbox.checked = !!person.granted_access;
+                grantLabel.classList.remove("hidden");
+            }
         }
 
         el.peopleList.append(personFragment);
@@ -1303,8 +1327,9 @@ async function removePerson(sender: HTMLElement): Promise<void> {
 }
 
 async function setPersonInvolvement(sender: HTMLInputElement): Promise<void> {
-    const personId = sender.closest("li")?.dataset["personId"];
-    if (!personId) {
+    const li = sender.closest("li");
+    const personId = li?.dataset["personId"];
+    if (!personId || !li) {
         console.log("no person id for element");
         return;
     }
@@ -1317,6 +1342,9 @@ async function setPersonInvolvement(sender: HTMLInputElement): Promise<void> {
     const {err} = await ims.fetchNoThrow(url, {
         body: JSON.stringify({
             involvement: sender.value,
+            // Resend the current grant: attach is a full replace, so omitting it
+            // would clear the per-incident access (52f).
+            granted_access: li.dataset["grantedAccess"] === "true",
         }),
     });
     if (err !== null) {
@@ -1326,6 +1354,37 @@ async function setPersonInvolvement(sender: HTMLInputElement): Promise<void> {
     ims.controlHasSuccess(sender);
 
     return;
+}
+
+// setPersonGrant flips the per-incident access grant for an involved person (52f).
+// It resends the current involvement alongside, since the attach endpoint replaces
+// the whole row.
+async function setPersonGrant(sender: HTMLInputElement): Promise<void> {
+    const li = sender.closest("li");
+    const personId = li?.dataset["personId"];
+    if (!personId || !li) {
+        return;
+    }
+    const involvementInput = li.querySelector("input.form-control") as HTMLInputElement|null;
+    const url = (
+        ims.urlReplace(url_incidentPerson)
+            .replace("<incident_number>", ims.pathIds.incidentNumber!.toString())
+            .replace("<person_id>", encodeURIComponent(personId))
+    );
+    const {err} = await ims.fetchNoThrow(url, {
+        body: JSON.stringify({
+            involvement: involvementInput?.value ?? "",
+            granted_access: sender.checked,
+        }),
+    });
+    if (err !== null) {
+        // Revert the checkbox to its prior state on failure.
+        sender.checked = !sender.checked;
+        ims.setErrorMessage(`Failed to update incident access:\n${err}`);
+        return;
+    }
+    li.dataset["grantedAccess"] = sender.checked ? "true" : "";
+    ims.clearErrorMessage();
 }
 
 

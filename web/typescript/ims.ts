@@ -2244,6 +2244,11 @@ export type IncidentPerson = {
     handle?: string|null;
     name?: string|null;
     involvement?: string|null;
+    // 52f: per-incident access grant for an involved reporter (read + add journal
+    // entries). granted_access is writable; has_event_access is read-only and true
+    // when the person already has event-wide incident access (grant moot).
+    granted_access?: boolean|null;
+    has_event_access?: boolean|null;
 }
 
 export type VisitPerson = {
@@ -2286,6 +2291,9 @@ export type Incident = {
     incident_type_ids?: number[]|null;
     location?: EventLocation|null;
     journal_entries?: JournalEntry[]|null;
+    // 52f: read-only, viewer-dependent — true when the caller may append journal
+    // entries (event writer, or an involved reporter granted access to this incident).
+    viewer_may_add_journal?: boolean|null;
     reports?: number[]|null;
     visits?: number[]|null;
     linked_incidents?: LinkedIncident[]|null;
@@ -2450,6 +2458,9 @@ export type AuthInfoEventAccess = {
     readVisits: boolean,
     writeVisits: boolean,
     attachFiles: boolean,
+    // 52f: caller lacks event-wide incident read but has ≥1 per-incident grant in
+    // this event — reveal the Incidents nav/list (filtered to granted incidents).
+    readIncidentsViaGrant: boolean,
 }
 
 export type Personnel = {

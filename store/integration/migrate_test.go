@@ -49,7 +49,7 @@ func TestMigrateFreshDB(t *testing.T) {
 	// Re-running is a clean no-op.
 	require.NoError(t, store.MigrateDB(ctx, db))
 
-	assert.Equal(t, int64(4), gooseVersion(t, ctx, db))
+	assert.Equal(t, int64(5), gooseVersion(t, ctx, db))
 	for _, table := range []string{"EVENT", "PERSON", "INCIDENT", "REPORT", "VISIT"} {
 		assert.Truef(t, tableExists(t, ctx, db, table), "expected table %s to exist", table)
 	}

@@ -82,6 +82,14 @@ const (
 	userCarolPassword = "password"
 	userCarolPersonID = 6003
 
+	// Dave is dedicated to the 52f per-incident-grant test: a stable non-admin who is
+	// made a reporter in that test's own event, so other parallel tests don't perturb
+	// his role/password. He shares Alice's seeded password hash.
+	userDaveHandle   = "DaveTestRanger"
+	userDaveEmail    = "davetestranger@example.com"
+	userDavePassword = "password"
+	userDavePersonID = 6004
+
 	// A person_id that doesn't exist, for not-found (404) assertions.
 	nonexistentPersonID = 999999
 )
@@ -96,7 +104,8 @@ insert into PERSON (ID, HANDLE, EMAIL, PASSWORD, CREATED, IS_ADMIN) values
     (6000, 'AdminTestRanger', 'admintestranger@example.com', '$argon2id$v=19$m=1,t=1,p=1$51uXrZoFRb6O4Tw4TsAJVQ$SedDwp+hPpIJc42QcnFJy6EOtE+b5kyYFpnuRHl/5qs', 0, true),
     (6001, 'AliceTestRanger', 'alicetestranger@example.com', '$argon2id$v=19$m=1,t=1,p=1$eg9U8hLotCSmyCph1BQroA$KFfy0uDDpP+cXPnkSQRXt3z0Shd7M39tsrwJZuDrOdU', 0, false),
     (6002, 'BobTestRanger', 'bobtestranger@example.com', '$argon2id$v=19$m=1,t=1,p=1$eg9U8hLotCSmyCph1BQroA$KFfy0uDDpP+cXPnkSQRXt3z0Shd7M39tsrwJZuDrOdU', 0, false),
-    (6003, 'CarolTestRanger', 'caroltestranger@example.com', '$argon2id$v=19$m=1,t=1,p=1$eg9U8hLotCSmyCph1BQroA$KFfy0uDDpP+cXPnkSQRXt3z0Shd7M39tsrwJZuDrOdU', 0, false);
+    (6003, 'CarolTestRanger', 'caroltestranger@example.com', '$argon2id$v=19$m=1,t=1,p=1$eg9U8hLotCSmyCph1BQroA$KFfy0uDDpP+cXPnkSQRXt3z0Shd7M39tsrwJZuDrOdU', 0, false),
+    (6004, 'DaveTestRanger', 'davetestranger@example.com', '$argon2id$v=19$m=1,t=1,p=1$eg9U8hLotCSmyCph1BQroA$KFfy0uDDpP+cXPnkSQRXt3z0Shd7M39tsrwJZuDrOdU', 0, false);
 insert into ` + "`POSITION`" + ` (ID, NAME) values (7000, 'Nooperator');
 insert into TEAM (ID, NAME) values (8000, 'Brown Dot');
 insert into PERSON__POSITION (PERSON_ID, POSITION_ID) values (6001, 7000);
