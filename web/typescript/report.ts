@@ -40,9 +40,11 @@ const el = {
     reportNumber: ims.typedElement("report_number", HTMLInputElement),
     reportSummary: ims.typedElement("report_summary", HTMLInputElement),
     incidentNumber: ims.typedElement("incident_number", HTMLInputElement),
+    incidentNumberField: ims.typedElement("incident_number_field", HTMLElement),
     incidentNumberLink: ims.typedElement("incident_number_link", HTMLAnchorElement),
     createIncident: ims.typedElement("create_incident", HTMLElement),
 
+    historyToggle: ims.typedElement("history_toggle", HTMLElement),
     historyCheckbox: ims.typedElement("history_checkbox", HTMLInputElement),
     journalEntryAdd: ims.typedElement("journal_entry_add", HTMLTextAreaElement),
     journalEntrySubmit: ims.typedElement("journal_entry_submit", HTMLElement),
@@ -295,9 +297,17 @@ function drawNumber(): void {
 //
 
 function drawIncident(): void {
+    // On a brand-new Report there's no linked Incident yet (the IMS# field would
+    // just show "(none)" and clicking it does nothing) and no history to show, so
+    // hide both the IMS# field and the "Show history and stricken" toggle until the
+    // Report has been saved.
+    const isNewReport = report!.number == null;
+    el.incidentNumberField.classList.toggle("hidden", isNewReport);
+    el.historyToggle.classList.toggle("hidden", isNewReport);
+
     el.incidentNumber.value = "";
     // New Report. There can be no Incident
-    if (report!.number == null) {
+    if (isNewReport) {
         el.incidentNumber.placeholder = "(none)";
         return;
     }
