@@ -44,7 +44,7 @@ management system.
 | [50-roles-permissions.md](50-roles-permissions.md) | Phase 5 — Roles & permissions | 5a ✅ (PR #27), 5a.1 ✅ (PR #28), 5e ✅ (PRs #34–#37); 5b–5d superseded by 52 |
 | [51-people-registry.md](51-people-registry.md) | Phase 5e — Unified people registry | ✅ Built (PRs #34–#37) |
 | [52-roles-and-access-model.md](52-roles-and-access-model.md) | Phase 5 — Person roles & access model (beta simplification) | Plan — for review (PR #68) |
-| [53-crew-leader-invite.md](53-crew-leader-invite.md) | Crew leaders & inviting reporters | Plan — for review |
+| [53-crew-leader-invite.md](53-crew-leader-invite.md) | Crew leaders & inviting reporters | ✅ Built (53a #85, 53b #86, 53c #87, 53d) |
 | [60-feedback-round-1.md](60-feedback-round-1.md) | Phase 6 — Feedback round 1 (beta usage feedback) | ✅ Built (6a types/action-log #38, 6c #39, 6b/6d #40); 6a **areas seed pending** (PR #45) |
 | [61-feedback-round-2.md](61-feedback-round-2.md) | Phase 6 — Feedback round 2 (structured stakeholder review) | ✅ Built (6d in PR #40) |
 | [62-people-event-nav.md](62-people-event-nav.md) | Phase 6 — People page → event nav (slice 6e) | ✅ Built (PR #42) |

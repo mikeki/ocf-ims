@@ -456,10 +456,13 @@ function renderCommonPageItems(authInfo: AuthInfo): void {
         //     }
         // }
 
-        // People is admin-only for now (the refine-later seam in 62-people-event-nav.md):
-        // reveal it only when an event is active AND the viewer is an admin.
+        // People opens to admins and per-event inviters (plan 53d): reveal it when an
+        // event is active AND the viewer is an admin OR holds invite-reporters access
+        // on that event (a writer or crew leader). Non-admins reach the event-scoped
+        // doorway; the page itself enforces what each viewer may do.
         const activeEventPeople = document.getElementById("active-event-people") as HTMLAnchorElement|null;
-        if (activeEventPeople != null && authInfo.authenticated && authInfo.admin) {
+        if (activeEventPeople != null && authInfo.authenticated
+            && (authInfo.admin || (authInfo.event_access?.[event]?.inviteReporters ?? false))) {
             activeEventPeople.href = urlReplace(url_viewPeople);
             activeEventPeople.classList.remove("hidden");
 

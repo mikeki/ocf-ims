@@ -49,7 +49,7 @@ func (action GetPersonnel) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 }
 func (action GetPersonnel) getPersonnel(req *http.Request) (GetPersonnelResponse, *herr.HTTPError) {
 	response := make(GetPersonnelResponse, 0)
-	_, globalPermissions, errHTTP := getGlobalPermissions(req, action.imsDBQ, action.userStore)
+	jwtCtx, globalPermissions, errHTTP := getGlobalPermissions(req, action.imsDBQ, action.userStore)
 	if errHTTP != nil {
 		return response, errHTTP.From("[getGlobalPermissions]")
 	}
@@ -72,9 +72,9 @@ func (action GetPersonnel) getPersonnel(req *http.Request) (GetPersonnelResponse
 	// the per-event wristband + participation columns (identity is global, but those
 	// are per-event); without it those fields are empty for everyone.
 	if strings.EqualFold(req.FormValue("all"), "true") {
-		if globalPermissions&authz.GlobalAdministratePersonnel == 0 {
-			return response, herr.Forbidden("The requestor does not have GlobalAdministratePersonnel permission", nil)
-		}
+		isPersonnelAdmin := globalPermissions&authz.GlobalAdministratePersonnel != 0
+		showAll := strings.EqualFold(req.FormValue("showAll"), "true")
+
 		var eventID int32
 		if eventName := strings.TrimSpace(req.FormValue("event")); eventName != "" {
 			event, errHTTP := getEvent(req, eventName, action.imsDBQ)
@@ -84,26 +84,49 @@ func (action GetPersonnel) getPersonnel(req *http.Request) (GetPersonnelResponse
 			eventID = event.ID
 		}
 
+		// The event roster (a named event, default view — not "show all") opens to a
+		// non-admin inviter who holds EventInviteReporters on that event (a writer or
+		// crew leader, plan 53d): it is the People tab they now manage. The global
+		// listing (no event) and the "show all people" expansion stay admin-only —
+		// they surface every person across events, inactive ones, and admin flags.
+		rosterOnly := eventID != 0 && !showAll
+		if !isPersonnelAdmin {
+			if !rosterOnly {
+				return response, herr.Forbidden("The requestor does not have GlobalAdministratePersonnel permission", nil)
+			}
+			perms, _, err := authz.EventPermissions(req.Context(), &eventID, action.imsDBQ, *jwtCtx.Claims)
+			if err != nil {
+				return response, herr.InternalServerError("Failed to compute permissions", err).From("[EventPermissions]")
+			}
+			if perms[eventID]&authz.EventInviteReporters == 0 {
+				return response, herr.Forbidden("You do not have invite-reporters access to that event", nil)
+			}
+		}
+
 		// With an event selected, the People page defaults to that event's roster
 		// (only people with a participation row). The "Show all people" toggle sends
 		// ?showAll=true to list every person instead; without an event there is no
 		// roster to scope to, so we always list everyone. See slice 6j.
-		if eventID != 0 && !strings.EqualFold(req.FormValue("showAll"), "true") {
+		if rosterOnly {
 			rows, err := action.imsDBQ.EventRoster(req.Context(), action.imsDBQ, eventID)
 			if err != nil {
 				return response, herr.InternalServerError("Failed to get personnel", err).From("[EventRoster]")
 			}
 			for _, person := range rows {
-				response = append(response, imsjson.Person{
-					Handle: person.Handle.String,
-					Name:   person.Name.String,
-					// Email goes only to this admin-gated listing so it can be edited.
-					Email:             person.Email.String,
-					IsAdmin:           person.IsAdmin,
+				p := imsjson.Person{
+					Handle:            person.Handle.String,
+					Name:              person.Name.String,
 					PersonID:          int64(person.ID),
 					Wristband:         person.Wristband.String,
 					ParticipationType: string(person.ParticipationType),
-				})
+				}
+				// Email + admin flag drive the admin-only profile/password/admin
+				// controls; a non-admin inviter has none of those, so don't leak them.
+				if isPersonnelAdmin {
+					p.Email = person.Email.String
+					p.IsAdmin = person.IsAdmin
+				}
+				response = append(response, p)
 			}
 			return response, nil
 		}

@@ -91,14 +91,18 @@ templ People(deployment, versionName, versionRef, eventName string) {
             </div>
             <div id="add_person_event_section" class="hidden mt-3">
               <p class="text-body-secondary small mb-2">Participation for <strong id="add_person_event_name"></strong></p>
-              <div class="form-floating mb-3">
+              <!-- Inviter mode (53d): a non-admin inviter adds people only as reporters,
+                   so the wristband + role pickers are hidden and this note shows instead. -->
+              <p id="add_person_invite_note" class="text-body-secondary small mb-2 hidden">They'll be added as a <strong>reporter</strong> on this event.</p>
+              <div id="add_person_wristband_wrap" class="form-floating mb-3">
                 <input id="add_person_wristband" type="text" class="form-control" autocomplete="off" placeholder="Wristband" />
                 <label for="add_person_wristband">Wristband (optional)</label>
               </div>
-              <div class="form-floating mb-3">
+              <div id="add_person_participation_wrap" class="form-floating mb-3">
                 <select id="add_person_participation" class="form-select" aria-label="Participation">
                   <option value="">— none —</option>
                   <option value="writer">writer (full access)</option>
+                  <option value="crew_leader">crew leader (invite reporters)</option>
                   <option value="reporter">reporter (own reports)</option>
                   <option value="participant">participant</option>
                   <option value="public">public</option>
@@ -145,6 +149,7 @@ templ People(deployment, versionName, versionRef, eventName string) {
                 <select id="edit_person_participation" class="form-select" aria-label="Participation">
                   <option value="">— none —</option>
                   <option value="writer">writer (full access)</option>
+                  <option value="crew_leader">crew leader (invite reporters)</option>
                   <option value="reporter">reporter (own reports)</option>
                   <option value="participant">participant</option>
                   <option value="public">public</option>

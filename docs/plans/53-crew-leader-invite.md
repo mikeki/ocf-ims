@@ -1,6 +1,6 @@
 # Plan 53 — Crew leaders & inviting reporters
 
-Status: **Plan — for review**
+Status: **Built** (53a #85, 53b #86, 53c #87, 53d) — all slices shipped.
 
 ## 1. Motivation
 
@@ -183,10 +183,20 @@ both problems worse, so the redesign tackles **readability** and
   aren't clipped by the wrapper's overflow (the standard Bootstrap-in-responsive-table
   caveat). `people.ts` selectors moved `ul/li` → `tbody/tr`; the kebab gains a
   divider before the destructive Remove action.
-- **53d — open People to inviters + access-aware actions.** Reveal the tab to
-  writers/crew-leaders, filter the kebab + role badge + Add/Invite form per the
-  access matrix above, add `crew_leader` as an admin-only rung. Depends on 53a/53b
-  (the `inviteReporters` flag + scoped endpoints) and 53c (the table).
+- **53d — open People to inviters + access-aware actions.** ✅ Done. The People nav
+  tab reveals to admins **and** per-event inviters (`event_access[event].inviteReporters`).
+  `people.ts` now branches on two capability flags — `isAdmin`
+  (GlobalAdministratePersonnel) and `canInvite` (the URL event's `inviteReporters`):
+  a non-admin inviter reaches only the event doorway, sees a roster table whose kebab
+  drops Edit / Set-password / Admin (admin-only) and shows "Remove from event" only on
+  a reporter-or-below target; the inline role badge is editable only up to `reporter`
+  on reporter-or-below targets (static badge otherwise); the empty kebab is dropped.
+  The top button becomes a scoped **"Invite reporter"** form (identity + initial
+  password, role fixed to `reporter`, wristband/role pickers hidden). `crew_leader`
+  is an admin-only selectable rung in the inline menu + Add/Edit selects. **Backend:**
+  the `GET /personnel?all=true&event=` *event roster* opens to inviters (the
+  global/no-event + "show all" listings stay admin-only) and withholds email + admin
+  flag from non-admin viewers. Tests: `TestInviterRosterRead`.
 
 Order: 53a → 53b → 53c → 53d. Each its own PR. (53c can land in parallel with
 53a/53b since it's pure layout.)
