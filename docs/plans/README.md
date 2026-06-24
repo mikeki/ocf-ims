@@ -19,6 +19,7 @@ management system.
   - `50–59` — Phase 5: Roles & permissions + people registry
   - `60–69` — Phase 6: Feedback round 1 (beta usage feedback)
   - `70–79` — Phase 7: Dashboards & metrics
+  - `80–89` — Collaboration & notifications (mentions, notifications, email)
   - (room to grow)
 - Plans are living documents. Mark sections as `Status: TODO / In progress /
   Done` and check off tasks as they land. Reference concrete files and PRs.
@@ -51,3 +52,7 @@ management system.
 | [63-feedback-round-3.md](63-feedback-round-3.md) | Phase 6 — Feedback round 3 (post-Phase-7 review fixes: 6f–6h) | ✅ Built (PR #46) |
 | [64-feedback-round-4.md](64-feedback-round-4.md) | Phase 6 — Feedback round 4 (dashboard polish 6i + people roster 6j) | ✅ Built (PR #53) |
 | [70-dashboards.md](70-dashboards.md) | Phase 7 — Dashboards & metrics | ✅ Built (7a PR #43, 7b PR #44) |
+| [80-collaboration-and-notifications.md](80-collaboration-and-notifications.md) | Collaboration & notifications — track overview + sequencing | Backlog (context captured) |
+| [81-journal-mentions.md](81-journal-mentions.md) | `@mention` people in journal entries | Idea — design sketch |
+| [82-notifications.md](82-notifications.md) | Notifications (in-app first, email later) | Idea — design sketch |
+| [83-email-infrastructure.md](83-email-infrastructure.md) | Email infrastructure (enabler) | Blocked on IT prerequisites |
