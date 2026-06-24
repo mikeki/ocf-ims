@@ -429,3 +429,12 @@ h1 {
 .glow-changed {
   animation: glow-pulse 1.6s ease-out;
 }
+
+/* People roster (slice 53c): the per-row Role badge and ⋯ actions menu are
+   Bootstrap dropdowns living inside the table's `.table-responsive` wrapper,
+   whose `overflow-x: auto` would otherwise clip the open menu. The menus are
+   short and the People table is narrow, so letting this wrapper overflow
+   visibly keeps the dropdowns usable at every width without a real downside. */
+#people .table-responsive {
+  overflow: visible;
+}

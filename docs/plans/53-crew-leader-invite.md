@@ -174,10 +174,15 @@ both problems worse, so the redesign tackles **readability** and
   reporter participation; cannot assign writer/crew_leader (403); cannot touch a
   writer target (403); cannot act on an event lacking the bit (403); admin path
   unchanged.
-- **53c — People table redesign (admin-only first).** Convert the list to the
-  roster table + per-row `⋯` kebab, with the existing admin actions inside it. No
-  access change yet — keeps the page admin-only so the layout lands independently
-  of the access work. The inline role badge stays.
+- **53c — People table redesign (admin-only first).** ✅ Done. Replaced the flat
+  list-group with a responsive roster table (Name · Handle · Wristband · Role ·
+  Actions); every per-row action (Edit / Set password / Admin / Remove from event)
+  collapsed into a single `⋯` kebab dropdown. The 52e inline role badge stays in the
+  Role cell. Pure layout — no access change (page stays admin-only). Added a scoped
+  `#people .table-responsive { overflow: visible }` rule so the per-row dropdowns
+  aren't clipped by the wrapper's overflow (the standard Bootstrap-in-responsive-table
+  caveat). `people.ts` selectors moved `ul/li` → `tbody/tr`; the kebab gains a
+  divider before the destructive Remove action.
 - **53d — open People to inviters + access-aware actions.** Reveal the tab to
   writers/crew-leaders, filter the kebab + role badge + Add/Invite form per the
   access matrix above, add `crew_leader` as an admin-only rung. Depends on 53a/53b
