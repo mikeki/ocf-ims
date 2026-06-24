@@ -216,3 +216,54 @@ func TestJournalEntryMentions(t *testing.T) {
 	require.Equal(t, userBobHandle, byID[userBobPersonID].Handle)
 	require.Equal(t, userCarolHandle, byID[userCarolPersonID].Handle)
 }
+
+// TestReportJournalEntryMentions is the field-report mirror of
+// TestJournalEntryMentions: @mention person IDs on a report journal entry are
+// persisted and round-trip on read, with the same insert-ignore dedup/stale-drop
+// semantics.
+func TestReportJournalEntryMentions(t *testing.T) {
+	t.Parallel()
+	ctx := t.Context()
+
+	apisAdmin := ApiHelper{t: t, serverURL: shared.serverURL, jwt: jwtForAdmin(ctx, t)}
+	apisAlice := ApiHelper{t: t, serverURL: shared.serverURL, jwt: jwtForAlice(t, ctx)}
+
+	eventName := rand.NonCryptoText()
+	_, resp := apisAdmin.createEvent(ctx, imsjson.Event{Name: &eventName})
+	require.Equal(t, http.StatusNoContent, resp.StatusCode)
+	require.NoError(t, resp.Body.Close())
+	resp = apisAdmin.addWriter(ctx, eventName, userAliceHandle)
+	require.Equal(t, http.StatusNoContent, resp.StatusCode)
+	require.NoError(t, resp.Body.Close())
+
+	summary := "report with mentions"
+	num := apisAlice.newReportSuccess(ctx, imsjson.Report{
+		Event:   eventName,
+		Summary: &summary,
+		JournalEntries: []imsjson.JournalEntry{{
+			Text:               "Looping in @" + userBobHandle + " and @" + userCarolHandle + ".",
+			MentionedPersonIDs: []int32{userBobPersonID, userCarolPersonID, userBobPersonID, nonexistentPersonID},
+		}},
+	})
+
+	retrieved, resp := apisAlice.getReport(ctx, eventName, num)
+	require.Equal(t, http.StatusOK, resp.StatusCode)
+	require.NoError(t, resp.Body.Close())
+
+	var entry imsjson.JournalEntry
+	for _, e := range retrieved.JournalEntries {
+		if !e.SystemEntry {
+			entry = e
+		}
+	}
+	require.NotZero(t, entry.ID)
+	require.Len(t, entry.Mentions, 2)
+	byID := map[int32]imsjson.Mention{}
+	for _, m := range entry.Mentions {
+		byID[m.PersonID] = m
+	}
+	require.Contains(t, byID, int32(userBobPersonID))
+	require.Contains(t, byID, int32(userCarolPersonID))
+	require.NotContains(t, byID, int32(nonexistentPersonID))
+	require.Equal(t, userBobHandle, byID[userBobPersonID].Handle)
+}
