@@ -483,6 +483,21 @@ function renderCommonPageItems(authInfo: AuthInfo): void {
     }
 }
 
+// newestEvent returns the "active" event — the newest (highest id) among the
+// given events — or null if there are none. The events list from the API is
+// already permission-filtered and excludes groups, so the newest by id is the
+// current fair. Used to send users to the active event (login redirect, home-page
+// link) instead of a hardcoded year.
+export function newestEvent(eds: EventData[]): EventData|null {
+    let newest: EventData|null = null;
+    for (const ed of eds) {
+        if (newest == null || ed.id > newest.id) {
+            newest = ed;
+        }
+    }
+    return newest;
+}
+
 function renderNavEvents(eds: EventData[]): void {
     const eventIds: string[] = eds.map((ed) => ed.name);
     eventIds.sort((a, b) => b.localeCompare(a));

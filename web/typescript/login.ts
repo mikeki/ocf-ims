@@ -90,9 +90,25 @@ async function login(): Promise<void> {
     const looksSafe = (str: string): boolean => /^[\w\-/?=]+$/.test(str);
     if (redirect != null && internalDest(redirect) && looksSafe(redirect)) {
         window.location.replace(redirect);
-    } else {
-        window.location.replace(url_app);
+        return;
     }
+    // No explicit destination: jump straight to the active event rather than the
+    // home page, so the common case lands where the work is.
+    window.location.replace(await activeEventDestination());
+}
+
+// activeEventDestination returns the Incidents URL of the "active" event — the
+// newest event the signed-in user can see (highest event id). The events list is
+// already permission-filtered and excludes groups, so the last by id is the
+// current fair. Falls back to the app home if the user belongs to no event yet,
+// or the lookup fails.
+async function activeEventDestination(): Promise<string> {
+    const {json, err} = await ims.fetchNoThrow<ims.EventData[]>(url_events, null);
+    if (err != null || json == null) {
+        return url_app;
+    }
+    const newest = ims.newestEvent(json);
+    return newest == null ? url_app : url_viewIncidents.replace("<event_id>", newest.name);
 }
 
 type AuthResponse = {
