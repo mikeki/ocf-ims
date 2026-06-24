@@ -226,29 +226,36 @@ templ People(deployment, versionName, versionRef, eventName string) {
           <button type="button" class="btn btn-sm btn-success" id="add_person_button" onclick="showAddPersonModal()">Add person</button>
         </div>
         <ul class="list-group list-group-small list-group-flush card-body">
+          <!-- One flex row, left-aligned: identity (name/handle/badges/role) first,
+               then the action buttons grouped together just after it. The buttons
+               used to float-end, which on a wide screen flung them to the far right
+               edge, disconnected from the person; keeping them in the left cluster
+               (and wrapping on narrow screens) reads better. -->
           <template id="person_li_template">
-            <li class="list-group-item ps-3" data-person-id="">
-              <button class="show-set-password-modal badge btn btn-primary float-end">
-                Set password
-              </button>
-              <button class="toggle-admin badge btn float-end me-2">
-                Admin
-              </button>
-              <button class="show-edit-modal badge btn btn-secondary float-end me-2">
-                Edit
-              </button>
-              <button class="show-remove-modal badge btn btn-outline-danger float-end me-2 hidden">
-                Remove from event
-              </button>
+            <li class="list-group-item ps-3 d-flex flex-wrap align-items-center gap-2" data-person-id="">
               <span class="person-name"></span>
-              <span class="person-handle text-body-secondary ms-2 font-monospace small"></span>
-              <span class="person-wristband badge text-bg-secondary ms-2 hidden"></span>
+              <span class="person-handle text-body-secondary font-monospace small"></span>
+              <span class="person-wristband badge text-bg-secondary hidden"></span>
               <!-- The role badge is a click-to-open menu (slice 52e): one click changes
                    a person's per-event role inline, instead of the Edit-Person modal.
                    The button text + menu are filled in by people.ts per row. -->
-              <span class="person-participation-dropdown dropdown ms-2 hidden">
+              <span class="person-participation-dropdown dropdown hidden">
                 <button type="button" class="person-participation badge text-bg-light dropdown-toggle border-0" data-bs-toggle="dropdown" aria-expanded="false" title="Change role"></button>
                 <ul class="person-participation-menu dropdown-menu"></ul>
+              </span>
+              <span class="person-actions d-inline-flex flex-wrap gap-2 ms-md-3">
+                <button class="show-remove-modal badge btn btn-outline-danger hidden">
+                  Remove from event
+                </button>
+                <button class="show-edit-modal badge btn btn-secondary">
+                  Edit
+                </button>
+                <button class="toggle-admin badge btn">
+                  Admin
+                </button>
+                <button class="show-set-password-modal badge btn btn-primary">
+                  Set password
+                </button>
               </span>
             </li>
           </template>
