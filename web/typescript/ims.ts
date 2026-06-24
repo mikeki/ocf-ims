@@ -1558,17 +1558,23 @@ export function drawJournalEntries(entries: JournalEntry[]): void {
 export function journalEntryEdited(): void {
     const text = (document.getElementById("journal_entry_add")! as HTMLTextAreaElement).value.trim();
     const submitButton = document.getElementById("journal_entry_submit")!;
+    // Keep the split-button caret (if present) the same color as the main button.
+    const caret = document.querySelector(".journal-submit-caret");
+    const colored = [submitButton, caret].filter((b): b is Element => b != null);
 
-    submitButton.classList.remove("btn-default");
-    submitButton.classList.remove("btn-warning");
-    submitButton.classList.remove("btn-danger");
-
+    for (const b of colored) {
+        b.classList.remove("btn-default", "btn-warning", "btn-danger");
+    }
     if (!text) {
         submitButton.classList.add("disabled");
-        submitButton.classList.add("btn-default");
+        for (const b of colored) {
+            b.classList.add("btn-default");
+        }
     } else {
         submitButton.classList.remove("disabled");
-        submitButton.classList.add("btn-warning");
+        for (const b of colored) {
+            b.classList.add("btn-warning");
+        }
     }
 }
 
@@ -1764,6 +1770,71 @@ async function setStrikeVisitEntry(visitNumber: number, journalEntryId: number, 
 let sendEditsFunc: ((edits: Incident|Report)=>Promise<{err:string|null}>)|null = null;
 export function setSendEdits(func: ((edits: Incident|Report)=>Promise<{err:string|null}>)): void {
     sendEditsFunc = func;
+}
+
+// --- Journal-entry submit mode (sticky per browser) -------------------------
+//
+// Some users prefer pressing Enter to submit a journal entry rather than
+// Ctrl/⌘+Enter. It's a remembered per-browser preference (like the dashboard
+// auto-refresh cadence), exposed as a GitHub-style split button next to Submit.
+// Default false: plain Enter inserts a newline and Ctrl/⌘/Alt+Enter submits —
+// the long-standing behavior — so nobody is surprised until they opt in.
+
+const journalSubmitOnEnterKey = "journal_submit_on_enter";
+
+export function journalSubmitOnEnter(): boolean {
+    return localStorage.getItem(journalSubmitOnEnterKey) === "true";
+}
+
+function setJournalSubmitOnEnter(on: boolean): void {
+    localStorage.setItem(journalSubmitOnEnterKey, on ? "true" : "false");
+}
+
+// handleJournalKeydown implements the textarea submit shortcut for the current
+// mode. Call it from each journal page's textarea keydown listener.
+//   - "enter" mode:   Enter submits; Shift+Enter inserts a newline.
+//   - "ctrl" mode:    Ctrl/⌘/Alt+Enter submits; plain Enter inserts a newline.
+// Ctrl/⌘+Enter always submits in either mode, so existing muscle memory works.
+export function handleJournalKeydown(e: KeyboardEvent, submitEnabled: boolean): void {
+    if (!submitEnabled || e.key !== "Enter") {
+        return;
+    }
+    const modifier = e.ctrlKey || e.metaKey || e.altKey;
+    if (journalSubmitOnEnter()) {
+        if (!e.shiftKey) {
+            e.preventDefault();
+            void submitJournalEntry();
+        }
+    } else if (modifier) {
+        e.preventDefault();
+        void submitJournalEntry();
+    }
+}
+
+// setupJournalSubmitMode wires the Submit split button: it labels the Submit
+// button for the current mode and lets the user switch (and remember) the mode
+// via the caret dropdown (".journal-submit-mode" items carrying data-mode).
+// Safe to call on pages without the control (it no-ops if Submit is absent).
+export function setupJournalSubmitMode(): void {
+    const submitButton = document.getElementById("journal_entry_submit");
+    if (submitButton == null) {
+        return;
+    }
+    const apply = (): void => {
+        submitButton.textContent = journalSubmitOnEnter() ? "Submit (Enter)" : "Submit (Control ⏎)";
+        document.querySelectorAll(".journal-submit-mode").forEach((item) => {
+            const on = (item as HTMLElement).dataset["mode"] === "enter";
+            item.classList.toggle("active", on === journalSubmitOnEnter());
+        });
+    };
+    document.querySelectorAll(".journal-submit-mode").forEach((item) => {
+        item.addEventListener("click", function (e: Event): void {
+            e.preventDefault();
+            setJournalSubmitOnEnter((item as HTMLElement).dataset["mode"] === "enter");
+            apply();
+        });
+    });
+    apply();
 }
 
 export async function submitJournalEntry(): Promise<void> {
