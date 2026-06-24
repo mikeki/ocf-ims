@@ -106,26 +106,54 @@ admins keep their existing unrestricted path; the new path is additive.
 - **Action logging**: the new scoped create/participation paths are mutating —
   register/keep `LogRequest(true, …)`.
 
-### 3.4 Frontend (slice 53c)
+### 3.4 Frontend — People page redesign (slices 53c + 53d)
+
+The People page is today a flat `<ul class="list-group">` where every row carries
+a wall of colored badge-buttons (Set password / Admin / Edit / Remove), shown to
+everyone regardless of what they may do. Opening it to writers/crew-leaders makes
+both problems worse, so the redesign tackles **readability** and
+**access-awareness** together.
 
 - **Nav reveal** (`ims.ts`): reveal the People tab when
   `event_access[event].inviteReporters` (covers writer + crew_leader) **or**
   `admin`. (Mirrors the existing dashboard/People reveal pattern, OR-ing in the
   new flag.)
-- **People page** (`people.ts` / `people.templ`): when the viewer is a non-admin
-  inviter (`inviteReporters && !admin`):
-  - Show the roster and the **Add person** flow, but constrain it to **invite a
-    reporter**: the create/add form sets participation to `reporter` (no writer/
-    crew_leader options), no admin toggle, no password-reset button on existing
-    rows. The "initial password" field on create stays (so the invitee can log
-    in).
-  - The inline role menu (52e) offers only the rungs a non-admin may assign
-    (`reporter`/`participant`/`public`; destructive `not_present`/`ejected` stay
-    in the Remove modal) — never `writer`/`crew_leader`.
-  - Admins keep the full UI (all rungs incl. `crew_leader`, password, admin
-    toggle).
-- The inline role menu and Add/Edit modals gain `crew_leader` as an **admin-only**
-  selectable rung (so admins can promote someone to crew leader).
+
+- **Layout → a roster table** (`people.templ` / `people.ts`): replace the
+  list-group with a responsive Bootstrap table — columns **Name · Handle ·
+  Wristband · Role · Actions** — wrapped in `.table-responsive` for phones. The
+  **Role** cell keeps the 52e inline click-to-edit badge. All the per-row action
+  buttons collapse into a **single per-row actions menu (a `⋯` kebab dropdown)**,
+  which de-clutters the row and is the natural place to show/hide actions by
+  access.
+
+- **Access-aware actions.** The kebab menu and the "Add" button render only what
+  the viewer may do to that target. Derived from the locked decisions:
+
+  | Action | Admin viewer | Writer / Crew-leader (inviter) |
+  |---|---|---|
+  | Change role (inline badge) | any rung incl. `writer`/`crew_leader` | up to **`reporter`** (+`participant`/`public`); **only** on a target currently at reporter-or-below |
+  | Reset password (existing person) | ✅ | ❌ (admin-only) |
+  | Set **initial** password | on create | **on create / invite** |
+  | Toggle admin | ✅ | ❌ |
+  | Edit profile (name / email) | ✅ | ❌ |
+  | Remove / eject from event | ✅ | only on a reporter-or-below target |
+  | Top "Add" button | **Add person** (full form) | **Invite reporter** (scoped form) |
+
+  - A row whose target **outranks the viewer's ceiling** (e.g. a crew-leader
+    looking at a writer/crew_leader/admin) shows **no** management actions — it is
+    read-only for that viewer. The role badge is likewise non-editable there.
+  - **Add / Invite form**: admins get today's full Add-person modal (all rungs incl.
+    `crew_leader`, optional initial password). A non-admin inviter gets a scoped
+    **"Invite reporter"** form: name + handle + email + **initial password**
+    (kept — so the invitee can log in), participation fixed to `reporter`, no
+    admin/role pickers.
+  - The inline role menu and the admin Add/Edit modals gain `crew_leader` as an
+    **admin-only** selectable rung (so admins can promote someone to crew leader).
+
+- The redesign is **access-aware but role-agnostic in shape**: the same table
+  serves admins, inviters, and (read-only) anyone else who can reach the page —
+  the kebab just carries fewer items.
 
 ## 4. Slices
 
@@ -138,10 +166,17 @@ admins keep their existing unrestricted path; the new path is additive.
   Tests: a writer/crew-leader can create a login-capable reporter and set reporter
   participation on their event; cannot set writer/crew_leader (403); cannot act on
   an event they lack the bit on (403); admin path unchanged.
-- **53c — frontend.** People tab reveal to inviters; restricted People UI for
-  non-admin inviters; `crew_leader` as an admin-only rung in the role menu/modals.
+- **53c — People table redesign (admin-only first).** Convert the list to the
+  roster table + per-row `⋯` kebab, with the existing admin actions inside it. No
+  access change yet — keeps the page admin-only so the layout lands independently
+  of the access work. The inline role badge stays.
+- **53d — open People to inviters + access-aware actions.** Reveal the tab to
+  writers/crew-leaders, filter the kebab + role badge + Add/Invite form per the
+  access matrix above, add `crew_leader` as an admin-only rung. Depends on 53a/53b
+  (the `inviteReporters` flag + scoped endpoints) and 53c (the table).
 
-Order: 53a → 53b → 53c. Each its own PR.
+Order: 53a → 53b → 53c → 53d. Each its own PR. (53c can land in parallel with
+53a/53b since it's pure layout.)
 
 ## 5. Risks / notes
 
