@@ -901,6 +901,12 @@ func updateIncident(ctx context.Context, imsDBQ *store.DBQ, es *EventSourcerer, 
 		if errHTTP != nil {
 			return errHTTP.From("[addJournalEntryMentions]")
 		}
+		// Notify the mentioned people (plan 82). Driven by the persisted mention
+		// rows, so it's after the rows are written; the author is skipped.
+		errHTTP = generateMentionNotifications(ctx, imsDBQ, txn, newIncident.EventID, newIncident.Number, entryID, authorPersonID)
+		if errHTTP != nil {
+			return errHTTP.From("[generateMentionNotifications]")
+		}
 	}
 
 	err = txn.Commit()
@@ -1054,11 +1060,25 @@ func (action AttachPersonToIncident) attachPerson(req *http.Request) *herr.HTTPE
 	if errHTTP != nil {
 		return errHTTP.From("[readBodyAs]")
 	}
-	// Run in a retrying transaction: attach is a detach-then-reattach replace and
-	// can deadlock against a concurrent attach/detach on the same incident, so the
-	// whole transaction is retried on a transient deadlock / lock-wait timeout.
+
+	// Run the whole change in a retrying transaction: attach is a
+	// detach-then-reattach replace and can deadlock against a concurrent
+	// attach/detach on the same incident, so a transient deadlock / lock-wait
+	// timeout retries the whole transaction (store.RunInTx) instead of 500ing.
 	runErr := action.imsDBQ.RunInTx(ctx, func(txn *sql.Tx) error {
-		txErr := action.imsDBQ.DetachPersonFromIncident(ctx, txn, imsdb.DetachPersonFromIncidentParams{
+		// Attach is a detach-then-reattach replace, so we can't tell a new add from
+		// an involvement edit afterwards. Check up front: only a genuine new add
+		// fires an "added_to_incident" notification (plan 82), not every save.
+		alreadyAttached, txErr := action.imsDBQ.IncidentHasPerson(ctx, txn, imsdb.IncidentHasPersonParams{
+			Event:          event.ID,
+			IncidentNumber: incidentNumber,
+			PersonID:       personID,
+		})
+		if txErr != nil {
+			return herr.InternalServerError("Failed to check incident person", txErr).From("[IncidentHasPerson]")
+		}
+
+		txErr = action.imsDBQ.DetachPersonFromIncident(ctx, txn, imsdb.DetachPersonFromIncidentParams{
 			Event:          event.ID,
 			IncidentNumber: incidentNumber,
 			PersonID:       personID,
@@ -1087,12 +1107,19 @@ func (action AttachPersonToIncident) attachPerson(req *http.Request) *herr.HTTPE
 		if errJournal != nil {
 			return errJournal.From("[addIncidentJournalEntry]")
 		}
+
+		// Notify the person they were added — only on a genuine new attach (plan 82).
+		if !alreadyAttached {
+			errNotify := generateAddedToIncidentNotification(ctx, action.imsDBQ, txn, event.ID, incidentNumber, personID, jwtCtx.Claims.PersonID())
+			if errNotify != nil {
+				return errNotify.From("[generateAddedToIncidentNotification]")
+			}
+		}
 		return nil
 	})
 	if runErr != nil {
 		return herr.AsHTTPError(runErr).From("[RunInTx]")
 	}
-
 	action.es.notifyIncidentUpdate(event.ID, incidentNumber)
 
 	return nil
