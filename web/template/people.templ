@@ -225,17 +225,32 @@ templ People(deployment, versionName, versionRef, eventName string) {
           <label>People</label>
           <button type="button" class="btn btn-sm btn-success" id="add_person_button" onclick="showAddPersonModal()">Add person</button>
         </div>
-        <ul class="list-group list-group-small list-group-flush card-body">
-          <!-- One flex row, left-aligned: identity (name/handle/badges/role) first,
-               then the action buttons grouped together just after it. The buttons
-               used to float-end, which on a wide screen flung them to the far right
-               edge, disconnected from the person; keeping them in the left cluster
-               (and wrapping on narrow screens) reads better. -->
-          <template id="person_li_template">
-            <li class="list-group-item ps-3 d-flex flex-wrap align-items-center gap-2" data-person-id="">
-              <span class="person-name"></span>
-              <span class="person-handle text-body-secondary font-monospace small"></span>
+        <!-- A roster table (slice 53c) replaces the old flat list-group: one column
+             per attribute keeps a long roster scannable, and every per-row action
+             collapses into a single ⋯ kebab menu so the row isn't a wall of buttons.
+             The Wristband/Role columns only carry data when an event is selected. -->
+        <div class="table-responsive">
+          <table class="table table-sm table-hover align-middle mb-0">
+            <thead>
+              <tr>
+                <th scope="col">Name</th>
+                <th scope="col">Handle</th>
+                <th scope="col">Wristband</th>
+                <th scope="col">Role</th>
+                <th scope="col" class="text-end">Actions</th>
+              </tr>
+            </thead>
+            <tbody id="people_tbody"></tbody>
+          </table>
+        </div>
+        <template id="person_row_template">
+          <tr data-person-id="">
+            <td class="person-name"></td>
+            <td class="person-handle text-body-secondary font-monospace small"></td>
+            <td>
               <span class="person-wristband badge text-bg-secondary hidden"></span>
+            </td>
+            <td>
               <!-- The role badge is a click-to-open menu (slice 52e): one click changes
                    a person's per-event role inline, instead of the Edit-Person modal.
                    The button text + menu are filled in by people.ts per row. -->
@@ -243,23 +258,24 @@ templ People(deployment, versionName, versionRef, eventName string) {
                 <button type="button" class="person-participation badge text-bg-light dropdown-toggle border-0" data-bs-toggle="dropdown" aria-expanded="false" title="Change role"></button>
                 <ul class="person-participation-menu dropdown-menu"></ul>
               </span>
-              <span class="person-actions d-inline-flex flex-wrap gap-2 ms-md-3">
-                <button class="show-remove-modal badge btn btn-outline-danger hidden">
-                  Remove from event
-                </button>
-                <button class="show-edit-modal badge btn btn-secondary">
-                  Edit
-                </button>
-                <button class="toggle-admin badge btn">
-                  Admin
-                </button>
-                <button class="show-set-password-modal badge btn btn-primary">
-                  Set password
-                </button>
-              </span>
-            </li>
-          </template>
-        </ul>
+            </td>
+            <td class="text-end">
+              <!-- Per-row actions kebab. people.ts shows/hides individual items per row
+                   (e.g. login-only actions for handle-less people; "Remove from event"
+                   only for someone on the selected event's roster). -->
+              <div class="dropdown">
+                <button type="button" class="btn btn-sm btn-outline-secondary border-0 person-actions-toggle" data-bs-toggle="dropdown" aria-expanded="false" aria-label="Actions">⋯</button>
+                <ul class="person-actions dropdown-menu dropdown-menu-end">
+                  <li><button type="button" class="dropdown-item show-edit-modal">Edit</button></li>
+                  <li><button type="button" class="dropdown-item show-set-password-modal">Set password</button></li>
+                  <li><button type="button" class="dropdown-item toggle-admin">Admin</button></li>
+                  <li class="show-remove-divider hidden"><hr class="dropdown-divider"/></li>
+                  <li><button type="button" class="dropdown-item text-danger show-remove-modal hidden">Remove from event</button></li>
+                </ul>
+              </div>
+            </td>
+          </tr>
+        </template>
       </div>
     </div>
   </div>

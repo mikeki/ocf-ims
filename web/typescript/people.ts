@@ -67,7 +67,7 @@ const el = {
     eventName: ims.typedElement("event-name", HTMLSelectElement),
     peopleSearch: ims.typedElement("people-search", HTMLInputElement),
     people: ims.typedElement("people", HTMLElement),
-    personLiTemplate: ims.typedElement("person_li_template", HTMLTemplateElement),
+    personRowTemplate: ims.typedElement("person_row_template", HTMLTemplateElement),
     setPasswordModal: ims.typedElement("setPasswordModal", HTMLElement),
     setPasswordHandle: ims.typedElement("set_password_handle", HTMLElement),
     setPasswordInput: ims.typedElement("set_password_input", HTMLInputElement),
@@ -265,14 +265,14 @@ async function loadPeople(): Promise<{err:string|null}> {
 }
 
 function drawPeople(): void {
-    const container = el.people.querySelector("ul")!;
-    container.querySelectorAll("li").forEach(entry => {entry.remove()});
+    const container = el.people.querySelector("tbody")!;
+    container.querySelectorAll("tr").forEach(entry => {entry.remove()});
 
     const setPasswordModal = ims.bsModal(el.setPasswordModal);
 
     for (const person of people??[]) {
-        const entryItemFrag = el.personLiTemplate.content.cloneNode(true) as DocumentFragment;
-        const entryItem = entryItemFrag.querySelector("li")!;
+        const entryItemFrag = el.personRowTemplate.content.cloneNode(true) as DocumentFragment;
+        const entryItem = entryItemFrag.querySelector("tr")!;
 
         const label = ims.personDisplayLabel(person);
         entryItem.dataset["personId"] = (person.person_id ?? "").toString();
@@ -339,6 +339,7 @@ function drawPeople(): void {
         const showRemove: HTMLElement = entryItem.querySelector(".show-remove-modal")!;
         if (currentEvent && person.participation_type) {
             showRemove.classList.remove("hidden");
+            entryItem.querySelector(".show-remove-divider")!.classList.remove("hidden");
             showRemove.addEventListener("click",
                 function (_e: MouseEvent): void {
                     el.removeFromEventModal.dataset["personId"] = (person.person_id ?? "").toString();
@@ -366,10 +367,10 @@ function filterPeople(): void {
 
 function applyFilter(): void {
     const term = el.peopleSearch.value.trim().toLowerCase();
-    const container = el.people.querySelector("ul")!;
-    container.querySelectorAll("li").forEach((li: HTMLLIElement): void => {
-        const hay = li.dataset["search"] ?? "";
-        li.classList.toggle("hidden", term !== "" && !hay.includes(term));
+    const container = el.people.querySelector("tbody")!;
+    container.querySelectorAll("tr").forEach((row: HTMLTableRowElement): void => {
+        const hay = row.dataset["search"] ?? "";
+        row.classList.toggle("hidden", term !== "" && !hay.includes(term));
     });
 }
 
