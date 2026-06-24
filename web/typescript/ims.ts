@@ -413,14 +413,22 @@ function renderCommonPageItems(authInfo: AuthInfo): void {
         eventLabel.textContent = event;
         eventLabel.classList.add("active-event");
 
+        // Incidents tab: only for viewers with incident access — full readers/
+        // writers, or a reporter with at least one per-incident grant (52f).
+        // Grant-less viewers don't see the tab (and the page itself shows an
+        // access message on direct navigation).
+        const incidentAccess = authInfo.authenticated ? authInfo.event_access?.[event] : undefined;
+        const mayReadIncidents = !!(incidentAccess?.readIncidents || incidentAccess?.readIncidentsViaGrant);
         const activeEventIncidents = document.getElementById("active-event-incidents") as HTMLAnchorElement|null;
-        if (activeEventIncidents != null) {
+        if (activeEventIncidents != null && mayReadIncidents) {
             activeEventIncidents.href = urlReplace(url_viewIncidents);
             activeEventIncidents.classList.remove("hidden");
 
             if (window.location.pathname.startsWith(urlReplace(url_viewIncidents))) {
                 activeEventIncidents.classList.add("active");
             }
+        } else if (activeEventIncidents != null) {
+            activeEventIncidents.classList.add("hidden");
         }
 
         const activeEventFRs = document.getElementById("active-event-reports") as HTMLAnchorElement|null;

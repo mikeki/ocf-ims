@@ -87,23 +87,13 @@ async function initIncidentsPage(): Promise<void> {
         return;
     }
     // 52f: a reporter with per-incident grants (readIncidentsViaGrant) sees the list
-    // filtered to those incidents; only fall through to the redirect/error otherwise.
+    // filtered to those incidents. A viewer with neither event-wide incident read nor
+    // any grant has no business here — the Incidents nav tab is hidden from them, so
+    // this only fires on direct navigation; show a plain OCF-appropriate message.
     if (!ims.eventAccess!.readIncidents && !ims.eventAccess!.readIncidentsViaGrant) {
-        // This is a janky way of recreating the old server-side redirect to the Reports page.
-        // The idea is that if the user is coming from the IMS home page and they don't have incidents
-        // access, we should try to send them to FRs instead. If they're already within the scope of
-        // the event, we should send them to the viewIncidents page and let them see the auth error.
-        if (ims.eventAccess!.writeReports && document.referrer.indexOf(ims.urlReplace(url_viewEvent)) < 0) {
-            console.log("redirecting to Reports");
-            window.location.replace(ims.urlReplace(url_viewReports));
-            return;
-        }
         ims.setErrorMessage(
             "You're not currently authorized to access Incidents for this event. " +
-            "You may be able to write Reports though. If you need access to " +
-            "IMS Incidents while on-site, please get in touch with an on-duty " +
-            "Operator. For post-event access, reach out to the tech cadre, at " +
-            "ranger-tech-" + "" + "cadre" + "@burningman.org"
+            "Ask a crew lead or an admin if you need incident access for this event."
         );
         return;
     }
@@ -368,11 +358,21 @@ function initDataTables(tablePrereqs: Promise<void>): void {
         "ajax": function (_data: any, callback: (resp: {data: ims.Incident[]})=>void, _settings: any): void {
             async function doAjax(): Promise<void> {
                 let json: ims.Incident[] = [];
-                // concurrently fetch the data needed for the table
-                await Promise.all([
-                    tablePrereqs,
-                    loadEventReports(),
-                    loadEventVisits(),
+                // The reports/visits fetches only enrich the table for full-text
+                // search, and each needs its own read permission. A grant-only
+                // viewer (52f) reaches this page through per-incident grants and may
+                // lack report and/or visit read access, so fetch each only when
+                // permitted — otherwise the supplementary request 403s and buries
+                // the table behind an error banner. reportTextFromIncident()
+                // already tolerates the missing data.
+                const sources: Promise<unknown>[] = [tablePrereqs];
+                if (ims.eventAccess?.writeReports) {
+                    sources.push(loadEventReports());
+                }
+                if (ims.eventAccess?.readVisits) {
+                    sources.push(loadEventVisits());
+                }
+                sources.push(
                     ims.fetchNoThrow<ims.Incident[]>(
                         ims.urlReplace(url_incidents + "?exclude_system_entries=true"), null,
                     ).then(res => {
@@ -382,8 +382,9 @@ function initDataTables(tablePrereqs: Promise<void>): void {
                         }
                         json = res.json;
                     }),
-                ]);
+                );
                 // then call the callback, only once all data sources have returned
+                await Promise.all(sources);
                 callback({data: json});
             }
             doAjax();
