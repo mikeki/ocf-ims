@@ -1017,22 +1017,27 @@ export function reportTextFromIncident(
         }
     }
 
-    // Incidents page loads all reports for the event
+    // Incidents page loads reports for the event. A limited-access viewer (a
+    // reporter, or a grant-only viewer — 52f) only gets their OWN reports back, so
+    // an incident may reference a report that isn't in the map; skip those rather
+    // than dereferencing undefined.
     if (eventReports != null && "reports" in incidentFROrVisit) {
         for (const reportNumber of incidentFROrVisit.reports??[]) {
-            const report: Report = eventReports[reportNumber]!;
-            const reportText = reportTextFromIncident(report);
-
-            texts.push(reportText);
+            const report: Report|undefined = eventReports[reportNumber];
+            if (report == null) {
+                continue;
+            }
+            texts.push(reportTextFromIncident(report));
         }
     }
-    // Incidents page also loads all visits for the event
+    // Incidents page also loads visits for the event (same partial-map caveat).
     if (eventVisits != null && "visits" in incidentFROrVisit) {
         for (const visitNumber of incidentFROrVisit.visits??[]) {
-            const visit: Visit = eventVisits[visitNumber]!;
-            const reportText = reportTextFromIncident(visit);
-
-            texts.push(reportText);
+            const visit: Visit|undefined = eventVisits[visitNumber];
+            if (visit == null) {
+                continue;
+            }
+            texts.push(reportTextFromIncident(visit));
         }
     }
 
