@@ -90,7 +90,9 @@ templ Nav(eventName string) {
   </template>
 
   <div class="container-fluid">
-    <a class="navbar-brand" href="/ims/app">
+    <!-- Home/brand link. Defaults to the app landing page; once events load,
+         ims.ts repoints it at the active (latest) event. -->
+    <a id="nav-home-link" class="navbar-brand" href="/ims/app">
       <img class="logo-icon me-1" src="/ims/static/logos/ocf-logo-white.png" alt="OCF" />
       IMS
 
