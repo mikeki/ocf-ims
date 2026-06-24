@@ -1451,7 +1451,7 @@ function journalEntryElement(entry: JournalEntry): HTMLDivElement {
         // Don't collapse whitespace; leave it how the user entered it.
         textContainer.style.whiteSpace = "pre-wrap";
         textContainer.classList.add("journal_entry_text");
-        textContainer.textContent = paragraph;
+        appendJournalParagraph(textContainer, paragraph, entry.mentions ?? null);
         entryContainer.append(textContainer);
     }
     if (entry.attachment?.name && (pathIds.incidentNumber || pathIds.reportNumber || pathIds.visitNumber)) {
@@ -1547,6 +1547,52 @@ function createSvgTextButton(svgID: string, text: string): HTMLButtonElement {
     buttonFrag.querySelector("use")!.setAttributeNS(null,"href",  svgID);
     buttonFrag.querySelector("span")!.textContent = text;
     return buttonFrag.querySelector("button")!;
+}
+
+// regexEscape escapes a string for literal use inside a RegExp.
+function regexEscape(s: string): string {
+    return s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+// appendJournalParagraph fills a container with the paragraph text, wrapping any
+// "@mention" token that matches one of the entry's resolved mentions in a styled
+// span (plan 81). Text is added via text nodes / textContent, so it is never
+// interpreted as HTML (no XSS).
+function appendJournalParagraph(container: HTMLElement, paragraph: string, mentions: Mention[]|null): void {
+    const tokens: string[] = [];
+    for (const m of mentions ?? []) {
+        if (m.handle) {
+            tokens.push("@" + m.handle);
+        }
+        if (m.name) {
+            tokens.push("@" + m.name);
+        }
+    }
+    if (tokens.length === 0) {
+        container.textContent = paragraph;
+        return;
+    }
+    // Longest tokens first so "@Sam Smith" wins over a bare "@Sam".
+    tokens.sort((a: string, b: string): number => b.length - a.length);
+    const re = new RegExp("(" + tokens.map(regexEscape).join("|") + ")", "g");
+    let lastIndex = 0;
+    let match: RegExpExecArray|null;
+    while ((match = re.exec(paragraph)) != null) {
+        if (match.index > lastIndex) {
+            container.append(document.createTextNode(paragraph.slice(lastIndex, match.index)));
+        }
+        const span: HTMLSpanElement = document.createElement("span");
+        span.classList.add("journal-mention");
+        span.textContent = match[0];
+        container.append(span);
+        lastIndex = match.index + match[0].length;
+        if (re.lastIndex === match.index) {
+            re.lastIndex++; // guard against a zero-length match looping
+        }
+    }
+    if (lastIndex < paragraph.length) {
+        container.append(document.createTextNode(paragraph.slice(lastIndex)));
+    }
 }
 
 export function drawJournalEntries(entries: JournalEntry[]): void {
@@ -1799,7 +1845,9 @@ function setJournalSubmitOnEnter(on: boolean): void {
 //   - "ctrl" mode:    Ctrl/⌘/Alt+Enter submits; plain Enter inserts a newline.
 // Ctrl/⌘+Enter always submits in either mode, so existing muscle memory works.
 export function handleJournalKeydown(e: KeyboardEvent, submitEnabled: boolean): void {
-    if (!submitEnabled || e.key !== "Enter") {
+    // If the @mention typeahead (or anything else on this textarea) already
+    // consumed this keystroke — e.g. Enter picked a mention — don't also submit.
+    if (e.defaultPrevented || !submitEnabled || e.key !== "Enter") {
         return;
     }
     const modifier = e.ctrlKey || e.metaKey || e.altKey;
@@ -1840,6 +1888,191 @@ export function setupJournalSubmitMode(): void {
     apply();
 }
 
+//
+// @mention typeahead for the journal-entry composer (plan 81).
+//
+// Typing "@" in the textarea opens a person search (reusing searchPersonnel);
+// picking a match inserts an "@label" token and records the person's id to send
+// with the entry. We track the picked people and, at submit time, keep only
+// those whose token still appears in the text (so deleting a mention drops it).
+//
+
+type PendingMention = {personId: number; token: string};
+let pendingJournalMentions: PendingMention[] = [];
+
+// mentionTokenFor returns the "@label" token inserted for a person — the handle
+// when present (a stable single word), otherwise the display name.
+function mentionTokenFor(p: PersonSearchResult): string {
+    const label: string = (p.handle != null && p.handle.trim() !== "") ? p.handle : personDisplayLabel(p);
+    return "@" + label;
+}
+
+// currentMentionQuery finds the "@word" the cursor is currently inside (an "@"
+// at the start of the text or after whitespace, with no whitespace between it
+// and the caret). Returns the "@" index and the typed query, or null.
+function currentMentionQuery(ta: HTMLTextAreaElement): {start: number; query: string}|null {
+    const caret: number = ta.selectionStart ?? 0;
+    const upto: string = ta.value.slice(0, caret);
+    const at: number = upto.lastIndexOf("@");
+    if (at < 0) {
+        return null;
+    }
+    if (at > 0 && !/\s/.test(upto.charAt(at - 1))) {
+        return null; // "@" is mid-word (e.g. an email), not a mention trigger
+    }
+    const query: string = upto.slice(at + 1);
+    if (/\s/.test(query)) {
+        return null; // whitespace after "@" closes the trigger
+    }
+    return {start: at, query: query};
+}
+
+// setupJournalMentionAutocomplete wires the journal textarea + the
+// #journal_mention_results dropdown into an "@" person picker scoped to event.
+export function setupJournalMentionAutocomplete(eventName: string): void {
+    const ta = document.getElementById("journal_entry_add") as HTMLTextAreaElement|null;
+    const results = document.getElementById("journal_mention_results");
+    if (ta == null || results == null) {
+        return;
+    }
+    pendingJournalMentions = [];
+    let rows: PersonSearchResult[] = [];
+    let activeIndex = -1;
+    let seq = 0;
+    let timer = 0;
+
+    function closeList(): void {
+        results!.replaceChildren();
+        results!.classList.add("hidden");
+        rows = [];
+        activeIndex = -1;
+    }
+
+    function highlight(idx: number): void {
+        activeIndex = idx;
+        Array.from(results!.children).forEach((c: Element, i: number): void => {
+            c.classList.toggle("active", i === idx);
+        });
+    }
+
+    function pick(idx: number): void {
+        const person: PersonSearchResult|undefined = rows[idx];
+        const trigger = currentMentionQuery(ta!);
+        closeList();
+        if (person == null || trigger == null || person.person_id == null) {
+            return;
+        }
+        const token: string = mentionTokenFor(person);
+        const caret: number = ta!.selectionStart ?? 0;
+        const before: string = ta!.value.slice(0, trigger.start);
+        const after: string = ta!.value.slice(caret);
+        ta!.value = before + token + " " + after;
+        const newCaret: number = (before + token + " ").length;
+        ta!.setSelectionRange(newCaret, newCaret);
+        ta!.focus();
+        pendingJournalMentions.push({personId: person.person_id, token: token});
+        journalEntryEdited();
+        saveJournalDraft();
+    }
+
+    function renderRows(matches: PersonSearchResult[]): void {
+        rows = matches;
+        results!.replaceChildren();
+        if (rows.length === 0) {
+            closeList();
+            return;
+        }
+        rows.forEach((p: PersonSearchResult, idx: number): void => {
+            const item: HTMLButtonElement = document.createElement("button");
+            item.type = "button";
+            item.classList.add("list-group-item", "list-group-item-action", "py-1", "text-start");
+            const label: HTMLSpanElement = document.createElement("span");
+            label.textContent = personDisplayLabel(p);
+            item.append(label);
+            if (p.handle) {
+                const h: HTMLSpanElement = document.createElement("span");
+                h.classList.add("text-body-secondary", "font-monospace", "small", "ms-2");
+                h.textContent = "@" + p.handle;
+                item.append(h);
+            }
+            if (p.wristband) {
+                const wb: HTMLSpanElement = document.createElement("span");
+                wb.classList.add("badge", "text-bg-secondary", "ms-2");
+                wb.textContent = p.wristband;
+                item.append(wb);
+            }
+            // mousedown (not click) so it fires before the textarea blurs.
+            item.addEventListener("mousedown", (e: MouseEvent): void => {
+                e.preventDefault();
+                pick(idx);
+            });
+            results!.append(item);
+        });
+        results!.classList.remove("hidden");
+        highlight(0);
+    }
+
+    async function runSearch(): Promise<void> {
+        const trigger = currentMentionQuery(ta!);
+        if (trigger == null || trigger.query.length < 1) {
+            closeList();
+            return;
+        }
+        const mySeq: number = ++seq;
+        const matches: PersonSearchResult[] = await searchPersonnel(trigger.query, eventName);
+        if (mySeq !== seq) {
+            return; // superseded by a newer keystroke
+        }
+        renderRows(matches);
+    }
+
+    ta.addEventListener("input", (): void => {
+        window.clearTimeout(timer);
+        timer = window.setTimeout((): void => {
+            void runSearch();
+        }, 150);
+    });
+    // Capture phase so we can consume nav/enter/escape before the submit-keydown
+    // handler (which would otherwise submit on Enter) sees them.
+    ta.addEventListener("keydown", (e: KeyboardEvent): void => {
+        if (results!.classList.contains("hidden") || rows.length === 0) {
+            return;
+        }
+        if (e.key === "ArrowDown") {
+            e.preventDefault();
+            e.stopPropagation();
+            highlight((activeIndex + 1) % rows.length);
+        } else if (e.key === "ArrowUp") {
+            e.preventDefault();
+            e.stopPropagation();
+            highlight((activeIndex - 1 + rows.length) % rows.length);
+        } else if (e.key === "Enter") {
+            e.preventDefault();
+            e.stopPropagation();
+            pick(activeIndex < 0 ? 0 : activeIndex);
+        } else if (e.key === "Escape") {
+            e.stopPropagation();
+            closeList();
+        }
+    }, {capture: true});
+    ta.addEventListener("blur", (): void => {
+        // Delay so a mousedown pick still registers.
+        window.setTimeout(closeList, 150);
+    });
+}
+
+// journalMentionPersonIDs returns the ids of pending mentions whose token still
+// appears in the given text — so a mention the user deleted isn't sent.
+function journalMentionPersonIDs(text: string): number[] {
+    const ids = new Set<number>();
+    for (const m of pendingJournalMentions) {
+        if (text.includes(m.token)) {
+            ids.add(m.personId);
+        }
+    }
+    return Array.from(ids);
+}
+
 export async function submitJournalEntry(): Promise<void> {
     const text = (document.getElementById("journal_entry_add") as HTMLTextAreaElement).value;
 
@@ -1852,7 +2085,9 @@ export async function submitJournalEntry(): Promise<void> {
     // Disable the submit button to prevent repeat submissions
     document.getElementById("journal_entry_submit")!.classList.add("disabled");
     // send a dummy ID to appease the JSON parser in the server
-    const {err} = await sendEditsFunc!({"journal_entries": [{"text": text, "id": -1}]});
+    const {err} = await sendEditsFunc!({"journal_entries": [{
+        "text": text, "id": -1, "mentioned_person_ids": journalMentionPersonIDs(text),
+    }]});
     if (err != null) {
         const submitButton = document.getElementById("journal_entry_submit")!;
         submitButton.classList.remove("disabled");
@@ -1865,6 +2100,8 @@ export async function submitJournalEntry(): Promise<void> {
     const textArea = document.getElementById("journal_entry_add") as HTMLTextAreaElement;
     // Clear the journal entry
     textArea.value = "";
+    // The entry is saved; forget the mentions tracked while composing it.
+    pendingJournalMentions = [];
     // Reset the submit button and its "disabled" status
     journalEntryEdited();
     // The entry is saved server-side now, so drop the local draft.
@@ -2516,6 +2753,18 @@ export interface JournalEntry {
     system_entry?: boolean|null;
     stricken?: boolean|null;
     attachment?: Attachment|null;
+    // @mentions (plan 81): on write, mentioned_person_ids carries the people picked
+    // via the "@" typeahead; on read, mentions is the resolved list for rendering.
+    mentioned_person_ids?: number[]|null;
+    mentions?: Mention[]|null;
+}
+
+// Mention is a person referenced by an "@mention" in a journal entry, resolved
+// for display. handle/name may be empty (a login-less person has no handle).
+export interface Mention {
+    person_id?: number|null;
+    handle?: string|null;
+    name?: string|null;
 }
 
 export interface IncidentType {
