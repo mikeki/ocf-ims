@@ -243,7 +243,13 @@ templ People(deployment, versionName, versionRef, eventName string) {
               <span class="person-name"></span>
               <span class="person-handle text-body-secondary ms-2 font-monospace small"></span>
               <span class="person-wristband badge text-bg-secondary ms-2 hidden"></span>
-              <span class="person-participation badge text-bg-light ms-2 hidden"></span>
+              <!-- The role badge is a click-to-open menu (slice 52e): one click changes
+                   a person's per-event role inline, instead of the Edit-Person modal.
+                   The button text + menu are filled in by people.ts per row. -->
+              <span class="person-participation-dropdown dropdown ms-2 hidden">
+                <button type="button" class="person-participation badge text-bg-light dropdown-toggle border-0" data-bs-toggle="dropdown" aria-expanded="false" title="Change role"></button>
+                <ul class="person-participation-menu dropdown-menu"></ul>
+              </span>
             </li>
           </template>
         </ul>

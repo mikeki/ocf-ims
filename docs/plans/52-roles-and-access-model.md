@@ -145,8 +145,32 @@ note, and the `validPersonStatuses` map (`api/person.go`).
 - **52c — Retire `EVENT_ACCESS`.** Delete the table, the access API, and the
   Admin → Events access UI once 52b is proven.
 - **52d — Dashboard to writers.** Widen the metrics gate + nav reveal.
+- **52e — Inline role editing on the People roster.** Make changing a person's
+  per-event role a **single interaction** on the row itself, instead of today's
+  two-click detour (Edit → modal → change the `Role` select → Save). Today the row
+  shows a read-only `person-participation` badge; the only way to change it is the
+  full Edit-Person modal.
+  - **Recommended direction:** turn the role badge into a **click-to-open role
+    menu** on the row — clicking the pill opens a small dropdown of the ladder
+    (`writer / reporter / participant / public / not_present / ejected`), and
+    picking one **fires the participation PATCH immediately** (the existing
+    `participationUrl(personId)` POST that `submitMarkParticipation` already uses),
+    then re-renders the badge in place. No modal, no Save button. Keep the colored
+    badge styling so the role stays scannable down the list; a current-value check
+    in the menu shows what's set. (Alternative considered: an always-visible inline
+    `<select>` per row — simpler to wire but noisier visually across a long roster;
+    the click-to-open pill keeps the compact scannable look.)
+  - **Scope notes:** roster-only (needs a selected event + a participation row);
+    the wristband stays in the Edit modal (less frequently changed). The
+    `not_present` / `ejected` rungs are already reachable from the existing
+    "Remove from event" modal — the inline menu and that modal both write the same
+    field, so keep them consistent (or fold the menu's destructive rungs into the
+    same confirm copy). Profile fields (name/email/handle/password/admin) stay in
+    their existing controls — this slice only touches the per-event role. No
+    schema/API change; reuses the 52b participation endpoint.
 
-(Order matters: 52a is independent; 52b before 52c; 52d any time after 52b.)
+(Order matters: 52a is independent; 52b before 52c; 52d any time after 52b. 52e is
+UX-only on top of 52b's role ladder — any time after 52b, independent of 52c/52d.)
 
 ## 6. Risks / open items
 

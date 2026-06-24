@@ -34,6 +34,31 @@ declare global {
 
 const minPasswordLength = 8;
 
+// The per-event standing rungs offered by the inline role menu on each roster row
+// (slice 52e). These are the "present at the fair" rungs, top (most access) to
+// bottom; picking one writes immediately via the participation endpoint. The
+// removal rungs (not_present / ejected) are intentionally NOT here — those stay
+// behind the "Remove from event" modal, which frames them with explanatory copy.
+const inlineRoleRungs: {value: string; label: string; hint: string}[] = [
+    {value: "writer", label: "Writer", hint: "full access"},
+    {value: "reporter", label: "Reporter", hint: "own reports"},
+    {value: "participant", label: "Participant", hint: "at the fair, no access"},
+    {value: "public", label: "Public", hint: "attendee / on an incident"},
+];
+
+// participationBadgeClass picks a Bootstrap contextual color so the role stays
+// scannable down a long roster — the access-bearing rungs (writer/reporter) pop,
+// the kept-but-inactive states keep their slice-6j warning/secondary cues.
+function participationBadgeClass(type: string): string {
+    switch (type) {
+        case "writer": return "text-bg-primary";
+        case "reporter": return "text-bg-info";
+        case "ejected": return "text-bg-warning";
+        case "not_present": return "text-bg-secondary";
+        default: return "text-bg-light"; // participant, public
+    }
+}
+
 // Remembers the last event the People page was scoped to, so per-event wristband
 // and participation are shown (and editable) again on the next visit.
 const lastEventKey = "admin_people_event";
@@ -267,17 +292,10 @@ function drawPeople(): void {
             wristband.textContent = person.wristband;
             wristband.classList.remove("hidden");
         }
-        const participation: HTMLElement = entryItem.querySelector(".person-participation")!;
-        if (person.participation_type) {
-            participation.textContent = person.participation_type.replace("_", " ");
-            participation.classList.remove("hidden");
-            // Draw attention to the kept-but-inactive states (slice 6j).
-            if (person.participation_type === "ejected") {
-                participation.classList.replace("text-bg-light", "text-bg-warning");
-            } else if (person.participation_type === "not_present") {
-                participation.classList.replace("text-bg-light", "text-bg-secondary");
-            }
-        }
+        const participationWrap: HTMLElement = entryItem.querySelector(".person-participation-dropdown")!;
+        const participationButton: HTMLButtonElement = entryItem.querySelector(".person-participation")!;
+        const participationMenu: HTMLElement = entryItem.querySelector(".person-participation-menu")!;
+        drawParticipationDropdown(person, participationWrap, participationButton, participationMenu);
 
         const showPassword: HTMLElement = entryItem.querySelector(".show-set-password-modal")!;
         const adminToggle: HTMLButtonElement = entryItem.querySelector(".toggle-admin")!;
@@ -353,6 +371,78 @@ function applyFilter(): void {
         const hay = li.dataset["search"] ?? "";
         li.classList.toggle("hidden", term !== "" && !hay.includes(term));
     });
+}
+
+// drawParticipationDropdown turns the role badge into a one-click menu (slice 52e).
+// The badge shows the person's current per-event role; opening it lists the standing
+// rungs, and picking one writes immediately — no Edit-Person modal, no Save. It only
+// appears for someone actually on this event's roster (a selected event + an existing
+// participation row), mirroring the "Remove from event" button's visibility; people
+// without a row (or with no event selected) still get a role via the Add/Edit modals.
+function drawParticipationDropdown(
+    person: ims.Personnel, wrap: HTMLElement, button: HTMLButtonElement, menu: HTMLElement,
+): void {
+    const type = person.participation_type;
+    if (!currentEvent || !type) {
+        wrap.classList.add("hidden");
+        return;
+    }
+    wrap.classList.remove("hidden");
+    button.textContent = type.replace("_", " ");
+    button.className = `person-participation badge dropdown-toggle border-0 ${participationBadgeClass(type)}`;
+    button.setAttribute("aria-label", `Role: ${type.replace("_", " ")}. Change.`);
+
+    menu.replaceChildren();
+    for (const rung of inlineRoleRungs) {
+        const li = document.createElement("li");
+        const item = document.createElement("button");
+        item.type = "button";
+        item.className = "dropdown-item d-flex justify-content-between align-items-center gap-3";
+        if (rung.value === type) {
+            item.classList.add("active");
+            item.setAttribute("aria-current", "true");
+        }
+        const labelSpan = document.createElement("span");
+        labelSpan.textContent = rung.label;
+        const hintSpan = document.createElement("span");
+        hintSpan.className = "small opacity-75";
+        hintSpan.textContent = rung.hint;
+        item.append(labelSpan, hintSpan);
+        item.addEventListener("click", function (_e: MouseEvent): void {
+            // No-op if it's already the current role (the active row).
+            if (rung.value !== person.participation_type) {
+                void setParticipationInline(person, rung.value);
+            }
+        });
+        li.append(item);
+        menu.append(li);
+    }
+}
+
+// setParticipationInline writes a role change picked from the inline menu. It reuses
+// the per-event participation endpoint (the same one the Add/Remove flows use),
+// preserving the current wristband — an omitted wristband would be cleared by the
+// upsert — then reloads so the badge color, ordering, and remove-button visibility
+// all reflect the new role.
+async function setParticipationInline(person: ims.Personnel, participation: string): Promise<void> {
+    const personId = (person.person_id ?? "").toString();
+    if (!personId || !currentEvent) {
+        return;
+    }
+    const {err} = await ims.fetchNoThrow(participationUrl(personId), {
+        body: JSON.stringify({
+            "participation_type": participation,
+            "wristband": person.wristband ?? "",
+        }),
+    });
+    if (err != null) {
+        const message = `Failed to update role:\n${err}`;
+        console.error(message);
+        ims.setErrorMessage(message);
+        return;
+    }
+    ims.clearErrorMessage();
+    await loadAndDrawPeople();
 }
 
 function drawAdminToggle(button: HTMLButtonElement, isAdmin: boolean): void {
