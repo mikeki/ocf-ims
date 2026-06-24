@@ -460,10 +460,11 @@ function renderCommonPageItems(authInfo: AuthInfo): void {
             }
         }
 
-        // Dashboard is admin-only for now (the refine-later seam in 70-dashboards.md):
-        // same reveal rule as People — only when an event is active AND admin.
+        // Dashboard opens to admins and per-event writers (plan 52d): reveal it when
+        // an event is active AND the viewer is an admin OR a writer of that event.
         const activeEventDashboard = document.getElementById("active-event-dashboard") as HTMLAnchorElement|null;
-        if (activeEventDashboard != null && authInfo.authenticated && authInfo.admin) {
+        if (activeEventDashboard != null && authInfo.authenticated
+            && (authInfo.admin || (authInfo.event_access?.[event]?.writeIncidents ?? false))) {
             activeEventDashboard.href = urlReplace(url_viewDashboard);
             activeEventDashboard.classList.remove("hidden");
 

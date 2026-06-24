@@ -35,7 +35,10 @@ func countFor(buckets []imsjson.MetricCount, key string) int64 {
 	return -1
 }
 
-func TestMetricsRequiresAdmin(t *testing.T) {
+// TestMetricsAccess verifies the dashboard gate after plan 52d widened it from
+// admin-only to admin-or-per-event-writer: anonymous -> 401, a non-participant or
+// a mere reporter -> 403, and both an event writer and an admin -> 200.
+func TestMetricsAccess(t *testing.T) {
 	t.Parallel()
 	ctx := t.Context()
 
@@ -50,12 +53,28 @@ func TestMetricsRequiresAdmin(t *testing.T) {
 	require.Equal(t, http.StatusUnauthorized, resp.StatusCode)
 	require.NoError(t, resp.Body.Close())
 
-	// A non-admin (even one who could read the event) is refused with a flat 403.
+	// A non-participant in the event is refused with a flat 403.
 	_, resp = aliceUser.getMetrics(ctx, eventName)
 	require.Equal(t, http.StatusForbidden, resp.StatusCode)
 	require.NoError(t, resp.Body.Close())
 
-	// An admin succeeds.
+	// A mere reporter (no incident write) is still refused.
+	resp = adminUser.addReporter(ctx, eventName, userAliceHandle)
+	require.Equal(t, http.StatusNoContent, resp.StatusCode)
+	require.NoError(t, resp.Body.Close())
+	_, resp = aliceUser.getMetrics(ctx, eventName)
+	require.Equal(t, http.StatusForbidden, resp.StatusCode)
+	require.NoError(t, resp.Body.Close())
+
+	// Promoted to writer of the event, she may now open the dashboard (52d).
+	resp = adminUser.addWriter(ctx, eventName, userAliceHandle)
+	require.Equal(t, http.StatusNoContent, resp.StatusCode)
+	require.NoError(t, resp.Body.Close())
+	_, resp = aliceUser.getMetrics(ctx, eventName)
+	require.Equal(t, http.StatusOK, resp.StatusCode)
+	require.NoError(t, resp.Body.Close())
+
+	// An admin succeeds via the admin bypass, without any per-event role.
 	_, resp = adminUser.getMetrics(ctx, eventName)
 	require.Equal(t, http.StatusOK, resp.StatusCode)
 	require.NoError(t, resp.Body.Close())
