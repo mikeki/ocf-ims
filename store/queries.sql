@@ -106,10 +106,15 @@ group by
 select
     sqlc.embed(ip),
     p.HANDLE,
-    p.NAME
+    p.NAME,
+    -- HAS_EVENT_ACCESS: the involved person already has event-wide incident access
+    -- (admin, or a 'writer' PERSON__EVENT role), so a per-incident grant (52f) is
+    -- moot for them. The People editor uses this to show "has access" vs offer a grant.
+    (p.IS_ADMIN or coalesce(pe.PARTICIPATION_TYPE = 'writer', false)) as HAS_EVENT_ACCESS
 from
     INCIDENT__PERSON ip
     join PERSON p on p.ID = ip.PERSON_ID
+    left join PERSON__EVENT pe on pe.PERSON_ID = ip.PERSON_ID and pe.EVENT = ip.EVENT
 where
     ip.EVENT = ?;
 
@@ -117,13 +122,37 @@ where
 select
     sqlc.embed(ip),
     p.HANDLE,
-    p.NAME
+    p.NAME,
+    (p.IS_ADMIN or coalesce(pe.PARTICIPATION_TYPE = 'writer', false)) as HAS_EVENT_ACCESS
 from
     INCIDENT__PERSON ip
     join PERSON p on p.ID = ip.PERSON_ID
+    left join PERSON__EVENT pe on pe.PERSON_ID = ip.PERSON_ID and pe.EVENT = ip.EVENT
 where
     ip.EVENT = ?
     and ip.INCIDENT_NUMBER = ?;
+
+-- name: IncidentPersonHasGrant :one
+-- Whether this person has at least one granted involvement on a specific incident
+-- (52f) — the per-incident read/journal-write exception for involved reporters.
+select exists (
+    select 1 from INCIDENT__PERSON
+    where EVENT = ? and INCIDENT_NUMBER = ? and PERSON_ID = ? and GRANTED_ACCESS = true
+) as HAS_GRANT;
+
+-- name: GrantedIncidentNumbersForPerson :many
+-- The incident numbers in an event that this person has been granted access to (52f).
+select distinct INCIDENT_NUMBER
+from INCIDENT__PERSON
+where EVENT = ? and PERSON_ID = ? and GRANTED_ACCESS = true;
+
+-- name: PersonHasAnyGrantInEvent :one
+-- Whether this person has any granted incident involvement in the event (52f) —
+-- drives the Incidents nav/list reveal for a reporter who has grants.
+select exists (
+    select 1 from INCIDENT__PERSON
+    where EVENT = ? and PERSON_ID = ? and GRANTED_ACCESS = true
+) as HAS_GRANT;
 
 -- name: Incident_LinkedIncidents :many
 select
@@ -339,8 +368,8 @@ where ID IN (
 );
 
 -- name: AttachPersonToIncident :exec
-insert into INCIDENT__PERSON (EVENT, INCIDENT_NUMBER, PERSON_ID, INVOLVEMENT)
-values (?, ?, ?, ?);
+insert into INCIDENT__PERSON (EVENT, INCIDENT_NUMBER, PERSON_ID, INVOLVEMENT, GRANTED_ACCESS)
+values (?, ?, ?, ?, ?);
 
 -- name: DetachPersonFromIncident :exec
 delete from INCIDENT__PERSON

@@ -86,7 +86,9 @@ async function initIncidentsPage(): Promise<void> {
         await ims.redirectToLogin();
         return;
     }
-    if (!ims.eventAccess!.readIncidents) {
+    // 52f: a reporter with per-incident grants (readIncidentsViaGrant) sees the list
+    // filtered to those incidents; only fall through to the redirect/error otherwise.
+    if (!ims.eventAccess!.readIncidents && !ims.eventAccess!.readIncidentsViaGrant) {
         // This is a janky way of recreating the old server-side redirect to the Reports page.
         // The idea is that if the user is coming from the IMS home page and they don't have incidents
         // access, we should try to send them to FRs instead. If they're already within the scope of

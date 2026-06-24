@@ -55,12 +55,28 @@ func (action GetIncidents) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 
 func (action GetIncidents) getIncidents(req *http.Request) (imsjson.Incidents, *herr.HTTPError) {
 	resp := make(imsjson.Incidents, 0)
-	event, _, eventPermissions, errHTTP := getEventPermissions(req, action.imsDBQ, action.userStore)
+	event, jwt, eventPermissions, errHTTP := getEventPermissions(req, action.imsDBQ, action.userStore)
 	if errHTTP != nil {
 		return resp, errHTTP.From("[getEventPermissions]")
 	}
+	// grantedSet is nil when the caller has event-wide incident read (sees everything).
+	// Otherwise it's the set of incident numbers a reporter has been granted access to
+	// (52f); the listing is filtered to those. A caller with neither the bit nor any
+	// grant stays forbidden, so participant/public access isn't loosened.
+	var grantedSet map[int32]bool
 	if eventPermissions&authz.EventReadIncidents == 0 {
-		return nil, herr.Forbidden("The requestor does not have EventReadIncidents permission", nil)
+		grantedNums, err := action.imsDBQ.GrantedIncidentNumbersForPerson(req.Context(), action.imsDBQ,
+			imsdb.GrantedIncidentNumbersForPersonParams{Event: event.ID, PersonID: jwt.Claims.PersonID()})
+		if err != nil {
+			return nil, herr.InternalServerError("Failed to fetch granted incidents", err).From("[GrantedIncidentNumbersForPerson]")
+		}
+		if len(grantedNums) == 0 {
+			return nil, herr.Forbidden("The requestor does not have EventReadIncidents permission", nil)
+		}
+		grantedSet = make(map[int32]bool, len(grantedNums))
+		for _, n := range grantedNums {
+			grantedSet[n] = true
+		}
 	}
 	err := req.ParseForm()
 	if err != nil {
@@ -102,7 +118,7 @@ func (action GetIncidents) getIncidents(req *http.Request) (imsjson.Incidents, *
 		}
 		for _, row := range peopleRows {
 			peopleByIncident[row.IncidentPerson.IncidentNumber] = append(peopleByIncident[row.IncidentPerson.IncidentNumber],
-				imsjson.IncidentPerson{PersonID: int64(row.IncidentPerson.PersonID), Handle: row.Handle.String, Name: row.Name.String, Involvement: conv.SqlToString(row.IncidentPerson.Involvement)})
+				imsjson.IncidentPerson{PersonID: int64(row.IncidentPerson.PersonID), Handle: row.Handle.String, Name: row.Name.String, Involvement: conv.SqlToString(row.IncidentPerson.Involvement), GrantedAccess: row.IncidentPerson.GrantedAccess, HasEventAccess: row.HasEventAccess.Bool})
 		}
 		return nil
 	})
@@ -122,6 +138,10 @@ func (action GetIncidents) getIncidents(req *http.Request) (imsjson.Incidents, *
 	}
 
 	for _, r := range incidentsRows {
+		// 52f: a granted reporter sees only the incidents they were granted.
+		if grantedSet != nil && !grantedSet[r.Incident.Number] {
+			continue
+		}
 		// The conversion from IncidentsRow to IncidentRow works because the Incident and Incidents
 		// query row structs currently have the same fields in the same order. If that changes in the
 		// future, this won't compile, and we may need to duplicate the readExtraIncidentRowFields
@@ -163,14 +183,27 @@ func (action GetIncident) getIncident(req *http.Request) (imsjson.Incident, *her
 	if errHTTP != nil {
 		return resp, errHTTP.From("[getEventPermissions]")
 	}
-	if eventPermissions&authz.EventReadIncidents == 0 {
-		return resp, herr.Forbidden("The requestor does not have EventReadIncidents permission on this Event", nil)
-	}
 	ctx := req.Context()
 
 	incidentNumber, err := conv.ParseInt32(req.PathValue("incidentNumber"))
 	if err != nil {
 		return resp, herr.BadRequest("Failed to parse incident number", err)
+	}
+
+	// 52f: without event-wide incident read, allow only if the caller has a
+	// per-incident grant (an involved reporter). hasGrant also decides whether the
+	// detail page may show the journal-add box (viewer_may_add_journal below).
+	hasGrant := false
+	if eventPermissions&authz.EventReadIncidents == 0 {
+		hasGrant, err = action.imsDBQ.IncidentPersonHasGrant(ctx, action.imsDBQ, imsdb.IncidentPersonHasGrantParams{
+			Event: event.ID, IncidentNumber: incidentNumber, PersonID: jwt.Claims.PersonID(),
+		})
+		if err != nil {
+			return resp, herr.InternalServerError("Failed to check incident grant", err).From("[IncidentPersonHasGrant]")
+		}
+		if !hasGrant {
+			return resp, herr.Forbidden("The requestor does not have EventReadIncidents permission on this Event", nil)
+		}
 	}
 
 	storedRow, journalEntries, errHTTP := fetchIncident(ctx, action.imsDBQ, event.ID, incidentNumber, action.attachmentsEnabled)
@@ -192,7 +225,7 @@ func (action GetIncident) getIncident(req *http.Request) (imsjson.Incident, *her
 	}
 	people := make([]imsjson.IncidentPerson, len(peopleRows))
 	for i, row := range peopleRows {
-		people[i] = imsjson.IncidentPerson{PersonID: int64(row.IncidentPerson.PersonID), Handle: row.Handle.String, Name: row.Name.String, Involvement: conv.SqlToString(row.IncidentPerson.Involvement)}
+		people[i] = imsjson.IncidentPerson{PersonID: int64(row.IncidentPerson.PersonID), Handle: row.Handle.String, Name: row.Name.String, Involvement: conv.SqlToString(row.IncidentPerson.Involvement), GrantedAccess: row.IncidentPerson.GrantedAccess, HasEventAccess: row.HasEventAccess.Bool}
 	}
 
 	linkedIncidents, err := action.imsDBQ.Incident_LinkedIncidents(ctx, action.imsDBQ, imsdb.Incident_LinkedIncidentsParams{
@@ -212,6 +245,9 @@ func (action GetIncident) getIncident(req *http.Request) (imsjson.Incident, *her
 	if errHTTP != nil {
 		return resp, errHTTP.From("[incidentToJSON]")
 	}
+	// 52f: a writer (or admin) may always add journal entries; an involved reporter
+	// may too, but only on incidents they were granted.
+	resp.ViewerMayAddJournal = eventPermissions&authz.EventWriteIncidents != 0 || hasGrant
 	return resp, nil
 }
 
@@ -424,6 +460,27 @@ func readExtraIncidentRowFields(row imsdb.IncidentRow) (incidentTypeIDs, reportN
 		return nil, nil, nil, fmt.Errorf("[unmarshalByteSlice]: %w", err)
 	}
 	return incidentTypeIDs, reportNumbers, visitNumbers, nil
+}
+
+// isJournalOnly reports whether an incident edit payload only appends journal entries
+// and changes no other field (52f). It backs the granted-reporter write path: such a
+// caller may add to the incident's running log but may not touch state/type/priority/
+// people/links/etc. Mirrors the zero/nil "no change" semantics updateIncident uses.
+func isJournalOnly(inc imsjson.Incident) bool {
+	return len(inc.JournalEntries) > 0 &&
+		inc.State == "" &&
+		inc.Priority == 0 &&
+		inc.Outcome == nil &&
+		inc.Started.IsZero() &&
+		inc.Summary == nil &&
+		inc.Location.AreaSlug == nil &&
+		inc.Location.Description == nil &&
+		inc.Location.Booth == nil &&
+		inc.IncidentTypeIDs == nil &&
+		inc.Reports == nil &&
+		inc.Visits == nil &&
+		inc.People == nil &&
+		inc.LinkedIncidents == nil
 }
 
 func updateIncident(ctx context.Context, imsDBQ *store.DBQ, es *EventSourcerer, newIncident imsjson.Incident, authorPersonID int32,
@@ -862,9 +919,6 @@ func (action EditIncident) editIncident(req *http.Request) *herr.HTTPError {
 	if errHTTP != nil {
 		return errHTTP.From("[getEventPermissions]")
 	}
-	if eventPermissions&authz.EventWriteIncidents == 0 {
-		return herr.Forbidden("The requestor does not have EventWriteIncidents permission for this Event", nil)
-	}
 	ctx := req.Context()
 
 	incidentNumber, err := conv.ParseInt32(req.PathValue("incidentNumber"))
@@ -875,6 +929,26 @@ func (action EditIncident) editIncident(req *http.Request) *herr.HTTPError {
 	if errHTTP != nil {
 		return errHTTP.From("[readBodyAs]")
 	}
+
+	// 52f: full edit needs EventWriteIncidents. A reporter granted per-incident access
+	// may *only* append journal entries — so without the write bit, require a grant
+	// AND a journal-only payload (no field changes). updateIncident already ignores
+	// zero/nil fields, so isJournalOnly is the guard that keeps them from editing.
+	if eventPermissions&authz.EventWriteIncidents == 0 {
+		hasGrant, err := action.imsDBQ.IncidentPersonHasGrant(ctx, action.imsDBQ, imsdb.IncidentPersonHasGrantParams{
+			Event: event.ID, IncidentNumber: incidentNumber, PersonID: jwtCtx.Claims.PersonID(),
+		})
+		if err != nil {
+			return herr.InternalServerError("Failed to check incident grant", err).From("[IncidentPersonHasGrant]")
+		}
+		if !hasGrant {
+			return herr.Forbidden("The requestor does not have EventWriteIncidents permission for this Event", nil)
+		}
+		if !isJournalOnly(newIncident) {
+			return herr.Forbidden("A granted reporter may only add journal entries to this incident", nil)
+		}
+	}
+
 	newIncident.Event = event.Name
 	newIncident.EventID = event.ID
 	newIncident.Number = incidentNumber
@@ -949,6 +1023,8 @@ func (action AttachPersonToIncident) attachPerson(req *http.Request) *herr.HTTPE
 		IncidentNumber: incidentNumber,
 		PersonID:       personID,
 		Involvement:    conv.StringToSql(body.Involvement, 128),
+		// 52f: per-incident access grant for an involved reporter (writer-gated here).
+		GrantedAccess: body.GrantedAccess,
 	})
 	if err != nil {
 		return herr.InternalServerError("Failed to attach person to Incident", err).From("[AttachPersonToIncident]")

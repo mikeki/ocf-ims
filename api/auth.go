@@ -29,6 +29,7 @@ import (
 	"github.com/mikeki/ocf-ims/lib/authz"
 	"github.com/mikeki/ocf-ims/lib/herr"
 	"github.com/mikeki/ocf-ims/store"
+	"github.com/mikeki/ocf-ims/store/imsdb"
 )
 
 type authError string
@@ -196,6 +197,11 @@ type AccessForEvent struct {
 	ReadVisits     bool  `json:"readVisits"`
 	WriteVisits    bool  `json:"writeVisits"`
 	AttachFiles    bool  `json:"attachFiles"`
+	// ReadIncidentsViaGrant (52f) is true when the caller lacks event-wide incident
+	// read but has at least one per-incident grant in this event. It reveals the
+	// Incidents nav/list (filtered to granted incidents) for an involved reporter,
+	// without flipping ReadIncidents (which gates write controls elsewhere).
+	ReadIncidentsViaGrant bool `json:"readIncidentsViaGrant"`
 }
 
 func (action GetAuth) ServeHTTP(w http.ResponseWriter, req *http.Request) {
@@ -261,15 +267,28 @@ func (action GetAuth) getAuth(req *http.Request) (GetAuthResponse, *herr.HTTPErr
 			return resp, herr.InternalServerError("Failed to fetch event permissions", err).From("[EventPermissions]")
 		}
 
+		readIncidents := eventPermissions[event.ID]&authz.EventReadIncidents != 0
+		// 52f: surface "can reach the Incidents list via per-incident grants" only when
+		// the caller doesn't already have event-wide incident read.
+		readIncidentsViaGrant := false
+		if !readIncidents {
+			readIncidentsViaGrant, err = action.imsDBQ.PersonHasAnyGrantInEvent(req.Context(), action.imsDBQ,
+				imsdb.PersonHasAnyGrantInEventParams{Event: event.ID, PersonID: claims.PersonID()})
+			if err != nil {
+				return resp, herr.InternalServerError("Failed to check incident grants", err).From("[PersonHasAnyGrantInEvent]")
+			}
+		}
+
 		resp.EventAccess = map[string]AccessForEvent{
 			eventName: {
-				EventID:        event.ID,
-				ReadIncidents:  eventPermissions[event.ID]&authz.EventReadIncidents != 0,
-				WriteIncidents: eventPermissions[event.ID]&authz.EventWriteIncidents != 0,
-				WriteReports:   eventPermissions[event.ID]&(authz.EventWriteOwnReports|authz.EventWriteAllReports) != 0,
-				ReadVisits:     eventPermissions[event.ID]&authz.EventReadVisits != 0,
-				WriteVisits:    eventPermissions[event.ID]&authz.EventWriteVisits != 0,
-				AttachFiles:    action.attachmentsEnabled,
+				EventID:               event.ID,
+				ReadIncidents:         readIncidents,
+				WriteIncidents:        eventPermissions[event.ID]&authz.EventWriteIncidents != 0,
+				WriteReports:          eventPermissions[event.ID]&(authz.EventWriteOwnReports|authz.EventWriteAllReports) != 0,
+				ReadVisits:            eventPermissions[event.ID]&authz.EventReadVisits != 0,
+				WriteVisits:           eventPermissions[event.ID]&authz.EventWriteVisits != 0,
+				AttachFiles:           action.attachmentsEnabled,
+				ReadIncidentsViaGrant: readIncidentsViaGrant,
 			},
 		}
 	}

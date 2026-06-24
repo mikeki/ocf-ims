@@ -172,8 +172,56 @@ note, and the `validPersonStatuses` map (`api/person.go`).
     their existing controls — this slice only touches the per-event role. No
     schema/API change; reuses the 52b participation endpoint.
 
+- **52f — Per-incident access grants for involved reporters.** Reporters see only
+  their own field reports and **no incidents** (52b). But a reporter who is *involved*
+  in an incident may need to keep contributing to it. This adds a **per-incident
+  grant** that opens a single incident to an otherwise-incident-blind user.
+  - **Decisions (locked 2026-06-23 with Miguel):**
+    1. **Grant confers read + add journal entries** on that one incident ("continue
+       reporting") — *not* editing state/type/priority/etc.
+    2. **Explicit toggle**, surfaced in the incident's people/involvement editor.
+       Adding someone to involvement grants nothing by default; a writer flips the
+       grant deliberately. The editor shows, per involved *user*, whether they
+       already have event access (writer/admin → grant moot) or not (→ offer it).
+    3. **Its own slice (52f).** 52d stays the tiny dashboard gate.
+  - **Data model:** a boolean `GRANTED_ACCESS` on the involvement row
+    `INCIDENT__PERSON` (the user's suggestion — co-located with involvement, default
+    false). Meaningful only for involved people who are users; harmless for the
+    non-user witnesses/victims that also live in this table. "Has access to incident
+    N" = *any* granted `INCIDENT__PERSON` row for (event, N, person).
+  - **Authz (request-time, like everything post-52b):**
+    - `getIncident` (single): allow if `EventReadIncidents` **OR** the caller has a
+      granted involvement on this incident.
+    - `getIncidents` (list): `EventReadIncidents` → all (today's behavior); else the
+      caller's *granted* incidents only (empty-but-200 if a reporter with no grants;
+      keep 403 only for users with neither the bit nor any grant, to avoid loosening
+      participant/public).
+    - `editIncident` (the add-journal path): if no `EventWriteIncidents`, require a
+      granted involvement **and** a *journal-only* payload — reject if any other
+      field is set. `updateIncident` already ignores zero/nil fields, so this is a
+      guard, not a rewrite. Full edit stays writer-only.
+    - Mirrors the existing field-report "own rows" exception (`isPreviousAuthor`):
+      a per-row exception layered over the event-wide bit.
+  - **Surfacing the grant to the frontend (per-incident, since the event bits can't
+    express it):**
+    - `IncidentPerson` JSON gains `granted_access` (rw) and a read-only
+      `has_event_access` (writer/admin — drives the editor's "already has access"
+      hint). Set via the existing attach-person endpoint (writer-gated).
+    - The incident GET gains a read-only `viewer_may_add_journal` (= writer **or**
+      the caller's own grant) so the detail page shows the journal-add box to a
+      granted reporter while keeping every other write control off.
+    - `AccessForEvent` (the `/auth` response) gains `read_incidents_via_grant`
+      (= not-event-readIncidents **and** ≥1 grant in the event) so the **Incidents**
+      nav link/list reveals for a reporter who has grants, without flipping the
+      event-wide `read_incidents` (which gates write controls elsewhere).
+  - **Scope guard:** reporters still can't change state/type/priority/people/links —
+    only read + append journal entries on incidents they're granted. Grant/revoke is
+    writer-only. No new endpoint (reuses attach-person + editIncident).
+
 (Order matters: 52a is independent; 52b before 52c; 52d any time after 52b. 52e is
-UX-only on top of 52b's role ladder — any time after 52b, independent of 52c/52d.)
+UX-only on top of 52b's role ladder — any time after 52b, independent of 52c/52d. 52f
+builds on 52b's reporter rung and the involvement model — after 52b, independent of
+52c/52d/52e.)
 
 ## 6. Risks / open items
 

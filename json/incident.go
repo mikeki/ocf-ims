@@ -62,6 +62,12 @@ type Incident struct {
 	People          *[]IncidentPerson `json:"people"`
 	LinkedIncidents *[]LinkedIncident `json:"linked_incidents,omitzero"`
 	JournalEntries  []JournalEntry    `json:"journal_entries"`
+
+	// ViewerMayAddJournal is a read-only, viewer-dependent flag (52f): true when the
+	// caller may append journal entries to this incident — either an event writer, or
+	// an involved reporter who has been granted per-incident access. The detail page
+	// shows the journal-add box when this is set.
+	ViewerMayAddJournal bool `json:"viewer_may_add_journal,omitzero"`
 }
 
 type IncidentPerson struct {
@@ -69,6 +75,15 @@ type IncidentPerson struct {
 	Handle      string  `json:"handle,omitempty"`
 	Name        string  `json:"name,omitempty"`
 	Involvement *string `json:"involvement,omitempty"`
+
+	// GrantedAccess (52f) records whether this involved person has been granted
+	// per-incident access (read + add journal entries) to the incident. Writable on
+	// attach (writer-gated, default false); echoed on read.
+	GrantedAccess bool `json:"granted_access,omitzero"`
+	// HasEventAccess is read-only: the involved person already has event-wide incident
+	// access (admin or 'writer' role), so a grant is moot. Drives the People editor's
+	// "has access" hint vs the "Grant access" toggle.
+	HasEventAccess bool `json:"has_event_access,omitzero"`
 }
 
 type LinkedIncident struct {

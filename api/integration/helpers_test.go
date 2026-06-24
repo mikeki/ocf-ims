@@ -323,6 +323,13 @@ func (a ApiHelper) attachPersonToIncident(ctx context.Context, eventName string,
 	return a.imsPost(ctx, imsjson.IncidentPerson{}, a.serverURL.JoinPath("/ims/api/events/", eventName, "/incidents/", strconv.Itoa(int(incident)), "/people/", strconv.FormatInt(personID, 10)).String())
 }
 
+// attachPersonToIncidentBody attaches with an explicit IncidentPerson body, so tests
+// can set the involvement / granted_access (52f) the bare attach helper leaves empty.
+func (a ApiHelper) attachPersonToIncidentBody(ctx context.Context, eventName string, incident int32, personID int64, body imsjson.IncidentPerson) *http.Response {
+	a.t.Helper()
+	return a.imsPost(ctx, body, a.serverURL.JoinPath("/ims/api/events/", eventName, "/incidents/", strconv.Itoa(int(incident)), "/people/", strconv.FormatInt(personID, 10)).String())
+}
+
 func (a ApiHelper) attachPersonToVisit(ctx context.Context, eventName string, visit int32, personID int64) *http.Response {
 	a.t.Helper()
 	return a.imsPost(ctx, imsjson.VisitPerson{}, a.serverURL.JoinPath("/ims/api/events/", eventName, "/visits/", strconv.Itoa(int(visit)), "/people/", strconv.FormatInt(personID, 10)).String())
@@ -429,6 +436,8 @@ func personIDForHandle(t *testing.T, handle string) int64 {
 		return userBobPersonID
 	case userCarolHandle:
 		return userCarolPersonID
+	case userDaveHandle:
+		return userDavePersonID
 	}
 	t.Fatalf("personIDForHandle: unknown handle %q", handle)
 	return 0
@@ -633,6 +642,17 @@ func jwtForAlice(t *testing.T, ctx context.Context) string {
 	statusCode, _, token := apisNotAuthenticated.postAuth(ctx, api.PostAuthRequest{
 		Identification: userAliceEmail,
 		Password:       userAlicePassword,
+	})
+	require.Equal(t, http.StatusOK, statusCode)
+	return token
+}
+
+func jwtForDave(t *testing.T, ctx context.Context) string {
+	t.Helper()
+	apisNotAuthenticated := ApiHelper{t: t, serverURL: shared.serverURL, jwt: ""}
+	statusCode, _, token := apisNotAuthenticated.postAuth(ctx, api.PostAuthRequest{
+		Identification: userDaveEmail,
+		Password:       userDavePassword,
 	})
 	require.Equal(t, http.StatusOK, statusCode)
 	return token
