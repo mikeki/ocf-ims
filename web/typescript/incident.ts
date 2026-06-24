@@ -289,11 +289,9 @@ async function initIncidentPage(): Promise<void> {
         }
     });
     el.journalEntryAdd.addEventListener("keydown", function (e: KeyboardEvent): void {
-        const submitEnabled = !el.journalEntrySubmit.classList.contains("disabled");
-        if (submitEnabled && (e.ctrlKey || e.altKey) && e.key === "Enter") {
-            ims.submitJournalEntry();
-        }
+        ims.handleJournalKeydown(e, !el.journalEntrySubmit.classList.contains("disabled"));
     });
+    ims.setupJournalSubmitMode();
     el.showIncidentTypeInfo.addEventListener(
         "click",
         function (e: MouseEvent): void {
