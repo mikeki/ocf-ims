@@ -67,6 +67,9 @@ templ Nav(eventName string) {
       <path d="M4.715 6.542 3.343 7.914a3 3 0 1 0 4.243 4.243l1.828-1.829A3 3 0 0 0 8.586 5.5L8 6.086a1 1 0 0 0-.154.199 2 2 0 0 1 .861 3.337L6.88 11.45a2 2 0 1 1-2.83-2.83l.793-.792a4 4 0 0 1-.128-1.287z"/>
       <path d="M6.586 4.672A3 3 0 0 0 7.414 9.5l.775-.776a2 2 0 0 1-.896-3.346L9.12 3.55a2 2 0 1 1 2.83 2.83l-.793.792c.112.42.155.855.128 1.287l1.372-1.372a3 3 0 1 0-4.243-4.243z"/>
     </svg>
+    <svg id="bell" viewBox="0 0 16 16">
+      <path d="M8 16a2 2 0 0 0 2-2H6a2 2 0 0 0 2 2M8 1.918l-.797.161A4.002 4.002 0 0 0 4 6c0 .628-.134 2.197-.459 3.742-.16.767-.376 1.566-.663 2.258h10.244c-.287-.692-.502-1.49-.663-2.258C12.134 8.197 12 6.628 12 6a4.002 4.002 0 0 0-3.203-3.92zM14.22 12c.223.447.481.801.78 1H1c.299-.199.557-.553.78-1C2.68 10.2 3 6.88 3 6c0-2.42 1.72-4.44 4.005-4.901a1 1 0 1 1 1.99 0A5.002 5.002 0 0 1 13 6c0 .88.32 4.2 1.22 6"/>
+    </svg>
   </svg>
   <svg xmlns="http://www.w3.org/2000/svg" class="d-none">
     <symbol id="slack" viewBox="0 0 127 127">
@@ -201,6 +204,36 @@ templ Nav(eventName string) {
       <!-- Not logged in: offer to log in -->
       <ul class="navbar-nav if-not-logged-in hidden no-print">
         <li id="nav_login"><a class="nav-link" href="/ims/auth/login">Log In</a></li>
+      </ul>
+
+      <!-- Logged in: notifications bell (plan 82) -->
+      <ul class="navbar-nav if-logged-in hidden no-print">
+        <li class="nav-item dropdown" id="notifications_nav">
+          <a class="nav-link position-relative" href="#" role="button" data-bs-toggle="dropdown"
+             aria-expanded="false" aria-label="Notifications" id="notifications_toggle">
+            <svg class="bi" fill="currentColor" width="16" height="16"><use href="#bell"></use></svg>
+            <span id="notifications_badge"
+                  class="position-absolute top-0 start-100 translate-middle badge rounded-pill text-bg-danger hidden"></span>
+          </a>
+          <ul class="dropdown-menu dropdown-menu-end" aria-labelledby="notifications_toggle"
+              style="min-width: 22rem; max-width: 28rem; max-height: 26rem; overflow-y: auto;">
+            <li class="dropdown-header d-flex justify-content-between align-items-center">
+              <span>Notifications</span>
+              <button type="button" class="btn btn-link btn-sm p-0 hidden" id="notifications_mark_all">Mark all read</button>
+            </li>
+            <li><hr class="dropdown-divider"/></li>
+            <li id="notifications_empty" class="dropdown-item-text text-body-secondary small">No notifications.</li>
+            <li id="notifications_list"/>
+            <template id="notification_row_template">
+              <li>
+                <a class="dropdown-item d-flex flex-column" href="" style="white-space: normal;">
+                  <span class="notification-text"/>
+                  <span class="notification-meta text-body-secondary small"/>
+                </a>
+              </li>
+            </template>
+          </ul>
+        </li>
       </ul>
 
       <!-- Logged in: show user menu -->

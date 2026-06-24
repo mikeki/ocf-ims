@@ -399,6 +399,7 @@ function renderCommonPageItems(authInfo: AuthInfo): void {
         if (authInfo.admin) {
             unhide(".if-admin");
         }
+        setupNotifications();
     }
     if (!authInfo.authenticated) {
         hide(".if-logged-in");
@@ -484,6 +485,154 @@ function renderCommonPageItems(authInfo: AuthInfo): void {
             }
         }
     }
+}
+
+//
+// In-app notifications (plan 82): the nav bell, its unread badge, and dropdown.
+//
+
+export interface Notification {
+    id?: number|null;
+    type?: string|null;
+    event?: string|null;
+    incident_number?: number|null;
+    incident_summary?: string|null;
+    journal_entry_id?: number|null;
+    actor?: string|null;
+    created?: string|null;
+    read?: boolean|null;
+}
+
+export interface NotificationList {
+    notifications?: Notification[]|null;
+    unread?: number|null;
+}
+
+// Kept module-level so the BroadcastChannel isn't garbage-collected (which would
+// silently stop the live refetch) and so listeners are wired only once.
+let notificationsWired = false;
+let notificationsChannel: BroadcastChannelTyped<IncidentBroadcast>|null = null;
+
+function notificationHref(n: Notification): string {
+    if (n.event && n.incident_number != null) {
+        return `/ims/app/events/${encodeURIComponent(n.event)}/incidents/${n.incident_number}`;
+    }
+    return "#";
+}
+
+function notificationText(n: Notification): string {
+    const who = n.actor || "Someone";
+    switch (n.type) {
+        case "mentioned":
+            return `${who} mentioned you`;
+        case "added_to_incident":
+            return `${who} added you to an incident`;
+        default:
+            return `${who} notified you`;
+    }
+}
+
+function notificationMeta(n: Notification): string {
+    const parts: string[] = [];
+    if (n.incident_number != null) {
+        parts.push(`#${n.incident_number}`);
+    }
+    if (n.incident_summary) {
+        parts.push(n.incident_summary);
+    }
+    if (n.created) {
+        parts.push(new Date(n.created).toLocaleString());
+    }
+    return parts.join(" · ");
+}
+
+async function refreshNotifications(): Promise<void> {
+    const badge = document.getElementById("notifications_badge");
+    const list = document.getElementById("notifications_list");
+    const empty = document.getElementById("notifications_empty");
+    const markAll = document.getElementById("notifications_mark_all");
+    const template = document.getElementById("notification_row_template") as HTMLTemplateElement|null;
+    if (badge == null || list == null || empty == null || markAll == null || template == null) {
+        return;
+    }
+    const {json, err} = await fetchNoThrow<NotificationList>(url_notifications, null);
+    if (err != null || json == null) {
+        return;
+    }
+    const unread = json.unread ?? 0;
+    if (unread > 0) {
+        badge.textContent = unread > 99 ? "99+" : unread.toString();
+        badge.classList.remove("hidden");
+        markAll.classList.remove("hidden");
+    } else {
+        badge.classList.add("hidden");
+        markAll.classList.add("hidden");
+    }
+    const notifications = json.notifications ?? [];
+    list.replaceChildren();
+    empty.classList.toggle("hidden", notifications.length > 0);
+    for (const n of notifications) {
+        const frag = template.content.cloneNode(true) as DocumentFragment;
+        const anchor = frag.querySelector("a") as HTMLAnchorElement;
+        anchor.href = notificationHref(n);
+        if (!(n.read ?? false)) {
+            anchor.classList.add("fw-semibold");
+        }
+        frag.querySelector(".notification-text")!.textContent = notificationText(n);
+        frag.querySelector(".notification-meta")!.textContent = notificationMeta(n);
+        anchor.addEventListener("click", async (e: MouseEvent): Promise<void> => {
+            if (n.id == null) {
+                return;
+            }
+            // Mark the one read, then follow the link to its incident.
+            e.preventDefault();
+            await fetchNoThrow(url_notificationRead.replace("<notification_id>", n.id.toString()), {method: "POST"});
+            window.location.href = anchor.href;
+        });
+        list.append(frag);
+    }
+}
+
+// setupNotifications wires the nav bell: it renders the badge + dropdown and
+// keeps them fresh (refetch when the dropdown opens, when an incident-update
+// broadcast arrives, and via a slow poll fallback for pages without an active
+// EventSource). No-ops on pages whose nav lacks the bell markup.
+function setupNotifications(): void {
+    const nav = document.getElementById("notifications_nav");
+    const markAll = document.getElementById("notifications_mark_all");
+    if (nav == null || markAll == null) {
+        return;
+    }
+    if (notificationsWired) {
+        void refreshNotifications();
+        return;
+    }
+    notificationsWired = true;
+
+    markAll.addEventListener("click", async (e: MouseEvent): Promise<void> => {
+        e.preventDefault();
+        await fetchNoThrow(url_notificationsRead, {method: "POST"});
+        await refreshNotifications();
+    });
+
+    // Refetch whenever the dropdown is opened, so the list is current on view.
+    nav.addEventListener("show.bs.dropdown", (): void => {
+        void refreshNotifications();
+    });
+
+    // An incident-update broadcast usually coincides with a new notification for
+    // someone; refetch when one arrives (this also fans in across tabs).
+    notificationsChannel = newIncidentChannel();
+    notificationsChannel.onmessage = (): void => {
+        void refreshNotifications();
+    };
+
+    // Slow poll fallback for pages/tabs without an active EventSource.
+    window.setInterval((): void => {
+        void refreshNotifications();
+    }, 120_000);
+
+    void refreshNotifications();
 }
 
 // newestEvent returns the "active" event — the newest (highest id) among the
