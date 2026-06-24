@@ -145,22 +145,24 @@ templ Dashboard(deployment, versionName, versionRef, eventName string) {
     </div>
   </div>
 
-  <!-- People on the event, by participation role -->
-  <div class="row g-3 mb-3">
-    <div class="col-12 col-lg-6">
-      <div class="card h-100">
-        <div class="card-header">People by role</div>
-        <div class="card-body"><canvas id="chart_role" height="260"></canvas></div>
-      </div>
-    </div>
-  </div>
-
   <!-- Incidents created per day -->
   <div class="row g-3 mb-3">
     <div class="col-12">
       <div class="card">
         <div class="card-header">Incidents created per day</div>
         <div class="card-body"><canvas id="chart_byday" height="120"></canvas></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- People on the event, by participation role. Kept below the incident
+       charts so the people breakdown reads as its own section, separate from
+       the incident metrics above. -->
+  <div class="row g-3 mb-3">
+    <div class="col-12 col-lg-6">
+      <div class="card h-100">
+        <div class="card-header">People by role</div>
+        <div class="card-body"><canvas id="chart_role" height="260"></canvas></div>
       </div>
     </div>
   </div>
