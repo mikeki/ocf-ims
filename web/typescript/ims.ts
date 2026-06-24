@@ -1502,24 +1502,10 @@ function journalEntryElement(entry: JournalEntry): HTMLDivElement {
                     setErrorMessage(`Failed to fetch attachment. ${err}`);
                     return;
                 }
-                const blobUrl: string = window.URL.createObjectURL(await resp.blob());
-                const tmpLink: HTMLAnchorElement = document.createElement("a");
-
-                // Preview mode: open a preview in a new window.
-                // We'd use window.open with target _blank, but Safari iOS doesn't support that,
-                // and a lot of people use iPhones.
-                tmpLink.target = "_blank";
-                tmpLink.href = blobUrl;
-                document.body.appendChild(tmpLink);
-                tmpLink.click();
-                document.body.removeChild(tmpLink);
-
-                // Wait a little while before cleaning up the blob, in case the user opts
-                // to download the file from the preview (that will fail once the object URL
-                // has been revoked).
-                setTimeout(function (): void {
-                    URL.revokeObjectURL(blobUrl);
-                }, 60_000 /* milliseconds */);
+                const blob: Blob = await resp.blob();
+                const blobUrl: string = window.URL.createObjectURL(blob);
+                // Preview in a modal on this page rather than a new browser tab.
+                showAttachmentPreview(blobUrl, blob.type, entry?.attachment?.name ?? "attachment");
             };
             entryContainer.append(previewButt);
         }
@@ -2006,6 +1992,57 @@ export function bsModal(el: HTMLElement) {
         });
     }
     return modal;
+}
+
+// showAttachmentPreview opens the shared attachment-preview modal (defined in
+// nav.templ) for the given object URL. Images render in an <img> scaled to fit;
+// everything else previewable (PDF, text, video) renders in an <iframe>. The
+// object URL is revoked when the modal closes (which also clears the body, so a
+// playing video stops). This replaces the old "open the blob in a new tab"
+// behavior. Falls back to a new tab if the modal isn't present on the page.
+export function showAttachmentPreview(blobUrl: string, contentType: string, name: string): void {
+    const modalEl = document.getElementById("attachmentPreviewModal");
+    const body = document.getElementById("attachment_preview_body");
+    if (modalEl == null || body == null) {
+        window.open(blobUrl, "_blank");
+        return;
+    }
+    const title = document.getElementById("attachmentPreviewModalLabel");
+    if (title != null) {
+        title.textContent = name;
+    }
+    const openLink = document.getElementById("attachment_preview_open") as HTMLAnchorElement|null;
+    if (openLink != null) {
+        openLink.href = blobUrl;
+    }
+
+    body.replaceChildren();
+    if (contentType.startsWith("image/")) {
+        const img = document.createElement("img");
+        img.src = blobUrl;
+        img.alt = name;
+        // Scale to fit the modal without overflowing the viewport height.
+        img.className = "img-fluid";
+        img.style.maxHeight = "75vh";
+        body.append(img);
+    } else {
+        const iframe = document.createElement("iframe");
+        iframe.src = blobUrl;
+        iframe.title = name;
+        iframe.className = "w-100";
+        iframe.style.height = "75vh";
+        iframe.style.border = "0";
+        body.append(iframe);
+    }
+
+    const modal = bsModal(modalEl);
+    // Clean up once the modal is fully hidden. Revoking earlier would break an
+    // in-flight "Open in new tab" load; an already-loaded tab keeps its content.
+    modalEl.addEventListener("hidden.bs.modal", function (): void {
+        body.replaceChildren();
+        URL.revokeObjectURL(blobUrl);
+    }, {once: true});
+    modal.show();
 }
 
 export function windowFragmentParams(): URLSearchParams {

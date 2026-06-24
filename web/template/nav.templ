@@ -220,4 +220,23 @@ templ Nav(eventName string) {
     </div>
   </div>
 </nav>
+<!-- Shared attachment-preview modal. The journal-entry "Preview" button
+     (drawJournalEntries → showAttachmentPreview in ims.ts) renders an attached
+     image/PDF/text/video here instead of opening a new browser tab. It lives in
+     Nav so it's present on every page that renders attachments (incidents,
+     reports, visits). -->
+<div class="modal fade" id="attachmentPreviewModal" tabindex="-1" aria-labelledby="attachmentPreviewModalLabel" aria-hidden="true">
+  <div class="modal-dialog modal-xl modal-dialog-centered">
+    <div class="modal-content">
+      <div class="modal-header">
+        <p class="modal-title text-truncate" id="attachmentPreviewModalLabel">Preview</p>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+      </div>
+      <div class="modal-body text-center" id="attachment_preview_body"></div>
+      <div class="modal-footer">
+        <a id="attachment_preview_open" class="btn btn-sm btn-outline-secondary" href="#" target="_blank" rel="noopener">Open in new tab</a>
+      </div>
+    </div>
+  </div>
+</div>
 }
