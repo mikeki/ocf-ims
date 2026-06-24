@@ -438,3 +438,12 @@ h1 {
 #people .table-responsive {
   overflow: visible;
 }
+
+/* Cap the People roster's width: the page is a full-width container, but the
+   roster has only a handful of columns, so on a wide screen it stretches into a
+   sea of blank space that makes rows hard to scan across. Capping the card keeps
+   it readable on desktops; on narrower screens the cap exceeds the viewport, so
+   it's a no-op and the table stays full-width. */
+#people .card {
+  max-width: 60rem;
+}

@@ -78,12 +78,12 @@ templ People(deployment, versionName, versionRef, eventName string) {
               <label for="add_person_name">Name</label>
             </div>
             <div class="form-floating mb-3">
-              <input id="add_person_handle" type="text" class="form-control" autocomplete="off" placeholder="Handle" />
-              <label for="add_person_handle">Handle (for login)</label>
+              <input id="add_person_email" type="email" class="form-control" autocomplete="off" placeholder="Email" />
+              <label for="add_person_email">Email (for login)</label>
             </div>
             <div class="form-floating mb-3">
-              <input id="add_person_email" type="email" class="form-control" autocomplete="off" placeholder="Email" />
-              <label for="add_person_email">Email (optional)</label>
+              <input id="add_person_handle" type="text" class="form-control" autocomplete="off" placeholder="Handle" />
+              <label for="add_person_handle">Handle (optional)</label>
             </div>
             <div class="form-floating mb-3">
               <input id="add_person_password" type="password" class="form-control" autocomplete="new-password" placeholder="Password" />
@@ -112,7 +112,7 @@ templ People(deployment, versionName, versionRef, eventName string) {
                 <label for="add_person_participation">Role</label>
               </div>
             </div>
-            <div class="form-text">A person needs a name or a handle. A handle (and password) lets them log in.</div>
+            <div class="form-text">A person needs a name or a handle. To let them log in, give them a password plus an email — they can then sign in with their email or their handle.</div>
           </div>
           <div class="modal-footer">
             <button type="button" class="btn btn-primary" id="add_person_submit" onclick="submitCreatePerson()">Add person</button>
@@ -136,7 +136,7 @@ templ People(deployment, versionName, versionRef, eventName string) {
             </div>
             <div class="form-floating mb-3">
               <input id="edit_person_email" type="email" class="form-control" autocomplete="off" placeholder="Email" />
-              <label for="edit_person_email">Email</label>
+              <label for="edit_person_email">Email (for login)</label>
             </div>
             <div id="edit_person_event_section" class="hidden mt-3">
               <hr />
@@ -239,9 +239,9 @@ templ People(deployment, versionName, versionRef, eventName string) {
             <thead>
               <tr>
                 <th scope="col">Name</th>
+                <th scope="col">Role</th>
                 <th scope="col">Handle</th>
                 <th scope="col">Wristband</th>
-                <th scope="col">Role</th>
                 <th scope="col" class="text-end">Actions</th>
               </tr>
             </thead>
@@ -250,10 +250,12 @@ templ People(deployment, versionName, versionRef, eventName string) {
         </div>
         <template id="person_row_template">
           <tr data-person-id="">
-            <td class="person-name"></td>
-            <td class="person-handle text-body-secondary font-monospace small"></td>
             <td>
-              <span class="person-wristband badge text-bg-secondary hidden"></span>
+              <span class="person-name"></span>
+              <!-- Admin badge: shown by people.ts when the person is a global admin.
+                   is_admin is only present for admin viewers, so a non-admin inviter
+                   never sees it. -->
+              <span class="person-admin-badge badge rounded-pill text-bg-dark ms-1 hidden">admin</span>
             </td>
             <td>
               <!-- The role badge is a click-to-open menu (slice 52e): one click changes
@@ -263,6 +265,10 @@ templ People(deployment, versionName, versionRef, eventName string) {
                 <button type="button" class="person-participation badge text-bg-light dropdown-toggle border-0" data-bs-toggle="dropdown" aria-expanded="false" title="Change role"></button>
                 <ul class="person-participation-menu dropdown-menu"></ul>
               </span>
+            </td>
+            <td class="person-handle text-body-secondary font-monospace small"></td>
+            <td>
+              <span class="person-wristband badge text-bg-secondary hidden"></span>
             </td>
             <td class="text-end">
               <!-- Per-row actions kebab. people.ts shows/hides individual items per row
