@@ -193,3 +193,70 @@ func TestCrewLeaderInvite(t *testing.T) {
 	require.Equal(t, http.StatusCreated, resp.StatusCode)
 	require.NoError(t, resp.Body.Close())
 }
+
+// TestInviterRosterRead covers the 53d read-gating change: a non-admin inviter may
+// read the People roster for an event they hold the invite bit on (so the People tab
+// works for them), but the global / "show all" listings stay admin-only, and the
+// roster they get back withholds the admin-only email + admin-flag columns.
+func TestInviterRosterRead(t *testing.T) {
+	t.Parallel()
+	ctx := t.Context()
+
+	apisAdmin := ApiHelper{t: t, serverURL: shared.serverURL, jwt: jwtForAdmin(ctx, t)}
+	apisErin := ApiHelper{t: t, serverURL: shared.serverURL, jwt: jwtForErin(t, ctx)}
+	apisAlice := ApiHelper{t: t, serverURL: shared.serverURL, jwt: jwtForAlice(t, ctx)}
+
+	eventName := rand.NonCryptoText()
+	_, resp := apisAdmin.createEvent(ctx, imsjson.Event{Name: &eventName})
+	require.Equal(t, http.StatusNoContent, resp.StatusCode)
+	require.NoError(t, resp.Body.Close())
+	resp = apisAdmin.addCrewLeader(ctx, eventName, userErinHandle)
+	require.Equal(t, http.StatusNoContent, resp.StatusCode)
+	require.NoError(t, resp.Body.Close())
+
+	// Put a login-capable person (with an email) on the roster.
+	memberHandle := "RosterMember" + rand.NonCryptoText()
+	memberEmail := memberHandle + "@example.com"
+	resp = apisAdmin.createPerson(ctx, api.CreatePersonRequest{
+		Handle:            memberHandle,
+		Email:             memberEmail,
+		Password:          "rostermember-password-123",
+		Event:             eventName,
+		ParticipationType: "reporter",
+	})
+	require.Equal(t, http.StatusCreated, resp.StatusCode)
+	var member imsjson.Person
+	require.NoError(t, json.NewDecoder(resp.Body).Decode(&member))
+	require.NoError(t, resp.Body.Close())
+
+	// The crew leader can read the event roster...
+	roster, resp := apisErin.getEventRoster(ctx, eventName)
+	require.Equal(t, http.StatusOK, resp.StatusCode)
+	require.NoError(t, resp.Body.Close())
+	got := findPerson(t, roster, member.PersonID)
+	require.Equal(t, "reporter", got.ParticipationType)
+	// ...but the admin-only columns are withheld from a non-admin viewer.
+	require.Empty(t, got.Email, "inviter roster must not leak email")
+	require.False(t, got.IsAdmin, "inviter roster must not leak admin flag")
+
+	// The admin's view of the same roster DOES carry the email.
+	adminRoster, resp := apisAdmin.getEventRoster(ctx, eventName)
+	require.Equal(t, http.StatusOK, resp.StatusCode)
+	require.NoError(t, resp.Body.Close())
+	require.Equal(t, memberEmail, findPerson(t, adminRoster, member.PersonID).Email)
+
+	// "Show all people" (the full per-event listing) stays admin-only.
+	_, resp = apisErin.getAllPersonnelForEvent(ctx, eventName)
+	require.Equal(t, http.StatusForbidden, resp.StatusCode)
+	require.NoError(t, resp.Body.Close())
+
+	// The global (no-event) listing stays admin-only.
+	_, resp = apisErin.getAllPersonnel(ctx)
+	require.Equal(t, http.StatusForbidden, resp.StatusCode)
+	require.NoError(t, resp.Body.Close())
+
+	// A non-admin without the invite bit on the event can't read its roster either.
+	_, resp = apisAlice.getEventRoster(ctx, eventName)
+	require.Equal(t, http.StatusForbidden, resp.StatusCode)
+	require.NoError(t, resp.Body.Close())
+}

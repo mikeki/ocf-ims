@@ -34,30 +34,61 @@ declare global {
 
 const minPasswordLength = 8;
 
+type RoleRung = {value: string; label: string; hint: string};
+
 // The per-event standing rungs offered by the inline role menu on each roster row
 // (slice 52e). These are the "present at the fair" rungs, top (most access) to
 // bottom; picking one writes immediately via the participation endpoint. The
 // removal rungs (not_present / ejected) are intentionally NOT here — those stay
 // behind the "Remove from event" modal, which frames them with explanatory copy.
-const inlineRoleRungs: {value: string; label: string; hint: string}[] = [
+//
+// writer and crew_leader are admin-only (plan 53d): minting an inviter/writer stays
+// an admin act, so a non-admin inviter's menu tops out at reporter.
+const adminOnlyRungs: RoleRung[] = [
     {value: "writer", label: "Writer", hint: "full access"},
+    {value: "crew_leader", label: "Crew leader", hint: "own reports + invite"},
+];
+const inviterRungs: RoleRung[] = [
     {value: "reporter", label: "Reporter", hint: "own reports"},
     {value: "participant", label: "Participant", hint: "at the fair, no access"},
     {value: "public", label: "Public", hint: "attendee / on an incident"},
 ];
 
+// roleRungsForViewer returns the rungs the current viewer may assign via the inline
+// menu: an admin gets the full ladder, a non-admin inviter only reporter-and-below.
+function roleRungsForViewer(): RoleRung[] {
+    return isAdmin ? [...adminOnlyRungs, ...inviterRungs] : inviterRungs;
+}
+
+// targetAboveInviterCeiling reports whether a person's current per-event role is one
+// a non-admin inviter may not touch (writer / crew_leader) — the anti-escalation
+// ceiling mirrored from the server (53b). Admins are never ceilinged.
+function targetAboveInviterCeiling(type: string|null|undefined): boolean {
+    return type === "writer" || type === "crew_leader";
+}
+
 // participationBadgeClass picks a Bootstrap contextual color so the role stays
-// scannable down a long roster — the access-bearing rungs (writer/reporter) pop,
-// the kept-but-inactive states keep their slice-6j warning/secondary cues.
+// scannable down a long roster — the access-bearing rungs (writer/crew_leader/
+// reporter) pop, the kept-but-inactive states keep their slice-6j warning/secondary
+// cues.
 function participationBadgeClass(type: string): string {
     switch (type) {
         case "writer": return "text-bg-primary";
+        case "crew_leader": return "text-bg-success";
         case "reporter": return "text-bg-info";
         case "ejected": return "text-bg-warning";
         case "not_present": return "text-bg-secondary";
         default: return "text-bg-light"; // participant, public
     }
 }
+
+// Page-level capability flags, set in initPeoplePage from the caller's auth:
+//   isAdmin   — holds GlobalAdministratePersonnel: the full People powers (edit
+//               profiles, reset passwords, toggle admin, assign any rung).
+//   canInvite — holds EventInviteReporters on the (pinned) event: a writer or crew
+//               leader who may invite reporters and manage reporter-or-below roster.
+let isAdmin = false;
+let canInvite = false;
 
 // Remembers the last event the People page was scoped to, so per-event wristband
 // and participation are shown (and editable) again on the next visit.
@@ -72,7 +103,13 @@ const el = {
     setPasswordHandle: ims.typedElement("set_password_handle", HTMLElement),
     setPasswordInput: ims.typedElement("set_password_input", HTMLInputElement),
     setPasswordConfirm: ims.typedElement("set_password_confirm", HTMLInputElement),
+    addPersonButton: ims.typedElement("add_person_button", HTMLButtonElement),
     addPersonModal: ims.typedElement("addPersonModal", HTMLElement),
+    addPersonModalLabel: ims.typedElement("addPersonModalLabel", HTMLElement),
+    addPersonSubmit: ims.typedElement("add_person_submit", HTMLButtonElement),
+    addPersonInviteNote: ims.typedElement("add_person_invite_note", HTMLElement),
+    addPersonWristbandWrap: ims.typedElement("add_person_wristband_wrap", HTMLElement),
+    addPersonParticipationWrap: ims.typedElement("add_person_participation_wrap", HTMLElement),
     addPersonName: ims.typedElement("add_person_name", HTMLInputElement),
     addPersonHandle: ims.typedElement("add_person_handle", HTMLInputElement),
     addPersonEmail: ims.typedElement("add_person_email", HTMLInputElement),
@@ -116,10 +153,20 @@ async function initPeoplePage(): Promise<void> {
     }
     // Read the event from the path *after* commonPageInit() has populated pathIds.
     const urlEvent: string|null = ims.pathIds.eventName;
-    if (!initResult.authInfo.canManagePersonnel) {
-        ims.setErrorMessage("You do not have permission to manage people.");
-        ims.hideLoadingOverlay();
-        return;
+    isAdmin = initResult.authInfo.canManagePersonnel;
+    // ims.eventAccess is the access map for the URL event (null on the no-event admin
+    // doorway), so inviteReporters here means "may invite on the pinned event".
+    canInvite = ims.eventAccess?.inviteReporters ?? false;
+    if (!isAdmin) {
+        // A non-admin inviter manages people only through the event-scoped doorway,
+        // and only for an event they may invite reporters to. The global/no-event
+        // admin doorway and everything it allows (profiles, passwords, admin) stay
+        // admin-only.
+        if (urlEvent == null || !canInvite) {
+            ims.setErrorMessage("You don't have permission to manage people for this event.");
+            ims.hideLoadingOverlay();
+            return;
+        }
     }
 
     window.changeEvent = changeEvent;
@@ -131,6 +178,10 @@ async function initPeoplePage(): Promise<void> {
     window.submitEditPerson = submitEditPerson;
     window.submitMarkParticipation = submitMarkParticipation;
     window.submitRemoveFromEvent = submitRemoveFromEvent;
+
+    // The top button is a full "Add person" form for admins, a scoped "Invite
+    // reporter" for a non-admin inviter (53d).
+    el.addPersonButton.textContent = isAdmin ? "Add person" : "Invite reporter";
 
     await loadEventOptions();
 
@@ -229,7 +280,9 @@ function reflectEventSelection(): void {
     el.editPersonEventSection.classList.toggle("hidden", !hasEvent);
     el.addPersonEventName.textContent = currentEvent;
     el.editPersonEventName.textContent = currentEvent;
-    el.showAllWrap.classList.toggle("hidden", !hasEvent);
+    // "Show all people" lists everyone for the event (admin-only listing); a non-admin
+    // inviter only ever sees the event roster, so the toggle stays hidden for them.
+    el.showAllWrap.classList.toggle("hidden", !hasEvent || !isAdmin);
     // The "add an existing person" search only makes sense with an event to add to.
     el.addPersonSearchSection.classList.toggle("hidden", !hasEvent);
     el.addPersonSearchEvent.textContent = currentEvent;
@@ -297,47 +350,60 @@ function drawPeople(): void {
         const participationMenu: HTMLElement = entryItem.querySelector(".person-participation-menu")!;
         drawParticipationDropdown(person, participationWrap, participationButton, participationMenu);
 
+        // Whether the viewer may manage this target's roster role / removal. Admins
+        // may manage anyone; a non-admin inviter only a reporter-or-below target
+        // (never a writer/crew_leader — the 53b ceiling, mirrored in the UI).
+        const canManageTarget = isAdmin || (canInvite && !targetAboveInviterCeiling(person.participation_type));
+
+        // Edit profile, reset an existing password, and toggle admin are all
+        // admin-only (53d): a non-admin inviter sets only an *initial* password on
+        // invite and never edits profiles or admin status.
         const showPassword: HTMLElement = entryItem.querySelector(".show-set-password-modal")!;
         const adminToggle: HTMLButtonElement = entryItem.querySelector(".toggle-admin")!;
-        if (!person.handle) {
-            // Login-only actions don't apply to a handle-less registry person.
+        const showEdit: HTMLElement = entryItem.querySelector(".show-edit-modal")!;
+        if (!isAdmin) {
             showPassword.classList.add("hidden");
             adminToggle.classList.add("hidden");
+            showEdit.classList.add("hidden");
         } else {
-            showPassword.addEventListener("click",
+            showEdit.addEventListener("click",
                 function (_e: MouseEvent): void {
-                    el.setPasswordModal.dataset["personId"] = (person.person_id ?? "").toString();
-                    el.setPasswordHandle.textContent = person.handle;
-                    el.setPasswordInput.value = "";
-                    el.setPasswordConfirm.value = "";
-                    setPasswordModal.show();
+                    el.editPersonModal.dataset["personId"] = (person.person_id ?? "").toString();
+                    el.editPersonHandle.textContent = label;
+                    el.editPersonName.value = person.name ?? "";
+                    el.editPersonEmail.value = person.email ?? "";
+                    el.editPersonWristband.value = person.wristband ?? "";
+                    el.editPersonParticipation.value = person.participation_type ?? "";
+                    ims.bsModal(el.editPersonModal).show();
                 },
             );
-            drawAdminToggle(adminToggle, person.is_admin ?? false);
-            adminToggle.addEventListener("click",
-                function (_e: MouseEvent): void {
-                    void toggleAdmin(person, adminToggle);
-                },
-            );
+            if (!person.handle) {
+                // Login-only actions don't apply to a handle-less registry person.
+                showPassword.classList.add("hidden");
+                adminToggle.classList.add("hidden");
+            } else {
+                showPassword.addEventListener("click",
+                    function (_e: MouseEvent): void {
+                        el.setPasswordModal.dataset["personId"] = (person.person_id ?? "").toString();
+                        el.setPasswordHandle.textContent = person.handle;
+                        el.setPasswordInput.value = "";
+                        el.setPasswordConfirm.value = "";
+                        setPasswordModal.show();
+                    },
+                );
+                drawAdminToggle(adminToggle, person.is_admin ?? false);
+                adminToggle.addEventListener("click",
+                    function (_e: MouseEvent): void {
+                        void toggleAdmin(person, adminToggle);
+                    },
+                );
+            }
         }
 
-        const showEdit: HTMLElement = entryItem.querySelector(".show-edit-modal")!;
-        showEdit.addEventListener("click",
-            function (_e: MouseEvent): void {
-                el.editPersonModal.dataset["personId"] = (person.person_id ?? "").toString();
-                el.editPersonHandle.textContent = label;
-                el.editPersonName.value = person.name ?? "";
-                el.editPersonEmail.value = person.email ?? "";
-                el.editPersonWristband.value = person.wristband ?? "";
-                el.editPersonParticipation.value = person.participation_type ?? "";
-                ims.bsModal(el.editPersonModal).show();
-            },
-        );
-
         // "Remove from event" applies only to someone on the event roster (they have
-        // a participation row), so it's shown only with an event selected and a type.
+        // a participation row), and only to a target the viewer may manage.
         const showRemove: HTMLElement = entryItem.querySelector(".show-remove-modal")!;
-        if (currentEvent && person.participation_type) {
+        if (currentEvent && person.participation_type && canManageTarget) {
             showRemove.classList.remove("hidden");
             entryItem.querySelector(".show-remove-divider")!.classList.remove("hidden");
             showRemove.addEventListener("click",
@@ -351,6 +417,11 @@ function drawPeople(): void {
                     ims.bsModal(el.removeFromEventModal).show();
                 },
             );
+        }
+
+        // With no actions available to this viewer for this row, drop the empty kebab.
+        if (entryItem.querySelectorAll(".person-actions .dropdown-item:not(.hidden)").length === 0) {
+            entryItem.querySelector(".person-actions-toggle")!.classList.add("hidden");
         }
 
         container.append(entryItemFrag);
@@ -389,12 +460,27 @@ function drawParticipationDropdown(
         return;
     }
     wrap.classList.remove("hidden");
+
+    // A non-admin inviter may change roles only on a reporter-or-below target (the
+    // 53b ceiling). When they can't, the badge is shown but is a plain, non-clickable
+    // label — no dropdown toggle, no menu.
+    const editable = isAdmin || (canInvite && !targetAboveInviterCeiling(type));
+    if (!editable) {
+        button.textContent = type.replace("_", " ");
+        button.className = `person-participation badge border-0 ${participationBadgeClass(type)}`;
+        button.removeAttribute("data-bs-toggle");
+        button.setAttribute("disabled", "true");
+        button.setAttribute("aria-label", `Role: ${type.replace("_", " ")}`);
+        menu.replaceChildren();
+        return;
+    }
+
     button.textContent = type.replace("_", " ");
     button.className = `person-participation badge dropdown-toggle border-0 ${participationBadgeClass(type)}`;
     button.setAttribute("aria-label", `Role: ${type.replace("_", " ")}. Change.`);
 
     menu.replaceChildren();
-    for (const rung of inlineRoleRungs) {
+    for (const rung of roleRungsForViewer()) {
         const li = document.createElement("li");
         const item = document.createElement("button");
         item.type = "button";
@@ -510,6 +596,17 @@ function showAddPersonModal(): void {
     el.addPersonPassword.value = "";
     el.addPersonWristband.value = "";
     el.addPersonParticipation.value = "";
+
+    // Admins get the full Add-person form (all rungs, wristband). A non-admin inviter
+    // gets the scoped "Invite reporter" form: identity + initial password, role fixed
+    // to reporter — so the wristband + role pickers are hidden and a note explains it
+    // (53d). The server enforces the same ceiling regardless of the UI.
+    el.addPersonModalLabel.textContent = isAdmin ? "Add Person" : "Invite reporter";
+    el.addPersonSubmit.textContent = isAdmin ? "Add person" : "Invite";
+    el.addPersonWristbandWrap.classList.toggle("hidden", !isAdmin);
+    el.addPersonParticipationWrap.classList.toggle("hidden", !isAdmin);
+    el.addPersonInviteNote.classList.toggle("hidden", isAdmin);
+
     ims.bsModal(el.addPersonModal).show();
 }
 
@@ -536,8 +633,13 @@ async function submitCreatePerson(): Promise<void> {
     };
     if (currentEvent) {
         body["event"] = currentEvent;
-        body["wristband"] = el.addPersonWristband.value.trim();
-        body["participation_type"] = el.addPersonParticipation.value;
+        if (isAdmin) {
+            body["wristband"] = el.addPersonWristband.value.trim();
+            body["participation_type"] = el.addPersonParticipation.value;
+        } else {
+            // Invite flow: role is fixed to reporter (the server enforces this too).
+            body["participation_type"] = "reporter";
+        }
     }
 
     const {err} = await ims.fetchNoThrow(url_personnel, {
@@ -601,8 +703,9 @@ async function enrollPerson(person: ims.PersonSearchResult): Promise<void> {
     }
     const {err} = await ims.fetchNoThrow(participationUrl((person.person_id ?? "").toString()), {
         body: JSON.stringify({
-            "participation_type": el.addPersonParticipation.value,
-            "wristband": el.addPersonWristband.value.trim(),
+            // Invite flow fixes the role to reporter; admins use the modal's picker.
+            "participation_type": isAdmin ? el.addPersonParticipation.value : "reporter",
+            "wristband": isAdmin ? el.addPersonWristband.value.trim() : "",
         }),
     });
     if (err != null) {
