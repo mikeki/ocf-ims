@@ -40,10 +40,15 @@ func nullInt32(v int32) sql.NullInt32 {
 // (you aren't told about your own action), and a notification for nobody
 // (recipient <= 0) is skipped. Callers pass the dbtx so generation rides the
 // same transaction as the triggering write.
+// createNotification inserts one notification. Self-notifications are suppressed
+// (you aren't told about your own action), and a notification for nobody
+// (recipient <= 0) is skipped. incidentNumber/reportNumber are the type-dependent
+// source (a notification carries at most one). Callers pass the dbtx so
+// generation rides the same transaction as the triggering write.
 func createNotification(
 	ctx context.Context, db *store.DBQ, dbtx imsdb.DBTX,
 	recipientPersonID int32, notifType imsdb.NotificationType,
-	eventID int32, incidentNumber, journalEntryID sql.NullInt32, actorPersonID int32,
+	eventID int32, incidentNumber, reportNumber, journalEntryID sql.NullInt32, actorPersonID int32,
 ) *herr.HTTPError {
 	if recipientPersonID <= 0 || recipientPersonID == actorPersonID {
 		return nil
@@ -53,6 +58,7 @@ func createNotification(
 		Type:              notifType,
 		Event:             eventID,
 		IncidentNumber:    incidentNumber,
+		ReportNumber:      reportNumber,
 		JournalEntry:      journalEntryID,
 		ActorPersonID:     nullInt32(actorPersonID),
 		Created:           conv.TimeToFloat(time.Now()),
@@ -63,13 +69,14 @@ func createNotification(
 	return nil
 }
 
-// generateMentionNotifications creates a "mentioned" notification for each person
-// mentioned by a journal entry (plan 82, driven by plan 81's mention rows). The
-// recipients are read back from the persisted mention rows, so the IDs are valid
+// generateMentionNotificationsFor creates a "mentioned" notification for each
+// person mentioned by a journal entry (plan 82, driven by plan 81's mention
+// rows), linked to whichever source — incident or report — the entry belongs to.
+// Recipients are read back from the persisted mention rows, so the IDs are valid
 // and deduped; the actor (the entry's author) is skipped by createNotification.
-func generateMentionNotifications(
+func generateMentionNotificationsFor(
 	ctx context.Context, db *store.DBQ, dbtx imsdb.DBTX,
-	eventID, incidentNumber, journalEntryID, actorPersonID int32,
+	eventID int32, incidentNumber, reportNumber sql.NullInt32, journalEntryID, actorPersonID int32,
 ) *herr.HTTPError {
 	personIDs, err := db.JournalEntryMentionPersonIDs(ctx, dbtx, journalEntryID)
 	if err != nil {
@@ -77,12 +84,32 @@ func generateMentionNotifications(
 	}
 	for _, personID := range personIDs {
 		errHTTP := createNotification(ctx, db, dbtx, personID, imsdb.NotificationTypeMentioned,
-			eventID, nullInt32(incidentNumber), nullInt32(journalEntryID), actorPersonID)
+			eventID, incidentNumber, reportNumber, nullInt32(journalEntryID), actorPersonID)
 		if errHTTP != nil {
 			return errHTTP.From("[createNotification]")
 		}
 	}
 	return nil
+}
+
+// generateMentionNotifications notifies the people mentioned in an incident
+// journal entry.
+func generateMentionNotifications(
+	ctx context.Context, db *store.DBQ, dbtx imsdb.DBTX,
+	eventID, incidentNumber, journalEntryID, actorPersonID int32,
+) *herr.HTTPError {
+	return generateMentionNotificationsFor(ctx, db, dbtx, eventID,
+		nullInt32(incidentNumber), sql.NullInt32{}, journalEntryID, actorPersonID)
+}
+
+// generateReportMentionNotifications notifies the people mentioned in a field
+// report journal entry.
+func generateReportMentionNotifications(
+	ctx context.Context, db *store.DBQ, dbtx imsdb.DBTX,
+	eventID, reportNumber, journalEntryID, actorPersonID int32,
+) *herr.HTTPError {
+	return generateMentionNotificationsFor(ctx, db, dbtx, eventID,
+		sql.NullInt32{}, nullInt32(reportNumber), journalEntryID, actorPersonID)
 }
 
 // generateAddedToIncidentNotification tells a person they were added to an
@@ -92,7 +119,7 @@ func generateAddedToIncidentNotification(
 	eventID, incidentNumber, recipientPersonID, actorPersonID int32,
 ) *herr.HTTPError {
 	errHTTP := createNotification(ctx, db, dbtx, recipientPersonID, imsdb.NotificationTypeAddedToIncident,
-		eventID, nullInt32(incidentNumber), sql.NullInt32{}, actorPersonID)
+		eventID, nullInt32(incidentNumber), sql.NullInt32{}, sql.NullInt32{}, actorPersonID)
 	if errHTTP != nil {
 		return errHTTP.From("[createNotification]")
 	}
@@ -111,6 +138,8 @@ func notificationToJSON(row imsdb.NotificationsForPersonRow) imsjson.Notificatio
 		Event:           row.EventName.String,
 		IncidentNumber:  conv.SqlToInt32(row.IncidentNumber),
 		IncidentSummary: row.IncidentSummary.String,
+		ReportNumber:    conv.SqlToInt32(row.ReportNumber),
+		ReportSummary:   row.ReportSummary.String,
 		JournalEntryID:  conv.SqlToInt32(row.JournalEntry),
 		Actor:           actor,
 		Created:         conv.FloatToTime(row.Created),

@@ -497,6 +497,8 @@ export interface Notification {
     event?: string|null;
     incident_number?: number|null;
     incident_summary?: string|null;
+    report_number?: number|null;
+    report_summary?: string|null;
     journal_entry_id?: number|null;
     actor?: string|null;
     created?: string|null;
@@ -514,8 +516,15 @@ let notificationsWired = false;
 let notificationsChannel: BroadcastChannelTyped<IncidentBroadcast>|null = null;
 
 function notificationHref(n: Notification): string {
-    if (n.event && n.incident_number != null) {
-        return `/ims/app/events/${encodeURIComponent(n.event)}/incidents/${n.incident_number}`;
+    if (!n.event) {
+        return "#";
+    }
+    const base = `/ims/app/events/${encodeURIComponent(n.event)}`;
+    if (n.incident_number != null) {
+        return `${base}/incidents/${n.incident_number}`;
+    }
+    if (n.report_number != null) {
+        return `${base}/reports/${n.report_number}`;
     }
     return "#";
 }
@@ -524,7 +533,10 @@ function notificationText(n: Notification): string {
     const who = n.actor || "Someone";
     switch (n.type) {
         case "mentioned":
-            return `${who} mentioned you`;
+            // A mention can be on an incident or a field report.
+            return n.report_number != null
+                ? `${who} mentioned you in a report`
+                : `${who} mentioned you`;
         case "added_to_incident":
             return `${who} added you to an incident`;
         default:
@@ -534,11 +546,17 @@ function notificationText(n: Notification): string {
 
 function notificationMeta(n: Notification): string {
     const parts: string[] = [];
+    // A notification links to either an incident or a report.
     if (n.incident_number != null) {
         parts.push(`#${n.incident_number}`);
-    }
-    if (n.incident_summary) {
-        parts.push(n.incident_summary);
+        if (n.incident_summary) {
+            parts.push(n.incident_summary);
+        }
+    } else if (n.report_number != null) {
+        parts.push(`FR #${n.report_number}`);
+        if (n.report_summary) {
+            parts.push(n.report_summary);
+        }
     }
     if (n.created) {
         parts.push(new Date(n.created).toLocaleString());

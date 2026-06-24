@@ -26,6 +26,8 @@ type Notification struct {
 	Event           string    `json:"event"`
 	IncidentNumber  *int32    `json:"incident_number,omitempty"`
 	IncidentSummary string    `json:"incident_summary,omitempty"`
+	ReportNumber    *int32    `json:"report_number,omitempty"`
+	ReportSummary   string    `json:"report_summary,omitempty"`
 	JournalEntryID  *int32    `json:"journal_entry_id,omitempty"`
 	Actor           string    `json:"actor,omitempty"`
 	Created         time.Time `json:"created,omitzero"`

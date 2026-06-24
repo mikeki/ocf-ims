@@ -360,6 +360,10 @@ func (action EditReport) editReport(req *http.Request) *herr.HTTPError {
 		if errHTTP != nil {
 			return errHTTP.From("[addJournalEntryMentions]")
 		}
+		errHTTP = generateReportMentionNotifications(ctx, action.imsDBQ, txn, event.ID, storedReport.Number, entryID, authorPersonID)
+		if errHTTP != nil {
+			return errHTTP.From("[generateReportMentionNotifications]")
+		}
 	}
 
 	err = txn.Commit()
@@ -537,6 +541,10 @@ func (action NewReport) newReport(req *http.Request) (reportNumber int32, locati
 		errHTTP = addJournalEntryMentions(ctx, action.imsDBQ, txn, entryID, entry.MentionedPersonIDs)
 		if errHTTP != nil {
 			return 0, "", errHTTP.From("[addJournalEntryMentions]")
+		}
+		errHTTP = generateReportMentionNotifications(ctx, action.imsDBQ, txn, event.ID, report.Number, entryID, authorPersonID)
+		if errHTTP != nil {
+			return 0, "", errHTTP.From("[generateReportMentionNotifications]")
 		}
 	}
 

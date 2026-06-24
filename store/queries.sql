@@ -353,24 +353,26 @@ select PERSON_ID from JOURNAL_ENTRY__MENTION where JOURNAL_ENTRY = ?;
 
 -- name: CreateNotification :exec
 insert into NOTIFICATION (
-    RECIPIENT_PERSON_ID, TYPE, EVENT, INCIDENT_NUMBER, JOURNAL_ENTRY, ACTOR_PERSON_ID, CREATED
+    RECIPIENT_PERSON_ID, TYPE, EVENT, INCIDENT_NUMBER, REPORT_NUMBER, JOURNAL_ENTRY, ACTOR_PERSON_ID, CREATED
 ) values (
-    ?, ?, ?, ?, ?, ?, ?
+    ?, ?, ?, ?, ?, ?, ?, ?
 );
 
 -- name: NotificationsForPerson :many
 -- A person's most recent notifications, enriched for display (event name,
--- incident summary, actor handle/name).
+-- incident or report summary, actor handle/name).
 select
-    n.ID, n.TYPE, n.EVENT, n.INCIDENT_NUMBER, n.JOURNAL_ENTRY,
+    n.ID, n.TYPE, n.EVENT, n.INCIDENT_NUMBER, n.REPORT_NUMBER, n.JOURNAL_ENTRY,
     n.ACTOR_PERSON_ID, n.CREATED, n.READ_AT,
     e.NAME as EVENT_NAME,
     i.SUMMARY as INCIDENT_SUMMARY,
+    r.SUMMARY as REPORT_SUMMARY,
     actor.HANDLE as ACTOR_HANDLE,
     actor.NAME as ACTOR_NAME
 from NOTIFICATION n
     left join `EVENT` e on e.ID = n.EVENT
     left join INCIDENT i on i.EVENT = n.EVENT and i.NUMBER = n.INCIDENT_NUMBER
+    left join REPORT r on r.EVENT = n.EVENT and r.NUMBER = n.REPORT_NUMBER
     left join PERSON actor on actor.ID = n.ACTOR_PERSON_ID
 where n.RECIPIENT_PERSON_ID = ?
 order by n.CREATED desc

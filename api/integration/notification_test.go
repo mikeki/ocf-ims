@@ -57,58 +57,88 @@ func TestNotifications(t *testing.T) {
 		}},
 	})
 
-	// Dave has one unread "mentioned" notification pointing at the incident.
-	daveNotifs, resp := dave.getNotifications(ctx)
-	require.Equal(t, http.StatusOK, resp.StatusCode)
-	require.NoError(t, resp.Body.Close())
-	require.Equal(t, int64(1), daveNotifs.Unread)
-	require.Len(t, daveNotifs.Notifications, 1)
-	require.Equal(t, "mentioned", daveNotifs.Notifications[0].Type)
-	require.Equal(t, eventName, daveNotifs.Notifications[0].Event)
-	require.NotNil(t, daveNotifs.Notifications[0].IncidentNumber)
-	require.Equal(t, num, *daveNotifs.Notifications[0].IncidentNumber)
-	require.NotEmpty(t, daveNotifs.Notifications[0].Actor)
-	require.False(t, daveNotifs.Notifications[0].Read)
+	// Assertions are scoped to THIS test's event: notifications are global per
+	// person and these seed users are shared with other parallel tests (e.g. Dave
+	// is also attached to an incident in TestIncidentGrant), so a global count
+	// would be racy.
+	daveForEvent := dave.notificationsForEvent(ctx, eventName)
+	require.Len(t, daveForEvent, 1)
+	require.Equal(t, "mentioned", daveForEvent[0].Type)
+	require.NotNil(t, daveForEvent[0].IncidentNumber)
+	require.Equal(t, num, *daveForEvent[0].IncidentNumber)
+	require.NotEmpty(t, daveForEvent[0].Actor)
+	require.False(t, daveForEvent[0].Read)
 
-	// Alice — the actor — has nothing (self-mention suppressed).
-	aliceNotifs, resp := alice.getNotifications(ctx)
-	require.Equal(t, http.StatusOK, resp.StatusCode)
-	require.NoError(t, resp.Body.Close())
-	require.Equal(t, int64(0), aliceNotifs.Unread)
-	require.Empty(t, aliceNotifs.Notifications)
+	// Alice — the actor — has nothing for this event (self-mention suppressed).
+	require.Empty(t, alice.notificationsForEvent(ctx, eventName))
 
 	// Alice adds Erin to the incident's involvement -> Erin is notified.
 	resp = alice.attachPersonToIncident(ctx, eventName, num, userErinPersonID)
 	require.Equal(t, http.StatusNoContent, resp.StatusCode)
 	require.NoError(t, resp.Body.Close())
 
-	erinNotifs, resp := erin.getNotifications(ctx)
-	require.Equal(t, http.StatusOK, resp.StatusCode)
-	require.NoError(t, resp.Body.Close())
-	require.Equal(t, int64(1), erinNotifs.Unread)
-	require.Len(t, erinNotifs.Notifications, 1)
-	require.Equal(t, "added_to_incident", erinNotifs.Notifications[0].Type)
-	require.Equal(t, num, *erinNotifs.Notifications[0].IncidentNumber)
+	erinForEvent := erin.notificationsForEvent(ctx, eventName)
+	require.Len(t, erinForEvent, 1)
+	require.Equal(t, "added_to_incident", erinForEvent[0].Type)
+	require.Equal(t, num, *erinForEvent[0].IncidentNumber)
 
 	// Re-attaching Erin (an involvement edit) must NOT create a second
 	// notification — only a genuine new add notifies.
 	resp = alice.attachPersonToIncident(ctx, eventName, num, userErinPersonID)
 	require.Equal(t, http.StatusNoContent, resp.StatusCode)
 	require.NoError(t, resp.Body.Close())
-	erinNotifs, resp = erin.getNotifications(ctx)
-	require.Equal(t, http.StatusOK, resp.StatusCode)
-	require.NoError(t, resp.Body.Close())
-	require.Equal(t, int64(1), erinNotifs.Unread)
-	require.Len(t, erinNotifs.Notifications, 1)
+	require.Len(t, erin.notificationsForEvent(ctx, eventName), 1)
 
-	// Dave marks all read: the notification stays but its unread count drops.
+	// Dave marks all read: the notification stays but is now read.
 	resp = dave.markAllNotificationsRead(ctx)
 	require.Equal(t, http.StatusNoContent, resp.StatusCode)
 	require.NoError(t, resp.Body.Close())
-	daveNotifs, resp = dave.getNotifications(ctx)
-	require.Equal(t, http.StatusOK, resp.StatusCode)
+	daveForEvent = dave.notificationsForEvent(ctx, eventName)
+	require.Len(t, daveForEvent, 1)
+	require.True(t, daveForEvent[0].Read)
+}
+
+// TestReportMentionNotification verifies a "mentioned" notification is generated
+// for an @mention in a field-report journal entry, linked to the report (not an
+// incident) — the report mirror of the incident-mention path.
+//
+// The mentioned recipient is the admin user, deliberately disjoint from the
+// recipients in TestNotifications (Dave/Erin): notifications are global per
+// person, so two parallel tests notifying the same person would clash on count.
+// We match this test's own notification by report number rather than asserting
+// an exact unread count, for the same reason.
+func TestReportMentionNotification(t *testing.T) {
+	t.Parallel()
+	ctx := t.Context()
+
+	admin := ApiHelper{t: t, serverURL: shared.serverURL, jwt: jwtForAdmin(ctx, t)}
+	alice := ApiHelper{t: t, serverURL: shared.serverURL, jwt: jwtForAlice(t, ctx)}
+
+	eventName := rand.NonCryptoText()
+	_, resp := admin.createEvent(ctx, imsjson.Event{Name: &eventName})
+	require.Equal(t, http.StatusNoContent, resp.StatusCode)
 	require.NoError(t, resp.Body.Close())
-	require.Equal(t, int64(0), daveNotifs.Unread)
-	require.Len(t, daveNotifs.Notifications, 1)
-	require.True(t, daveNotifs.Notifications[0].Read)
+	resp = admin.addWriter(ctx, eventName, userAliceHandle)
+	require.Equal(t, http.StatusNoContent, resp.StatusCode)
+	require.NoError(t, resp.Body.Close())
+
+	summary := "report that mentions someone"
+	reportNum := alice.newReportSuccess(ctx, imsjson.Report{
+		Event:   eventName,
+		Summary: &summary,
+		JournalEntries: []imsjson.JournalEntry{{
+			Text:               "Hey @" + userAdminHandle + ", please review.",
+			MentionedPersonIDs: []int32{userAdminPersonID},
+		}},
+	})
+
+	forEvent := admin.notificationsForEvent(ctx, eventName)
+	require.Len(t, forEvent, 1, "exactly one notification for this event")
+	n := forEvent[0]
+	require.Equal(t, "mentioned", n.Type)
+	require.NotNil(t, n.ReportNumber)
+	require.Equal(t, reportNum, *n.ReportNumber)
+	require.Nil(t, n.IncidentNumber, "a report mention links to a report, not an incident")
+	require.NotEmpty(t, n.Actor)
+	require.False(t, n.Read)
 }
