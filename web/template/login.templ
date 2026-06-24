@@ -39,12 +39,13 @@ templ Login(deployment, versionName, versionRef string) {
   Please log in with your IMS credentials.
 </p>
 
-<div class="form-floating mb-3">
+<div class="form-floating mb-1">
   <input id="username_input" type="text" name="username" inputmode="latin-name"
          class="form-control text-size-normal"
-         autocomplete="username" placeholder="name@example.com"/>
-  <label for="username_input">Email address</label>
+         autocomplete="username" placeholder="name@example.com or handle"/>
+  <label for="username_input">Email or handle</label>
 </div>
+<div class="form-text mb-3">You can sign in with either your email address or your handle.</div>
 
 <div class="input-group mb-3">
   <div class="form-floating">

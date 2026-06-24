@@ -16,16 +16,12 @@
 
 package template
 
-templ Footer(versionName, versionRef string) {
-<footer>
-  <div class="no-print">
-    <hr class="footer-hr"/>
-    <p class="footer-text text-center">
-    IMS © Oregon Country Fair & Maybloom.
-    Data in IMS is strictly confidential.
-    Access is logged.
-    <br /><a class="link-body-emphasis font-monospace" title={"Built from commit " + versionRef} href={"https://github.com/mikeki/ocf-ims/commit/" + versionRef}>{shortRef(versionRef)}</a>
-    </p>
-  </div>
-</footer>
+// shortRef returns the first 8 characters of a git revision (or the whole string
+// if it's shorter), for a compact commit-SHA display in the footer.
+func shortRef(ref string) string {
+	const shortLen = 8
+	if len(ref) > shortLen {
+		return ref[:shortLen]
+	}
+	return ref
 }

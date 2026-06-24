@@ -340,6 +340,12 @@ function drawPeople(): void {
         entryItem.getElementsByClassName("person-handle")[0]!.textContent =
             (person.name && person.handle) ? person.handle : "";
 
+        // Admin badge next to the name. is_admin is only sent to admin viewers (53d),
+        // so a non-admin inviter never sees it (and it stays hidden).
+        if (person.is_admin) {
+            entryItem.querySelector(".person-admin-badge")!.classList.remove("hidden");
+        }
+
         const wristband: HTMLElement = entryItem.querySelector(".person-wristband")!;
         if (person.wristband) {
             wristband.textContent = person.wristband;
@@ -377,15 +383,17 @@ function drawPeople(): void {
                     ims.bsModal(el.editPersonModal).show();
                 },
             );
-            if (!person.handle) {
-                // Login-only actions don't apply to a handle-less registry person.
+            if (!person.handle && !person.email) {
+                // Login-only actions apply only to someone who can log in. Login is by
+                // email OR handle, so a registry person with neither (no way to sign
+                // in) gets no password/admin controls.
                 showPassword.classList.add("hidden");
                 adminToggle.classList.add("hidden");
             } else {
                 showPassword.addEventListener("click",
                     function (_e: MouseEvent): void {
                         el.setPasswordModal.dataset["personId"] = (person.person_id ?? "").toString();
-                        el.setPasswordHandle.textContent = person.handle;
+                        el.setPasswordHandle.textContent = label;
                         el.setPasswordInput.value = "";
                         el.setPasswordConfirm.value = "";
                         setPasswordModal.show();
@@ -532,10 +540,12 @@ async function setParticipationInline(person: ims.Personnel, participation: stri
     await loadAndDrawPeople();
 }
 
+// drawAdminToggle labels the kebab's admin item by what clicking it does: "Remove
+// admin" for a current admin, "Make admin" otherwise (the param is the person's
+// current admin state).
 function drawAdminToggle(button: HTMLButtonElement, isAdmin: boolean): void {
-    button.textContent = isAdmin ? "Admin ✓" : "Admin";
-    button.classList.toggle("btn-warning", isAdmin);
-    button.classList.toggle("btn-outline-secondary", !isAdmin);
+    button.textContent = isAdmin ? "Remove admin" : "Make admin";
+    button.classList.toggle("text-danger", isAdmin);
     button.setAttribute("aria-pressed", isAdmin ? "true" : "false");
 }
 
