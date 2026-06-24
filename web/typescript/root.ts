@@ -35,10 +35,17 @@ async function initRootPage(): Promise<void> {
     }
     const result = await ims.commonPageInit();
 
-    const currentYearLink = document.getElementById("current-year-link");
+    const currentYearLink = document.getElementById("current-year-link") as HTMLAnchorElement|null;
     const loginButton = document.getElementById("login-button");
 
     if (result.authInfo.authenticated) {
+        // Point the "jump to the current event" link at the active (newest) event
+        // the user can see, rather than the hardcoded year baked into the template.
+        const newest = ims.newestEvent((await result.eventDatas) ?? []);
+        if (currentYearLink != null && newest != null) {
+            currentYearLink.href = url_viewIncidents.replace("<event_id>", newest.name);
+            currentYearLink.textContent = `Jump to the ${newest.name} event`;
+        }
         currentYearLink?.focus();
     } else {
         loginButton?.focus();
