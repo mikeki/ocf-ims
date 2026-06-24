@@ -26,6 +26,21 @@ type JournalEntry struct {
 	Text        string     `json:"text"`
 	Stricken    *bool      `json:"stricken"`
 	Attachment  Attachment `json:"attachment,omitzero"`
+
+	// Mentions (plan 81). On write, the client sends MentionedPersonIDs — the
+	// people picked via the "@" typeahead while composing the entry. On read,
+	// Mentions is the resolved list (id + handle/name) for rendering and linking.
+	MentionedPersonIDs []int32   `json:"mentioned_person_ids,omitempty"`
+	Mentions           []Mention `json:"mentions,omitempty"`
+}
+
+// Mention is a person referenced by an "@mention" in a journal entry, resolved
+// for display. PersonID is the authoritative registry key; Handle/Name are for
+// rendering and may be empty (a login-less person has no handle).
+type Mention struct {
+	PersonID int32  `json:"person_id"`
+	Handle   string `json:"handle,omitempty"`
+	Name     string `json:"name,omitempty"`
 }
 
 type Attachment struct {

@@ -158,3 +158,61 @@ func TestEditReportJournalEntry(t *testing.T) {
 	require.Equal(t, http.StatusNoContent, resp.StatusCode)
 	require.NoError(t, resp.Body.Close())
 }
+
+// TestJournalEntryMentions verifies that the @mention person IDs sent on a
+// journal entry (plan 81) are persisted and round-trip on read, resolved to the
+// mentioned person's handle/name. It also covers the insert-ignore semantics:
+// a duplicate person in the list collapses to one mention, and a stale/unknown
+// person ID is silently dropped rather than failing the request.
+func TestJournalEntryMentions(t *testing.T) {
+	t.Parallel()
+	ctx := t.Context()
+
+	apisAdmin := ApiHelper{t: t, serverURL: shared.serverURL, jwt: jwtForAdmin(ctx, t)}
+	apisAlice := ApiHelper{t: t, serverURL: shared.serverURL, jwt: jwtForAlice(t, ctx)}
+
+	eventName := rand.NonCryptoText()
+	_, resp := apisAdmin.createEvent(ctx, imsjson.Event{Name: &eventName})
+	require.Equal(t, http.StatusNoContent, resp.StatusCode)
+	require.NoError(t, resp.Body.Close())
+	resp = apisAdmin.addWriter(ctx, eventName, userAliceHandle)
+	require.Equal(t, http.StatusNoContent, resp.StatusCode)
+	require.NoError(t, resp.Body.Close())
+
+	// Alice creates an incident whose initial journal entry @mentions Bob and
+	// Carol (by registry PERSON.ID, as the "@" picker sends). The list also
+	// includes Bob twice and one unknown ID, to exercise insert-ignore.
+	num := apisAlice.newIncidentSuccess(ctx, imsjson.Incident{
+		Event: eventName,
+		JournalEntries: []imsjson.JournalEntry{{
+			Text:               "Paging @" + userBobHandle + " and @" + userCarolHandle + " to assist.",
+			MentionedPersonIDs: []int32{userBobPersonID, userCarolPersonID, userBobPersonID, nonexistentPersonID},
+		}},
+	})
+
+	retrieved, resp := apisAlice.getIncident(ctx, eventName, num)
+	require.Equal(t, http.StatusOK, resp.StatusCode)
+	require.NoError(t, resp.Body.Close())
+
+	// Find the user-authored entry (a generated "created" entry may also exist).
+	var entry imsjson.JournalEntry
+	for _, e := range retrieved.JournalEntries {
+		if !e.SystemEntry {
+			entry = e
+		}
+	}
+	require.NotZero(t, entry.ID)
+
+	// Exactly two mentions survive: Bob (deduped) and Carol; the unknown ID is
+	// dropped by insert-ignore.
+	require.Len(t, entry.Mentions, 2)
+	byID := map[int32]imsjson.Mention{}
+	for _, m := range entry.Mentions {
+		byID[m.PersonID] = m
+	}
+	require.Contains(t, byID, int32(userBobPersonID))
+	require.Contains(t, byID, int32(userCarolPersonID))
+	require.NotContains(t, byID, int32(nonexistentPersonID))
+	require.Equal(t, userBobHandle, byID[userBobPersonID].Handle)
+	require.Equal(t, userCarolHandle, byID[userCarolPersonID].Handle)
+}

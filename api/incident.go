@@ -336,6 +336,29 @@ func fetchIncident(ctx context.Context, imsDBQ *store.DBQ, eventID, incidentNumb
 	for _, rer := range journalEntryRows {
 		journalEntries = append(journalEntries, journalEntryToJSON(rer.JournalEntry, rer.Author.String, attachmentsEnabled))
 	}
+	// Attach @mention rows (plan 81) to their entries for rendering/linking.
+	mentionRows, err := imsDBQ.Incident_JournalEntryMentions(ctx, imsDBQ,
+		imsdb.Incident_JournalEntryMentionsParams{
+			Event:          eventID,
+			IncidentNumber: incidentNumber,
+		},
+	)
+	if err != nil {
+		return empty, nil, herr.InternalServerError("Failed to fetch journal entry mentions", err).From("[Incident_JournalEntryMentions]")
+	}
+	mentionsByEntry := make(map[int32][]imsjson.Mention, len(mentionRows))
+	for _, m := range mentionRows {
+		mentionsByEntry[m.JournalEntry] = append(mentionsByEntry[m.JournalEntry], imsjson.Mention{
+			PersonID: m.PersonID,
+			Handle:   m.Handle.String,
+			Name:     m.Name.String,
+		})
+	}
+	for i := range journalEntries {
+		if ms, ok := mentionsByEntry[journalEntries[i].ID]; ok {
+			journalEntries[i].Mentions = ms
+		}
+	}
 	return incidentRow, journalEntries, nil
 }
 
@@ -368,6 +391,30 @@ func addIncidentJournalEntry(
 		return 0, herr.InternalServerError("Failed to attach journal entry", err).From("[AttachJournalEntryToIncident]")
 	}
 	return reID, nil
+}
+
+// addJournalEntryMentions records the @mention rows for a freshly-created
+// journal entry (plan 81). The insert is insert-ignore, so a duplicate person
+// in the list, or a stale/non-existent person ID, is silently skipped rather
+// than aborting the surrounding transaction — the authoring "@" combobox only
+// ever sends real registry IDs, and a dropped bad ID is the fail-safe outcome.
+func addJournalEntryMentions(
+	ctx context.Context, db *store.DBQ, dbtx imsdb.DBTX,
+	journalEntryID int32, personIDs []int32,
+) *herr.HTTPError {
+	for _, personID := range personIDs {
+		if personID <= 0 {
+			continue
+		}
+		err := db.CreateJournalEntryMention(ctx, dbtx, imsdb.CreateJournalEntryMentionParams{
+			JournalEntry: journalEntryID,
+			PersonID:     personID,
+		})
+		if err != nil {
+			return herr.InternalServerError("Failed to record journal entry mention", err).From("[CreateJournalEntryMention]")
+		}
+	}
+	return nil
 }
 
 type NewIncident struct {
@@ -846,9 +893,13 @@ func updateIncident(ctx context.Context, imsDBQ *store.DBQ, es *EventSourcerer, 
 		if entry.Text == "" {
 			continue
 		}
-		_, errHTTP := addIncidentJournalEntry(ctx, imsDBQ, txn, newIncident.EventID, newIncident.Number, authorPersonID, entry.Text, false, "", "", "")
+		entryID, errHTTP := addIncidentJournalEntry(ctx, imsDBQ, txn, newIncident.EventID, newIncident.Number, authorPersonID, entry.Text, false, "", "", "")
 		if errHTTP != nil {
 			return errHTTP.From("[addIncidentJournalEntry]")
+		}
+		errHTTP = addJournalEntryMentions(ctx, imsDBQ, txn, entryID, entry.MentionedPersonIDs)
+		if errHTTP != nil {
+			return errHTTP.From("[addJournalEntryMentions]")
 		}
 	}
 
