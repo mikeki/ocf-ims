@@ -4,8 +4,11 @@ Status: **Idea — design sketch, not scheduled**
 
 Part of the [collaboration & notifications track](80-collaboration-and-notifications.md).
 Depends on [`81-journal-mentions.md`](81-journal-mentions.md) for the mention
-trigger, and (for the email channel) on
-[`83-email-infrastructure.md`](83-email-infrastructure.md).
+trigger. Delivery channels layer on the same server-side generation points: the
+in-app bell (built here), the **email** channel (gated on
+[`83-email-infrastructure.md`](83-email-infrastructure.md)), and **web push** to
+phones/desktops ([`84-web-push-notifications.md`](84-web-push-notifications.md) —
+needs no IT/DNS work, so it can ship before email).
 
 ## Motivation
 
@@ -27,11 +30,15 @@ it isn't just "mention notifications." Initial types:
 - (room to grow: `asked` / follow-up requests, state changes on incidents you're
   involved in, etc.)
 
-### Delivery — in-app first, email later
+### Delivery — in-app first, then other channels
 
 - **In-app (first):** a notifications table; a **nav badge / inbox** showing
   unread count; mark-as-read. Fed by the **existing SSE channel** (`api/eventsource.go`)
   so a logged-in user sees a new notification live without reloading.
+- **Web push (next, no IT needed):** the same notification pushed to a subscribed
+  phone/desktop even when IMS is closed — reaches field staff with the tab shut.
+  Self-contained (self-generated VAPID keys + HTTPS), so it can ship **before**
+  email. See [`84-web-push-notifications.md`](84-web-push-notifications.md).
 - **Email (later):** the same notification, optionally emailed. **Gated on
   [`83-email-infrastructure.md`](83-email-infrastructure.md)** existing. Per-user
   preferences (which types email vs. in-app only) come with this stage.
@@ -82,3 +89,5 @@ transaction/`defer` as the existing SSE publish.
   channel.
 - **82c** *(after [`83`](83-email-infrastructure.md))* — email delivery +
   per-user, per-type preferences.
+- **Web push** — its own delivery channel with its own slices; see
+  [`84-web-push-notifications.md`](84-web-push-notifications.md) (84a–84d).
