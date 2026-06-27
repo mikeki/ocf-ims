@@ -1,6 +1,6 @@
 # Plan 84 — Web push notifications
 
-Status: **In progress — 84a (server plumbing) + 84b (client subscription) built; 84c–84d to do**
+Status: **In progress — 84a (server plumbing) + 84b (client subscription) + 84c (send fan-out) built; 84d to do**
 
 Part of the [collaboration & notifications track](80-collaboration-and-notifications.md).
 A **third delivery channel** for the notifications built in
@@ -180,10 +180,22 @@ when the push service returns **404/410 Gone** on send.
   browser supports push and the server shipped a VAPID key. End state: a real device
   produces a `PUSH_SUBSCRIPTION` row — still nothing pushed. Verifiable by hand on
   Android/desktop (HTTPS or localhost).
-- **84c — Send fan-out (the payoff).** Wire `webpush-go` into the push service and
-  call it from the plan-82 generation points (mention + added-to-incident, incident
-  and report), **after commit, off the request path**, with 404/410 pruning. After
-  this, a real `@mention` lights up a subscribed phone.
+- **84c — Send fan-out (the payoff).** ✅ **Built.** `webpush-go` backs a real
+  `push.WebPushSender` (`lib/push/webpush.go`: encrypts + VAPID-signs, maps 404/410
+  → `push.ErrSubscriptionGone`, other non-2xx → transient error), selected in
+  `AddToMux` when `cfg.Push.Enabled()` (else `NoopSender`). A new `api.Pusher` (the
+  push sibling of `EventSourcerer`) fans out from the four plan-82 generation points
+  — incident mentions (`updateIncident`), report mentions (new + edit report), and
+  added-to-incident — **after the commit, from a goroutine** so a slow/flaky push
+  service never sits in a request or transaction. The goroutine uses
+  `context.WithoutCancel` + a 30s timeout (request ctx is already cancelling),
+  recovers from panics, dedups recipients and drops the actor, and prunes any
+  subscription the push service reports gone. Notification content is deliberately
+  minimal ("You were mentioned in incident #12" + deep link, no incident text) for
+  lock-screen privacy; the deep link matches the bell's `notificationHref`. After
+  this, a real `@mention` lights up a subscribed phone. Tests: `lib/push` status
+  mapping over `httptest` with real encryptable keys; `api` recipient-dedup, URL
+  builders, and the disabled-backend short-circuit.
 - **84d — Polish & rollout (later).** A "your devices" list with per-device revoke;
   the per-channel/per-type **preference matrix** (shared with 82c email); the **iOS
   Add-to-Home-Screen onboarding** doc/UI; lock-screen content decision.
