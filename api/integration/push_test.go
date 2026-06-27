@@ -19,6 +19,7 @@ package integration_test
 import (
 	"context"
 	"net/http"
+	"sync"
 	"testing"
 
 	"github.com/mikeki/ocf-ims/api"
@@ -141,4 +142,49 @@ func TestPushSubscriptions(t *testing.T) {
 	resp = alice.pushUnsubscribe(ctx, api.PushUnsubscribeRequest{Endpoint: endpoint1})
 	require.Equal(t, http.StatusNoContent, resp.StatusCode)
 	require.NoError(t, resp.Body.Close())
+}
+
+// TestPushSubscribeConcurrentSameEndpoint hammers the read-first upsert with many
+// simultaneous subscribes of the SAME brand-new endpoint (two tabs / a retry).
+// The read-then-insert race must resolve idempotently — every request gets 204
+// and exactly one row exists — not a 500 from the ENDPOINT unique constraint.
+func TestPushSubscribeConcurrentSameEndpoint(t *testing.T) {
+	t.Parallel()
+	ctx := t.Context()
+
+	alice := ApiHelper{t: t, serverURL: shared.serverURL, jwt: jwtForAlice(t, ctx)}
+	endpoint := "https://push.test/" + rand.NonCryptoText()
+
+	const n = 8
+	var wg sync.WaitGroup
+	codes := make([]int, n)
+	closeErrs := make([]error, n)
+	for i := range n {
+		wg.Go(func() {
+			req := api.PushSubscribeRequest{Endpoint: endpoint}
+			req.Keys.P256dh = "p256dh"
+			req.Keys.Auth = "auth"
+			resp := alice.pushSubscribe(ctx, req)
+			codes[i] = resp.StatusCode
+			closeErrs[i] = resp.Body.Close()
+		})
+	}
+	wg.Wait()
+
+	// Assert on the test goroutine (require must not run in a spawned one).
+	for i := range n {
+		require.NoErrorf(t, closeErrs[i], "request %d body close", i)
+		require.Equalf(t, http.StatusNoContent, codes[i], "request %d should be idempotent", i)
+	}
+
+	// Exactly one row for that endpoint survives the race.
+	rows, err := shared.imsDBQ.PushSubscriptionsForPerson(ctx, shared.imsDBQ, userAlicePersonID)
+	require.NoError(t, err)
+	count := 0
+	for _, r := range rows {
+		if r.Endpoint == endpoint {
+			count++
+		}
+	}
+	require.Equal(t, 1, count)
 }

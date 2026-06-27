@@ -22,7 +22,7 @@ import (
 	"net/http"
 	"time"
 
-	"github.com/mikeki/ocf-ims/directory"
+	"github.com/go-sql-driver/mysql"
 	"github.com/mikeki/ocf-ims/lib/conv"
 	"github.com/mikeki/ocf-ims/lib/herr"
 	"github.com/mikeki/ocf-ims/store"
@@ -49,8 +49,7 @@ type PushUnsubscribeRequest struct {
 // the calling person. Per-person and per-device, so it needs only authentication
 // — no event scoping. Re-subscribing the same browser upserts on its endpoint.
 type PostPushSubscribe struct {
-	imsDBQ    *store.DBQ
-	userStore directory.UserStore
+	imsDBQ *store.DBQ
 }
 
 func (action PostPushSubscribe) ServeHTTP(w http.ResponseWriter, req *http.Request) {
@@ -104,12 +103,13 @@ func (action PostPushSubscribe) subscribe(req *http.Request) *herr.HTTPError {
 	_, err := action.imsDBQ.PushSubscriptionByEndpoint(ctx, action.imsDBQ, body.Endpoint)
 	switch {
 	case err == nil:
+		// CREATED is not updated — it stays the device's first-seen time so the
+		// future device list orders stably despite per-page-load re-subscribes.
 		err = action.imsDBQ.UpdatePushSubscriptionByEndpoint(ctx, action.imsDBQ, imsdb.UpdatePushSubscriptionByEndpointParams{
 			PersonID:  personID,
 			P256dh:    body.Keys.P256dh,
 			Auth:      body.Keys.Auth,
 			UserAgent: userAgent,
-			Created:   now,
 			Endpoint:  body.Endpoint,
 		})
 		if err != nil {
@@ -124,6 +124,15 @@ func (action PostPushSubscribe) subscribe(req *http.Request) *herr.HTTPError {
 			UserAgent: userAgent,
 			Created:   now,
 		})
+		// A concurrent subscribe of the same brand-new endpoint (two tabs, a retry)
+		// races between the read above and this insert; the loser hits the ENDPOINT
+		// unique constraint. That just means the device is already subscribed, so
+		// treat it as an idempotent success rather than a 500 — the same way person
+		// creation maps a dup-key to a handled outcome.
+		var mysqlErr *mysql.MySQLError
+		if errors.As(err, &mysqlErr) && mysqlErr.Number == dupEntryError {
+			return nil
+		}
 		if err != nil {
 			return herr.InternalServerError("Failed to store push subscription", err).From("[InsertPushSubscription]")
 		}
@@ -136,8 +145,7 @@ func (action PostPushSubscribe) subscribe(req *http.Request) *herr.HTTPError {
 // DeletePushSubscribe forgets one of the caller's devices, addressed by its push
 // endpoint. Scoped to the caller so a person can only remove their own.
 type DeletePushSubscribe struct {
-	imsDBQ    *store.DBQ
-	userStore directory.UserStore
+	imsDBQ *store.DBQ
 }
 
 func (action DeletePushSubscribe) ServeHTTP(w http.ResponseWriter, req *http.Request) {

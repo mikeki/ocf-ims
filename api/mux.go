@@ -544,7 +544,7 @@ func AddToMux(
 	// authentication is required — no event scoping. Mutating, so LogRequest(true).
 	mux.Handle("POST /ims/api/push/subscribe",
 		Adapt(
-			PostPushSubscribe{db, userStore},
+			PostPushSubscribe{db},
 			RecoverFromPanic(),
 			RequireAuthN(jwter),
 			LogRequest(true, actionLogger, userStore),
@@ -554,7 +554,7 @@ func AddToMux(
 
 	mux.Handle("DELETE /ims/api/push/subscribe",
 		Adapt(
-			DeletePushSubscribe{db, userStore},
+			DeletePushSubscribe{db},
 			RecoverFromPanic(),
 			RequireAuthN(jwter),
 			LogRequest(true, actionLogger, userStore),

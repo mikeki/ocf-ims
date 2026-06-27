@@ -407,9 +407,11 @@ values (?, ?, ?, ?, ?, ?);
 
 -- name: UpdatePushSubscriptionByEndpoint :exec
 -- A re-subscribe of the same device refreshes its keys/owner; PERSON_ID is set
--- too so a device that changes hands re-homes to the current caller.
+-- too so a device that changes hands re-homes to the current caller. CREATED is
+-- intentionally left untouched: the client re-subscribes on every page load, so
+-- bumping it would turn it into a last-seen time and reshuffle the device list.
 update PUSH_SUBSCRIPTION
-set PERSON_ID = ?, P256DH = ?, AUTH = ?, USER_AGENT = ?, CREATED = ?
+set PERSON_ID = ?, P256DH = ?, AUTH = ?, USER_AGENT = ?
 where ENDPOINT = ?;
 
 -- name: DeletePushSubscription :exec
