@@ -392,6 +392,45 @@ where ID = ? and RECIPIENT_PERSON_ID = ? and READ_AT is null;
 update NOTIFICATION set READ_AT = ?
 where RECIPIENT_PERSON_ID = ? and READ_AT is null;
 
+-- Web push subscriptions (plan 84). A device's ENDPOINT is its identity, so the
+-- subscribe path reads by endpoint and then inserts or updates — rather than an
+-- ODKU upsert — matching how the rest of the store handles unique-key upserts.
+
+-- name: PushSubscriptionByEndpoint :one
+select ID, PERSON_ID, ENDPOINT, P256DH, AUTH, USER_AGENT, CREATED
+from PUSH_SUBSCRIPTION
+where ENDPOINT = ?;
+
+-- name: InsertPushSubscription :exec
+insert into PUSH_SUBSCRIPTION (PERSON_ID, ENDPOINT, P256DH, AUTH, USER_AGENT, CREATED)
+values (?, ?, ?, ?, ?, ?);
+
+-- name: UpdatePushSubscriptionByEndpoint :exec
+-- A re-subscribe of the same device refreshes its keys/owner; PERSON_ID is set
+-- too so a device that changes hands re-homes to the current caller.
+update PUSH_SUBSCRIPTION
+set PERSON_ID = ?, P256DH = ?, AUTH = ?, USER_AGENT = ?, CREATED = ?
+where ENDPOINT = ?;
+
+-- name: DeletePushSubscription :exec
+-- Scoped to the caller so a person can only remove their own device.
+delete from PUSH_SUBSCRIPTION
+where ENDPOINT = ? and PERSON_ID = ?;
+
+-- name: DeletePushSubscriptionByEndpoint :exec
+-- Prune a dead subscription (push service returned 404/410). Not caller-scoped:
+-- the endpoint is globally unique and the server prunes on the send path (84c).
+delete from PUSH_SUBSCRIPTION
+where ENDPOINT = ?;
+
+-- name: PushSubscriptionsForPerson :many
+-- Every device a person has subscribed (newest first). Backs the send fan-out
+-- (84c) and a future "your devices" list (84d).
+select ID, PERSON_ID, ENDPOINT, P256DH, AUTH, USER_AGENT, CREATED
+from PUSH_SUBSCRIPTION
+where PERSON_ID = ?
+order by CREATED desc;
+
 -- name: Incident_JournalEntryMentions :many
 -- All mentions across the journal entries of one incident, with the mentioned
 -- person's handle/name for display. Joined through INCIDENT__JOURNAL_ENTRY so

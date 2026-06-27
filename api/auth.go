@@ -176,6 +176,10 @@ type GetAuth struct {
 	userStore          directory.UserStore
 	jwtSecret          string
 	attachmentsEnabled bool
+	// pushVAPIDPublicKey is the web-push public key (plan 84), surfaced to the
+	// client so it can subscribe. Empty ⇒ push is unconfigured and the client
+	// hides the feature.
+	pushVAPIDPublicKey string
 }
 
 type GetAuthResponse struct {
@@ -187,6 +191,10 @@ type GetAuthResponse struct {
 	// themselves remain the authoritative check.
 	CanManagePersonnel bool                      `json:"canManagePersonnel"`
 	EventAccess        map[string]AccessForEvent `json:"event_access"`
+	// PushVAPIDPublicKey is the web-push public key (plan 84). Present only when
+	// the server has push configured; the client uses it to subscribe and treats
+	// its absence as "push unavailable".
+	PushVAPIDPublicKey string `json:"pushVapidPublicKey,omitzero"`
 }
 
 type AccessForEvent struct {
@@ -240,6 +248,7 @@ func (action GetAuth) getAuth(req *http.Request) (GetAuthResponse, *herr.HTTPErr
 		User:               handle,
 		Admin:              claims.PersonAdmin(),
 		CanManagePersonnel: globalPermissions&authz.GlobalAdministratePersonnel != 0,
+		PushVAPIDPublicKey: action.pushVAPIDPublicKey,
 	}
 	// event_id is an optional query param for this endpoint
 	eventName := req.FormValue("event_id")

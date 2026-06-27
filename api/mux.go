@@ -89,6 +89,7 @@ func AddToMux(
 				userStore,
 				cfg.Core.JWTSecret,
 				attachmentsEnabled,
+				cfg.Push.VAPIDPublicKey,
 			},
 			RecoverFromPanic(),
 			// This endpoint does not require authentication or authorization, by design
@@ -532,6 +533,28 @@ func AddToMux(
 	mux.Handle("POST /ims/api/notifications/{notificationId}/read",
 		Adapt(
 			MarkNotificationsRead{db, userStore},
+			RecoverFromPanic(),
+			RequireAuthN(jwter),
+			LogRequest(true, actionLogger, userStore),
+			LimitRequestBytes(cfg.Core.MaxRequestBytes),
+		),
+	)
+
+	// Web push subscriptions (plan 84): per-person, per-device, so only
+	// authentication is required — no event scoping. Mutating, so LogRequest(true).
+	mux.Handle("POST /ims/api/push/subscribe",
+		Adapt(
+			PostPushSubscribe{db, userStore},
+			RecoverFromPanic(),
+			RequireAuthN(jwter),
+			LogRequest(true, actionLogger, userStore),
+			LimitRequestBytes(cfg.Core.MaxRequestBytes),
+		),
+	)
+
+	mux.Handle("DELETE /ims/api/push/subscribe",
+		Adapt(
+			DeletePushSubscribe{db, userStore},
 			RecoverFromPanic(),
 			RequireAuthN(jwter),
 			LogRequest(true, actionLogger, userStore),

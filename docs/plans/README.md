@@ -56,4 +56,4 @@ management system.
 | [81-journal-mentions.md](81-journal-mentions.md) | `@mention` people in journal entries | Idea — design sketch |
 | [82-notifications.md](82-notifications.md) | Notifications (in-app first, email later) | Idea — design sketch |
 | [83-email-infrastructure.md](83-email-infrastructure.md) | Email infrastructure (enabler) | Blocked on IT prerequisites |
-| [84-web-push-notifications.md](84-web-push-notifications.md) | Web push notifications (3rd delivery channel; no IT needed) | Idea — design sketched, ready to slice |
+| [84-web-push-notifications.md](84-web-push-notifications.md) | Web push notifications (3rd delivery channel; no IT needed) | In progress — 84a server plumbing built; 84b–84d to do |

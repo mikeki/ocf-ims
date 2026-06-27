@@ -143,6 +143,17 @@ func mustApplyEnvConfig(baseCfg *conf.IMSConfig, envFileName string) *conf.IMSCo
 		baseCfg.AttachmentsStore.S3.CommonKeyPrefix = v
 	}
 
+	// Web push (plan 84). Absent ⇒ push disabled. The private key is a secret.
+	if v, ok := lookupEnv("IMS_VAPID_PUBLIC"); ok {
+		baseCfg.Push.VAPIDPublicKey = v
+	}
+	if v, ok := lookupEnv("IMS_VAPID_PRIVATE"); ok {
+		baseCfg.Push.VAPIDPrivateKey = v
+	}
+	if v, ok := lookupEnv("IMS_VAPID_SUBJECT"); ok {
+		baseCfg.Push.VAPIDSubject = v
+	}
+
 	return baseCfg
 }
 
