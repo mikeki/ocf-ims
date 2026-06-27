@@ -72,7 +72,9 @@ interface SWGlobal {
 
 const sw = self as unknown as SWGlobal;
 
-const defaultUrl = "/ims/app/";
+// No trailing slash: /ims/app is served by its handler directly, whereas
+// /ims/app/ costs a 301 redirect on every default notification click / launch.
+const defaultUrl = "/ims/app";
 const iconUrl = "/ims/static/logos/android-chrome-192x192.png";
 const badgeUrl = "/ims/static/logos/favicon-32x32.png";
 

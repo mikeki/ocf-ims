@@ -457,6 +457,18 @@ export async function enablePush(vapidPublicKey: string): Promise<boolean> {
     }
     await navigator.serviceWorker.ready;
     let sub = await reg.pushManager.getSubscription();
+    // An existing subscription made under a different VAPID key (e.g. after a key
+    // rotation) would be re-POSTed as-is, but sends signed with the new key would
+    // be rejected by the push service. Drop it and resubscribe under the current
+    // key. (Not expected today — the key is generated once — but cheap insurance.)
+    if (sub != null && !sameVapidKey(sub, vapidPublicKey)) {
+        try {
+            await sub.unsubscribe();
+        } catch (err) {
+            console.error("Push resubscribe (stale-key) unsubscribe failed:", err);
+        }
+        sub = null;
+    }
     if (sub == null) {
         sub = await reg.pushManager.subscribe({
             userVisibleOnly: true,
@@ -467,7 +479,10 @@ export async function enablePush(vapidPublicKey: string): Promise<boolean> {
 }
 
 // disablePush unsubscribes this device from push and tells the server to forget
-// the subscription. Returns true on success (including "was already off").
+// the subscription. Returns true on success (including "was already off"). Returns
+// false when the server delete failed — the device is locally off either way, but
+// a stale row lingers until 84c's send prunes it on 404/410, so the caller may want
+// to surface a soft warning.
 export async function disablePush(): Promise<boolean> {
     const sub = await currentPushSubscription();
     if (sub == null) {
@@ -475,11 +490,31 @@ export async function disablePush(): Promise<boolean> {
     }
     // Tell the server first (the endpoint is idempotent) so the row is gone even
     // if the browser-side unsubscribe races or fails.
-    await deletePushSubscription(sub.endpoint);
+    const deleted = await deletePushSubscription(sub.endpoint);
     try {
         await sub.unsubscribe();
     } catch (err) {
         console.error("Push unsubscribe failed:", err);
+    }
+    return deleted;
+}
+
+// sameVapidKey reports whether an existing subscription was created under the
+// given VAPID public key.
+function sameVapidKey(sub: PushSubscription, vapidPublicKey: string): boolean {
+    const existing = sub.options.applicationServerKey;
+    if (existing == null) {
+        return false;
+    }
+    const have = new Uint8Array(existing as ArrayBuffer);
+    const want = urlBase64ToUint8Array(vapidPublicKey);
+    if (have.length !== want.length) {
+        return false;
+    }
+    for (let i = 0; i < have.length; i++) {
+        if (have[i] !== want[i]) {
+            return false;
+        }
     }
     return true;
 }
@@ -502,14 +537,16 @@ async function postPushSubscription(sub: PushSubscription): Promise<boolean> {
     return true;
 }
 
-async function deletePushSubscription(endpoint: string): Promise<void> {
+async function deletePushSubscription(endpoint: string): Promise<boolean> {
     const {err} = await fetchNoThrow(url_pushSubscribe, {
         method: "DELETE",
         body: JSON.stringify({endpoint: endpoint}),
     });
     if (err != null) {
         console.error("Failed to delete push subscription:", err);
+        return false;
     }
+    return true;
 }
 
 // urlBase64ToUint8Array converts a base64url VAPID key (as shipped by the server)

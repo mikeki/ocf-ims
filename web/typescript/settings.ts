@@ -121,7 +121,17 @@ async function setPushEnabled(input: HTMLInputElement): Promise<void> {
             return;
         }
     } else {
-        await ims.disablePush();
+        const ok = await ims.disablePush();
+        if (!ok) {
+            // The device is locally off, but the server delete failed and a stale
+            // subscription lingers (it'll be pruned automatically on the next send).
+            input.checked = false;
+            input.disabled = false;
+            el.pushStatus.textContent =
+                "Push is off on this device, but the server couldn't be reached to fully " +
+                "remove the subscription. It'll be cleaned up automatically.";
+            return;
+        }
     }
     input.disabled = false;
     // Re-read the real state rather than trusting the checkbox.
