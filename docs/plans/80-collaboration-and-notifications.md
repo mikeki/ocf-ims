@@ -15,6 +15,7 @@ individual features have their own plan docs.
 | 2 | Send email from the system | [`83-email-infrastructure.md`](83-email-infrastructure.md) | Blocked on IT (infra prerequisites) |
 | 3 | `@mention` people in a journal entry | [`81-journal-mentions.md`](81-journal-mentions.md) | Idea — design sketched |
 | 4 | Notifications ("you were mentioned / added to an incident") | [`82-notifications.md`](82-notifications.md) | Idea — design sketched |
+| 5 | Web push (notify phones with the tab closed) | [`84-web-push-notifications.md`](84-web-push-notifications.md) | Idea — design sketched (no IT needed; ships before email) |
 
 ### 1. Live incident refresh — already implemented (no work)
 
