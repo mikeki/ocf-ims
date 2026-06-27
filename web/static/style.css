@@ -355,6 +355,40 @@ h1 {
   display: none !important;
 }
 
+/* Mobile navigation (below the navbar's `sm` expand breakpoint, where it
+   collapses into the hamburger menu). The desktop horizontal bar stacks into a
+   single vertical list, and each dropdown — the event picker, theme,
+   notifications, and user menu — expands *inline* (Bootstrap positions
+   `.navbar-nav .dropdown-menu` statically here). With the default popover chrome
+   those expanded items float at the same indent as the top-level links, so the
+   menu hierarchy reads flat and confusing. Strip the popover chrome and indent
+   each open menu behind a left rule so its items clearly nest under their
+   toggle, and give the sections a little separation and tap room. */
+@media (max-width: 575.98px) {
+  #navbarSupportedContent .nav-link {
+    padding-top: 0.4rem;
+    padding-bottom: 0.4rem;
+  }
+
+  #navbarSupportedContent .dropdown-menu {
+    margin: 0 0 0.25rem 0.75rem;
+    padding-top: 0;
+    padding-bottom: 0;
+    border: 0;
+    border-left: 2px solid var(--bs-border-color);
+    border-radius: 0;
+    box-shadow: none;
+    background: transparent;
+  }
+
+  /* Visually separate the per-event links from the account cluster (theme,
+     notifications, user menu) that follows them in the stacked list. */
+  #navbarSupportedContent > ul.navbar-nav.me-auto {
+    border-bottom: var(--bs-border-width) solid var(--bs-border-color);
+    margin-bottom: 0.25rem;
+  }
+}
+
 .dropdown-item-checkable {
   padding: var(--bs-dropdown-item-padding-y) 1.5rem;
 }
