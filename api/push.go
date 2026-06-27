@@ -87,7 +87,20 @@ func (action PostPushSubscribe) subscribe(req *http.Request) *herr.HTTPError {
 
 	// A device's endpoint is its identity. Read-first then insert-or-update (rather
 	// than an ODKU upsert) matches the store's convention; PERSON_ID is rewritten on
-	// update so a shared browser re-homes to whoever subscribed last.
+	// update so the device re-homes to whoever subscribed last.
+	//
+	// Re-homing across persons is deliberate and is the *safer* branch, not an IDOR:
+	// a push endpoint is a per-browser, unguessable secret minted by the push
+	// service, so a collision means the SAME physical browser. The real case is a
+	// shared/kiosk browser — A subscribes, leaves without unsubscribing, then B logs
+	// in on that browser and subscribes (same endpoint). Re-homing to B stops A's
+	// notifications from being delivered to a device B now holds; rejecting the
+	// conflict would instead leak A's notifications to B. A replay of a *stolen*
+	// endpoint gains nothing: the row takes the new caller's encryption keys, so
+	// pushes encrypt to keys the original device can't decrypt (undeliverable), no
+	// notification content is exposed, and the rightful owner re-homes it back on its
+	// next page-load re-subscribe. DELETE is caller-scoped (a person removes only
+	// their own devices), and the endpoint is never written to the action log.
 	_, err := action.imsDBQ.PushSubscriptionByEndpoint(ctx, action.imsDBQ, body.Endpoint)
 	switch {
 	case err == nil:

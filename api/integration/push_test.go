@@ -102,6 +102,24 @@ func TestPushSubscriptions(t *testing.T) {
 	require.Equal(t, http.StatusNoContent, resp.StatusCode)
 	require.NoError(t, resp.Body.Close())
 
+	// Re-homing a shared browser is deliberate and safe (see PostPushSubscribe):
+	// when a second person subscribes the SAME endpoint, ownership transfers to the
+	// latest subscriber with their own keys — this is what prevents a kiosk's prior
+	// user from still receiving pushes on it.
+	sharedEndpoint := "https://push.test/" + rand.NonCryptoText()
+	resp = dave.pushSubscribe(ctx, sub(sharedEndpoint, "p256dh-d", "auth-d"))
+	require.Equal(t, http.StatusNoContent, resp.StatusCode)
+	require.NoError(t, resp.Body.Close())
+	resp = alice.pushSubscribe(ctx, sub(sharedEndpoint, "p256dh-a", "auth-a"))
+	require.Equal(t, http.StatusNoContent, resp.StatusCode)
+	require.NoError(t, resp.Body.Close())
+	_, _, found = pushSubByEndpoint(ctx, t, userDavePersonID, sharedEndpoint)
+	require.False(t, found, "re-subscribe must re-home the device off the prior owner")
+	p256, auth, found = pushSubByEndpoint(ctx, t, userAlicePersonID, sharedEndpoint)
+	require.True(t, found)
+	require.Equal(t, "p256dh-a", p256, "re-home adopts the new subscriber's keys")
+	require.Equal(t, "auth-a", auth)
+
 	// Unsubscribe is caller-scoped: Alice trying to remove Dave's endpoint is a
 	// no-op for Dave's device (still present).
 	resp = alice.pushUnsubscribe(ctx, api.PushUnsubscribeRequest{Endpoint: daveEndpoint})
