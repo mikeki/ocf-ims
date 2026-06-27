@@ -1,6 +1,6 @@
 # Plan 84 — Web push notifications
 
-Status: **In progress — 84a (server plumbing) built; 84b–84d to do**
+Status: **In progress — 84a (server plumbing) + 84b (client subscription) built; 84c–84d to do**
 
 Part of the [collaboration & notifications track](80-collaboration-and-notifications.md).
 A **third delivery channel** for the notifications built in
@@ -168,10 +168,18 @@ when the push service returns **404/410 Gone** on send.
   `lib/push` (a `Sender` interface + `NoopSender`); **no send yet** — that backend is
   wired in 84c. Tests: `conf` validation/redaction, `lib/push` no-op, and an
   end-to-end `api/integration` subscribe/upsert/scope/validation test.
-- **84b — Client subscription.** Service worker, manifest wired into `<head>`, SW
-  registration, and the **Settings per-device toggle** that drives the permission +
-  subscribe + POST flow (and unsubscribe). End state: a real device produces a
-  `PUSH_SUBSCRIPTION` row — still nothing pushed. Verifiable by hand on Android/desktop.
+- **84b — Client subscription.** ✅ **Built.** Service worker (`web/typescript/sw.ts`
+  → `web/static/sw.js`, served from `/ims/sw.js` with `Service-Worker-Allowed: /ims/`
+  so its scope covers the app; `push` → `showNotification`, `notificationclick` →
+  focus/navigate an open IMS tab or open one), manifest fixed up to a real installable
+  PWA (`name`/`start_url`/`scope`/correct icon paths — `<link rel="manifest">` was
+  already in `head.templ`), SW registration on authenticated `commonPageInit`, push
+  helpers in `ims.ts` (`pushSupported`/`pushPermission`/`enablePush`/`disablePush` +
+  VAPID base64url→Uint8Array), and the **Settings per-device toggle** that drives the
+  permission + subscribe + POST flow (and unsubscribe + DELETE), hidden unless the
+  browser supports push and the server shipped a VAPID key. End state: a real device
+  produces a `PUSH_SUBSCRIPTION` row — still nothing pushed. Verifiable by hand on
+  Android/desktop (HTTPS or localhost).
 - **84c — Send fan-out (the payoff).** Wire `webpush-go` into the push service and
   call it from the plan-82 generation points (mention + added-to-incident, incident
   and report), **after commit, off the request path**, with 404/410 pruning. After

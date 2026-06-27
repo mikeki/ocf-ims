@@ -79,6 +79,35 @@ func TestTemplEndpoints(t *testing.T) {
 	}
 }
 
+// TestServiceWorker verifies the push service worker (plan 84) is served from
+// /ims/sw.js as JavaScript with a scope that covers the whole /ims/ tree.
+func TestServiceWorker(t *testing.T) {
+	t.Parallel()
+	ctx := t.Context()
+	cfg := conf.DefaultIMS()
+	require.NoError(t, cfg.Validate())
+	s := httptest.NewServer(web.AddToMux(nil, cfg))
+	defer s.Close()
+	serverURL, err := url.Parse(s.URL)
+	require.NoError(t, err)
+	client := &http.Client{Timeout: 10 * time.Second}
+
+	path := serverURL.JoinPath("/ims/sw.js")
+	httpReq, err := http.NewRequestWithContext(ctx, http.MethodGet, path.String(), nil)
+	require.NoError(t, err)
+	// #nosec G704 // SSRF via taint analysis. This test controls the URL.
+	resp, err := client.Do(httpReq)
+	require.NoError(t, err)
+	require.Equal(t, http.StatusOK, resp.StatusCode)
+	require.Equal(t, "/ims/", resp.Header.Get("Service-Worker-Allowed"))
+	require.Contains(t, resp.Header.Get("Content-Type"), "javascript")
+	bod, err := io.ReadAll(resp.Body)
+	require.NoError(t, resp.Body.Close())
+	require.NoError(t, err)
+	// A bit of the worker's own source, to be sure we served the right file.
+	require.Contains(t, string(bod), "notificationclick")
+}
+
 func TestRedirects(t *testing.T) {
 	t.Parallel()
 	ctx := t.Context()

@@ -72,6 +72,20 @@ func AddToMux(mux *http.ServeMux, cfg *conf.IMSConfig) *http.ServeMux {
 			CacheControl(cfg.Core.CacheControlLong),
 		),
 	)
+	// The push service worker (plan 84) is served from /ims/sw.js rather than under
+	// /ims/static/ so its default scope is the whole /ims/ tree — that lets a
+	// notification click focus any open IMS tab. Service-Worker-Allowed is set
+	// belt-and-suspenders; the script's own path already grants the /ims/ scope.
+	// Short cache so an updated worker rolls out promptly.
+	mux.Handle("GET /ims/sw.js",
+		Adapt(
+			func(w http.ResponseWriter, r *http.Request) {
+				w.Header().Set("Service-Worker-Allowed", "/ims/")
+				http.ServeFileFS(w, r, StaticFS, "static/sw.js")
+			},
+			CacheControl(cfg.Core.CacheControlShort),
+		),
+	)
 	mux.Handle("GET /ims/app",
 		AdaptTempl(template.Root(deployment, versionName, versionRef), cfg.Core.CacheControlLong),
 	)

@@ -359,6 +359,9 @@ export async function commonPageInit(): Promise<PageInitResult> {
     }
     let eds: Promise<EventData[]|null> = Promise.resolve(null);
     if (authInfo.authenticated) {
+        // Register the push service worker in the background. Harmless if push is
+        // unconfigured or unsupported; it's what lets a later opt-in subscribe.
+        void registerServiceWorker();
         eventAccess = authInfo.event_access?.[pathIds.eventName!]??null;
         pathIds.eventId = eventAccess?.event_id??null;
         eds = fetchNoThrow<EventData[]>(url_events, null).then(
@@ -388,6 +391,177 @@ export async function redirectToLogin(): Promise<void> {
     clearLocalStorage();
     console.log("Logged out. Redirecting to login page")
     window.location.replace(`${url_login}?o=${encodeURIComponent(window.location.pathname)}`);
+}
+
+//
+// Web push (plan 84). This is per-device opt-in: a device must both grant the OS
+// notification permission and register a subscription with the server. The
+// Settings page drives enablePush/disablePush; commonPageInit only registers the
+// worker so a later opt-in can subscribe.
+//
+
+// pushSupported reports whether this browser can do web push at all.
+export function pushSupported(): boolean {
+    return "serviceWorker" in navigator
+        && "PushManager" in window
+        && "Notification" in window;
+}
+
+// pushPermission returns the current OS notification permission for this origin,
+// or "unsupported" when the browser can't do push.
+export function pushPermission(): NotificationPermission|"unsupported" {
+    if (!pushSupported()) {
+        return "unsupported";
+    }
+    return Notification.permission;
+}
+
+// registerServiceWorker registers (or returns the existing) IMS service worker.
+// Returns null when service workers aren't supported or registration fails.
+export async function registerServiceWorker(): Promise<ServiceWorkerRegistration|null> {
+    if (!("serviceWorker" in navigator)) {
+        return null;
+    }
+    try {
+        return await navigator.serviceWorker.register(url_serviceWorker);
+    } catch (err) {
+        console.error("Service worker registration failed:", err);
+        return null;
+    }
+}
+
+// currentPushSubscription returns this device's active PushSubscription, or null
+// if there is none (or push is unsupported).
+export async function currentPushSubscription(): Promise<PushSubscription|null> {
+    if (!pushSupported()) {
+        return null;
+    }
+    const reg = await navigator.serviceWorker.ready;
+    return await reg.pushManager.getSubscription();
+}
+
+// enablePush asks for notification permission (if needed), subscribes this device
+// with the server's VAPID key, and registers the subscription with the server.
+// vapidPublicKey comes from authInfo.pushVapidPublicKey. Returns true on success.
+export async function enablePush(vapidPublicKey: string): Promise<boolean> {
+    if (!pushSupported() || !vapidPublicKey) {
+        return false;
+    }
+    const permission = await Notification.requestPermission();
+    if (permission !== "granted") {
+        return false;
+    }
+    const reg = await registerServiceWorker();
+    if (reg == null) {
+        return false;
+    }
+    await navigator.serviceWorker.ready;
+    let sub = await reg.pushManager.getSubscription();
+    // An existing subscription made under a different VAPID key (e.g. after a key
+    // rotation) would be re-POSTed as-is, but sends signed with the new key would
+    // be rejected by the push service. Drop it and resubscribe under the current
+    // key. (Not expected today — the key is generated once — but cheap insurance.)
+    if (sub != null && !sameVapidKey(sub, vapidPublicKey)) {
+        try {
+            await sub.unsubscribe();
+        } catch (err) {
+            console.error("Push resubscribe (stale-key) unsubscribe failed:", err);
+        }
+        sub = null;
+    }
+    if (sub == null) {
+        sub = await reg.pushManager.subscribe({
+            userVisibleOnly: true,
+            applicationServerKey: urlBase64ToUint8Array(vapidPublicKey),
+        });
+    }
+    return await postPushSubscription(sub);
+}
+
+// disablePush unsubscribes this device from push and tells the server to forget
+// the subscription. Returns true on success (including "was already off"). Returns
+// false when the server delete failed — the device is locally off either way, but
+// a stale row lingers until 84c's send prunes it on 404/410, so the caller may want
+// to surface a soft warning.
+export async function disablePush(): Promise<boolean> {
+    const sub = await currentPushSubscription();
+    if (sub == null) {
+        return true;
+    }
+    // Tell the server first (the endpoint is idempotent) so the row is gone even
+    // if the browser-side unsubscribe races or fails.
+    const deleted = await deletePushSubscription(sub.endpoint);
+    try {
+        await sub.unsubscribe();
+    } catch (err) {
+        console.error("Push unsubscribe failed:", err);
+    }
+    return deleted;
+}
+
+// sameVapidKey reports whether an existing subscription was created under the
+// given VAPID public key.
+function sameVapidKey(sub: PushSubscription, vapidPublicKey: string): boolean {
+    const existing = sub.options.applicationServerKey;
+    if (existing == null) {
+        return false;
+    }
+    const have = new Uint8Array(existing as ArrayBuffer);
+    const want = urlBase64ToUint8Array(vapidPublicKey);
+    if (have.length !== want.length) {
+        return false;
+    }
+    for (let i = 0; i < have.length; i++) {
+        if (have[i] !== want[i]) {
+            return false;
+        }
+    }
+    return true;
+}
+
+async function postPushSubscription(sub: PushSubscription): Promise<boolean> {
+    const json = sub.toJSON();
+    const {err} = await fetchNoThrow(url_pushSubscribe, {
+        body: JSON.stringify({
+            endpoint: sub.endpoint,
+            keys: {
+                p256dh: json.keys?.["p256dh"] ?? "",
+                auth: json.keys?.["auth"] ?? "",
+            },
+        }),
+    });
+    if (err != null) {
+        console.error("Failed to register push subscription:", err);
+        return false;
+    }
+    return true;
+}
+
+async function deletePushSubscription(endpoint: string): Promise<boolean> {
+    const {err} = await fetchNoThrow(url_pushSubscribe, {
+        method: "DELETE",
+        body: JSON.stringify({endpoint: endpoint}),
+    });
+    if (err != null) {
+        console.error("Failed to delete push subscription:", err);
+        return false;
+    }
+    return true;
+}
+
+// urlBase64ToUint8Array converts a base64url VAPID key (as shipped by the server)
+// into the Uint8Array that PushManager.subscribe expects.
+function urlBase64ToUint8Array(base64String: string): Uint8Array<ArrayBuffer> {
+    const padding = "=".repeat((4 - (base64String.length % 4)) % 4);
+    const base64 = (base64String + padding).replace(/-/g, "+").replace(/_/g, "/");
+    const raw = atob(base64);
+    // Back the array with an explicit ArrayBuffer so its type is
+    // Uint8Array<ArrayBuffer> (a BufferSource), which subscribe() expects.
+    const output = new Uint8Array(new ArrayBuffer(raw.length));
+    for (let i = 0; i < raw.length; i++) {
+        output[i] = raw.charCodeAt(i);
+    }
+    return output;
 }
 
 function renderCommonPageItems(authInfo: AuthInfo): void {
@@ -3039,6 +3213,10 @@ export type AuthenticatedAuthInfo = {
     // admins today; gates the admin people UI.
     canManagePersonnel: boolean,
     event_access?: Record<string, AuthInfoEventAccess>,
+    // pushVapidPublicKey (plan 84) is the web-push VAPID public key. Present only
+    // when the server has push configured; its absence means push is unavailable
+    // and the UI hides the feature.
+    pushVapidPublicKey?: string,
 }
 
 export type AuthInfo = UnauthenticatedAuthInfo | AuthenticatedAuthInfo;
