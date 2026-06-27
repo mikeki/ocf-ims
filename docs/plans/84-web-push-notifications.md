@@ -158,7 +158,7 @@ when the push service returns **404/410 Gone** on send.
 
 ## Slices
 
-- **84a — Server plumbing.** ✅ **Built.** `PUSH_SUBSCRIPTION` table (goose
+- **84a — Server plumbing.** ✅ **Built (PR #104).** `PUSH_SUBSCRIPTION` table (goose
   migration `00009`), VAPID config in `conf` (`conf.Push`, all-or-nothing
   validation, private key redacted) + `.env.example`, the public key exposed to the
   client on the **auth response** (`GetAuthResponse.PushVAPIDPublicKey`, omitted when
