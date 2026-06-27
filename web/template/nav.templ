@@ -175,7 +175,9 @@ templ Nav(eventName string) {
                   id="bd-theme" type="button" aria-expanded="false" data-bs-toggle="dropdown"
                   data-bs-display="static" aria-label="Toggle theme (auto)">
             <svg class="bi my-1 theme-icon-active"><use href="#circle-half" /></svg>
-            <span class="d-none ms-2" id="bd-theme-text">Toggle theme</span>
+            <!-- Hidden on the desktop bar (icon-only); shown as a label in the
+                 stacked mobile menu. Its text still drives the aria-label. -->
+            <span class="d-sm-none ms-2" id="bd-theme-text">Toggle theme</span>
           </button>
           <ul class="dropdown-menu dropdown-menu-end" aria-labelledby="bd-theme-text">
             <li>
@@ -211,11 +213,19 @@ templ Nav(eventName string) {
       <!-- Logged in: notifications bell (plan 82) -->
       <ul class="navbar-nav if-logged-in hidden no-print">
         <li class="nav-item dropdown" id="notifications_nav">
-          <a class="nav-link position-relative" href="#" role="button" data-bs-toggle="dropdown"
+          <a class="nav-link d-flex align-items-center" href="#" role="button" data-bs-toggle="dropdown"
              aria-expanded="false" aria-label="Notifications" id="notifications_toggle">
-            <svg class="bi" fill="currentColor" width="16" height="16"><use href="#bell"></use></svg>
-            <span id="notifications_badge"
-                  class="position-absolute top-0 start-100 translate-middle badge rounded-pill text-bg-danger hidden"></span>
+            <!-- The badge anchors to start-100 of its positioned parent, so the
+                 parent must hug the bell: an inline-flex span keeps the badge on
+                 the icon even in the collapsed (full-width) mobile menu. -->
+            <span class="position-relative d-inline-flex">
+              <svg class="bi" fill="currentColor" width="16" height="16"><use href="#bell"></use></svg>
+              <span id="notifications_badge"
+                    class="position-absolute top-0 start-100 translate-middle badge rounded-pill text-bg-danger hidden"></span>
+            </span>
+            <!-- A lone bell is ambiguous in the stacked mobile menu, so label it
+                 there; the desktop bar stays icon-only. -->
+            <span class="d-sm-none ms-2">Notifications</span>
           </a>
           <ul class="dropdown-menu dropdown-menu-end" aria-labelledby="notifications_toggle"
               style="min-width: 22rem; max-width: 28rem; max-height: 26rem; overflow-y: auto;">
