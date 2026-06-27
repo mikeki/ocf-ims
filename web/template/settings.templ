@@ -90,6 +90,29 @@ templ Settings(deployment, versionName, versionRef string) {
 </div>
 
 
+<!-- Notifications (plan 84). Per-device push opt-in. The whole section stays
+     hidden until JS confirms the browser supports push AND the server has it
+     configured (settings.ts), so an unsupported/unconfigured deployment shows
+     nothing. -->
+<div id="push_section" class="hidden">
+  <h5 class="mt-3">Notifications</h5>
+  <div class="py-1">
+    <div class="form-check form-switch">
+      <input
+        class="form-check-input"
+        type="checkbox"
+        role="switch"
+        id="push_enabled"
+        onchange="setPushEnabled(this)"
+      >
+      <label class="form-check-label" for="push_enabled">
+        Enable push notifications on this device
+      </label>
+    </div>
+    <div id="push_status" class="form-text"></div>
+  </div>
+</div>
+
 <p class="mt-3">These settings exist only in the browser, and they will be reset on logout.
 <br>Got any other ideas for settings that should go here? Email the Tech Cadre!</p>
 
