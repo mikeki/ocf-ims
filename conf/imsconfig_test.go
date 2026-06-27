@@ -106,3 +106,42 @@ func TestValidateAttachmentsStore(t *testing.T) {
 	cfg.AttachmentsStore.Type = "invalid type"
 	require.Error(t, cfg.Validate())
 }
+
+func TestValidatePush(t *testing.T) {
+	t.Parallel()
+
+	// Default (no VAPID config) is valid and reports push disabled.
+	cfg := conf.DefaultIMS()
+	require.NoError(t, cfg.Validate())
+	assert.False(t, cfg.Push.Enabled())
+
+	// A complete key pair + subject is valid and enables push.
+	cfg = conf.DefaultIMS()
+	cfg.Push = conf.Push{
+		VAPIDPublicKey:  "pub",
+		VAPIDPrivateKey: "priv",
+		VAPIDSubject:    "mailto:ims@example.org",
+	}
+	require.NoError(t, cfg.Validate())
+	assert.True(t, cfg.Push.Enabled())
+
+	// A half-configured key pair is rejected at boot.
+	cfg = conf.DefaultIMS()
+	cfg.Push = conf.Push{VAPIDPublicKey: "pub"}
+	require.Error(t, cfg.Validate())
+
+	cfg = conf.DefaultIMS()
+	cfg.Push = conf.Push{VAPIDPublicKey: "pub", VAPIDPrivateKey: "priv"}
+	require.Error(t, cfg.Validate(), "missing subject should fail")
+
+	// The private key is redacted in printed config.
+	cfg = conf.DefaultIMS()
+	cfg.Push = conf.Push{
+		VAPIDPublicKey:  "pub-not-secret",
+		VAPIDPrivateKey: "priv-is-secret",
+		VAPIDSubject:    "mailto:ims@example.org",
+	}
+	redacted := cfg.PrintRedacted()
+	assert.Contains(t, redacted, "pub-not-secret")
+	assert.NotContains(t, redacted, "priv-is-secret")
+}

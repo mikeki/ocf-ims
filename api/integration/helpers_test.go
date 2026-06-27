@@ -709,6 +709,31 @@ func (a ApiHelper) notificationsForEvent(ctx context.Context, eventName string) 
 	return out
 }
 
+// pushSubscribe POSTs a web-push subscription for the caller (plan 84).
+func (a ApiHelper) pushSubscribe(ctx context.Context, body api.PushSubscribeRequest) *http.Response {
+	a.t.Helper()
+	return a.imsPost(ctx, body, a.serverURL.JoinPath("/ims/api/push/subscribe").String())
+}
+
+// pushUnsubscribe DELETEs the caller's device named by its endpoint. DELETE
+// carries a JSON body, so it can't reuse the no-body imsDelete helper.
+func (a ApiHelper) pushUnsubscribe(ctx context.Context, body api.PushUnsubscribeRequest) *http.Response {
+	a.t.Helper()
+	reqBody, err := json.Marshal(body)
+	require.NoError(a.t, err)
+	httpReq, err := http.NewRequestWithContext(ctx, http.MethodDelete,
+		a.serverURL.JoinPath("/ims/api/push/subscribe").String(), bytes.NewReader(reqBody))
+	require.NoError(a.t, err)
+	if a.jwt != "" {
+		httpReq.Header.Set("Authorization", "Bearer "+a.jwt)
+	}
+	client := &http.Client{Timeout: 10 * time.Second}
+	// #nosec G704 // SSRF via taint analysis.
+	resp, err := client.Do(httpReq)
+	require.NoError(a.t, err)
+	return resp
+}
+
 func jwtForAdmin(ctx context.Context, t *testing.T) string {
 	t.Helper()
 	apisNotAuthenticated := ApiHelper{t: t, serverURL: shared.serverURL, jwt: ""}

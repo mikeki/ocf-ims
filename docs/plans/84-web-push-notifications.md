@@ -1,6 +1,6 @@
 # Plan 84 — Web push notifications
 
-Status: **Idea — design sketched, ready to slice**
+Status: **In progress — 84a (server plumbing) built; 84b–84d to do**
 
 Part of the [collaboration & notifications track](80-collaboration-and-notifications.md).
 A **third delivery channel** for the notifications built in
@@ -91,10 +91,12 @@ when the push service returns **404/410 Gone** on send.
   upsert by endpoint for the caller. `LogRequest(true)`.
 - `DELETE /ims/api/push/subscribe`   — body = `{endpoint}`; remove that device.
   `LogRequest(true)`.
-- The **VAPID public key** is exposed to the client via the existing client-config
-  **bag** (`/ims/api/bag`), so the page can subscribe without a hardcoded key. A
-  build with no VAPID key configured advertises the feature as **off** (the Settings
-  toggle hides itself).
+- The **VAPID public key** is exposed to the client on the **auth response**
+  (`GET /ims/api/auth` → `GetAuthResponse.PushVAPIDPublicKey`), which the client
+  already fetches on every page — this codebase has no separate `/ims/api/bag`
+  client-config endpoint. The page subscribes with that key; a build with no VAPID
+  key omits the field, so the client treats push as **off** (the Settings toggle
+  hides itself).
 
 ### Config (`.env` / `conf/imsconfig.go`)
 
@@ -156,11 +158,16 @@ when the push service returns **404/410 Gone** on send.
 
 ## Slices
 
-- **84a — Server plumbing.** `PUSH_SUBSCRIPTION` table (new goose migration),
-  VAPID config in `conf` + `.env.example`, expose the public key via the bag,
-  `subscribe`/`unsubscribe` endpoints (both `LogRequest(true)`), and the push-service
-  interface with a `noop` backend. **No send yet.** Unit tests for the store +
-  handlers. *Independently shippable: subscriptions can be stored and inspected.*
+- **84a — Server plumbing.** ✅ **Built (PR #104).** `PUSH_SUBSCRIPTION` table (goose
+  migration `00009`), VAPID config in `conf` (`conf.Push`, all-or-nothing
+  validation, private key redacted) + `.env.example`, the public key exposed to the
+  client on the **auth response** (`GetAuthResponse.PushVAPIDPublicKey`, omitted when
+  unconfigured — there is no separate "bag" endpoint in this codebase), and
+  `POST`/`DELETE /ims/api/push/subscribe` (both `LogRequest(true)`, endpoint-keyed
+  read-first upsert, caller-scoped delete). The push-service seam lives in
+  `lib/push` (a `Sender` interface + `NoopSender`); **no send yet** — that backend is
+  wired in 84c. Tests: `conf` validation/redaction, `lib/push` no-op, and an
+  end-to-end `api/integration` subscribe/upsert/scope/validation test.
 - **84b — Client subscription.** Service worker, manifest wired into `<head>`, SW
   registration, and the **Settings per-device toggle** that drives the permission +
   subscribe + POST flow (and unsubscribe). End state: a real device produces a

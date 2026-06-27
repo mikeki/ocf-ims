@@ -66,6 +66,9 @@ func DefaultIMS() *IMSConfig {
 		AttachmentsStore: AttachmentsStore{
 			Type: AttachmentsStoreNone,
 		},
+		// Push is disabled by default (no VAPID keys). A deployment opts in by
+		// configuring IMS_VAPID_* (see plan 84); dev runs without it.
+		Push: Push{},
 	}
 }
 
@@ -107,6 +110,10 @@ func (c *IMSConfig) Validate() error {
 		c.AttachmentsStore.Local = LocalAttachments{}
 	}
 
+	// Web push (plan 84). Off unless configured; if any VAPID value is set, all
+	// three are required — a half-configured key pair would fail at send time.
+	errs = append(errs, c.Push.Validate())
+
 	// Assorted other validations
 	if c.Core.AccessTokenLifetime > c.Core.RefreshTokenLifetime {
 		errs = append(errs, errors.New("access token lifetime should not be greater than refresh token lifetime"))
@@ -127,6 +134,7 @@ type IMSConfig struct {
 	AttachmentsStore AttachmentsStore
 	Store            DBStore
 	Directory        Directory
+	Push             Push
 }
 
 type AttachmentsStoreType string
@@ -245,6 +253,38 @@ type DBStoreMaria struct {
 
 type Directory struct {
 	InMemoryCacheTTL time.Duration
+}
+
+// Push holds the VAPID key pair and contact used to send Web Push notifications
+// (plan 84). The keys are self-generated once (see the chosen library's keygen);
+// the private key is a secret. Absent ⇒ push is disabled and the client never
+// advertises the feature, mirroring how the attachments/seed backends degrade.
+type Push struct {
+	// VAPIDPublicKey is shipped to the browser so it can subscribe; it is not secret.
+	VAPIDPublicKey string
+	// #nosec G117 // Exported secret struct field
+	VAPIDPrivateKey string `redact:"true"`
+	// VAPIDSubject is a mailto: or https: contact for the push service, required
+	// by the VAPID spec (e.g. "mailto:ims@example.org").
+	VAPIDSubject string
+}
+
+// Enabled reports whether web push is configured (a usable key pair is present).
+func (p Push) Enabled() bool {
+	return p.VAPIDPublicKey != "" && p.VAPIDPrivateKey != ""
+}
+
+// Validate requires the VAPID values to be all-set or all-empty: a half-configured
+// key pair would only fail later at send time, so reject it at boot. The subject
+// is mandatory once keys are present.
+func (p Push) Validate() error {
+	if p.VAPIDPublicKey == "" && p.VAPIDPrivateKey == "" && p.VAPIDSubject == "" {
+		return nil
+	}
+	if p.VAPIDPublicKey == "" || p.VAPIDPrivateKey == "" || p.VAPIDSubject == "" {
+		return errors.New("web push requires all of IMS_VAPID_PUBLIC, IMS_VAPID_PRIVATE, and IMS_VAPID_SUBJECT (or none)")
+	}
+	return nil
 }
 
 type AttachmentsStore struct {
