@@ -18,7 +18,7 @@ package api
 
 import (
 	"context"
-	"sort"
+	"slices"
 	"testing"
 
 	"github.com/mikeki/ocf-ims/directory"
@@ -84,8 +84,8 @@ func TestResolveTypedMentionIDs(t *testing.T) {
 			// notify step dedups), so compare as multisets.
 			gotSorted := append([]int32(nil), got...)
 			wantSorted := append([]int32(nil), tc.want...)
-			sort.Slice(gotSorted, func(i, j int) bool { return gotSorted[i] < gotSorted[j] })
-			sort.Slice(wantSorted, func(i, j int) bool { return wantSorted[i] < wantSorted[j] })
+			slices.Sort(gotSorted)
+			slices.Sort(wantSorted)
 			assert.Equal(t, wantSorted, gotSorted)
 		})
 	}
