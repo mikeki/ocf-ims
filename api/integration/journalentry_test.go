@@ -217,6 +217,53 @@ func TestJournalEntryMentions(t *testing.T) {
 	require.Equal(t, userCarolHandle, byID[userCarolPersonID].Handle)
 }
 
+// TestJournalEntryTypedMentions verifies the backend safety net: when an author
+// types "@handle" but does NOT pick from the "@" typeahead (so the client sends
+// no MentionedPersonIDs), the server still resolves the handle from the directory
+// and records the mention. Without this, a fat-fingered or pasted mention would
+// notify nobody.
+func TestJournalEntryTypedMentions(t *testing.T) {
+	t.Parallel()
+	ctx := t.Context()
+
+	apisAdmin := ApiHelper{t: t, serverURL: shared.serverURL, jwt: jwtForAdmin(ctx, t)}
+	apisAlice := ApiHelper{t: t, serverURL: shared.serverURL, jwt: jwtForAlice(t, ctx)}
+
+	eventName := rand.NonCryptoText()
+	_, resp := apisAdmin.createEvent(ctx, imsjson.Event{Name: &eventName})
+	require.Equal(t, http.StatusNoContent, resp.StatusCode)
+	require.NoError(t, resp.Body.Close())
+	resp = apisAdmin.addWriter(ctx, eventName, userAliceHandle)
+	require.Equal(t, http.StatusNoContent, resp.StatusCode)
+	require.NoError(t, resp.Body.Close())
+
+	// The entry mentions Bob purely as typed text — no MentionedPersonIDs at all.
+	num := apisAlice.newIncidentSuccess(ctx, imsjson.Incident{
+		Event: eventName,
+		JournalEntries: []imsjson.JournalEntry{{
+			Text: "Please page @" + userBobHandle + " right away.",
+		}},
+	})
+
+	retrieved, resp := apisAlice.getIncident(ctx, eventName, num)
+	require.Equal(t, http.StatusOK, resp.StatusCode)
+	require.NoError(t, resp.Body.Close())
+
+	var entry imsjson.JournalEntry
+	for _, e := range retrieved.JournalEntries {
+		if !e.SystemEntry {
+			entry = e
+		}
+	}
+	require.NotZero(t, entry.ID)
+
+	// Bob's mention is resolved from the typed handle even though the client sent
+	// no person IDs.
+	require.Len(t, entry.Mentions, 1)
+	require.Equal(t, int32(userBobPersonID), entry.Mentions[0].PersonID)
+	require.Equal(t, userBobHandle, entry.Mentions[0].Handle)
+}
+
 // TestReportJournalEntryMentions is the field-report mirror of
 // TestJournalEntryMentions: @mention person IDs on a report journal entry are
 // persisted and round-trip on read, with the same insert-ignore dedup/stale-drop

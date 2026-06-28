@@ -23,6 +23,7 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"regexp"
 	"slices"
 	"strconv"
 	"strings"
@@ -394,14 +395,22 @@ func addIncidentJournalEntry(
 }
 
 // addJournalEntryMentions records the @mention rows for a freshly-created
-// journal entry (plan 81). The insert is insert-ignore, so a duplicate person
-// in the list, or a stale/non-existent person ID, is silently skipped rather
-// than aborting the surrounding transaction — the authoring "@" combobox only
-// ever sends real registry IDs, and a dropped bad ID is the fail-safe outcome.
+// journal entry (plan 81). It records both the people the author picked via the
+// "@" typeahead (explicitPersonIDs) and any "@handle" they typed by hand without
+// picking — the latter resolved from the directory by resolveTypedMentionIDs, so
+// a fat-fingered or pasted mention still notifies the right person. The insert is
+// insert-ignore, so a person appearing in both lists, a duplicate, or a
+// stale/non-existent ID is silently skipped rather than aborting the surrounding
+// transaction — a dropped bad ID is the fail-safe outcome.
 func addJournalEntryMentions(
-	ctx context.Context, db *store.DBQ, dbtx imsdb.DBTX,
-	journalEntryID int32, personIDs []int32,
+	ctx context.Context, db *store.DBQ, userStore directory.UserStore, dbtx imsdb.DBTX,
+	journalEntryID int32, text string, explicitPersonIDs []int32,
 ) *herr.HTTPError {
+	typed, err := resolveTypedMentionIDs(ctx, userStore, text)
+	if err != nil {
+		return herr.InternalServerError("Failed to resolve typed mentions", err).From("[resolveTypedMentionIDs]")
+	}
+	personIDs := append(append([]int32(nil), explicitPersonIDs...), typed...)
 	for _, personID := range personIDs {
 		if personID <= 0 {
 			continue
@@ -415,6 +424,49 @@ func addJournalEntryMentions(
 		}
 	}
 	return nil
+}
+
+// mentionTokenRe finds "@token" mention candidates an author typed by hand: an
+// "@" at the start of the text or right after whitespace, then a run of
+// non-whitespace. This mirrors the frontend "@" typeahead trigger
+// (currentMentionQuery in ims.ts), which only fires on an "@" at start-of-text or
+// after whitespace and stops at the next whitespace — so a mid-word "@" (an email
+// address) is not treated as a mention here either.
+var mentionTokenRe = regexp.MustCompile(`(?:^|\s)@(\S+)`)
+
+// resolveTypedMentionIDs scans journal text for "@handle" mentions and returns
+// the person IDs whose handle matches one (case-insensitively). It's the safety
+// net for when an author types "@handle" without picking from the "@" typeahead:
+// the frontend records no person ID in that case, so without this the mention
+// would notify nobody. Only exact handle matches resolve — display names (which
+// contain spaces and so are ambiguous in free text) are intentionally not
+// matched — and trailing punctuation is trimmed so "@bob." and "@bob," resolve.
+func resolveTypedMentionIDs(ctx context.Context, userStore directory.UserStore, text string) ([]int32, error) {
+	if !strings.Contains(text, "@") {
+		return nil, nil
+	}
+	matches := mentionTokenRe.FindAllStringSubmatch(text, -1)
+	if len(matches) == 0 {
+		return nil, nil
+	}
+	users, err := userStore.GetAllUsers(ctx)
+	if err != nil {
+		return nil, err
+	}
+	idByHandle := make(map[string]int32, len(users))
+	for _, u := range users {
+		if u.Handle != "" {
+			idByHandle[strings.ToLower(u.Handle)] = int32(u.ID)
+		}
+	}
+	var ids []int32
+	for _, m := range matches {
+		token := strings.ToLower(strings.TrimRight(m[1], `.,;:!?)]}'"`))
+		if id, ok := idByHandle[token]; ok {
+			ids = append(ids, id)
+		}
+	}
+	return ids, nil
 }
 
 type NewIncident struct {
@@ -473,7 +525,7 @@ func (action NewIncident) newIncident(req *http.Request) (incidentNumber int32, 
 		return 0, "", herr.InternalServerError("Failed to create incident", err).From("[CreateIncident]")
 	}
 
-	errHTTP = updateIncident(ctx, action.imsDBQ, action.es, action.pusher, newIncident, authorPersonID)
+	errHTTP = updateIncident(ctx, action.imsDBQ, action.userStore, action.es, action.pusher, newIncident, authorPersonID)
 	if errHTTP != nil {
 		return 0, "", errHTTP.From("[updateIncident]")
 	}
@@ -531,7 +583,7 @@ func isJournalOnly(inc imsjson.Incident) bool {
 		inc.LinkedIncidents == nil
 }
 
-func updateIncident(ctx context.Context, imsDBQ *store.DBQ, es *EventSourcerer, pusher *Pusher, newIncident imsjson.Incident, authorPersonID int32,
+func updateIncident(ctx context.Context, imsDBQ *store.DBQ, userStore directory.UserStore, es *EventSourcerer, pusher *Pusher, newIncident imsjson.Incident, authorPersonID int32,
 ) *herr.HTTPError {
 	storedIncidentRow, err := imsDBQ.Incident(ctx, imsDBQ,
 		imsdb.IncidentParams{
@@ -899,7 +951,7 @@ func updateIncident(ctx context.Context, imsDBQ *store.DBQ, es *EventSourcerer, 
 		if errHTTP != nil {
 			return errHTTP.From("[addIncidentJournalEntry]")
 		}
-		errHTTP = addJournalEntryMentions(ctx, imsDBQ, txn, entryID, entry.MentionedPersonIDs)
+		errHTTP = addJournalEntryMentions(ctx, imsDBQ, userStore, txn, entryID, entry.Text, entry.MentionedPersonIDs)
 		if errHTTP != nil {
 			return errHTTP.From("[addJournalEntryMentions]")
 		}
@@ -1018,7 +1070,7 @@ func (action EditIncident) editIncident(req *http.Request) *herr.HTTPError {
 
 	authorPersonID := jwtCtx.Claims.PersonID()
 
-	errHTTP = updateIncident(ctx, action.imsDBQ, action.es, action.pusher, newIncident, authorPersonID)
+	errHTTP = updateIncident(ctx, action.imsDBQ, action.userStore, action.es, action.pusher, newIncident, authorPersonID)
 	if errHTTP != nil {
 		return errHTTP.From("[updateIncident]")
 	}
