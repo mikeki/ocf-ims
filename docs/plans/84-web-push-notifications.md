@@ -193,9 +193,17 @@ when the push service returns **404/410 Gone** on send.
   subscription the push service reports gone. Notification content is deliberately
   minimal ("You were mentioned in incident #12" + deep link, no incident text) for
   lock-screen privacy; the deep link matches the bell's `notificationHref`. After
-  this, a real `@mention` lights up a subscribed phone. Tests: `lib/push` status
-  mapping over `httptest` with real encryptable keys; `api` recipient-dedup, URL
-  builders, and the disabled-backend short-circuit.
+  this, a real `@mention` lights up a subscribed phone. The send backend is
+  injected into `AddToMux` (selected in `cmd/serve.go`), so tests can wire a spy.
+  Tests: `lib/push` status mapping over `httptest` with real encryptable keys; `api`
+  recipient-dedup, URL builders, and the disabled-backend short-circuit; and an
+  `api/integration` test that drives the full HTTP→commit→fan-out path against real
+  MariaDB with a capturing sender — asserting a mention loads the recipient's stored
+  subscription and sends to it, and that a 404/410 prunes the row.
+
+  *Known follow-up (84d-ish):* fan-out spawns an unbounded detached goroutine per
+  trigger with no shutdown drain — fine at OCF scale (mirrors the SSE-notify stance),
+  but a bounded worker pool would be the deeper fix if push volume ever grows.
 - **84d — Polish & rollout (later).** A "your devices" list with per-device revoke;
   the per-channel/per-type **preference matrix** (shared with 82c email); the **iOS
   Add-to-Home-Screen onboarding** doc/UI; lock-screen content decision.

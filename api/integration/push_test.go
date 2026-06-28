@@ -18,12 +18,21 @@ package integration_test
 
 import (
 	"context"
+	"database/sql"
 	"net/http"
+	"net/http/httptest"
+	"net/url"
+	"strconv"
 	"sync"
 	"testing"
+	"time"
 
 	"github.com/mikeki/ocf-ims/api"
+	imsjson "github.com/mikeki/ocf-ims/json"
+	"github.com/mikeki/ocf-ims/lib/push"
 	"github.com/mikeki/ocf-ims/lib/rand"
+	"github.com/mikeki/ocf-ims/store/imsdb"
+	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
 
@@ -142,6 +151,138 @@ func TestPushSubscriptions(t *testing.T) {
 	resp = alice.pushUnsubscribe(ctx, api.PushUnsubscribeRequest{Endpoint: endpoint1})
 	require.Equal(t, http.StatusNoContent, resp.StatusCode)
 	require.NoError(t, resp.Body.Close())
+}
+
+// capturedSend records one Send the spy was asked to perform.
+type capturedSend struct {
+	sub push.Subscription
+	msg push.Message
+}
+
+// capturingSender is a push.Sender test double that records every Send and can be
+// switched to report subscriptions as permanently gone (404/410), to drive the
+// fan-out's prune path. Safe for concurrent use — sends arrive from the
+// background deliver goroutine.
+type capturingSender struct {
+	mu    sync.Mutex
+	sends []capturedSend
+	gone  bool
+}
+
+func (s *capturingSender) Enabled() bool { return true }
+
+func (s *capturingSender) Send(_ context.Context, sub push.Subscription, msg push.Message) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.sends = append(s.sends, capturedSend{sub: sub, msg: msg})
+	if s.gone {
+		return push.ErrSubscriptionGone
+	}
+	return nil
+}
+
+func (s *capturingSender) setGone(gone bool) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.gone = gone
+}
+
+// sendsTo returns the messages sent to a given endpoint so far. Keying on the
+// test's own (unique) endpoint isolates it from any other device the shared
+// recipient might have.
+func (s *capturingSender) sendsTo(endpoint string) []push.Message {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	var out []push.Message
+	for _, c := range s.sends {
+		if c.sub.Endpoint == endpoint {
+			out = append(out, c.msg)
+		}
+	}
+	return out
+}
+
+// TestPushFanoutDelivery exercises plan 84c's send fan-out end to end through the
+// real HTTP + DB path, on a dedicated server wired with a capturing sender (the
+// shared suite server uses the no-op backend). It covers the parts the unit tests
+// can't: that a journal-entry @mention actually loads the recipient's stored
+// subscription and sends to it, and that a subscription the push service reports
+// gone is pruned from the database.
+func TestPushFanoutDelivery(t *testing.T) {
+	t.Parallel()
+	ctx := t.Context()
+
+	// A dedicated server so this test's pushes go to our spy, not the shared
+	// suite's no-op sender, and so other parallel tests' triggers don't reach it.
+	spy := &capturingSender{}
+	srv := httptest.NewServer(
+		api.AddToMux(nil, shared.es, shared.cfg, shared.imsDBQ, shared.userStore, nil, shared.actionLogger, spy),
+	)
+	defer srv.Close()
+	srvURL, err := url.Parse(srv.URL)
+	require.NoError(t, err)
+
+	admin := ApiHelper{t: t, serverURL: srvURL, jwt: jwtForAdmin(ctx, t)}
+	alice := ApiHelper{t: t, serverURL: srvURL, jwt: jwtForAlice(t, ctx)}
+
+	eventName := rand.NonCryptoText()
+	_, resp := admin.createEvent(ctx, imsjson.Event{Name: &eventName})
+	require.Equal(t, http.StatusNoContent, resp.StatusCode)
+	require.NoError(t, resp.Body.Close())
+	resp = admin.addWriter(ctx, eventName, userAliceHandle)
+	require.Equal(t, http.StatusNoContent, resp.StatusCode)
+	require.NoError(t, resp.Body.Close())
+
+	// The recipient is Bob: no other test subscribes a device for him, so his only
+	// device is the one we seed here — keeping the spy's view clean.
+	endpoint := "https://push.test/" + rand.NonCryptoText()
+	require.NoError(t, shared.imsDBQ.InsertPushSubscription(ctx, shared.imsDBQ, imsdb.InsertPushSubscriptionParams{
+		PersonID:  userBobPersonID,
+		Endpoint:  endpoint,
+		P256dh:    "p256dh-bob",
+		Auth:      "auth-bob",
+		UserAgent: sql.NullString{},
+		Created:   1,
+	}))
+
+	// Alice (the author/actor) creates an incident whose journal entry @mentions
+	// Bob -> Bob's device should receive exactly one push.
+	num := alice.newIncidentSuccess(ctx, imsjson.Incident{
+		Event: eventName,
+		JournalEntries: []imsjson.JournalEntry{{
+			Text:               "Paging @" + userBobHandle + " here.",
+			MentionedPersonIDs: []int32{userBobPersonID},
+		}},
+	})
+
+	// Fan-out runs in a background goroutine after commit, so poll for it.
+	require.EventuallyWithT(t, func(c *assert.CollectT) {
+		msgs := spy.sendsTo(endpoint)
+		assert.Len(c, msgs, 1)
+	}, 5*time.Second, 20*time.Millisecond)
+
+	got := spy.sendsTo(endpoint)
+	require.Len(t, got, 1)
+	assert.Equal(t, "OCF IMS", got[0].Title)
+	assert.Contains(t, got[0].Body, "incident #")
+	// The deep link points at the incident we just created.
+	assert.Equal(t, "/ims/app/events/"+eventName+"/incidents/"+strconv.Itoa(int(num)), got[0].URL)
+
+	// Now the push service reports Bob's device gone: a fresh mention's fan-out
+	// must prune the stored subscription.
+	spy.setGone(true)
+	_ = alice.newIncidentSuccess(ctx, imsjson.Incident{
+		Event: eventName,
+		JournalEntries: []imsjson.JournalEntry{{
+			Text:               "Still need @" + userBobHandle + ".",
+			MentionedPersonIDs: []int32{userBobPersonID},
+		}},
+	})
+
+	require.EventuallyWithT(t, func(c *assert.CollectT) {
+		_, _, found := pushSubByEndpoint(ctx, t, userBobPersonID, endpoint)
+		assert.False(c, found, "a 404/410 from the push service must prune the subscription")
+	}, 5*time.Second, 20*time.Millisecond)
 }
 
 // TestPushSubscribeConcurrentSameEndpoint hammers the read-first upsert with many

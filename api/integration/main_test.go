@@ -185,7 +185,9 @@ func setup(ctx context.Context, tempDir string) {
 
 	shared.actionLogger = actionlog.NewLogger(ctx, shared.imsDBQ, shared.cfg.Core.ActionLogEnabled, true)
 	shared.testServer = httptest.NewServer(
-		api.AddToMux(nil, shared.es, shared.cfg, shared.imsDBQ, shared.userStore, nil, shared.actionLogger),
+		// nil push sender → the no-op backend, so the shared suite does no push work;
+		// the push fan-out is exercised on its own server in push_test.go.
+		api.AddToMux(nil, shared.es, shared.cfg, shared.imsDBQ, shared.userStore, nil, shared.actionLogger, nil),
 	)
 	shared.serverURL, err = url.Parse(shared.testServer.URL)
 	must(err)

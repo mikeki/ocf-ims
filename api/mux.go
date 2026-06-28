@@ -47,6 +47,7 @@ func AddToMux(
 	userStore directory.UserStore,
 	s3Client *attachment.S3Client,
 	actionLogger *actionlog.Logger,
+	pushSender push.Sender,
 ) *http.ServeMux {
 	if mux == nil {
 		mux = http.NewServeMux()
@@ -55,12 +56,11 @@ func AddToMux(
 	jwter := authz.JWTer{SecretKey: cfg.Core.JWTSecret}
 	attachmentsEnabled := cfg.AttachmentsStore.Type != conf.AttachmentsStoreNone
 
-	// Web-push fan-out (plan 84c). A real VAPID-signing sender when push is
-	// configured, else a no-op so every fan-out short-circuits. Shared by the
-	// notification-generating handlers below.
-	var pushSender push.Sender = push.NoopSender{}
-	if cfg.Push.Enabled() {
-		pushSender = push.NewWebPushSender(cfg.Push.VAPIDPublicKey, cfg.Push.VAPIDPrivateKey, cfg.Push.VAPIDSubject)
+	// Web-push fan-out (plan 84c). The caller selects the backend: a real
+	// VAPID-signing sender when push is configured, else a no-op so every fan-out
+	// short-circuits. A nil sender is treated as the no-op backend.
+	if pushSender == nil {
+		pushSender = push.NoopSender{}
 	}
 	pusher := NewPusher(db, pushSender)
 
