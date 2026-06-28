@@ -358,7 +358,7 @@ func (action EditReport) editReport(req *http.Request) *herr.HTTPError {
 		if errHTTP != nil {
 			return errHTTP.From("[addJournalEntry]")
 		}
-		errHTTP = addJournalEntryMentions(ctx, action.imsDBQ, txn, entryID, entry.MentionedPersonIDs)
+		errHTTP = addJournalEntryMentions(ctx, action.imsDBQ, action.userStore, txn, entryID, entry.Text, entry.MentionedPersonIDs)
 		if errHTTP != nil {
 			return errHTTP.From("[addJournalEntryMentions]")
 		}
@@ -545,7 +545,7 @@ func (action NewReport) newReport(req *http.Request) (reportNumber int32, locati
 		if errHTTP != nil {
 			return 0, "", errHTTP.From("[addJournalEntry]")
 		}
-		errHTTP = addJournalEntryMentions(ctx, action.imsDBQ, txn, entryID, entry.MentionedPersonIDs)
+		errHTTP = addJournalEntryMentions(ctx, action.imsDBQ, action.userStore, txn, entryID, entry.Text, entry.MentionedPersonIDs)
 		if errHTTP != nil {
 			return 0, "", errHTTP.From("[addJournalEntryMentions]")
 		}
