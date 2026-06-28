@@ -753,13 +753,22 @@ async function refreshNotifications(): Promise<void> {
         return;
     }
     const unread = json.unread ?? 0;
+    const badgeText = unread > 99 ? "99+" : unread.toString();
     if (unread > 0) {
-        badge.textContent = unread > 99 ? "99+" : unread.toString();
+        badge.textContent = badgeText;
         badge.classList.remove("hidden");
         markAll.classList.remove("hidden");
     } else {
         badge.classList.add("hidden");
         markAll.classList.add("hidden");
+    }
+    // Mirror the unread count onto the hamburger toggler so it's visible while
+    // the mobile menu is collapsed (the bell lives inside the collapsible area).
+    // Optional: pages without the toggler badge just skip this.
+    const togglerBadge = document.getElementById("nav-toggler-badge");
+    if (togglerBadge != null) {
+        togglerBadge.textContent = badgeText;
+        togglerBadge.classList.toggle("hidden", unread <= 0);
     }
     const notifications = json.notifications ?? [];
     list.replaceChildren();
