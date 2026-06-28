@@ -35,6 +35,7 @@ import (
 	"github.com/mikeki/ocf-ims/directory"
 	"github.com/mikeki/ocf-ims/lib/attachment"
 	"github.com/mikeki/ocf-ims/lib/conv"
+	"github.com/mikeki/ocf-ims/lib/push"
 	"github.com/mikeki/ocf-ims/store"
 	"github.com/mikeki/ocf-ims/store/actionlog"
 	"github.com/mikeki/ocf-ims/store/imsdb"
@@ -130,9 +131,17 @@ func mustStartServer(ctx context.Context, unvalidatedCfg *conf.IMSConfig, printC
 	var userStore directory.UserStore = directory.NewLocalUserStore(imsDBQ, imsCfg.Directory.InMemoryCacheTTL)
 	actionLogger := actionlog.NewLogger(ctx, imsDBQ, imsCfg.Core.ActionLogEnabled, false)
 
+	// Web-push send backend (plan 84c): a real VAPID-signing sender when push is
+	// configured, else a no-op so the fan-out does nothing.
+	var pushSender push.Sender = push.NoopSender{}
+	if imsCfg.Push.Enabled() {
+		slog.Info("Web push enabled")
+		pushSender = push.NewWebPushSender(imsCfg.Push.VAPIDPublicKey, imsCfg.Push.VAPIDPrivateKey, imsCfg.Push.VAPIDSubject)
+	}
+
 	eventSource := api.NewEventSourcerer()
 	mux := http.NewServeMux()
-	api.AddToMux(mux, eventSource, imsCfg, imsDBQ, userStore, s3Client, actionLogger)
+	api.AddToMux(mux, eventSource, imsCfg, imsDBQ, userStore, s3Client, actionLogger, pushSender)
 	web.AddToMux(mux, imsCfg)
 
 	s := &http.Server{

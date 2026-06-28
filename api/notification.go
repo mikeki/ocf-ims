@@ -74,40 +74,43 @@ func createNotification(
 // rows), linked to whichever source — incident or report — the entry belongs to.
 // Recipients are read back from the persisted mention rows, so the IDs are valid
 // and deduped; the actor (the entry's author) is skipped by createNotification.
+// It returns the mentioned person IDs (as persisted, so valid and deduped per
+// entry) so the caller can additionally fan out web push after commit (plan 84c);
+// the IDs still include the actor, whom both the bell and the push fan-out skip.
 func generateMentionNotificationsFor(
 	ctx context.Context, db *store.DBQ, dbtx imsdb.DBTX,
 	eventID int32, incidentNumber, reportNumber sql.NullInt32, journalEntryID, actorPersonID int32,
-) *herr.HTTPError {
+) ([]int32, *herr.HTTPError) {
 	personIDs, err := db.JournalEntryMentionPersonIDs(ctx, dbtx, journalEntryID)
 	if err != nil {
-		return herr.InternalServerError("Failed to read journal entry mentions", err).From("[JournalEntryMentionPersonIDs]")
+		return nil, herr.InternalServerError("Failed to read journal entry mentions", err).From("[JournalEntryMentionPersonIDs]")
 	}
 	for _, personID := range personIDs {
 		errHTTP := createNotification(ctx, db, dbtx, personID, imsdb.NotificationTypeMentioned,
 			eventID, incidentNumber, reportNumber, nullInt32(journalEntryID), actorPersonID)
 		if errHTTP != nil {
-			return errHTTP.From("[createNotification]")
+			return nil, errHTTP.From("[createNotification]")
 		}
 	}
-	return nil
+	return personIDs, nil
 }
 
 // generateMentionNotifications notifies the people mentioned in an incident
-// journal entry.
+// journal entry and returns them for the post-commit push fan-out.
 func generateMentionNotifications(
 	ctx context.Context, db *store.DBQ, dbtx imsdb.DBTX,
 	eventID, incidentNumber, journalEntryID, actorPersonID int32,
-) *herr.HTTPError {
+) ([]int32, *herr.HTTPError) {
 	return generateMentionNotificationsFor(ctx, db, dbtx, eventID,
 		nullInt32(incidentNumber), sql.NullInt32{}, journalEntryID, actorPersonID)
 }
 
 // generateReportMentionNotifications notifies the people mentioned in a field
-// report journal entry.
+// report journal entry and returns them for the post-commit push fan-out.
 func generateReportMentionNotifications(
 	ctx context.Context, db *store.DBQ, dbtx imsdb.DBTX,
 	eventID, reportNumber, journalEntryID, actorPersonID int32,
-) *herr.HTTPError {
+) ([]int32, *herr.HTTPError) {
 	return generateMentionNotificationsFor(ctx, db, dbtx, eventID,
 		sql.NullInt32{}, nullInt32(reportNumber), journalEntryID, actorPersonID)
 }

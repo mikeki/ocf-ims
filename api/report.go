@@ -249,6 +249,7 @@ type EditReport struct {
 	imsDBQ      *store.DBQ
 	userStore   directory.UserStore
 	eventSource *EventSourcerer
+	pusher      *Pusher
 }
 
 func (action EditReport) ServeHTTP(w http.ResponseWriter, req *http.Request) {
@@ -348,6 +349,7 @@ func (action EditReport) editReport(req *http.Request) *herr.HTTPError {
 	if err != nil {
 		return herr.InternalServerError("Failed to update Report", err).From("[UpdateReport]")
 	}
+	var mentionedPersonIDs []int32
 	for _, entry := range requestReport.JournalEntries {
 		if entry.Text == "" {
 			continue
@@ -360,10 +362,11 @@ func (action EditReport) editReport(req *http.Request) *herr.HTTPError {
 		if errHTTP != nil {
 			return errHTTP.From("[addJournalEntryMentions]")
 		}
-		errHTTP = generateReportMentionNotifications(ctx, action.imsDBQ, txn, event.ID, storedReport.Number, entryID, authorPersonID)
+		recipients, errHTTP := generateReportMentionNotifications(ctx, action.imsDBQ, txn, event.ID, storedReport.Number, entryID, authorPersonID)
 		if errHTTP != nil {
 			return errHTTP.From("[generateReportMentionNotifications]")
 		}
+		mentionedPersonIDs = append(mentionedPersonIDs, recipients...)
 	}
 
 	err = txn.Commit()
@@ -372,6 +375,8 @@ func (action EditReport) editReport(req *http.Request) *herr.HTTPError {
 	}
 
 	defer action.eventSource.notifyReportUpdate(event.ID, storedReport.Number)
+	// Web push the mentioned people (plan 84c): after commit, off the request path.
+	action.pusher.notifyMentionedInReport(ctx, event.Name, storedReport.Number, mentionedPersonIDs, authorPersonID)
 	return nil
 }
 
@@ -462,6 +467,7 @@ type NewReport struct {
 	imsDBQ      *store.DBQ
 	userStore   directory.UserStore
 	eventSource *EventSourcerer
+	pusher      *Pusher
 }
 
 func (action NewReport) ServeHTTP(w http.ResponseWriter, req *http.Request) {
@@ -530,6 +536,7 @@ func (action NewReport) newReport(req *http.Request) (reportNumber int32, locati
 		}
 	}
 
+	var mentionedPersonIDs []int32
 	for _, entry := range report.JournalEntries {
 		if entry.Text == "" {
 			continue
@@ -542,10 +549,11 @@ func (action NewReport) newReport(req *http.Request) (reportNumber int32, locati
 		if errHTTP != nil {
 			return 0, "", errHTTP.From("[addJournalEntryMentions]")
 		}
-		errHTTP = generateReportMentionNotifications(ctx, action.imsDBQ, txn, event.ID, report.Number, entryID, authorPersonID)
+		recipients, errHTTP := generateReportMentionNotifications(ctx, action.imsDBQ, txn, event.ID, report.Number, entryID, authorPersonID)
 		if errHTTP != nil {
 			return 0, "", errHTTP.From("[generateReportMentionNotifications]")
 		}
+		mentionedPersonIDs = append(mentionedPersonIDs, recipients...)
 	}
 
 	err = txn.Commit()
@@ -555,6 +563,8 @@ func (action NewReport) newReport(req *http.Request) (reportNumber int32, locati
 
 	loc := fmt.Sprintf("/ims/api/events/%v/reports/%v", event.Name, report.Number)
 	defer action.eventSource.notifyReportUpdate(event.ID, report.Number)
+	// Web push the mentioned people (plan 84c): after commit, off the request path.
+	action.pusher.notifyMentionedInReport(ctx, event.Name, report.Number, mentionedPersonIDs, authorPersonID)
 	return report.Number, loc, nil
 }
 

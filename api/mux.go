@@ -33,6 +33,7 @@ import (
 	"github.com/mikeki/ocf-ims/lib/authz"
 	"github.com/mikeki/ocf-ims/lib/conv"
 	"github.com/mikeki/ocf-ims/lib/herr"
+	"github.com/mikeki/ocf-ims/lib/push"
 	"github.com/mikeki/ocf-ims/store"
 	"github.com/mikeki/ocf-ims/store/actionlog"
 	"github.com/mikeki/ocf-ims/store/imsdb"
@@ -46,6 +47,7 @@ func AddToMux(
 	userStore directory.UserStore,
 	s3Client *attachment.S3Client,
 	actionLogger *actionlog.Logger,
+	pushSender push.Sender,
 ) *http.ServeMux {
 	if mux == nil {
 		mux = http.NewServeMux()
@@ -53,6 +55,14 @@ func AddToMux(
 
 	jwter := authz.JWTer{SecretKey: cfg.Core.JWTSecret}
 	attachmentsEnabled := cfg.AttachmentsStore.Type != conf.AttachmentsStoreNone
+
+	// Web-push fan-out (plan 84c). The caller selects the backend: a real
+	// VAPID-signing sender when push is configured, else a no-op so every fan-out
+	// short-circuits. A nil sender is treated as the no-op backend.
+	if pushSender == nil {
+		pushSender = push.NoopSender{}
+	}
+	pusher := NewPusher(db, pushSender)
 
 	mux.Handle("GET /ims/api/actionlogs",
 		Adapt(
@@ -128,7 +138,7 @@ func AddToMux(
 
 	mux.Handle("POST /ims/api/events/{eventName}/incidents",
 		Adapt(
-			NewIncident{db, userStore, es},
+			NewIncident{db, userStore, es, pusher},
 			RecoverFromPanic(),
 			RequireAuthN(jwter),
 			LogRequest(true, actionLogger, userStore),
@@ -148,7 +158,7 @@ func AddToMux(
 
 	mux.Handle("POST /ims/api/events/{eventName}/incidents/{incidentNumber}",
 		Adapt(
-			EditIncident{db, userStore, es},
+			EditIncident{db, userStore, es, pusher},
 			RecoverFromPanic(),
 			RequireAuthN(jwter),
 			LogRequest(true, actionLogger, userStore),
@@ -178,7 +188,7 @@ func AddToMux(
 
 	mux.Handle("POST /ims/api/events/{eventName}/incidents/{incidentNumber}/people/{personId}",
 		Adapt(
-			AttachPersonToIncident{db, userStore, es},
+			AttachPersonToIncident{db, userStore, es, pusher},
 			RecoverFromPanic(),
 			RequireAuthN(jwter),
 			LogRequest(true, actionLogger, userStore),
@@ -218,7 +228,7 @@ func AddToMux(
 
 	mux.Handle("POST /ims/api/events/{eventName}/reports",
 		Adapt(
-			NewReport{db, userStore, es},
+			NewReport{db, userStore, es, pusher},
 			RecoverFromPanic(),
 			RequireAuthN(jwter),
 			LogRequest(true, actionLogger, userStore),
@@ -238,7 +248,7 @@ func AddToMux(
 
 	mux.Handle("POST /ims/api/events/{eventName}/reports/{reportNumber}",
 		Adapt(
-			EditReport{db, userStore, es},
+			EditReport{db, userStore, es, pusher},
 			RecoverFromPanic(),
 			RequireAuthN(jwter),
 			LogRequest(true, actionLogger, userStore),

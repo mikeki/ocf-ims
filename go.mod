@@ -3,6 +3,7 @@ module github.com/mikeki/ocf-ims
 go 1.26.4
 
 require (
+	github.com/SherClockHolmes/webpush-go v1.4.0
 	github.com/a-h/templ v0.3.1020
 	github.com/aws/aws-sdk-go-v2/config v1.32.22
 	github.com/aws/aws-sdk-go-v2/service/s3 v1.103.1

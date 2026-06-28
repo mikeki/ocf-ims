@@ -421,6 +421,7 @@ type NewIncident struct {
 	imsDBQ    *store.DBQ
 	userStore directory.UserStore
 	es        *EventSourcerer
+	pusher    *Pusher
 }
 
 func (action NewIncident) ServeHTTP(w http.ResponseWriter, req *http.Request) {
@@ -472,7 +473,7 @@ func (action NewIncident) newIncident(req *http.Request) (incidentNumber int32, 
 		return 0, "", herr.InternalServerError("Failed to create incident", err).From("[CreateIncident]")
 	}
 
-	errHTTP = updateIncident(ctx, action.imsDBQ, action.es, newIncident, authorPersonID)
+	errHTTP = updateIncident(ctx, action.imsDBQ, action.es, action.pusher, newIncident, authorPersonID)
 	if errHTTP != nil {
 		return 0, "", errHTTP.From("[updateIncident]")
 	}
@@ -530,7 +531,7 @@ func isJournalOnly(inc imsjson.Incident) bool {
 		inc.LinkedIncidents == nil
 }
 
-func updateIncident(ctx context.Context, imsDBQ *store.DBQ, es *EventSourcerer, newIncident imsjson.Incident, authorPersonID int32,
+func updateIncident(ctx context.Context, imsDBQ *store.DBQ, es *EventSourcerer, pusher *Pusher, newIncident imsjson.Incident, authorPersonID int32,
 ) *herr.HTTPError {
 	storedIncidentRow, err := imsDBQ.Incident(ctx, imsDBQ,
 		imsdb.IncidentParams{
@@ -889,6 +890,7 @@ func updateIncident(ctx context.Context, imsDBQ *store.DBQ, es *EventSourcerer, 
 		}
 	}
 
+	var mentionedPersonIDs []int32
 	for _, entry := range newIncident.JournalEntries {
 		if entry.Text == "" {
 			continue
@@ -903,10 +905,11 @@ func updateIncident(ctx context.Context, imsDBQ *store.DBQ, es *EventSourcerer, 
 		}
 		// Notify the mentioned people (plan 82). Driven by the persisted mention
 		// rows, so it's after the rows are written; the author is skipped.
-		errHTTP = generateMentionNotifications(ctx, imsDBQ, txn, newIncident.EventID, newIncident.Number, entryID, authorPersonID)
+		recipients, errHTTP := generateMentionNotifications(ctx, imsDBQ, txn, newIncident.EventID, newIncident.Number, entryID, authorPersonID)
 		if errHTTP != nil {
 			return errHTTP.From("[generateMentionNotifications]")
 		}
+		mentionedPersonIDs = append(mentionedPersonIDs, recipients...)
 	}
 
 	err = txn.Commit()
@@ -915,6 +918,8 @@ func updateIncident(ctx context.Context, imsDBQ *store.DBQ, es *EventSourcerer, 
 	}
 
 	es.notifyIncidentUpdate(newIncident.EventID, newIncident.Number)
+	// Web push the mentioned people (plan 84c): after commit, off the request path.
+	pusher.notifyMentionedInIncident(ctx, eventNameById[newIncident.EventID], newIncident.Number, mentionedPersonIDs, authorPersonID)
 	for _, fr := range updatedReports {
 		es.notifyReportUpdate(newIncident.EventID, fr)
 	}
@@ -960,6 +965,7 @@ type EditIncident struct {
 	imsDBQ    *store.DBQ
 	userStore directory.UserStore
 	es        *EventSourcerer
+	pusher    *Pusher
 }
 
 func (action EditIncident) ServeHTTP(w http.ResponseWriter, req *http.Request) {
@@ -1012,7 +1018,7 @@ func (action EditIncident) editIncident(req *http.Request) *herr.HTTPError {
 
 	authorPersonID := jwtCtx.Claims.PersonID()
 
-	errHTTP = updateIncident(ctx, action.imsDBQ, action.es, newIncident, authorPersonID)
+	errHTTP = updateIncident(ctx, action.imsDBQ, action.es, action.pusher, newIncident, authorPersonID)
 	if errHTTP != nil {
 		return errHTTP.From("[updateIncident]")
 	}
@@ -1024,6 +1030,7 @@ type AttachPersonToIncident struct {
 	imsDBQ    *store.DBQ
 	userStore directory.UserStore
 	es        *EventSourcerer
+	pusher    *Pusher
 }
 
 func (action AttachPersonToIncident) ServeHTTP(w http.ResponseWriter, req *http.Request) {
@@ -1065,6 +1072,9 @@ func (action AttachPersonToIncident) attachPerson(req *http.Request) *herr.HTTPE
 	// detach-then-reattach replace and can deadlock against a concurrent
 	// attach/detach on the same incident, so a transient deadlock / lock-wait
 	// timeout retries the whole transaction (store.RunInTx) instead of 500ing.
+	// Whether this save was a genuine new attach (vs. an involvement edit), set in
+	// the transaction and read after commit to drive the push fan-out (plan 84c).
+	var newlyAttached bool
 	runErr := action.imsDBQ.RunInTx(ctx, func(txn *sql.Tx) error {
 		// Attach is a detach-then-reattach replace, so we can't tell a new add from
 		// an involvement edit afterwards. Check up front: only a genuine new add
@@ -1077,6 +1087,9 @@ func (action AttachPersonToIncident) attachPerson(req *http.Request) *herr.HTTPE
 		if txErr != nil {
 			return herr.InternalServerError("Failed to check incident person", txErr).From("[IncidentHasPerson]")
 		}
+		// Reassigned each attempt (RunInTx may retry on deadlock) so it reflects the
+		// committed run, not a rolled-back one.
+		newlyAttached = !alreadyAttached
 
 		txErr = action.imsDBQ.DetachPersonFromIncident(ctx, txn, imsdb.DetachPersonFromIncidentParams{
 			Event:          event.ID,
@@ -1121,6 +1134,11 @@ func (action AttachPersonToIncident) attachPerson(req *http.Request) *herr.HTTPE
 		return herr.AsHTTPError(runErr).From("[RunInTx]")
 	}
 	action.es.notifyIncidentUpdate(event.ID, incidentNumber)
+	// Web push the added person (plan 84c): after commit, off the request path, and
+	// only on a genuine new attach — same gate as the in-app notification.
+	if newlyAttached {
+		action.pusher.notifyAddedToIncident(ctx, event.Name, incidentNumber, personID, jwtCtx.Claims.PersonID())
+	}
 
 	return nil
 }
