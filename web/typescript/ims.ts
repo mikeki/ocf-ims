@@ -36,6 +36,9 @@ const accessTokenRefreshAfterKey = "access_token_refresh_after";
 const incidentsPreferredStateKey = "preferred_incidents_state";
 const preferredTableRowsPerPageKey = "preferred_table_rows_per_page";
 const visitsPreferredStatusKey = "preferred_visits_status";
+// Per-device flag: the user dismissed (or completed) the push opt-in nudge, so
+// don't show the banner again on this device. The Settings toggle still works.
+const pushOptInDismissedKey = "push_opt_in_dismissed";
 
 
 //
@@ -499,6 +502,58 @@ export async function disablePush(): Promise<boolean> {
     return deleted;
 }
 
+// pushOptInDismissed reports whether this device has dismissed (or completed)
+// the push opt-in nudge.
+export function pushOptInDismissed(): boolean {
+    return localStorage.getItem(pushOptInDismissedKey) === "true";
+}
+
+// setPushOptInDismissed records whether the push opt-in nudge should stay hidden
+// on this device. Settings calls it on a deliberate opt-out so the nudge doesn't
+// reappear; it's cleared on opt-in.
+export function setPushOptInDismissed(dismissed: boolean): void {
+    localStorage.setItem(pushOptInDismissedKey, dismissed ? "true" : "false");
+}
+
+// maybePromptPushOptIn nudges a capable-but-unsubscribed device to turn push on.
+// It reveals the nav opt-in banner only when every condition holds: the browser
+// supports push, the server shipped a VAPID key (passed in), the OS permission
+// isn't already denied, this device has no active subscription, and the user
+// hasn't dismissed the nudge. "Enable" runs the same opt-in as Settings; both
+// buttons remember the dismissal so we don't nag. No-ops where the banner markup
+// is absent.
+export async function maybePromptPushOptIn(vapidPublicKey: string|undefined): Promise<void> {
+    const prompt = document.getElementById("push_optin_prompt");
+    const enableBtn = document.getElementById("push_optin_enable") as HTMLButtonElement|null;
+    const dismissBtn = document.getElementById("push_optin_dismiss") as HTMLButtonElement|null;
+    if (prompt == null || enableBtn == null || dismissBtn == null) {
+        return;
+    }
+    const key = vapidPublicKey ?? "";
+    // Push unsupported here, server has it unconfigured, or the user already said
+    // no (in the browser or to us) — nothing to nudge.
+    if (!pushSupported() || !key || pushPermission() === "denied" || pushOptInDismissed()) {
+        return;
+    }
+    // Already subscribed on this device: no nudge needed.
+    if (await currentPushSubscription() != null) {
+        return;
+    }
+    enableBtn.addEventListener("click", async (): Promise<void> => {
+        enableBtn.disabled = true;
+        const ok = await enablePush(key);
+        // Either way, stop nudging: success subscribes the device; failure means
+        // the user declined or it's blocked. Settings remains the way back in.
+        setPushOptInDismissed(!ok);
+        prompt.classList.add("hidden");
+    });
+    dismissBtn.addEventListener("click", (): void => {
+        setPushOptInDismissed(true);
+        prompt.classList.add("hidden");
+    });
+    prompt.classList.remove("hidden");
+}
+
 // sameVapidKey reports whether an existing subscription was created under the
 // given VAPID public key.
 function sameVapidKey(sub: PushSubscription, vapidPublicKey: string): boolean {
@@ -575,6 +630,10 @@ function renderCommonPageItems(authInfo: AuthInfo): void {
             unhide(".if-admin");
         }
         setupNotifications();
+        // Nudge capable-but-unsubscribed devices to turn push on (no-ops if the
+        // device is already subscribed, push is unsupported/unconfigured, or the
+        // user dismissed it). Fire-and-forget like the SW registration.
+        void maybePromptPushOptIn(authInfo.pushVapidPublicKey);
     }
     if (!authInfo.authenticated) {
         hide(".if-logged-in");

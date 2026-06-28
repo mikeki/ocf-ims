@@ -120,8 +120,12 @@ async function setPushEnabled(input: HTMLInputElement): Promise<void> {
                 "or it's blocked in your browser settings.";
             return;
         }
+        // Now subscribed: clear any prior nudge dismissal so state stays coherent.
+        ims.setPushOptInDismissed(false);
     } else {
         const ok = await ims.disablePush();
+        // A deliberate opt-out here shouldn't trigger the opt-in nudge again.
+        ims.setPushOptInDismissed(true);
         if (!ok) {
             // The device is locally off, but the server delete failed and a stale
             // subscription lingers (it'll be pruned automatically on the next send).
