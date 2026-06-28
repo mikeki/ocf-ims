@@ -265,6 +265,22 @@ templ Nav(eventName string) {
     </div>
   </div>
 </nav>
+<!-- Web push opt-in nudge (plan 84d). Hidden by default; ims.ts
+     (maybePromptPushOptIn, from commonPageInit) reveals it on authenticated
+     pages only when this device is *capable* of push (browser supports it AND
+     the server shipped a VAPID key), the OS permission isn't already denied,
+     this device has no active subscription yet, and the user hasn't dismissed
+     it. "Enable" runs the same opt-in as Settings; "Not now" remembers the
+     dismissal so we don't nag (the Settings toggle remains available). -->
+<div id="push_optin_prompt"
+     class="alert alert-info d-flex flex-wrap align-items-center gap-2 my-2 hidden no-print" role="alert">
+  <svg class="bi flex-shrink-0" fill="currentColor" width="16" height="16"><use href="#bell"></use></svg>
+  <span class="flex-grow-1">
+    Get notified on this device when you're mentioned or added to an incident — even when IMS isn't open.
+  </span>
+  <button type="button" class="btn btn-sm btn-primary" id="push_optin_enable">Enable notifications</button>
+  <button type="button" class="btn btn-sm btn-link" id="push_optin_dismiss">Not now</button>
+</div>
 <!-- Shared attachment-preview modal. The journal-entry "Preview" button
      (drawJournalEntries → showAttachmentPreview in ims.ts) renders an attached
      image/PDF/text/video here instead of opening a new browser tab. It lives in
