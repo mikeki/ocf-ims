@@ -97,9 +97,16 @@ templ Nav(eventName string) {
       IMS
 
     </a>
-    <button class="navbar-toggler collapsed" type="button" data-bs-toggle="collapse" data-bs-target="#navbarSupportedContent"
+    <button class="navbar-toggler collapsed position-relative" type="button" data-bs-toggle="collapse" data-bs-target="#navbarSupportedContent"
             aria-controls="navbarSupportedContent" aria-expanded="false" aria-label="Toggle navigation">
       <span class="navbar-toggler-icon"/>
+      <!-- Mirrors the bell's unread badge (refreshNotifications in ims.ts) so an
+           unread count is visible while the menu is collapsed — the bell itself
+           lives inside the collapsible area and is hidden until expanded. The
+           toggler only shows below the expand breakpoint, so this badge is a
+           mobile-only affordance. -->
+      <span id="nav-toggler-badge"
+            class="position-absolute top-0 start-100 translate-middle badge rounded-pill text-bg-danger hidden"></span>
     </button>
     <div class="collapse navbar-collapse" id="navbarSupportedContent">
       <ul
