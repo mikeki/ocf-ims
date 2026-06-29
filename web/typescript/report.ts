@@ -38,10 +38,8 @@ let report: ims.Report|null = null;
 
 const el = {
     reportNumber: ims.typedElement("report_number", HTMLInputElement),
-    reportNumberField: ims.typedElement("report_number_field", HTMLElement),
     reportSummary: ims.typedElement("report_summary", HTMLInputElement),
     incidentNumber: ims.typedElement("incident_number", HTMLInputElement),
-    incidentNumberField: ims.typedElement("incident_number_field", HTMLElement),
     incidentNumberLink: ims.typedElement("incident_number_link", HTMLAnchorElement),
     createIncident: ims.typedElement("create_incident", HTMLElement),
 
@@ -320,12 +318,11 @@ function drawTitle(): void {
 //
 
 function drawNumber(): void {
-    // On a brand-new Report there's no number yet, so a "(new)" placeholder is
-    // meaningless — hide the Report # field until the Report is saved (mirrors
-    // the IMS# field handling in drawIncident).
-    const isNewReport = report!.number == null;
-    el.reportNumberField.classList.toggle("hidden", isNewReport);
+    // Report # is server-assigned when the Report is saved. On a brand-new Report
+    // show the field with a "(new)" placeholder rather than hiding it — hiding made
+    // the box appear out of nowhere the moment the Report auto-created on first edit.
     el.reportNumber.value = (report!.number ?? "").toString();
+    el.reportNumber.placeholder = report!.number == null ? "(new)" : "";
 }
 
 //
@@ -333,16 +330,14 @@ function drawNumber(): void {
 //
 
 function drawIncident(): void {
-    // On a brand-new Report there's no linked Incident yet (the IMS# field would
-    // just show "(none)" and clicking it does nothing) and no history to show, so
-    // hide both the IMS# field and the "Show history and stricken" toggle until the
-    // Report has been saved.
+    // Show the IMS# field even on a brand-new Report (readonly "(none)" until the
+    // Report is saved) so it no longer pops into existence after the first edit.
+    // The history toggle stays hidden on a new Report — there are no entries to show.
     const isNewReport = report!.number == null;
-    el.incidentNumberField.classList.toggle("hidden", isNewReport);
     el.historyToggle.classList.toggle("hidden", isNewReport);
 
     el.incidentNumber.value = "";
-    // New Report. There can be no Incident
+    // New Report. There can be no Incident yet.
     if (isNewReport) {
         el.incidentNumber.placeholder = "(none)";
         return;
