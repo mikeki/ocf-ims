@@ -53,7 +53,7 @@ management system.
 | [64-feedback-round-4.md](64-feedback-round-4.md) | Phase 6 — Feedback round 4 (dashboard polish 6i + people roster 6j) | ✅ Built (PR #53) |
 | [65-report-entry-submit.md](65-report-entry-submit.md) | Phase 6 — Feedback round 5, 6k (entry submit: Enter on incidents, button-only on reports) | Plan — for review |
 | [66-new-report-incident-link.md](66-new-report-incident-link.md) | Phase 6 — Feedback round 5, 6l (show IMS# on a new report + attach-on-create) | Plan — for review |
-| [67-report-reporter-submitter.md](67-report-reporter-submitter.md) | Phase 6 — Feedback round 5, 6m (reporter vs submitter on a report) | Plan — for review |
+| [67-report-reporter-submitter.md](67-report-reporter-submitter.md) | Phase 6 — Feedback round 5, 6m (submitter + per-entry "on behalf of" reporter) | Plan — REVISED (per-entry; PR #113 reworking) |
 | [70-dashboards.md](70-dashboards.md) | Phase 7 — Dashboards & metrics | ✅ Built (7a PR #43, 7b PR #44) |
 | [80-collaboration-and-notifications.md](80-collaboration-and-notifications.md) | Collaboration & notifications — track overview + sequencing | Backlog (context captured) |
 | [81-journal-mentions.md](81-journal-mentions.md) | `@mention` people in journal entries | Idea — design sketch |

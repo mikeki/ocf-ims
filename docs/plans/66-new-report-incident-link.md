@@ -37,6 +37,13 @@ before then).
   *"A new Report may not be attached to an incident"*. `CreateReport`
   (`store/queries.sql`) already has an `INCIDENT_NUMBER` column — today it's
   passed `sql.NullInt32{}`.
+  - **Provenance (asked):** this rule is **inherited from upstream Ranger IMS**,
+    not added by the OCF fork. Sean R. Abraham introduced it in commit `8ab441f`
+    ("add more work on field reports", 2025-04-22) in the original
+    `NewFieldReport` handler (`New FR may not be attached to an incident`). The
+    OCF fork began 2026-06-04 (`20fed12`); later commits only renamed *Field
+    Report → Report*. So 6l **relaxes a long-standing upstream constraint** —
+    nothing OCF-specific depends on it.
 - The existing post-save attach maps a missing incident via MySQL FK error
   **1452** → `herr.NotFound("No such Incident")` in `handleLinkToIncident`
   (`api/report.go:418-423`). Reuse that mapping.
