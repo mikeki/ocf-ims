@@ -41,6 +41,10 @@ linters:
     - wsl  # too annoying
     - wsl_v5
   settings:
+    misspell:
+      ignore-rules:
+        # "Dance Pavillion" is the real OCF stage name (in store.CanonicalAreas).
+        - pavillion
     exhaustive:
       default-signifies-exhaustive: true
     gosec:
