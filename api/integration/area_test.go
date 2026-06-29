@@ -117,14 +117,17 @@ func TestAreaSlugCollision(t *testing.T) {
 	apis := ApiHelper{t: t, serverURL: shared.serverURL, jwt: jwtForAdmin(ctx, t)}
 	eventName := makeEvent(ctx, t, apis)
 
-	name := "Main Camp"
+	// Use a name unique to this test and outside the canonical set: a new event's
+	// starting areas are inherited from a prior event (copy-from-last), so a name
+	// any other test also creates could already be present and shift the suffix.
+	name := "Dup Collision Probe"
 	slug1, resp := apis.editArea(ctx, eventName, imsjson.Area{Name: &name})
 	require.NoError(t, resp.Body.Close())
 	slug2, resp := apis.editArea(ctx, eventName, imsjson.Area{Name: &name})
 	require.NoError(t, resp.Body.Close())
 
-	assert.Equal(t, "main-camp", slug1)
-	assert.Equal(t, "main-camp-2", slug2)
+	assert.Equal(t, "dup-collision-probe", slug1)
+	assert.Equal(t, "dup-collision-probe-2", slug2)
 }
 
 func TestAreaRenameKeepsSlug(t *testing.T) {
