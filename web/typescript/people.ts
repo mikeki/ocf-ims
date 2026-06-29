@@ -462,6 +462,21 @@ function applyFilter(): void {
 function drawParticipationDropdown(
     person: ims.Personnel, wrap: HTMLElement, button: HTMLButtonElement, menu: HTMLElement,
 ): void {
+    // Admins have unrestricted access to every event, so their per-event
+    // participation role is meaningless here (6n) — show a static "admin" pill in
+    // the Role column instead of the participation dropdown, regardless of whether
+    // an event is selected. is_admin is only sent to admin viewers.
+    if (person.is_admin) {
+        wrap.classList.remove("hidden");
+        button.textContent = "admin";
+        button.className = "person-participation badge border-0 text-bg-dark";
+        button.removeAttribute("data-bs-toggle");
+        button.setAttribute("disabled", "true");
+        button.setAttribute("aria-label", "Role: admin");
+        menu.replaceChildren();
+        return;
+    }
+
     const type = person.participation_type;
     if (!currentEvent || !type) {
         wrap.classList.add("hidden");

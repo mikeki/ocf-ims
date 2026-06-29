@@ -252,10 +252,13 @@ templ People(deployment, versionName, versionRef, eventName string) {
           <tr data-person-id="">
             <td>
               <span class="person-name"></span>
-              <!-- Admin badge: shown by people.ts when the person is a global admin.
+              <!-- Admin marker: shown by people.ts when the person is a global admin.
+                   An icon (the word "admin" now lives in the Role column, 6n).
                    is_admin is only present for admin viewers, so a non-admin inviter
                    never sees it. -->
-              <span class="person-admin-badge badge rounded-pill text-bg-dark ms-1 hidden">admin</span>
+              <span class="person-admin-badge ms-1 hidden" title="Admin">
+                <svg class="bi" fill="currentColor" role="img" aria-label="Admin"><use href="#shield-lock-fill"></use></svg>
+              </span>
             </td>
             <td>
               <!-- The role badge is a click-to-open menu (slice 52e): one click changes
