@@ -292,3 +292,61 @@ func requireEqualReport(t *testing.T, before, after imsjson.Report) {
 
 	require.Equal(t, before, after)
 }
+
+// TestCreateReportAttachedToIncident covers 6l: a Report may be attached to an
+// Incident at creation time. A writer can do it; a bad incident number is a 404;
+// and a reporter (no incident-write permission) attaching at creation is a 403.
+func TestCreateReportAttachedToIncident(t *testing.T) {
+	t.Parallel()
+	ctx := t.Context()
+
+	apisAdmin := ApiHelper{t: t, serverURL: shared.serverURL, jwt: jwtForAdmin(ctx, t)}
+	apisAlice := ApiHelper{t: t, serverURL: shared.serverURL, jwt: jwtForAlice(t, ctx)}
+
+	eventName := rand.NonCryptoText()
+	_, resp := apisAdmin.createEvent(ctx, imsjson.Event{Name: &eventName})
+	require.Equal(t, http.StatusNoContent, resp.StatusCode)
+	require.NoError(t, resp.Body.Close())
+	resp = apisAdmin.addWriter(ctx, eventName, userAdminHandle)
+	require.Equal(t, http.StatusNoContent, resp.StatusCode)
+	require.NoError(t, resp.Body.Close())
+	resp = apisAdmin.addReporter(ctx, eventName, userAliceHandle)
+	require.Equal(t, http.StatusNoContent, resp.StatusCode)
+	require.NoError(t, resp.Body.Close())
+
+	// An incident to attach to.
+	incidentNumber := apisAdmin.newIncidentSuccess(ctx, imsjson.Incident{Event: eventName})
+
+	// A writer creates a Report already attached to the incident.
+	attachedReq := sampleReport1(eventName)
+	attachedReq.Incident = new(incidentNumber)
+	num := apisAdmin.newReportSuccess(ctx, attachedReq)
+
+	attached, resp := apisAdmin.getReport(ctx, eventName, num)
+	require.Equal(t, http.StatusOK, resp.StatusCode)
+	require.NoError(t, resp.Body.Close())
+	require.NotNil(t, attached.Incident)
+	require.Equal(t, incidentNumber, *attached.Incident)
+	// A generated "Attached to incident" journal entry should be present.
+	foundAttachEntry := false
+	for _, e := range attached.JournalEntries {
+		if strings.Contains(e.Text, "Attached to incident") {
+			foundAttachEntry = true
+		}
+	}
+	require.True(t, foundAttachEntry, "expected a generated attach journal entry")
+
+	// A bogus incident number is rejected with 404 (the FK trips).
+	badReq := sampleReport1(eventName)
+	badReq.Incident = new(int32(999999))
+	resp = apisAdmin.newReport(ctx, badReq)
+	require.Equal(t, http.StatusNotFound, resp.StatusCode)
+	require.NoError(t, resp.Body.Close())
+
+	// A reporter has no incident-write permission, so attaching at creation 403s.
+	reporterReq := sampleReport1(eventName)
+	reporterReq.Incident = new(incidentNumber)
+	resp = apisAlice.newReport(ctx, reporterReq)
+	require.Equal(t, http.StatusForbidden, resp.StatusCode)
+	require.NoError(t, resp.Body.Close())
+}

@@ -497,8 +497,15 @@ func (action NewReport) newReport(req *http.Request) (reportNumber int32, locati
 		return 0, "", errHTTP.From("[readBodyAs]")
 	}
 
+	// A Report may be attached to an Incident at creation time (6l): that's how
+	// reports get collected onto an incident. Attaching requires the same
+	// incident-write permission the post-save attach path enforces client-side.
+	incidentNumber := sql.NullInt32{}
 	if report.Incident != nil {
-		return 0, "", herr.BadRequest("A new Report may not be attached to an incident", nil)
+		if eventPermissions&authz.EventWriteIncidents == 0 {
+			return 0, "", herr.Forbidden("The requestor does not have permission to attach Reports to incidents on this Event", nil)
+		}
+		incidentNumber = sql.NullInt32{Int32: *report.Incident, Valid: true}
 	}
 
 	authorPersonID := jwtCtx.Claims.PersonID()
@@ -515,10 +522,16 @@ func (action NewReport) newReport(req *http.Request) (reportNumber int32, locati
 			Number:         newReportNum,
 			Created:        conv.TimeToFloat(time.Now()),
 			Summary:        conv.StringToSql(report.Summary, 0),
-			IncidentNumber: sql.NullInt32{},
+			IncidentNumber: incidentNumber,
 		},
 	)
 	if err != nil {
+		// A bad incident number trips the FK; surface it like the post-save attach.
+		var mysqlErr *mysql.MySQLError
+		const mySQLErNoReferencedRow2 = 1452
+		if errors.As(err, &mysqlErr) && mysqlErr.Number == mySQLErNoReferencedRow2 {
+			return 0, "", herr.NotFound("No such Incident", err).From("[CreateReport]")
+		}
 		return 0, "", herr.InternalServerError("Failed to create Report", err).From("[CreateReport]")
 	}
 
@@ -530,6 +543,15 @@ func (action NewReport) newReport(req *http.Request) (reportNumber int32, locati
 
 	if report.Summary != nil {
 		text := "Changed summary to: " + *report.Summary
+		_, errHTTP := addJournalEntry(ctx, action.imsDBQ, txn, event.ID, report.Number, authorPersonID, text, true, "", "", "")
+		if errHTTP != nil {
+			return 0, "", errHTTP.From("[addJournalEntry]")
+		}
+	}
+
+	// Record the at-creation attachment, mirroring the post-save attach entry.
+	if incidentNumber.Valid {
+		text := fmt.Sprintf("Attached to incident: %v", incidentNumber.Int32)
 		_, errHTTP := addJournalEntry(ctx, action.imsDBQ, txn, event.ID, report.Number, authorPersonID, text, true, "", "", "")
 		if errHTTP != nil {
 			return 0, "", errHTTP.From("[addJournalEntry]")
@@ -563,6 +585,11 @@ func (action NewReport) newReport(req *http.Request) (reportNumber int32, locati
 
 	loc := fmt.Sprintf("/ims/api/events/%v/reports/%v", event.Name, report.Number)
 	defer action.eventSource.notifyReportUpdate(event.ID, report.Number)
+	// If we attached to an incident at creation, refresh that incident too so its
+	// report list picks up the new attachment.
+	if incidentNumber.Valid {
+		defer action.eventSource.notifyIncidentUpdate(event.ID, incidentNumber.Int32)
+	}
 	// Web push the mentioned people (plan 84c): after commit, off the request path.
 	action.pusher.notifyMentionedInReport(ctx, event.Name, report.Number, mentionedPersonIDs, authorPersonID)
 	return report.Number, loc, nil

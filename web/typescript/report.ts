@@ -32,6 +32,10 @@ declare global {
 
 let report: ims.Report|null = null;
 
+// IMS# typed on a not-yet-saved report (6l). There's no report to POST an attach
+// to yet, so we hold it here and send it with the create.
+let pendingNewIncident: number|null = null;
+
 //
 // Initialize UI
 //
@@ -244,6 +248,23 @@ async function updateIncident(el: HTMLInputElement): Promise<void> {
         await loadAndDisplayReport();
         return;
     }
+    // On a not-yet-saved Report there's nothing to POST an attach to; stash the
+    // typed incident number and let it ride along with the create (6l).
+    if (report?.number == null) {
+        if (el.value === "") {
+            pendingNewIncident = null;
+            ims.controlHasSuccess(el);
+            return;
+        }
+        const incidentNumber = ims.parseInt10(el.value);
+        if (incidentNumber == null) {
+            ims.controlHasError(el);
+            return;
+        }
+        pendingNewIncident = incidentNumber;
+        ims.controlHasSuccess(el);
+        return;
+    }
     let url: string|null = null;
     if (report?.incident && el.value === "") {
         // The Report is attached to an incident and the user wants to detach it.
@@ -303,18 +324,25 @@ function drawNumber(): void {
 //
 
 function drawIncident(): void {
-    // On a brand-new Report there's no linked Incident yet (the IMS# field would
-    // just show "(none)" and clicking it does nothing) and no history to show, so
-    // hide both the IMS# field and the "Show history and stricken" toggle until the
-    // Report has been saved.
+    // Show the IMS# field even on a new Report (6l) so an incident-writer can
+    // attach it to an incident at creation time. The history toggle still has
+    // nothing to show until the Report is saved, so keep hiding that.
     const isNewReport = report!.number == null;
-    el.incidentNumberField.classList.toggle("hidden", isNewReport);
+    el.incidentNumberField.classList.remove("hidden");
     el.historyToggle.classList.toggle("hidden", isNewReport);
 
     el.incidentNumber.value = "";
-    // New Report. There can be no Incident
+    // New Report: no incident assigned yet, but an incident-writer may type one
+    // to attach on save. Preserve anything entered earlier this session.
     if (isNewReport) {
         el.incidentNumber.placeholder = "(none)";
+        if (ims.eventAccess?.writeIncidents) {
+            el.incidentNumber.readOnly = false;
+            el.incidentNumber.classList.remove("form-control-static");
+            if (pendingNewIncident != null) {
+                el.incidentNumber.value = pendingNewIncident.toString();
+            }
+        }
         return;
     }
     // If there's an attached Incident, then show a link to it
@@ -367,7 +395,11 @@ async function reportSendEdits(edits: ims.Report): Promise<{err:string|null}> {
     let url = ims.urlReplace(url_reports);
 
     if (number == null) {
-        // No fields are required for a new Report, nothing to do here
+        // No fields are required for a new Report. Attach to an incident at
+        // creation if the user entered one (6l).
+        if (pendingNewIncident != null) {
+            edits.incident = pendingNewIncident;
+        }
     } else {
         // We're editing an existing report.
         edits.number = number;
@@ -403,6 +435,8 @@ async function reportSendEdits(edits: ims.Report): Promise<{err:string|null}> {
 
         // Store the new number in our report object
         ims.pathIds.reportNumber = report.number = newAsNumber;
+        // The incident (if any) is now persisted/attached; don't re-send it.
+        pendingNewIncident = null;
         // Carry any locally-saved journal draft from the "new" key over to the
         // freshly-assigned number, so a reload after creation still finds it.
         ims.migrateJournalDraftToNumber(newAsNumber);
