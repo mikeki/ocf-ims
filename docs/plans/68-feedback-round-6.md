@@ -34,18 +34,20 @@ meaningless — and misleading — for an admin.
   small dark **"admin" pill already renders next to the person's name**
   (`people.templ:258`, `people.ts:345–347`).
 
-**Change (frontend only):**
-- In `drawParticipationDropdown()` (`people.ts`), early-return a **static "admin"
-  label** (the existing dark pill style) in the Role cell when `person.is_admin`
-  is true — i.e. don't render the participation `<button>`/dropdown for admins.
-  The role is non-editable for admins (changing their per-event participation
-  doesn't change their access).
-- Keep the existing name-adjacent admin pill, or fold it into the Role column —
-  **decision N1** below.
-
-**Decision N1 — keep or move the admin badge?** Recommended: show **"admin" in the
-Role column** (per the feedback) and **drop the now-redundant name-adjacent pill**
-so admin appears once, in the column the user is reading. (Alt: keep both.)
+**Change (frontend only) — decided N1:**
+- **Move the word "admin" into the Role column.** In `drawParticipationDropdown()`
+  (`people.ts`), early-return a **static "admin" pill** (the existing dark-pill
+  style, text "admin") in the Role cell when `person.is_admin` — i.e. don't render
+  the participation `<button>`/dropdown for admins (their per-event participation
+  doesn't change their access, so it's non-editable).
+- **Keep a badge next to the name, but as an icon, not the word.** Replace the
+  name-adjacent `admin` text pill (`people.templ:258`, shown via `people.ts:345–347`)
+  with a small **icon** (e.g. Bootstrap Icons `shield-fill` / `shield-lock-fill` /
+  `star-fill`, with a `title="Admin"` tooltip). The app already uses inline
+  Bootstrap-Icons SVGs via the sprite in `nav.templ` (`<svg class="d-none">` symbols
+  referenced with `<use>`); add the chosen symbol there and `<use>` it in the badge.
+- Net effect: the word "admin" appears once (in the Role pill), and the name still
+  carries a compact admin marker as an icon.
 
 **Test:** an admin row shows Role = "admin" (no dropdown); a non-admin row is
 unchanged. No API/template structural change beyond the cell content.
@@ -106,59 +108,82 @@ Mirror People:
   opening in a new tab (`target="_blank" rel="noopener"`, they're PDFs):
   - **Operations map** — https://oregoncountryfair.net/wp-content/uploads/2024/03/2024-operations-map.pdf
   - **Peach Pit map** — https://www.oregoncountryfair.org/wp-content/uploads/2024/07/2024-PeachPit-Map.pdf
-- **Decision M2 — hard-code vs. config?** These are year-stamped URLs (`2024-…`) that
-  OCF will likely bump annually. Recommended: make them **env config**
-  (`IMS_OPERATIONS_MAP_URL` / `IMS_PEACHPIT_MAP_URL` → `conf`, passed to the
-  template, defaulting to the two URLs above) so the maps can be updated each year
-  without a code change; hide a link if its URL is blank. (Alt: hard-code now, move
-  to config later — simpler first PR.)
+- **Decided M2 — hard-code for now.** Put the two URLs straight in `adminareas.templ`.
+  (They're year-stamped `2024-…`, so a future PR can lift them to env config when OCF
+  bumps them; not worth the plumbing yet.)
 
 ### (C) Admin-only create & edit
 
 - Tighten the **create** path in `api/area.go`: a *direct* create from the Areas
   page requires `GlobalAdministrateAreas`. The writer `EventWriteIncidents` create
-  is **not** removed — it becomes the *quick-create → pending* path (D). Distinguish
-  them by **who** is calling (admin perm present?) and set the new approval flag
-  accordingly; both still hit `create()`.
+  is **not** removed — it becomes the *proposal* path (D). Distinguish them by **who**
+  is calling (admin perm present?) and set the new `APPROVED` flag accordingly; both
+  still hit `create()`.
 - Update is already admin-only — no change.
 - Frontend: in `admin_areas.ts`, only show the create/edit controls when the viewer
   has `GlobalAdministrateAreas` (read-only otherwise).
 
-### (D) Approval workflow for writer quick-creates
+### (D) Writer proposals & admin resolution
 
-**Goal:** a writer can still drop in a missing area mid-incident (don't break that
-flow), but it's **provisional** until an admin approves it.
+**Decided model:** a non-admin **writer proposes** a new place name; an **admin
+resolves** each proposal in the Areas tab by **editing**, **approving**, or **marking
+it a duplicate and linking it to an existing area**.
 
-- **Schema (new migration):** add `APPROVED boolean not null default 1` to `AREA`
-  (existing rows + admin-created = approved). One logical change; goose Up/Down;
-  bump `store/integration/migrate_test.go` version.
-  - *Alt considered:* a `STATUS enum('pending','approved','rejected')`. Boolean is
-    simpler and enough if **reject = delete** (below). **Decision D1.**
-- **Queries (`queries.sql`):** `Areas` returns `APPROVED`; `CreateArea` sets it;
-  add `ApproveArea` (set APPROVED=1) and `DeleteArea` (for reject). `sqlc generate`.
-- **JSON (`json/area.go`):** add read field `Approved *bool` (`approved`).
-- **API (`api/area.go`):**
-  - `create()`: set `APPROVED = caller has GlobalAdministrateAreas` (admin → true;
-    writer quick-create → false).
-  - New admin-only actions: **approve** (flip to true) and **reject**. Reject =
-    `DeleteArea`, **guarded**: refuse with 409 if an incident already references the
-    area (incident→AREA FK from Phase 4), with a message to reassign first.
-    **Decision D2** — reject semantics (delete-if-unreferenced vs. a `rejected`
-    hidden state). Recommended: delete-if-unreferenced (simplest; pending areas are
-    brand-new so usually unreferenced beyond the originating incident).
-- **Visibility decision D3 — are pending areas selectable?** Recommended: **yes** —
-  the writer needs the area *now*, so pending areas stay selectable in the incident
-  area picker (`incident.ts`) but render with a **"(pending)"** marker; approval just
-  clears the marker. (Alt: hide pending from everyone except admins → breaks the
-  writer's own incident.)
-- **Areas page UI (`adminareas.templ` / `admin_areas.ts`):** surface pending areas
-  (a "Pending approval" group or a per-row badge + **Approve** / **Reject** buttons),
-  admin-only.
-- **Action log:** approve/reject are mutating → register `LogRequest(true, …)`.
+**Who proposes, and from where:**
+- **Within an incident** — the existing `incident.ts` quick-create
+  (`createLocationArea()`, gated on `EventWriteIncidents`) now creates a **proposed**
+  (un-approved) area, immediately usable on that incident so the writer isn't blocked.
+- **In the Areas tab** — a writer gets a **"Propose a new area"** control (same
+  `EventWriteIncidents` gate) that creates a proposed area. (Admins on the Areas page
+  create *approved* areas directly — see (C).)
 
-**Tests:** api/integration — writer quick-create yields `approved=false`; admin
-create yields `approved=true`; admin approve flips it; reject deletes (and 409s when
-referenced); non-admin can't approve/reject/edit. migrate_test version bump.
+**Schema (new migration):** add `APPROVED boolean not null default 1` to `AREA`
+(existing rows + admin-created = approved; a proposal = `0`). Also add
+`PROPOSED_BY_PERSON_ID integer null` FK `PERSON` so the admin sees **who** proposed
+it (and a future notification can ping them when it's resolved) — **decision D-opt**,
+recommended (cheap). One logical change; goose Up/Down; bump `migrate_test`.
+
+**Pending stays selectable (decision D3 = yes):** a proposal is usable on incidents
+right away, shown with a **"(proposed)"** marker in the area picker until resolved.
+
+**Admin resolution actions (Areas tab, admin-only), per proposed area:**
+1. **Edit** — fix name / parent / sort order (existing admin-only `update()`; slug
+   stays immutable). Editing alone doesn't approve.
+2. **Approve** — flip `APPROVED = 1`; the "(proposed)" marker clears everywhere.
+3. **Mark as duplicate → link to an existing area** — admin picks the canonical area;
+   the proposal is **merged into it**: transactionally re-point every reference from
+   the proposed slug to the canonical slug (incident→AREA FK, Phase 4), then delete
+   the proposed row. A bad-but-duplicate proposal is *linked*, not just discarded, so
+   the incident keeps a valid area. (This replaces the earlier "reject" idea.)
+
+**API (`api/area.go`):**
+- `create()` sets `APPROVED = caller-has-GlobalAdministrateAreas` (admin → approved;
+  writer proposal → not approved) and records `PROPOSED_BY_PERSON_ID` (D-opt).
+- New admin-only actions: **approve** (flip flag) and **merge-duplicate** (re-point
+  refs + delete), both `GlobalAdministrateAreas`. Edit = existing `update()`.
+- All mutating → `LogRequest(true, …)`.
+
+**Queries (`queries.sql`):** `Areas` returns `APPROVED` (+ proposer); `CreateArea`
+sets approved/proposer; add `ApproveArea`, `RepointIncidentsArea` (the merge UPDATE),
+`DeleteArea`. `sqlc generate`.
+
+**JSON (`json/area.go`):** add read `Approved *bool` (`approved`) and a small proposer
+`{handle, name}`.
+
+**Areas page UI (`adminareas.templ` / `admin_areas.ts`):** a **"Proposed"** group /
+per-row badge for un-approved areas. **Writers** see it read-only plus the "Propose"
+control; **admins** get **Edit / Approve / Mark duplicate** (the last opens an
+existing-area combobox — reuse the shared picker).
+
+**Open decisions:**
+- **D1** — `APPROVED` boolean (recommended) vs. a `STATUS` enum. Boolean suffices:
+  "duplicate" resolves by merge+delete, so no persisted rejected/duplicate state.
+- **D-opt** — record `PROPOSED_BY_PERSON_ID` (recommended yes).
+
+**Tests (api/integration):** writer proposal → `approved=false`; admin create →
+`approved=true`; admin approve flips it; mark-duplicate re-points an incident's area to
+the canonical and deletes the proposal; non-admin can't approve/merge/edit.
+migrate_test bump.
 
 ---
 
@@ -177,11 +202,10 @@ tracking — and Visits are disabled for 2026 anyway).
 
 **Change (one template, copy-only):**
 - Replace the "what's new in 2026" `<div>` with a short **"what the IMS is for"**
-  description for OCF: e.g. *"The OCF Incident Management System is where Oregon
-  Country Fair Rangers and coordinators log, track, and follow up on incidents and
-  field reports during the Fair. Use it to record what happened, who was involved,
-  and what was done — and to hand off open issues across shifts."* (Final wording —
-  **open input P1**, OCF to confirm voice.)
+  description for OCF (decided P1): *"The OCF Incident Management System is where
+  Oregon Country Fair Rangers and coordinators log, track, and follow up on incidents
+  and field reports during the Fair. Use it to record what happened, who was involved,
+  and what was done."*
 - Keep the **"Jump to the current event"** link (it's rewritten to the active event
   by `root.ts` per #100/#101 — leave that logic).
 - Remove the BRC-specific bullets entirely. No route/JSON/schema change.
@@ -216,6 +240,38 @@ demo:
    **nightly 02:00 reboot** (see deployment notes), the random secret is regenerated
    constantly → frequent surprise logouts on top of the 8 h ceiling.
 
+### Why two tokens (and could we collapse to one)? — Q1
+
+This is the standard JWT access/refresh split, and the two tokens do different jobs:
+
+- **Access token** — short-lived (15 min), sent on **every** API request, stored in
+  `localStorage` (readable by JS). The server trusts its signature and **does not hit
+  the DB** to authorize each request — that's what makes requests cheap. It carries
+  the user's identity **and current permissions** (admin flag, per-event access).
+- **Refresh token** — long-lived, stored in an **HttpOnly cookie** (JS *cannot* read
+  it, so it's much harder to steal), used **only** at `POST /ims/api/auth/refresh` to
+  mint a fresh access token.
+
+Three reasons the split is worth keeping:
+1. **Security vs. UX, which a single token can't satisfy at once.** One token would
+   have to be either long-lived (great UX, but if the `localStorage` copy leaks the
+   attacker has a long window) **or** short-lived (safe, but you'd re-login every 15
+   min). Two tokens give both: short blast-radius on the bearer token, long session
+   on the well-protected cookie.
+2. **Fresh permissions without a per-request DB lookup.** Each refresh re-reads the
+   user's current roles/admin flag from the DB and bakes them into the next access
+   token, so a granted/revoked permission takes effect within ~15 min — while normal
+   requests stay DB-free. A single long-lived token would carry stale permissions
+   until it expired.
+3. **Revocation.** The HttpOnly refresh cookie is the thing the server can stop
+   honoring (e.g. on logout); the access token just self-expires fast.
+
+**Could we use one token?** Yes, mechanically — but it wouldn't fix the logouts (those
+are caused by the items above, *not* by having two tokens) and it would cost us the
+leak-window protection and the ~15-min permission freshness. **Recommendation: keep
+two tokens.** The felt problem is entirely the refresh-token lifetime + the per-boot
+secret, addressed below.
+
 ### Proposed fixes (in priority order)
 
 1. **Deploy config (no code, biggest win):** set a **stable `IMS_JWT_SECRET`** and a
@@ -230,9 +286,10 @@ demo:
    non-`dev` deployment) when `IMS_JWT_SECRET` is unset, so production never silently
    runs on a per-boot random secret. Prevents this class of bug recurring.
 
-**Decision Q1:** which of 2/3 to include now vs. just do (1). Recommended: do **(1)**
-immediately (config) and ship **(3)** (cheap guardrail); treat **(2)** sliding-refresh
-as a small follow-up if 7-day tokens aren't enough.
+**Decision Q1 (revised):** keep the two-token design (see above). Open sub-question:
+which of (2)/(3) to ship now vs. just do (1). Recommended: do **(1)** immediately
+(config) and ship **(3)** (cheap guardrail); treat **(2)** sliding-refresh as a small
+follow-up if 7-day tokens aren't enough.
 
 ---
 
@@ -244,9 +301,14 @@ as a small follow-up if 7-day tokens aren't enough.
   (Docker). 6o: migrate_test version bump + area approval cases.
 - Action log: 6o's approve/reject are new mutating endpoints → `LogRequest(true, …)`.
 
-## Open inputs to confirm before/while coding
-- **N1** — admin badge: Role column only, drop the name pill? (recommended yes)
-- **M2** — the 2 map links (Operations + Peach Pit, URLs in §6o B): env-config or hard-coded?
-- **D1/D2/D3** — approval schema (boolean vs enum), reject semantics, pending visibility
-- **P1** — final home-page copy
-- **Q1** — sessions: config-only now, or also sliding-refresh / fail-loud secret
+## Decisions (resolved in review)
+- **N1** ✅ — word "admin" moves to the Role-column pill; name keeps an **icon** badge.
+- **M2** ✅ — hard-code the two map URLs for now.
+- **P1** ✅ — home-page copy finalized (sentence after the em dash dropped).
+- **6o approval** ✅ — propose (writer) → admin **edit / approve / mark-duplicate-and-link**.
+
+## Open inputs still to confirm
+- **D1** — areas approval flag: `APPROVED` boolean (recommended) vs. `STATUS` enum.
+- **D-opt** — record `PROPOSED_BY_PERSON_ID` on a proposal? (recommended yes)
+- **Q1** — keep two tokens (recommended); ship sliding-refresh / fail-loud secret now
+  or just the deploy-config fix?
