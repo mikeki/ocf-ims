@@ -2278,11 +2278,12 @@ export function setSendEdits(func: ((edits: Incident|Report)=>Promise<{err:strin
 const journalSubmitOnEnterKey = "journal_submit_on_enter";
 
 export function journalSubmitOnEnter(): boolean {
-    // Default true (Enter submits): incidents are logged in quick lines, so
-    // Enter-to-submit is the friendly default (6k). A user who explicitly chose
-    // Ctrl via the dropdown stored "false" and keeps it. Reports never reach this
-    // — handleJournalKeydown returns early for them (button-only submit).
-    return localStorage.getItem(journalSubmitOnEnterKey) !== "false";
+    // Default true (Enter submits) when the user hasn't chosen: incidents are
+    // logged in quick lines, so Enter-to-submit is the friendly default (6k). Once
+    // they pick a mode via the dropdown, honor the stored "true"/"false". Reports
+    // never reach this — handleJournalKeydown returns early for them (button-only).
+    const pref = localStorage.getItem(journalSubmitOnEnterKey);
+    return pref == null ? true : pref === "true";
 }
 
 function setJournalSubmitOnEnter(on: boolean): void {
