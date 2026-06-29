@@ -28,9 +28,9 @@ import (
 )
 
 // TestPopulateNewEventAreas verifies the seed-once-then-inherit behavior on a
-// fresh database: the first event is seeded from the canonical list, the next
-// event copies the previous event's areas, and an admin's edit to one event is
-// carried forward into the event created after it.
+// fresh database: the first event is seeded from the canonical list, an admin's
+// edits to it (a new area added, an existing area renamed) are carried forward
+// into the next event, and inheritance then chains to a third event.
 func TestPopulateNewEventAreas(t *testing.T) {
 	t.Parallel()
 	ctx := t.Context()
@@ -44,6 +44,14 @@ func TestPopulateNewEventAreas(t *testing.T) {
 		id, err := dbq.CreateEvent(ctx, db, imsdb.CreateEventParams{Name: name})
 		require.NoError(t, err)
 		return int32(id)
+	}
+	areaBySlug := func(areas []imsdb.Area, slug string) (imsdb.Area, bool) {
+		for _, a := range areas {
+			if a.Slug == slug {
+				return a, true
+			}
+		}
+		return imsdb.Area{}, false
 	}
 
 	// First event: no predecessor, so it is seeded from the canonical list.
@@ -59,40 +67,49 @@ func TestPopulateNewEventAreas(t *testing.T) {
 		assert.Equal(t, int32(i), areas1[i].SortOrder)
 	}
 
-	// Second event: inherits the first event's areas verbatim.
-	ev2 := mkEvent("E2")
-	require.NoError(t, dbq.PopulateNewEventAreas(ctx, ev2))
-	areas2, err := dbq.Areas(ctx, db, ev2)
-	require.NoError(t, err)
-	require.Len(t, areas2, len(areas1))
-	for i := range areas1 {
-		assert.Equal(t, areas1[i].Slug, areas2[i].Slug)
-		assert.Equal(t, areas1[i].Name, areas2[i].Name)
-		assert.Equal(t, areas1[i].SortOrder, areas2[i].SortOrder)
-	}
-
-	// An admin adds an area to the second event.
+	// An admin edits event 1: add a brand-new area, and rename an existing one
+	// (slug is immutable, only the display name changes).
 	require.NoError(t, dbq.CreateArea(ctx, db, imsdb.CreateAreaParams{
-		Event:      ev2,
+		Event:      ev1,
 		Slug:       "extra-spot",
 		Name:       "Extra Spot",
 		ParentSlug: sql.NullString{},
 		SortOrder:  int32(len(store.CanonicalAreas)),
 	}))
+	const renamedSlug = "chela-mela"
+	const renamedName = "Chela Mela (Renamed)"
+	orig, ok := areaBySlug(areas1, renamedSlug)
+	require.True(t, ok)
+	require.NoError(t, dbq.UpdateArea(ctx, db, imsdb.UpdateAreaParams{
+		Name:       renamedName,
+		ParentSlug: orig.ParentSlug,
+		SortOrder:  orig.SortOrder,
+		Event:      ev1,
+		Slug:       renamedSlug,
+	}))
 
-	// Third event: inherits from the most recent area-bearing event (ev2),
-	// including the admin's edit.
+	// Second event: inherits event 1's *current* set, including both edits.
+	ev2 := mkEvent("E2")
+	require.NoError(t, dbq.PopulateNewEventAreas(ctx, ev2))
+	areas2, err := dbq.Areas(ctx, db, ev2)
+	require.NoError(t, err)
+	require.Len(t, areas2, len(store.CanonicalAreas)+1)
+
+	added, ok := areaBySlug(areas2, "extra-spot")
+	require.True(t, ok, "the area added to event 1 should be inherited")
+	assert.Equal(t, "Extra Spot", added.Name)
+
+	renamed, ok := areaBySlug(areas2, renamedSlug)
+	require.True(t, ok)
+	assert.Equal(t, renamedName, renamed.Name, "the rename made to event 1 should be inherited")
+
+	// Third event: inheritance chains from the most recent area-bearing event.
 	ev3 := mkEvent("E3")
 	require.NoError(t, dbq.PopulateNewEventAreas(ctx, ev3))
 	areas3, err := dbq.Areas(ctx, db, ev3)
 	require.NoError(t, err)
 	require.Len(t, areas3, len(store.CanonicalAreas)+1)
-	var found bool
-	for _, a := range areas3 {
-		if a.Slug == "extra-spot" {
-			found = true
-			assert.Equal(t, "Extra Spot", a.Name)
-		}
-	}
-	assert.True(t, found, "the edit made to ev2 should carry forward into ev3")
+	chained, ok := areaBySlug(areas3, renamedSlug)
+	require.True(t, ok)
+	assert.Equal(t, renamedName, chained.Name)
 }
