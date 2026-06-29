@@ -18,7 +18,6 @@ package api
 
 import (
 	"cmp"
-	"context"
 	"database/sql"
 	"fmt"
 	"log/slog"
@@ -212,38 +211,17 @@ func (action EditEvent) editEvents(req *http.Request) (newEventID *int32, errHTT
 		return nil, herr.InternalServerError("Failed to update event", err).From("[UpdateEvent]")
 	}
 
-	// A brand-new real event (not an event group) is populated with the canonical
-	// OCF area list, so production gets the full area set the moment the event is
-	// created — no area seed file, no manual data entry. Event groups are mere
-	// containers and hold no areas.
+	// A brand-new real event (not an event group) is given a starting area set:
+	// the first event ever is seeded from the canonical OCF list, and later
+	// events inherit the previous event's areas so admin edits carry forward (see
+	// store.PopulateNewEventAreas). Either way production gets real areas with no
+	// seed file or manual entry. Event groups are mere containers and hold none.
 	if newEventID != nil && !updateParams.IsGroup {
-		err = populateCanonicalAreas(req.Context(), action.imsDBQ, *newEventID)
+		err = action.imsDBQ.PopulateNewEventAreas(req.Context(), *newEventID)
 		if err != nil {
-			return nil, herr.InternalServerError("Failed to populate default areas", err).From("[populateCanonicalAreas]")
+			return nil, herr.InternalServerError("Failed to populate event areas", err).From("[PopulateNewEventAreas]")
 		}
 	}
 
 	return newEventID, nil
-}
-
-// populateCanonicalAreas inserts the canonical OCF area list (store.CanonicalAreas)
-// into a freshly-created event, atomically: either every area lands or none do.
-// SORT_ORDER is the area's index in the canonical list, so the seeded ordering
-// matches the curated A–Z list.
-func populateCanonicalAreas(ctx context.Context, dbq *store.DBQ, eventID int32) error {
-	return dbq.RunInTx(ctx, func(tx *sql.Tx) error {
-		for i, a := range store.CanonicalAreas {
-			err := dbq.CreateArea(ctx, tx, imsdb.CreateAreaParams{
-				Event:      eventID,
-				Slug:       a.Slug,
-				Name:       a.Name,
-				ParentSlug: sql.NullString{},
-				SortOrder:  conv.MustInt32(int64(i)),
-			})
-			if err != nil {
-				return err
-			}
-		}
-		return nil
-	})
 }

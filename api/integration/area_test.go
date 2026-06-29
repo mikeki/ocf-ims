@@ -24,7 +24,6 @@ import (
 
 	imsjson "github.com/mikeki/ocf-ims/json"
 	"github.com/mikeki/ocf-ims/lib/rand"
-	"github.com/mikeki/ocf-ims/store"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -53,8 +52,13 @@ func TestCreateAndListAreas(t *testing.T) {
 	apis := ApiHelper{t: t, serverURL: shared.serverURL, jwt: jwtForAdmin(ctx, t)}
 	eventName := makeEvent(ctx, t, apis)
 
-	// A new event is auto-populated with the canonical OCF area list. Use a name
-	// that isn't in that list so this exercises a clean create with no collision.
+	// A new event already starts with a populated area set (seeded or inherited),
+	// so assert on the delta. Use a name outside the canonical list to avoid a
+	// slug collision with the starting set.
+	before, resp := apis.getAreas(ctx, eventName)
+	require.Equal(t, http.StatusOK, resp.StatusCode)
+	require.NoError(t, resp.Body.Close())
+
 	name := "Test Camp Zeta"
 	slug, resp := apis.editArea(ctx, eventName, imsjson.Area{Name: &name})
 	require.Equal(t, http.StatusNoContent, resp.StatusCode)
@@ -68,13 +72,15 @@ func TestCreateAndListAreas(t *testing.T) {
 	require.True(t, ok)
 	assert.Equal(t, name, *got.Name)
 	assert.Nil(t, got.ParentSlug)
-	// The canonical areas are listed first (auto-populated); the new one follows.
-	assert.Len(t, areas, len(store.CanonicalAreas)+1)
+	assert.Len(t, areas, len(before)+1, "exactly one area added")
 }
 
-// TestNewEventGetsCanonicalAreas verifies that creating an event auto-populates
-// it with the full canonical OCF area list, flat (no parents) and in order.
-func TestNewEventGetsCanonicalAreas(t *testing.T) {
+// TestNewEventHasAreas verifies the event-create handler populates a new event
+// with a non-empty area set end-to-end (the first event is seeded from the
+// canonical list; later events inherit — the deterministic content of each path
+// is covered by store/integration TestPopulateNewEventAreas). The shared suite
+// DB is mutated in parallel, so this asserts the wiring, not exact contents.
+func TestNewEventHasAreas(t *testing.T) {
 	t.Parallel()
 	ctx := t.Context()
 	apis := ApiHelper{t: t, serverURL: shared.serverURL, jwt: jwtForAdmin(ctx, t)}
@@ -83,14 +89,7 @@ func TestNewEventGetsCanonicalAreas(t *testing.T) {
 	areas, resp := apis.getAreas(ctx, eventName)
 	require.Equal(t, http.StatusOK, resp.StatusCode)
 	require.NoError(t, resp.Body.Close())
-
-	require.Len(t, areas, len(store.CanonicalAreas))
-	for i, want := range store.CanonicalAreas {
-		assert.Equal(t, want.Slug, areas[i].Slug)
-		assert.Equal(t, want.Name, *areas[i].Name)
-		assert.Nil(t, areas[i].ParentSlug, "canonical areas are flat (no parent)")
-		assert.Equal(t, int32(i), *areas[i].SortOrder)
-	}
+	assert.NotEmpty(t, areas, "a new event should start with a populated area set")
 }
 
 // TestNewEventGroupHasNoAreas verifies that an event *group* (a container) is
@@ -208,6 +207,11 @@ func TestAreaMutationRequiresAdmin(t *testing.T) {
 	admin := ApiHelper{t: t, serverURL: shared.serverURL, jwt: jwtForAdmin(ctx, t)}
 	eventName := makeEvent(ctx, t, admin)
 
+	// Baseline area count for this event (the starting populated set).
+	before, resp := admin.getAreas(ctx, eventName)
+	require.Equal(t, http.StatusOK, resp.StatusCode)
+	require.NoError(t, resp.Body.Close())
+
 	// Alice is a regular (non-admin) user with no access to this event.
 	alice := ApiHelper{t: t, serverURL: shared.serverURL, jwt: jwtForAlice(t, ctx)}
 	name := "Sneaky Area"
@@ -216,12 +220,12 @@ func TestAreaMutationRequiresAdmin(t *testing.T) {
 	require.NoError(t, resp.Body.Close())
 	assert.Empty(t, slug)
 
-	// And nothing was created: the forbidden request added no area, so the event
-	// still has exactly the auto-populated canonical set (and no "sneaky-area").
+	// The forbidden request added no area: count is unchanged and "sneaky-area"
+	// is absent.
 	areas, resp := admin.getAreas(ctx, eventName)
 	require.Equal(t, http.StatusOK, resp.StatusCode)
 	require.NoError(t, resp.Body.Close())
-	assert.Len(t, areas, len(store.CanonicalAreas))
+	assert.Len(t, areas, len(before))
 	_, ok := findArea(areas, "sneaky-area")
 	assert.False(t, ok, "the forbidden create must not have added an area")
 }
@@ -241,6 +245,11 @@ func TestAreaCreateAllowedForEventWriter(t *testing.T) {
 	require.NoError(t, resp.Body.Close())
 	alice := ApiHelper{t: t, serverURL: shared.serverURL, jwt: jwtForAlice(t, ctx)}
 
+	// Baseline area count for this event (the starting populated set).
+	before, resp := admin.getAreas(ctx, eventName)
+	require.Equal(t, http.StatusOK, resp.StatusCode)
+	require.NoError(t, resp.Body.Close())
+
 	// She can create a new area (a name outside the canonical list).
 	name := "Found Spot"
 	slug, resp := alice.editArea(ctx, eventName, imsjson.Area{Name: &name})
@@ -248,11 +257,11 @@ func TestAreaCreateAllowedForEventWriter(t *testing.T) {
 	require.NoError(t, resp.Body.Close())
 	require.Equal(t, "found-spot", slug)
 
-	// The area is visible to everyone with the event (alongside the canonical set).
+	// The area is visible to everyone with the event (added to the starting set).
 	areas, resp := admin.getAreas(ctx, eventName)
 	require.Equal(t, http.StatusOK, resp.StatusCode)
 	require.NoError(t, resp.Body.Close())
-	require.Len(t, areas, len(store.CanonicalAreas)+1)
+	require.Len(t, areas, len(before)+1)
 	_, ok := findArea(areas, slug)
 	assert.True(t, ok)
 

@@ -16,6 +16,73 @@
 
 package store
 
+import (
+	"context"
+	"database/sql"
+	"errors"
+
+	"github.com/mikeki/ocf-ims/store/imsdb"
+)
+
+// PopulateNewEventAreas gives a freshly-created event its starting area set,
+// atomically (all-or-nothing). Subsequent events inherit the *current* area set
+// from the most recently-created event that has areas — so an admin's edits
+// (areas added, renamed, reordered) carry forward from one year to the next.
+// The very first event has no predecessor and is seeded from the canonical OCF
+// list (CanonicalAreas).
+func (dbq *DBQ) PopulateNewEventAreas(ctx context.Context, eventID int32) error {
+	return dbq.RunInTx(ctx, func(tx *sql.Tx) error {
+		sourceID, err := dbq.LatestEventWithAreas(ctx, tx)
+		if errors.Is(err, sql.ErrNoRows) {
+			return seedCanonicalAreas(ctx, dbq, tx, eventID)
+		}
+		if err != nil {
+			return err
+		}
+		return copyAreas(ctx, dbq, tx, sourceID, eventID)
+	})
+}
+
+// copyAreas duplicates every area of sourceID into destID, preserving slug,
+// name, parent, and sort order.
+func copyAreas(ctx context.Context, dbq *DBQ, tx imsdb.DBTX, sourceID, destID int32) error {
+	src, err := dbq.Areas(ctx, tx, sourceID)
+	if err != nil {
+		return err
+	}
+	for _, a := range src {
+		err = dbq.CreateArea(ctx, tx, imsdb.CreateAreaParams{
+			Event:      destID,
+			Slug:       a.Slug,
+			Name:       a.Name,
+			ParentSlug: a.ParentSlug,
+			SortOrder:  a.SortOrder,
+		})
+		if err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// seedCanonicalAreas inserts the canonical OCF area list into eventID as a flat
+// set (no parents), with each area's SORT_ORDER set to its index in the list.
+func seedCanonicalAreas(ctx context.Context, dbq *DBQ, tx imsdb.DBTX, eventID int32) error {
+	for i, a := range CanonicalAreas {
+		err := dbq.CreateArea(ctx, tx, imsdb.CreateAreaParams{
+			Event:      eventID,
+			Slug:       a.Slug,
+			Name:       a.Name,
+			ParentSlug: sql.NullString{},
+			SortOrder:  int32(i),
+		})
+		if err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
 // CanonicalArea is one entry in the curated OCF location list.
 type CanonicalArea struct {
 	// Slug is the immutable identifier (derived from Name, apostrophes dropped).
@@ -26,10 +93,10 @@ type CanonicalArea struct {
 
 // CanonicalAreas is the curated OCF location list (real fairground areas,
 // stages, streets, and gates), flat with no nesting and sorted A–Z by Name. It
-// is the single source of truth for the areas every newly-created event is
-// populated with (see the event-create handler), so production gets the real
-// area set without any seed file or manual entry — areas appear the moment an
-// admin creates the event.
+// seeds the *first* event ever created on a database (see PopulateNewEventAreas);
+// later events inherit their areas from the previous event instead, so admin
+// edits carry forward. Production therefore gets the real area set with no seed
+// file or manual entry — areas appear the moment the first event is created.
 //
 // The slugs and order here mirror the dev/demo seed's AREA rows for event 1; an
 // integration test (TestSeedAreasMatchCanonical) guards the two against drift.

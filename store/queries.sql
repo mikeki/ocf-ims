@@ -591,6 +591,19 @@ where
 order by `SORT_ORDER`, `NAME`
 ;
 
+-- name: LatestEventWithAreas :one
+-- The most-recently-created (highest ID) non-group event that already has at
+-- least one area. A newly-created event copies this event's areas forward, so
+-- admin edits carry from one year to the next; returns no rows when no event has
+-- areas yet (the very first event, which is seeded from the canonical list).
+select e.ID
+from `EVENT` e
+where e.IS_GROUP = false
+    and exists (select 1 from AREA a where a.`EVENT` = e.ID)
+order by e.ID desc
+limit 1
+;
+
 -- name: Area :one
 select
     `EVENT`,
