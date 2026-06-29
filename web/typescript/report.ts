@@ -167,7 +167,7 @@ async function initReportPage(): Promise<void> {
     el.journalEntryAdd.addEventListener("keydown", function (e: KeyboardEvent): void {
         ims.handleJournalKeydown(e, !el.journalEntrySubmit.classList.contains("disabled"));
     });
-    ims.setupJournalSubmitMode();
+    // Reports submit only via the button (6k) — no submit-mode dropdown to wire.
     ims.setupJournalMentionAutocomplete(ims.pathIds.eventName ?? "");
 }
 
