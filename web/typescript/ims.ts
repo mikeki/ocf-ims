@@ -1866,6 +1866,16 @@ function journalEntryElement(entry: JournalEntry): HTMLDivElement {
 
     metaDataContainer.append(authorContainer);
 
+    // "On behalf of" legend (6m): when an entry was filed for someone else, show
+    // who. Works here for the report page and the incident merged view alike.
+    const onBehalfOf = entry.on_behalf_of;
+    if (onBehalfOf) {
+        const obo: HTMLSpanElement = document.createElement("span");
+        obo.textContent = personDisplayLabel({name: onBehalfOf.name, handle: onBehalfOf.handle});
+        obo.classList.add("journal_entry_on_behalf_of");
+        metaDataContainer.append(" on behalf of ", obo);
+    }
+
     if (entry.reportNum) {
         metaDataContainer.append(" ");
 
@@ -2519,6 +2529,16 @@ function journalMentionPersonIDs(text: string): number[] {
     return Array.from(ids);
 }
 
+// "On behalf of" selection for the next journal entry (6m). The report composer
+// sets this via its person picker; incident/visit pages leave it null. It rides
+// with the next submitted entry. Sticky across submits (a booth may file several
+// entries for the same person); the composer shows the current selection so it's
+// never silent, and report.ts clears it when the user clears the picker.
+let pendingJournalOnBehalfOf: number|null = null;
+export function setJournalOnBehalfOf(personId: number|null): void {
+    pendingJournalOnBehalfOf = personId;
+}
+
 export async function submitJournalEntry(): Promise<void> {
     const text = (document.getElementById("journal_entry_add") as HTMLTextAreaElement).value;
 
@@ -2531,9 +2551,13 @@ export async function submitJournalEntry(): Promise<void> {
     // Disable the submit button to prevent repeat submissions
     document.getElementById("journal_entry_submit")!.classList.add("disabled");
     // send a dummy ID to appease the JSON parser in the server
-    const {err} = await sendEditsFunc!({"journal_entries": [{
+    const entry: JournalEntry = {
         "text": text, "id": -1, "mentioned_person_ids": journalMentionPersonIDs(text),
-    }]});
+    };
+    if (pendingJournalOnBehalfOf != null) {
+        entry.on_behalf_of_person_id = pendingJournalOnBehalfOf;
+    }
+    const {err} = await sendEditsFunc!({"journal_entries": [entry]});
     if (err != null) {
         const submitButton = document.getElementById("journal_entry_submit")!;
         submitButton.classList.remove("disabled");
@@ -3129,18 +3153,6 @@ export type Report = {
     summary?: string|null;
     incident?: number|null;
     journal_entries?: JournalEntry[]|null;
-    // Submitter is the account that created the report; reporter is the person
-    // it's about (defaults to submitter). Read-only output (6m).
-    submitter?: ReportPerson|null;
-    reporter?: ReportPerson|null;
-    // Write-only on create: name a reporter other than the submitter.
-    reporter_person_id?: number|null;
-}
-
-export type ReportPerson = {
-    person_id: number;
-    handle?: string|null;
-    name?: string|null;
 }
 
 export type ReportsByNumber = Record<number, Report>;
@@ -3215,6 +3227,11 @@ export interface JournalEntry {
     // via the "@" typeahead; on read, mentions is the resolved list for rendering.
     mentioned_person_ids?: number[]|null;
     mentions?: Mention[]|null;
+    // "On behalf of" (6m): on write, on_behalf_of_person_id names the person the
+    // entry is about (when not the author); on read, on_behalf_of is the resolved
+    // person, or null when the author is reporting for themselves.
+    on_behalf_of_person_id?: number|null;
+    on_behalf_of?: Mention|null;
 }
 
 // Mention is a person referenced by an "@mention" in a journal entry, resolved

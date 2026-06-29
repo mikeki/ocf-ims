@@ -105,7 +105,8 @@ func (action GetIncidents) getIncidents(req *http.Request) (imsjson.Incidents, *
 		for _, row := range journalEntries {
 			entriesByIncident[row.IncidentNumber] = append(
 				entriesByIncident[row.IncidentNumber],
-				journalEntryToJSON(row.JournalEntry, row.Author.String, action.attachmentsEnabled),
+				// Incidents don't set "on behalf of" (6m is reports-only for now).
+				journalEntryToJSON(row.JournalEntry, row.Author.String, nil, action.attachmentsEnabled),
 			)
 		}
 		return nil
@@ -335,7 +336,7 @@ func fetchIncident(ctx context.Context, imsDBQ *store.DBQ, eventID, incidentNumb
 		return empty, nil, herr.InternalServerError("Failed to fetch journal entries", err).From("[Incident_JournalEntries]")
 	}
 	for _, rer := range journalEntryRows {
-		journalEntries = append(journalEntries, journalEntryToJSON(rer.JournalEntry, rer.Author.String, attachmentsEnabled))
+		journalEntries = append(journalEntries, journalEntryToJSON(rer.JournalEntry, rer.Author.String, nil, attachmentsEnabled))
 	}
 	// Attach @mention rows (plan 81) to their entries for rendering/linking.
 	mentionRows, err := imsDBQ.Incident_JournalEntryMentions(ctx, imsDBQ,

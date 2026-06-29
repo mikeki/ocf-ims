@@ -84,34 +84,6 @@ templ Report(deployment, versionName, versionRef, eventName string) {
     </div>
   </div>
 
-  <!-- Reporter / Submitter (6m) -->
-
-  <div class="row py-1">
-    <div class="col-sm-6" id="reporter_field">
-      <div class="py-1 input-group position-relative">
-        <label for="reporter_add" class="control-label input-group-text">Reporter</label>
-        <input
-                id="reporter_add" type="text" aria-label="Reporter"
-                autocomplete="off"
-                class="form-control input-sm" readonly
-        />
-        <!-- Person typeahead dropdown (shown only on a new report); populated by ims.ts. -->
-        <div id="reporter_add_results"
-             class="list-group position-absolute w-100 shadow hidden no-print"
-             style="z-index: 1080; top: 100%; max-height: 14rem; overflow-y: auto;"></div>
-      </div>
-    </div>
-    <div class="col-sm-6">
-      <div class="py-1 input-group">
-        <label for="submitter_display" class="control-label input-group-text">Submitter</label>
-        <input
-                id="submitter_display" type="text" aria-label="Submitter"
-                class="form-control form-control-static input-sm" readonly
-        />
-      </div>
-    </div>
-  </div>
-
   <!-- Summary -->
 
   <div class="row">
@@ -201,6 +173,22 @@ templ Report(deployment, versionName, versionRef, eventName string) {
           </label>
           <div id="journal_entries"></div>
           <div class="card-footer">
+            <!-- "On behalf of" (6m): file the next entry for someone else. Search
+                 an existing person or create one inline; blank = yourself. -->
+            <div class="flex-input-container no-print mb-1">
+              <label for="on_behalf_of_add" class="control-label">On behalf of:</label>
+              <div class="position-relative auto-width">
+                <input
+                        type="text" id="on_behalf_of_add" aria-label="On behalf of"
+                        autocomplete="off"
+                        placeholder="Yourself — search to file for someone else"
+                        class="form-control form-control-sm w-100"
+                />
+                <div id="on_behalf_of_results"
+                     class="list-group position-absolute w-100 shadow-sm hidden"
+                     style="z-index: 1000; max-height: 16rem; overflow-y: auto;"></div>
+              </div>
+            </div>
             <div class="position-relative">
               <textarea
                       id="journal_entry_add"

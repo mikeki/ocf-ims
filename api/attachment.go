@@ -19,6 +19,7 @@ package api
 import (
 	"context"
 	"crypto/rand"
+	"database/sql"
 	"errors"
 	"fmt"
 	"io"
@@ -278,7 +279,7 @@ func (action GetReportAttachment) getReportAttachment(
 		return nil, "", herr.BadRequest("Failed to parse attachment number", err).From("[ParseInt32]")
 	}
 
-	_, _, _, journalEntries, errHTTP := fetchReport(ctx, action.imsDBQ, event.ID, reportNumber, action.attachmentsStore.Type != conf.AttachmentsStoreNone)
+	_, journalEntries, errHTTP := fetchReport(ctx, action.imsDBQ, event.ID, reportNumber, action.attachmentsStore.Type != conf.AttachmentsStoreNone)
 	if errHTTP != nil {
 		return nil, "", errHTTP.From("[fetchReport]")
 	}
@@ -448,7 +449,7 @@ func (action AttachToReport) attachToReport(req *http.Request) (int32, *herr.HTT
 		return 0, herr.BadRequest("Failed to parse Report number", err).From("[ParseInt32]")
 	}
 
-	report, _, _, entries, errHTTP := fetchReport(ctx, action.imsDBQ, event.ID, reportNumber, action.attachmentsStore.Type != conf.AttachmentsStoreNone)
+	report, entries, errHTTP := fetchReport(ctx, action.imsDBQ, event.ID, reportNumber, action.attachmentsStore.Type != conf.AttachmentsStoreNone)
 	if errHTTP != nil {
 		return 0, errHTTP.From("[fetchReport]")
 	}
@@ -498,6 +499,7 @@ func (action AttachToReport) attachToReport(req *http.Request) (int32, *herr.HTT
 		ctx, action.imsDBQ, action.imsDBQ, event.ID, reportNumber,
 		jwtCtx.Claims.PersonID(), reText, false,
 		newFileName, fiHead.Filename, mtype.String(),
+		sql.NullInt32{},
 	)
 	if errHTTP != nil {
 		return 0, errHTTP.From("[addJournalEntry]")

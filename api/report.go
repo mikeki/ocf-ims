@@ -85,7 +85,9 @@ func (action GetReports) getReports(req *http.Request) (imsjson.Reports, *herr.H
 	entriesByReport := make(map[int32][]imsjson.JournalEntry)
 	for _, row := range journalEntries {
 		entriesByReport[row.ReportNumber] = append(entriesByReport[row.ReportNumber],
-			journalEntryToJSON(row.JournalEntry, row.Author.String, action.attachmentsEnabled))
+			journalEntryToJSON(row.JournalEntry, row.Author.String,
+				onBehalfOfJSON(row.JournalEntry.OnBehalfOfPersonID, row.OnBehalfOfHandle, row.OnBehalfOfName),
+				action.attachmentsEnabled))
 	}
 
 	storedReports, err := action.imsDBQ.Reports(req.Context(), action.imsDBQ, event.ID)
@@ -114,8 +116,6 @@ func (action GetReports) getReports(req *http.Request) (imsjson.Reports, *herr.H
 				entriesByReport[report.Report.Number],
 				event,
 				action.attachmentsEnabled,
-				reportPersonJSON(report.Report.ReporterPersonID, report.ReporterHandle, report.ReporterName),
-				reportPersonJSON(report.Report.SubmitterPersonID, report.SubmitterHandle, report.SubmitterName),
 			),
 		)
 	}
@@ -167,7 +167,7 @@ func (action GetReport) getReport(req *http.Request) (imsjson.Report, *herr.HTTP
 		return response, herr.BadRequest("Invalid report number", err).From("[ParseInt32]")
 	}
 
-	report, reporter, submitter, journalEntries, errHTTP := fetchReport(ctx, action.imsDBQ, event.ID, reportNumber, action.attachmentsEnabled)
+	report, journalEntries, errHTTP := fetchReport(ctx, action.imsDBQ, event.ID, reportNumber, action.attachmentsEnabled)
 	if errHTTP != nil {
 		return response, errHTTP.From("[fetchReport]")
 	}
@@ -178,12 +178,11 @@ func (action GetReport) getReport(req *http.Request) (imsjson.Report, *herr.HTTP
 		}
 	}
 
-	return reportToJSON(report, journalEntries, event, action.attachmentsEnabled, reporter, submitter), nil
+	return reportToJSON(report, journalEntries, event, action.attachmentsEnabled), nil
 }
 
 func reportToJSON(
 	report imsdb.Report, journalEntries []imsjson.JournalEntry, event imsdb.Event, attachmentsEnabled bool,
-	reporter, submitter *imsjson.ReportPerson,
 ) imsjson.Report {
 	return imsjson.Report{
 		Event:          event.Name,
@@ -192,26 +191,11 @@ func reportToJSON(
 		Summary:        conv.SqlToString(report.Summary),
 		Incident:       conv.SqlToInt32(report.IncidentNumber),
 		JournalEntries: journalEntries,
-		Reporter:       reporter,
-		Submitter:      submitter,
-	}
-}
-
-// reportPersonJSON builds a display reference (id + handle/name) for a report's
-// reporter/submitter, or nil when the person id isn't set (older reports).
-func reportPersonJSON(id sql.NullInt32, handle, name sql.NullString) *imsjson.ReportPerson {
-	if !id.Valid {
-		return nil
-	}
-	return &imsjson.ReportPerson{
-		PersonID: id.Int32,
-		Handle:   handle.String,
-		Name:     name.String,
 	}
 }
 
 func fetchReport(ctx context.Context, imsDBQ *store.DBQ, eventID, reportNumber int32, attachmentsEnabled bool) (
-	imsdb.Report, *imsjson.ReportPerson, *imsjson.ReportPerson, []imsjson.JournalEntry, *herr.HTTPError,
+	imsdb.Report, []imsjson.JournalEntry, *herr.HTTPError,
 ) {
 	reportRow, err := imsDBQ.Report(ctx, imsDBQ,
 		imsdb.ReportParams{
@@ -221,23 +205,23 @@ func fetchReport(ctx context.Context, imsDBQ *store.DBQ, eventID, reportNumber i
 	)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
-			return imsdb.Report{}, nil, nil, nil, herr.NotFound("Report does not exist", err).From("[Report]")
+			return imsdb.Report{}, nil, herr.NotFound("Report does not exist", err).From("[Report]")
 		}
-		return imsdb.Report{}, nil, nil, nil, herr.InternalServerError("Failed to fetch Report", err).From("[Report]")
+		return imsdb.Report{}, nil, herr.InternalServerError("Failed to fetch Report", err).From("[Report]")
 	}
-	reporter := reportPersonJSON(reportRow.Report.ReporterPersonID, reportRow.ReporterHandle, reportRow.ReporterName)
-	submitter := reportPersonJSON(reportRow.Report.SubmitterPersonID, reportRow.SubmitterHandle, reportRow.SubmitterName)
 	journalEntryRows, err := imsDBQ.Report_JournalEntries(ctx, imsDBQ,
 		imsdb.Report_JournalEntriesParams{
 			Event:        eventID,
 			ReportNumber: reportNumber,
 		})
 	if err != nil {
-		return imsdb.Report{}, nil, nil, nil, herr.InternalServerError("Failed to fetch Journal Entries", err).From("[Report_JournalEntries]")
+		return imsdb.Report{}, nil, herr.InternalServerError("Failed to fetch Journal Entries", err).From("[Report_JournalEntries]")
 	}
 	var journalEntries []imsjson.JournalEntry
 	for _, rer := range journalEntryRows {
-		journalEntries = append(journalEntries, journalEntryToJSON(rer.JournalEntry, rer.Author.String, attachmentsEnabled))
+		journalEntries = append(journalEntries, journalEntryToJSON(rer.JournalEntry, rer.Author.String,
+			onBehalfOfJSON(rer.JournalEntry.OnBehalfOfPersonID, rer.OnBehalfOfHandle, rer.OnBehalfOfName),
+			attachmentsEnabled))
 	}
 	// Attach @mention rows (plan 81) to their entries for rendering/linking.
 	mentionRows, err := imsDBQ.Report_JournalEntryMentions(ctx, imsDBQ,
@@ -247,7 +231,7 @@ func fetchReport(ctx context.Context, imsDBQ *store.DBQ, eventID, reportNumber i
 		},
 	)
 	if err != nil {
-		return imsdb.Report{}, nil, nil, nil, herr.InternalServerError("Failed to fetch journal entry mentions", err).From("[Report_JournalEntryMentions]")
+		return imsdb.Report{}, nil, herr.InternalServerError("Failed to fetch journal entry mentions", err).From("[Report_JournalEntryMentions]")
 	}
 	mentionsByEntry := make(map[int32][]imsjson.Mention, len(mentionRows))
 	for _, m := range mentionRows {
@@ -262,7 +246,7 @@ func fetchReport(ctx context.Context, imsDBQ *store.DBQ, eventID, reportNumber i
 			journalEntries[i].Mentions = ms
 		}
 	}
-	return reportRow.Report, reporter, submitter, journalEntries, nil
+	return reportRow.Report, journalEntries, nil
 }
 
 type EditReport struct {
@@ -353,7 +337,7 @@ func (action EditReport) editReport(req *http.Request) *herr.HTTPError {
 	if requestReport.Summary != nil {
 		storedReport.Summary = conv.StringToSql(requestReport.Summary, 0)
 		text := "Changed summary to: " + *requestReport.Summary
-		_, errHTTP := addJournalEntry(ctx, action.imsDBQ, txn, event.ID, storedReport.Number, authorPersonID, text, true, "", "", "")
+		_, errHTTP := addJournalEntry(ctx, action.imsDBQ, txn, event.ID, storedReport.Number, authorPersonID, text, true, "", "", "", sql.NullInt32{})
 		if errHTTP != nil {
 			return errHTTP.From("[addJournalEntry]")
 		}
@@ -374,7 +358,7 @@ func (action EditReport) editReport(req *http.Request) *herr.HTTPError {
 		if entry.Text == "" {
 			continue
 		}
-		entryID, errHTTP := addJournalEntry(ctx, action.imsDBQ, txn, event.ID, storedReport.Number, authorPersonID, entry.Text, false, "", "", "")
+		entryID, errHTTP := addJournalEntry(ctx, action.imsDBQ, txn, event.ID, storedReport.Number, authorPersonID, entry.Text, false, "", "", "", onBehalfOfParam(entry.OnBehalfOfPersonID))
 		if errHTTP != nil {
 			return errHTTP.From("[addJournalEntry]")
 		}
@@ -442,7 +426,7 @@ func (action EditReport) handleLinkToIncident(
 		}
 		return herr.InternalServerError("Failed to attach Report to incident", err).From("[AttachReportToIncident]")
 	}
-	_, errHTTP := addJournalEntry(ctx, action.imsDBQ, action.imsDBQ, event.ID, reportNumber, actorPersonID, entryText, true, "", "", "")
+	_, errHTTP := addJournalEntry(ctx, action.imsDBQ, action.imsDBQ, event.ID, reportNumber, actorPersonID, entryText, true, "", "", "", sql.NullInt32{})
 	if errHTTP != nil {
 		return errHTTP.From("[addJournalEntry]")
 	}
@@ -523,15 +507,6 @@ func (action NewReport) newReport(req *http.Request) (reportNumber int32, locati
 
 	authorPersonID := jwtCtx.Claims.PersonID()
 
-	// The submitter is always the creating account (audit). The reporter — the
-	// person the report is about — defaults to the submitter but may be named
-	// explicitly when filing on someone else's behalf (6m).
-	submitterPersonID := authorPersonID
-	reporterPersonID := submitterPersonID
-	if report.ReporterPersonID != nil {
-		reporterPersonID = *report.ReporterPersonID
-	}
-
 	newReportNum, err := action.imsDBQ.NextReportNumber(ctx, action.imsDBQ, event.ID)
 	if err != nil {
 		return 0, "", herr.InternalServerError("Failed to find next Report number", err).From("[NextReportNumber]")
@@ -540,22 +515,14 @@ func (action NewReport) newReport(req *http.Request) (reportNumber int32, locati
 
 	err = action.imsDBQ.CreateReport(ctx, action.imsDBQ,
 		imsdb.CreateReportParams{
-			Event:             event.ID,
-			Number:            newReportNum,
-			Created:           conv.TimeToFloat(time.Now()),
-			Summary:           conv.StringToSql(report.Summary, 0),
-			IncidentNumber:    sql.NullInt32{},
-			SubmitterPersonID: sql.NullInt32{Int32: submitterPersonID, Valid: true},
-			ReporterPersonID:  sql.NullInt32{Int32: reporterPersonID, Valid: true},
+			Event:          event.ID,
+			Number:         newReportNum,
+			Created:        conv.TimeToFloat(time.Now()),
+			Summary:        conv.StringToSql(report.Summary, 0),
+			IncidentNumber: sql.NullInt32{},
 		},
 	)
 	if err != nil {
-		// A bad reporter id trips the PERSON FK; surface it as a client error.
-		var mysqlErr *mysql.MySQLError
-		const mySQLErNoReferencedRow2 = 1452
-		if errors.As(err, &mysqlErr) && mysqlErr.Number == mySQLErNoReferencedRow2 {
-			return 0, "", herr.BadRequest("No such reporter person", err).From("[CreateReport]")
-		}
 		return 0, "", herr.InternalServerError("Failed to create Report", err).From("[CreateReport]")
 	}
 
@@ -567,7 +534,7 @@ func (action NewReport) newReport(req *http.Request) (reportNumber int32, locati
 
 	if report.Summary != nil {
 		text := "Changed summary to: " + *report.Summary
-		_, errHTTP := addJournalEntry(ctx, action.imsDBQ, txn, event.ID, report.Number, authorPersonID, text, true, "", "", "")
+		_, errHTTP := addJournalEntry(ctx, action.imsDBQ, txn, event.ID, report.Number, authorPersonID, text, true, "", "", "", sql.NullInt32{})
 		if errHTTP != nil {
 			return 0, "", errHTTP.From("[addJournalEntry]")
 		}
@@ -578,7 +545,7 @@ func (action NewReport) newReport(req *http.Request) (reportNumber int32, locati
 		if entry.Text == "" {
 			continue
 		}
-		entryID, errHTTP := addJournalEntry(ctx, action.imsDBQ, txn, event.ID, report.Number, authorPersonID, entry.Text, false, "", "", "")
+		entryID, errHTTP := addJournalEntry(ctx, action.imsDBQ, txn, event.ID, report.Number, authorPersonID, entry.Text, false, "", "", "", onBehalfOfParam(entry.OnBehalfOfPersonID))
 		if errHTTP != nil {
 			return 0, "", errHTTP.From("[addJournalEntry]")
 		}
@@ -609,6 +576,7 @@ func addJournalEntry(
 	ctx context.Context, imsDBQ *store.DBQ, dbtx imsdb.DBTX, eventID, reportNum int32,
 	authorPersonID int32, text string, generated bool,
 	attachment, attachmentOriginalName, attachmentMediaType string,
+	onBehalfOf sql.NullInt32,
 ) (int32, *herr.HTTPError) {
 	reID64, err := imsDBQ.CreateJournalEntry(ctx,
 		dbtx,
@@ -621,9 +589,16 @@ func addJournalEntry(
 			AttachedFile:             conv.StringToSql(&attachment, 128),
 			AttachedFileOriginalName: conv.StringToSql(&attachmentOriginalName, 128),
 			AttachedFileMediaType:    conv.StringToSql(&attachmentMediaType, 128),
+			OnBehalfOfPersonID:       onBehalfOf,
 		},
 	)
 	if err != nil {
+		// A bad "on behalf of" person id trips the PERSON FK; surface as 400.
+		var mysqlErr *mysql.MySQLError
+		const mySQLErNoReferencedRow2 = 1452
+		if errors.As(err, &mysqlErr) && mysqlErr.Number == mySQLErNoReferencedRow2 {
+			return 0, herr.BadRequest("No such person for 'on behalf of'", err).From("[CreateJournalEntry]")
+		}
 		return 0, herr.InternalServerError("Failed to create journal entry", err).From("[CreateJournalEntry]")
 	}
 	// This column is an int32, so this is always safe

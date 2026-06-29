@@ -87,7 +87,7 @@ func (action GetVisits) getVisits(req *http.Request) (imsjson.Visits, *herr.HTTP
 		for _, row := range journalEntries {
 			entriesByVisit[row.VisitNumber] = append(
 				entriesByVisit[row.VisitNumber],
-				journalEntryToJSON(row.JournalEntry, row.Author.String, action.attachmentsEnabled),
+				journalEntryToJSON(row.JournalEntry, row.Author.String, nil, action.attachmentsEnabled),
 			)
 		}
 		return nil
@@ -218,7 +218,7 @@ func fetchVisit(ctx context.Context, imsDBQ *store.DBQ, eventID, visitNumber int
 		return empty, nil, herr.InternalServerError("Failed to fetch journal entries", err).From("[Visit_JournalEntries]")
 	}
 	for _, rer := range journalEntryRows {
-		journalEntries = append(journalEntries, journalEntryToJSON(rer.JournalEntry, rer.Author.String, attachmentsEnabled))
+		journalEntries = append(journalEntries, journalEntryToJSON(rer.JournalEntry, rer.Author.String, nil, attachmentsEnabled))
 	}
 	return visitRow, journalEntries, nil
 }

@@ -26,23 +26,4 @@ type Report struct {
 	Summary        *string        `json:"summary"`
 	Incident       *int32         `json:"incident,omitzero"`
 	JournalEntries []JournalEntry `json:"journal_entries"`
-
-	// Submitter is the account that created the report (audit). Reporter is the
-	// person the report is about — it defaults to the submitter but may differ
-	// when someone files on another's behalf (6m). Both are read-only output.
-	Submitter *ReportPerson `json:"submitter,omitzero"`
-	Reporter  *ReportPerson `json:"reporter,omitzero"`
-
-	// ReporterPersonID is write-only: a new Report may name a reporter other than
-	// the submitter. Omitted (or zero) means "default the reporter to the
-	// submitter" server-side.
-	ReporterPersonID *int32 `json:"reporter_person_id,omitzero"`
-}
-
-// ReportPerson is a minimal person reference for display (PERSON registry id +
-// handle/name), mirroring json.Mention.
-type ReportPerson struct {
-	PersonID int32  `json:"person_id"`
-	Handle   string `json:"handle,omitempty"`
-	Name     string `json:"name,omitempty"`
 }

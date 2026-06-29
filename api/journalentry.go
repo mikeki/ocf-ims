@@ -17,6 +17,7 @@
 package api
 
 import (
+	"database/sql"
 	"fmt"
 	"net/http"
 	"time"
@@ -105,7 +106,7 @@ func (action EditReportJournalEntry) editJournalEntry(req *http.Request) *herr.H
 	if !*re.Stricken {
 		struckVerb = "Unstruck"
 	}
-	_, errHTTP = addJournalEntry(ctx, action.imsDBQ, txn, event.ID, reportNumber, authorPersonID, fmt.Sprintf("%v journalEntry %v", struckVerb, journalEntryId), true, "", "", "")
+	_, errHTTP = addJournalEntry(ctx, action.imsDBQ, txn, event.ID, reportNumber, authorPersonID, fmt.Sprintf("%v journalEntry %v", struckVerb, journalEntryId), true, "", "", "", sql.NullInt32{})
 	if errHTTP != nil {
 		return errHTTP.From("[addJournalEntry]")
 	}
@@ -291,7 +292,9 @@ func (action EditVisitJournalEntry) editVisitJournalEntry(req *http.Request) *he
 // journalEntryToJSON builds the JSON view of a journal entry. The author nickname
 // is supplied separately (resolved from AUTHOR_PERSON_ID via a PERSON join in the
 // fetching query) since the stored row now keys the author on person_id.
-func journalEntryToJSON(re imsdb.JournalEntry, author string, attachmentsEnabled bool) imsjson.JournalEntry {
+func journalEntryToJSON(
+	re imsdb.JournalEntry, author string, onBehalfOf *imsjson.Mention, attachmentsEnabled bool,
+) imsjson.JournalEntry {
 	var attachment imsjson.Attachment
 	if attachmentsEnabled && re.AttachedFileOriginalName.Valid {
 		attachment.Name = re.AttachedFileOriginalName.String
@@ -305,5 +308,29 @@ func journalEntryToJSON(re imsdb.JournalEntry, author string, attachmentsEnabled
 		Text:        re.Text,
 		Stricken:    new(re.Stricken),
 		Attachment:  attachment,
+		OnBehalfOf:  onBehalfOf,
+	}
+}
+
+// onBehalfOfParam converts the optional "on behalf of" id from a write payload
+// into the nullable column value (null = the author is reporting for themselves).
+func onBehalfOfParam(id *int32) sql.NullInt32 {
+	if id == nil {
+		return sql.NullInt32{}
+	}
+	return sql.NullInt32{Int32: *id, Valid: true}
+}
+
+// onBehalfOfJSON resolves a journal entry's "on behalf of" person for display,
+// or nil when the entry has none (the author is reporting for themselves). The
+// id comes from the entry row; handle/name from a left join on PERSON.
+func onBehalfOfJSON(id sql.NullInt32, handle, name sql.NullString) *imsjson.Mention {
+	if !id.Valid {
+		return nil
+	}
+	return &imsjson.Mention{
+		PersonID: id.Int32,
+		Handle:   handle.String,
+		Name:     name.String,
 	}
 }

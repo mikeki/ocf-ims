@@ -214,27 +214,13 @@ from INCIDENT_TYPE it
 where it.ID = ?;
 
 -- name: Reports :many
-select
-    sqlc.embed(fr),
-    sub.HANDLE as SUBMITTER_HANDLE,
-    sub.NAME as SUBMITTER_NAME,
-    rep.HANDLE as REPORTER_HANDLE,
-    rep.NAME as REPORTER_NAME
+select sqlc.embed(fr)
 from REPORT fr
-    left join PERSON sub on sub.ID = fr.SUBMITTER_PERSON_ID
-    left join PERSON rep on rep.ID = fr.REPORTER_PERSON_ID
 where fr.EVENT = ?;
 
 -- name: Report :one
-select
-    sqlc.embed(fr),
-    sub.HANDLE as SUBMITTER_HANDLE,
-    sub.NAME as SUBMITTER_NAME,
-    rep.HANDLE as REPORTER_HANDLE,
-    rep.NAME as REPORTER_NAME
+select sqlc.embed(fr)
 from REPORT fr
-    left join PERSON sub on sub.ID = fr.SUBMITTER_PERSON_ID
-    left join PERSON rep on rep.ID = fr.REPORTER_PERSON_ID
 where fr.EVENT = ?
     and fr.NUMBER = ?;
 
@@ -242,13 +228,17 @@ where fr.EVENT = ?
 select
     irre.REPORT_NUMBER,
     sqlc.embed(re),
-    p.HANDLE as AUTHOR
+    p.HANDLE as AUTHOR,
+    obo.HANDLE as ON_BEHALF_OF_HANDLE,
+    obo.NAME as ON_BEHALF_OF_NAME
 from
     REPORT__JOURNAL_ENTRY irre
         join JOURNAL_ENTRY re
              on irre.JOURNAL_ENTRY = re.ID
         join PERSON p
              on p.ID = re.AUTHOR_PERSON_ID
+        left join PERSON obo
+             on obo.ID = re.ON_BEHALF_OF_PERSON_ID
 where
     irre.EVENT = ?
     and re.GENERATED <= ?
@@ -257,13 +247,17 @@ where
 -- name: Report_JournalEntries :many
 select
     sqlc.embed(re),
-    p.HANDLE as AUTHOR
+    p.HANDLE as AUTHOR,
+    obo.HANDLE as ON_BEHALF_OF_HANDLE,
+    obo.NAME as ON_BEHALF_OF_NAME
 from
     REPORT__JOURNAL_ENTRY irre
         join JOURNAL_ENTRY re
              on irre.JOURNAL_ENTRY = re.ID
         join PERSON p
              on p.ID = re.AUTHOR_PERSON_ID
+        left join PERSON obo
+             on obo.ID = re.ON_BEHALF_OF_PERSON_ID
 where
     irre.EVENT = ?
     and irre.REPORT_NUMBER = ?
@@ -297,10 +291,9 @@ limit 1;
 
 -- name: CreateReport :exec
 insert into REPORT (
-    EVENT, NUMBER, CREATED, SUMMARY, INCIDENT_NUMBER,
-    SUBMITTER_PERSON_ID, REPORTER_PERSON_ID
+    EVENT, NUMBER, CREATED, SUMMARY, INCIDENT_NUMBER
 )
-values (?, ?, ?, ?, ?, ?, ?);
+values (?, ?, ?, ?, ?);
 
 -- name: UpdateReport :exec
 update REPORT
@@ -310,9 +303,10 @@ where EVENT = ? and NUMBER = ?;
 -- name: CreateJournalEntry :execlastid
 insert into JOURNAL_ENTRY (
     AUTHOR_PERSON_ID, TEXT, CREATED, `GENERATED`, STRICKEN,
-    ATTACHED_FILE, ATTACHED_FILE_ORIGINAL_NAME, ATTACHED_FILE_MEDIA_TYPE
+    ATTACHED_FILE, ATTACHED_FILE_ORIGINAL_NAME, ATTACHED_FILE_MEDIA_TYPE,
+    ON_BEHALF_OF_PERSON_ID
 ) values (
-   ?, ?, ?, ?, ?, ?, ?, ?
+   ?, ?, ?, ?, ?, ?, ?, ?, ?
 );
 
 -- name: AttachJournalEntryToReport :exec
