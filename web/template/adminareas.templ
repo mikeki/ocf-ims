@@ -16,7 +16,7 @@
 
 package template
 
-templ AdminAreas(deployment, versionName, versionRef string) {
+templ AdminAreas(deployment, versionName, versionRef, eventName string) {
 <!DOCTYPE html>
 <html lang="en">
 @Head("Event Areas", "admin_areas.js", false, false, versionRef)
@@ -24,10 +24,25 @@ templ AdminAreas(deployment, versionName, versionRef string) {
 <body>
 <div class="container-fluid">
 @Header(deployment)
-@Nav("")
+@Nav(eventName)
 <h1 id="doc-title">Event Areas</h1>
 @LoadingOverlay()
 @ErrorInfo()
+
+  <!-- OCF reference maps (6o): handy when naming or checking areas. Year-stamped
+       PDFs, hard-coded for now; they open in a new tab. -->
+  <div class="mb-3 d-flex flex-wrap gap-2 no-print" id="area_maps">
+    <a class="btn btn-sm btn-outline-secondary" target="_blank" rel="noopener"
+       href="https://oregoncountryfair.net/wp-content/uploads/2024/03/2024-operations-map.pdf">
+      <svg class="bi" fill="currentColor"><use href="#box-arrow-up-right"></use></svg>
+      Operations map
+    </a>
+    <a class="btn btn-sm btn-outline-secondary" target="_blank" rel="noopener"
+       href="https://www.oregoncountryfair.org/wp-content/uploads/2024/07/2024-PeachPit-Map.pdf">
+      <svg class="bi" fill="currentColor"><use href="#box-arrow-up-right"></use></svg>
+      Peach Pit map
+    </a>
+  </div>
 
     <div class="modal no-print" id="editAreaModal" tabindex="-1" aria-labelledby="editAreaModalLabel" aria-hidden="true">
       <div class="modal-dialog">
