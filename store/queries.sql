@@ -228,13 +228,17 @@ where fr.EVENT = ?
 select
     irre.REPORT_NUMBER,
     sqlc.embed(re),
-    p.HANDLE as AUTHOR
+    p.HANDLE as AUTHOR,
+    obo.HANDLE as ON_BEHALF_OF_HANDLE,
+    obo.NAME as ON_BEHALF_OF_NAME
 from
     REPORT__JOURNAL_ENTRY irre
         join JOURNAL_ENTRY re
              on irre.JOURNAL_ENTRY = re.ID
         join PERSON p
              on p.ID = re.AUTHOR_PERSON_ID
+        left join PERSON obo
+             on obo.ID = re.ON_BEHALF_OF_PERSON_ID
 where
     irre.EVENT = ?
     and re.GENERATED <= ?
@@ -243,13 +247,17 @@ where
 -- name: Report_JournalEntries :many
 select
     sqlc.embed(re),
-    p.HANDLE as AUTHOR
+    p.HANDLE as AUTHOR,
+    obo.HANDLE as ON_BEHALF_OF_HANDLE,
+    obo.NAME as ON_BEHALF_OF_NAME
 from
     REPORT__JOURNAL_ENTRY irre
         join JOURNAL_ENTRY re
              on irre.JOURNAL_ENTRY = re.ID
         join PERSON p
              on p.ID = re.AUTHOR_PERSON_ID
+        left join PERSON obo
+             on obo.ID = re.ON_BEHALF_OF_PERSON_ID
 where
     irre.EVENT = ?
     and irre.REPORT_NUMBER = ?
@@ -295,9 +303,10 @@ where EVENT = ? and NUMBER = ?;
 -- name: CreateJournalEntry :execlastid
 insert into JOURNAL_ENTRY (
     AUTHOR_PERSON_ID, TEXT, CREATED, `GENERATED`, STRICKEN,
-    ATTACHED_FILE, ATTACHED_FILE_ORIGINAL_NAME, ATTACHED_FILE_MEDIA_TYPE
+    ATTACHED_FILE, ATTACHED_FILE_ORIGINAL_NAME, ATTACHED_FILE_MEDIA_TYPE,
+    ON_BEHALF_OF_PERSON_ID
 ) values (
-   ?, ?, ?, ?, ?, ?, ?, ?
+   ?, ?, ?, ?, ?, ?, ?, ?, ?
 );
 
 -- name: AttachJournalEntryToReport :exec

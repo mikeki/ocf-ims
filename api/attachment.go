@@ -19,6 +19,7 @@ package api
 import (
 	"context"
 	"crypto/rand"
+	"database/sql"
 	"errors"
 	"fmt"
 	"io"
@@ -498,6 +499,7 @@ func (action AttachToReport) attachToReport(req *http.Request) (int32, *herr.HTT
 		ctx, action.imsDBQ, action.imsDBQ, event.ID, reportNumber,
 		jwtCtx.Claims.PersonID(), reText, false,
 		newFileName, fiHead.Filename, mtype.String(),
+		sql.NullInt32{},
 	)
 	if errHTTP != nil {
 		return 0, errHTTP.From("[addJournalEntry]")

@@ -31,6 +31,8 @@ templ Report(deployment, versionName, versionRef, eventName string) {
 
 @ErrorInfo()
 
+@QuickAddPersonModal()
+
   <!-- Help modal for report page -->
   <div class="modal no-print" id="helpModal" tabindex="-1" aria-labelledby="helpModalLabel" aria-hidden="true">
     <div class="modal-dialog">
@@ -171,6 +173,22 @@ templ Report(deployment, versionName, versionRef, eventName string) {
           </label>
           <div id="journal_entries"></div>
           <div class="card-footer">
+            <!-- "On behalf of" (6m): file the next entry for someone else. Search
+                 an existing person or create one inline; blank = yourself. -->
+            <div class="flex-input-container no-print mb-1">
+              <label for="on_behalf_of_add" class="control-label">On behalf of:</label>
+              <div class="position-relative auto-width">
+                <input
+                        type="text" id="on_behalf_of_add" aria-label="On behalf of"
+                        autocomplete="off"
+                        placeholder="Yourself — search to file for someone else"
+                        class="form-control form-control-sm w-100"
+                />
+                <div id="on_behalf_of_results"
+                     class="list-group position-absolute w-100 shadow-sm hidden"
+                     style="z-index: 1000; max-height: 16rem; overflow-y: auto;"></div>
+              </div>
+            </div>
             <div class="position-relative">
               <textarea
                       id="journal_entry_add"

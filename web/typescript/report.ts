@@ -49,6 +49,8 @@ const el = {
     historyCheckbox: ims.typedElement("history_checkbox", HTMLInputElement),
     journalEntryAdd: ims.typedElement("journal_entry_add", HTMLTextAreaElement),
     journalEntrySubmit: ims.typedElement("journal_entry_submit", HTMLElement),
+    onBehalfOfAdd: ims.typedElement("on_behalf_of_add", HTMLInputElement),
+    onBehalfOfResults: ims.typedElement("on_behalf_of_results", HTMLElement),
     attachFile: ims.typedElement("attach_file", HTMLInputElement),
     attachFileInput: ims.typedElement("attach_file_input", HTMLInputElement),
 
@@ -169,6 +171,34 @@ async function initReportPage(): Promise<void> {
     });
     // Reports submit only via the button (6k) — no submit-mode dropdown to wire.
     ims.setupJournalMentionAutocomplete(ims.pathIds.eventName ?? "");
+    setupOnBehalfPicker();
+}
+
+// The journal composer's "on behalf of" picker (6m): file an entry for someone
+// else. Reuses the shared person combobox (search-first, inline-create) and hands
+// the pick to ims.submitJournalEntry via setJournalOnBehalfOf. Blank = yourself.
+function setupOnBehalfPicker(): void {
+    if (!ims.eventAccess?.writeReports) {
+        return;
+    }
+    const eventName = ims.pathIds.eventName ?? "";
+    ims.setupPersonCombobox({
+        input: el.onBehalfOfAdd,
+        results: el.onBehalfOfResults,
+        eventName: eventName,
+        allowCreate: true,
+        onPick: (person): void => {
+            ims.setJournalOnBehalfOf(person.person_id ?? null);
+            el.onBehalfOfAdd.value = ims.personDisplayLabel(person);
+        },
+        onCreate: (name) => ims.openQuickAddPersonModal(name, eventName),
+    });
+    // Clearing the field reverts to "yourself".
+    el.onBehalfOfAdd.addEventListener("input", (): void => {
+        if (el.onBehalfOfAdd.value.trim() === "") {
+            ims.setJournalOnBehalfOf(null);
+        }
+    });
 }
 
 //

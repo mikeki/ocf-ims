@@ -292,3 +292,83 @@ func requireEqualReport(t *testing.T, before, after imsjson.Report) {
 
 	require.Equal(t, before, after)
 }
+
+// TestJournalEntryOnBehalfOf covers 6m (per-entry model): a report journal entry
+// can be filed "on behalf of" another person. The entry author is the submitter;
+// on_behalf_of is the named person, surfaced on both the report GET and the list
+// endpoint (the latter is how the incident merged view loads report entries). A
+// bogus on-behalf id is rejected, and generated entries carry no on-behalf.
+func TestJournalEntryOnBehalfOf(t *testing.T) {
+	t.Parallel()
+	ctx := t.Context()
+
+	apisAdmin := ApiHelper{t: t, serverURL: shared.serverURL, jwt: jwtForAdmin(ctx, t)}
+	apisAlice := ApiHelper{t: t, serverURL: shared.serverURL, jwt: jwtForAlice(t, ctx)}
+
+	eventName := rand.NonCryptoText()
+	_, resp := apisAdmin.createEvent(ctx, imsjson.Event{Name: &eventName})
+	require.Equal(t, http.StatusNoContent, resp.StatusCode)
+	require.NoError(t, resp.Body.Close())
+	resp = apisAdmin.addReporter(ctx, eventName, userAliceHandle)
+	require.Equal(t, http.StatusNoContent, resp.StatusCode)
+	require.NoError(t, resp.Body.Close())
+
+	const oboText = "walk-up reported something in the dust"
+
+	// Alice files a report whose user entry is on behalf of the admin.
+	req := imsjson.Report{
+		Event:   eventName,
+		Summary: new("on-behalf demo"),
+		JournalEntries: []imsjson.JournalEntry{
+			{Text: oboText, OnBehalfOfPersonID: new(int32(userAdminPersonID))},
+		},
+	}
+	num := apisAlice.newReportSuccess(ctx, req)
+
+	got, resp := apisAlice.getReport(ctx, eventName, num)
+	require.Equal(t, http.StatusOK, resp.StatusCode)
+	require.NoError(t, resp.Body.Close())
+
+	var onBehalf *imsjson.Mention
+	for _, e := range got.JournalEntries {
+		if e.Text == oboText {
+			onBehalf = e.OnBehalfOf
+		}
+		if e.SystemEntry {
+			require.Nil(t, e.OnBehalfOf, "generated entries carry no on-behalf")
+		}
+	}
+	require.NotNil(t, onBehalf, "expected the user entry to carry on_behalf_of")
+	require.Equal(t, int32(userAdminPersonID), onBehalf.PersonID)
+
+	// The same entry surfaces with on_behalf via the list endpoint (the incident
+	// merged view loads attached-report entries this way).
+	reports, resp := apisAlice.getReports(ctx, eventName)
+	require.Equal(t, http.StatusOK, resp.StatusCode)
+	require.NoError(t, resp.Body.Close())
+	foundInList := false
+	for _, r := range reports {
+		if r.Number != num {
+			continue
+		}
+		for _, e := range r.JournalEntries {
+			if e.Text == oboText {
+				require.NotNil(t, e.OnBehalfOf)
+				require.Equal(t, int32(userAdminPersonID), e.OnBehalfOf.PersonID)
+				foundInList = true
+			}
+		}
+	}
+	require.True(t, foundInList, "expected the on-behalf entry in the reports list")
+
+	// A bogus on-behalf id is rejected with 400.
+	bad := imsjson.Report{
+		Event: eventName,
+		JournalEntries: []imsjson.JournalEntry{
+			{Text: "nope", OnBehalfOfPersonID: new(int32(nonexistentPersonID))},
+		},
+	}
+	resp = apisAlice.newReport(ctx, bad)
+	require.Equal(t, http.StatusBadRequest, resp.StatusCode)
+	require.NoError(t, resp.Body.Close())
+}

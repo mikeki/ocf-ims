@@ -392,6 +392,10 @@ values  (1, 1, 12),
         (1, 1, 13),
         (1, 1, 15);
 
+-- 6m: one demo report entry filed "on behalf of" another person, to show the
+-- legend (entry 13 was authored by 603 on behalf of 602).
+update JOURNAL_ENTRY set ON_BEHALF_OF_PERSON_ID = 602 where ID = 13;
+
 /* Incident types are seeded by current.sql (the OCF taxonomy, Phase 4a), so the
    demo seed no longer defines its own. The join rows below reference current.sql
    type IDs: 1 = Medical, 6 = Lost Child. */
