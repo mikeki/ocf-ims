@@ -80,7 +80,7 @@ insert into AREA (EVENT, SLUG, NAME, PARENT_SLUG, SORT_ORDER)
                (1, 'chickadee-lane',                'Chickadee Lane',                 null, 14),
                (1, 'community-village',             'Community Village',              null, 15),
                (1, 'community-village-stage',       'Community Village Stage',        null, 16),
-               (1, 'dance-pavillion',               'Dance Pavillion',                null, 17),
+               (1, 'dance-pavilion',                'Dance Pavilion',                 null, 17),
                (1, 'dead-lot',                      'Dead Lot',                       null, 18),
                (1, 'despain-lane',                  'DeSpain Lane',                   null, 19),
                (1, 'dragon-plaza',                  'Dragon Plaza',                   null, 20),

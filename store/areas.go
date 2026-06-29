@@ -52,7 +52,7 @@ var CanonicalAreas = []CanonicalArea{
 	{"chickadee-lane", "Chickadee Lane"},
 	{"community-village", "Community Village"},
 	{"community-village-stage", "Community Village Stage"},
-	{"dance-pavillion", "Dance Pavillion"},
+	{"dance-pavilion", "Dance Pavilion"},
 	{"dead-lot", "Dead Lot"},
 	{"despain-lane", "DeSpain Lane"},
 	{"dragon-plaza", "Dragon Plaza"},
