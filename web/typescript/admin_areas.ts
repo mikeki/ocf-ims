@@ -70,11 +70,31 @@ async function initAdminAreasPage(): Promise<void> {
 
     await loadEventOptions();
 
-    // Reselect the last-viewed event and load its areas automatically.
-    const lastEvent = localStorage.getItem(lastEventKey);
-    if (lastEvent && [...el.eventName.options].some(o => o.value === lastEvent)) {
-        el.eventName.value = lastEvent;
+    // The page serves two doorways, mirroring People (plan 62, 6o):
+    //   - event doorway  (/ims/app/events/{event}/areas): pinned to the URL event;
+    //     the picker is locked to it.
+    //   - admin doorway  (/ims/app/admin/areas): no URL event, the user picks one
+    //     (remembered in localStorage).
+    const urlEvent: string|null = ims.pathIds.eventName;
+    if (urlEvent != null) {
+        // Event doorway: pin and lock the picker to the URL event.
+        if (![...el.eventName.options].some(o => o.value === urlEvent)) {
+            // Defensive: the URL event should already be a real (non-group) option.
+            const opt = document.createElement("option");
+            opt.value = urlEvent;
+            opt.textContent = urlEvent;
+            el.eventName.append(opt);
+        }
+        el.eventName.value = urlEvent;
+        el.eventName.disabled = true;
         await loadAreas();
+    } else {
+        // Admin doorway: reselect the last-viewed event and load it automatically.
+        const lastEvent = localStorage.getItem(lastEventKey);
+        if (lastEvent && [...el.eventName.options].some(o => o.value === lastEvent)) {
+            el.eventName.value = lastEvent;
+            await loadAreas();
+        }
     }
 
     ims.hideLoadingOverlay();

@@ -706,6 +706,18 @@ function renderCommonPageItems(authInfo: AuthInfo): void {
             }
         }
 
+        // Areas: admin-only (6o). Reveal it when an event is active AND the viewer
+        // is an admin; the page itself serves the event-scoped doorway.
+        const activeEventAreas = document.getElementById("active-event-areas") as HTMLAnchorElement|null;
+        if (activeEventAreas != null && authInfo.authenticated && authInfo.admin) {
+            activeEventAreas.href = urlReplace(url_viewAreas);
+            activeEventAreas.classList.remove("hidden");
+
+            if (window.location.pathname.startsWith(urlReplace(url_viewAreas))) {
+                activeEventAreas.classList.add("active");
+            }
+        }
+
         // Dashboard opens to admins and per-event writers (plan 52d): reveal it when
         // an event is active AND the viewer is an admin OR a writer of that event.
         const activeEventDashboard = document.getElementById("active-event-dashboard") as HTMLAnchorElement|null;

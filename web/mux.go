@@ -101,8 +101,11 @@ func AddToMux(mux *http.ServeMux, cfg *conf.IMSConfig) *http.ServeMux {
 	mux.Handle("GET /ims/app/admin/debug",
 		AdaptTempl(template.AdminDebug(deployment, versionName, versionRef), cfg.Core.CacheControlLong),
 	)
+	// Areas: the global Admin doorway (event picker, eventName ""). The primary
+	// doorway is the event-scoped page registered below; the same template serves
+	// both, mirroring People. See docs/plans/68-feedback-round-6.md (6o).
 	mux.Handle("GET /ims/app/admin/areas",
-		AdaptTempl(template.AdminAreas(deployment, versionName, versionRef), cfg.Core.CacheControlLong),
+		AdaptTempl(template.AdminAreas(deployment, versionName, versionRef, ""), cfg.Core.CacheControlLong),
 	)
 	mux.Handle("GET /ims/app/admin/people",
 		AdaptTempl(template.People(deployment, versionName, versionRef, ""), cfg.Core.CacheControlLong),
@@ -165,6 +168,17 @@ func AddToMux(mux *http.ServeMux, cfg *conf.IMSConfig) *http.ServeMux {
 		func(w http.ResponseWriter, r *http.Request) {
 			AdaptTempl(
 				template.People(deployment, versionName, versionRef, r.PathValue("eventName")),
+				cfg.Core.CacheControlLong,
+			).ServeHTTP(w, r)
+		},
+	)
+	// Areas, reached as an event-scoped page (the primary nav doorway). The same
+	// template also serves the global Admin → Event Areas doorway above
+	// (eventName ""); see docs/plans/68-feedback-round-6.md (6o).
+	mux.HandleFunc("GET /ims/app/events/{eventName}/areas",
+		func(w http.ResponseWriter, r *http.Request) {
+			AdaptTempl(
+				template.AdminAreas(deployment, versionName, versionRef, r.PathValue("eventName")),
 				cfg.Core.CacheControlLong,
 			).ServeHTTP(w, r)
 		},
