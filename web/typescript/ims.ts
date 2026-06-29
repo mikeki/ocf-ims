@@ -2278,7 +2278,11 @@ export function setSendEdits(func: ((edits: Incident|Report)=>Promise<{err:strin
 const journalSubmitOnEnterKey = "journal_submit_on_enter";
 
 export function journalSubmitOnEnter(): boolean {
-    return localStorage.getItem(journalSubmitOnEnterKey) === "true";
+    // Default true (Enter submits): incidents are logged in quick lines, so
+    // Enter-to-submit is the friendly default (6k). A user who explicitly chose
+    // Ctrl via the dropdown stored "false" and keeps it. Reports never reach this
+    // — handleJournalKeydown returns early for them (button-only submit).
+    return localStorage.getItem(journalSubmitOnEnterKey) !== "false";
 }
 
 function setJournalSubmitOnEnter(on: boolean): void {
@@ -2291,6 +2295,12 @@ function setJournalSubmitOnEnter(on: boolean): void {
 //   - "ctrl" mode:    Ctrl/⌘/Alt+Enter submits; plain Enter inserts a newline.
 // Ctrl/⌘+Enter always submits in either mode, so existing muscle memory works.
 export function handleJournalKeydown(e: KeyboardEvent, submitEnabled: boolean): void {
+    // Reports submit only via the Submit button (6k): a report is a narrative, so
+    // Enter (and Ctrl+Enter) must never post it half-written. Let the keystroke
+    // fall through to default textarea behavior (newline).
+    if (journalDraftPageType === "report") {
+        return;
+    }
     // If the @mention typeahead (or anything else on this textarea) already
     // consumed this keystroke — e.g. Enter picked a mention — don't also submit.
     if (e.defaultPrevented || !submitEnabled || e.key !== "Enter") {
