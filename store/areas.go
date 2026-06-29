@@ -45,19 +45,41 @@ func (dbq *DBQ) PopulateNewEventAreas(ctx context.Context, eventID int32) error 
 
 // copyAreas duplicates every area of sourceID into destID, preserving slug,
 // name, parent, and sort order.
+//
+// Parents must be inserted before their children: AREA's self-referential
+// AREA_PARENT foreign key (EVENT, PARENT_SLUG) -> AREA(EVENT, SLUG) is checked
+// per row, so copying a child before its parent fails with error 1452. The
+// source rows come back in sort_order/name order, which can interleave a child
+// ahead of its parent — so insert all top-level areas first, then the children.
+// (The app's hierarchy is single-level, so two passes suffice.)
 func copyAreas(ctx context.Context, dbq *DBQ, tx imsdb.DBTX, sourceID, destID int32) error {
 	src, err := dbq.Areas(ctx, tx, sourceID)
 	if err != nil {
 		return err
 	}
-	for _, a := range src {
-		err = dbq.CreateArea(ctx, tx, imsdb.CreateAreaParams{
+	insert := func(a imsdb.Area) error {
+		return dbq.CreateArea(ctx, tx, imsdb.CreateAreaParams{
 			Event:      destID,
 			Slug:       a.Slug,
 			Name:       a.Name,
 			ParentSlug: a.ParentSlug,
 			SortOrder:  a.SortOrder,
 		})
+	}
+	for _, a := range src { // top-level areas first
+		if a.ParentSlug.Valid {
+			continue
+		}
+		err = insert(a)
+		if err != nil {
+			return err
+		}
+	}
+	for _, a := range src { // then their children
+		if !a.ParentSlug.Valid {
+			continue
+		}
+		err = insert(a)
 		if err != nil {
 			return err
 		}

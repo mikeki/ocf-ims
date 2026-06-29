@@ -386,8 +386,12 @@ func (a ApiHelper) editEvent(ctx context.Context, req imsjson.Event) *http.Respo
 func (a ApiHelper) createEvent(ctx context.Context, req imsjson.Event) (eventID int32, resp *http.Response) {
 	a.t.Helper()
 	resp = a.imsPost(ctx, req, a.serverURL.JoinPath("/ims/api/events").String())
-	var err error
-	eventID, err = conv.ParseInt32(resp.Header.Get("IMS-Event-ID"))
+	// Assert success before reading the id header: on a 5xx the header is empty and
+	// ParseInt would otherwise fail with a cryptic "parsing \"\"" message that hides
+	// the real status. Surface the status instead.
+	require.Equalf(a.t, http.StatusNoContent, resp.StatusCode,
+		"createEvent expected 204, got %d", resp.StatusCode)
+	eventID, err := conv.ParseInt32(resp.Header.Get("IMS-Event-ID"))
 	require.NoError(a.t, err)
 	return eventID, resp
 }
