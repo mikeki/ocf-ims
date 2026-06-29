@@ -3129,6 +3129,18 @@ export type Report = {
     summary?: string|null;
     incident?: number|null;
     journal_entries?: JournalEntry[]|null;
+    // Submitter is the account that created the report; reporter is the person
+    // it's about (defaults to submitter). Read-only output (6m).
+    submitter?: ReportPerson|null;
+    reporter?: ReportPerson|null;
+    // Write-only on create: name a reporter other than the submitter.
+    reporter_person_id?: number|null;
+}
+
+export type ReportPerson = {
+    person_id: number;
+    handle?: string|null;
+    name?: string|null;
 }
 
 export type ReportsByNumber = Record<number, Report>;

@@ -278,7 +278,7 @@ func (action GetReportAttachment) getReportAttachment(
 		return nil, "", herr.BadRequest("Failed to parse attachment number", err).From("[ParseInt32]")
 	}
 
-	_, journalEntries, errHTTP := fetchReport(ctx, action.imsDBQ, event.ID, reportNumber, action.attachmentsStore.Type != conf.AttachmentsStoreNone)
+	_, _, _, journalEntries, errHTTP := fetchReport(ctx, action.imsDBQ, event.ID, reportNumber, action.attachmentsStore.Type != conf.AttachmentsStoreNone)
 	if errHTTP != nil {
 		return nil, "", errHTTP.From("[fetchReport]")
 	}
@@ -448,7 +448,7 @@ func (action AttachToReport) attachToReport(req *http.Request) (int32, *herr.HTT
 		return 0, herr.BadRequest("Failed to parse Report number", err).From("[ParseInt32]")
 	}
 
-	report, entries, errHTTP := fetchReport(ctx, action.imsDBQ, event.ID, reportNumber, action.attachmentsStore.Type != conf.AttachmentsStoreNone)
+	report, _, _, entries, errHTTP := fetchReport(ctx, action.imsDBQ, event.ID, reportNumber, action.attachmentsStore.Type != conf.AttachmentsStoreNone)
 	if errHTTP != nil {
 		return 0, errHTTP.From("[fetchReport]")
 	}

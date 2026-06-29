@@ -214,13 +214,27 @@ from INCIDENT_TYPE it
 where it.ID = ?;
 
 -- name: Reports :many
-select sqlc.embed(fr)
+select
+    sqlc.embed(fr),
+    sub.HANDLE as SUBMITTER_HANDLE,
+    sub.NAME as SUBMITTER_NAME,
+    rep.HANDLE as REPORTER_HANDLE,
+    rep.NAME as REPORTER_NAME
 from REPORT fr
+    left join PERSON sub on sub.ID = fr.SUBMITTER_PERSON_ID
+    left join PERSON rep on rep.ID = fr.REPORTER_PERSON_ID
 where fr.EVENT = ?;
 
 -- name: Report :one
-select sqlc.embed(fr)
+select
+    sqlc.embed(fr),
+    sub.HANDLE as SUBMITTER_HANDLE,
+    sub.NAME as SUBMITTER_NAME,
+    rep.HANDLE as REPORTER_HANDLE,
+    rep.NAME as REPORTER_NAME
 from REPORT fr
+    left join PERSON sub on sub.ID = fr.SUBMITTER_PERSON_ID
+    left join PERSON rep on rep.ID = fr.REPORTER_PERSON_ID
 where fr.EVENT = ?
     and fr.NUMBER = ?;
 
@@ -283,9 +297,10 @@ limit 1;
 
 -- name: CreateReport :exec
 insert into REPORT (
-    EVENT, NUMBER, CREATED, SUMMARY, INCIDENT_NUMBER
+    EVENT, NUMBER, CREATED, SUMMARY, INCIDENT_NUMBER,
+    SUBMITTER_PERSON_ID, REPORTER_PERSON_ID
 )
-values (?, ?, ?, ?, ?);
+values (?, ?, ?, ?, ?, ?, ?);
 
 -- name: UpdateReport :exec
 update REPORT

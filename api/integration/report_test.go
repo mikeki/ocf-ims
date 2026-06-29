@@ -281,6 +281,11 @@ func requireEqualReport(t *testing.T, before, after imsjson.Report) {
 	// These will always be different. Check them separately of this function
 	before.JournalEntries, after.JournalEntries = nil, nil
 
+	// Reporter/submitter are stamped on create and asserted in their own test
+	// (TestCreateReportReporterSubmitter); ignore them in this generic comparison.
+	before.Reporter, after.Reporter = nil, nil
+	before.Submitter, after.Submitter = nil, nil
+
 	// If the timestamp field was set before, then check it's the same. Otherwise
 	// see if it was set to some reasonable time for when the test was running
 	if !before.Created.IsZero() {
@@ -291,4 +296,52 @@ func requireEqualReport(t *testing.T, before, after imsjson.Report) {
 	before.Created, after.Created = time.Time{}, time.Time{}
 
 	require.Equal(t, before, after)
+}
+
+// TestCreateReportReporterSubmitter covers 6m: a new report records the submitter
+// (the creating account) and a reporter that defaults to the submitter but can be
+// named explicitly (filing on someone's behalf). A bogus reporter id is a 400.
+func TestCreateReportReporterSubmitter(t *testing.T) {
+	t.Parallel()
+	ctx := t.Context()
+
+	apisAdmin := ApiHelper{t: t, serverURL: shared.serverURL, jwt: jwtForAdmin(ctx, t)}
+	apisAlice := ApiHelper{t: t, serverURL: shared.serverURL, jwt: jwtForAlice(t, ctx)}
+
+	eventName := rand.NonCryptoText()
+	_, resp := apisAdmin.createEvent(ctx, imsjson.Event{Name: &eventName})
+	require.Equal(t, http.StatusNoContent, resp.StatusCode)
+	require.NoError(t, resp.Body.Close())
+	resp = apisAdmin.addReporter(ctx, eventName, userAliceHandle)
+	require.Equal(t, http.StatusNoContent, resp.StatusCode)
+	require.NoError(t, resp.Body.Close())
+
+	// Alice files a report with no explicit reporter: submitter = reporter = Alice.
+	num := apisAlice.newReportSuccess(ctx, sampleReport1(eventName))
+	got, resp := apisAlice.getReport(ctx, eventName, num)
+	require.Equal(t, http.StatusOK, resp.StatusCode)
+	require.NoError(t, resp.Body.Close())
+	require.NotNil(t, got.Submitter)
+	require.NotNil(t, got.Reporter)
+	require.Equal(t, int32(userAlicePersonID), got.Submitter.PersonID)
+	require.Equal(t, int32(userAlicePersonID), got.Reporter.PersonID)
+
+	// Alice files on the admin's behalf: submitter = Alice, reporter = admin.
+	onBehalf := sampleReport1(eventName)
+	onBehalf.ReporterPersonID = new(int32(userAdminPersonID))
+	num2 := apisAlice.newReportSuccess(ctx, onBehalf)
+	got2, resp := apisAlice.getReport(ctx, eventName, num2)
+	require.Equal(t, http.StatusOK, resp.StatusCode)
+	require.NoError(t, resp.Body.Close())
+	require.NotNil(t, got2.Submitter)
+	require.NotNil(t, got2.Reporter)
+	require.Equal(t, int32(userAlicePersonID), got2.Submitter.PersonID)
+	require.Equal(t, int32(userAdminPersonID), got2.Reporter.PersonID)
+
+	// A bogus reporter id is rejected.
+	bogus := sampleReport1(eventName)
+	bogus.ReporterPersonID = new(int32(nonexistentPersonID))
+	resp = apisAlice.newReport(ctx, bogus)
+	require.Equal(t, http.StatusBadRequest, resp.StatusCode)
+	require.NoError(t, resp.Body.Close())
 }

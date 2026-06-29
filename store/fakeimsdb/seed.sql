@@ -362,8 +362,8 @@ values  (1, 1, 1748459852.644699, 3, 'dispatched', 1748459852.644699, 'Something
         (2, 1, 1748459852.644699, 3, 'dispatched', 1748459852.644699, 'Something bad 2026!', 'Dog Camp', null),
         (2, 2, 1748460242.68441, 3, 'new', 1748460242.68441, 'Report from the field 2026', null, null);
 
-insert into REPORT (EVENT, NUMBER, CREATED, SUMMARY, INCIDENT_NUMBER)
-values  (1, 1, 1748460231.287398, 'Report from the field', 2);
+insert into REPORT (EVENT, NUMBER, CREATED, SUMMARY, INCIDENT_NUMBER, SUBMITTER_PERSON_ID, REPORTER_PERSON_ID)
+values  (1, 1, 1748460231.287398, 'Report from the field', 2, 603, 602);
 
 insert into JOURNAL_ENTRY (ID, AUTHOR_PERSON_ID, TEXT, CREATED, GENERATED, STRICKEN, ATTACHED_FILE)
 values  (1, 603, 'Changed priority: 3

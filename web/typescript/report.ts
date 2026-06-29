@@ -32,6 +32,13 @@ declare global {
 
 let report: ims.Report|null = null;
 
+// Reporter chosen for a new report (6m). null = default to the submitter (the
+// logged-in account) server-side. Cleared once the report is created.
+let reporterPersonID: number|null = null;
+// The logged-in user's handle, used to label the submitter on a not-yet-saved
+// report (the server stamps the real submitter on create).
+let currentUserHandle = "";
+
 //
 // Initialize UI
 //
@@ -40,6 +47,9 @@ const el = {
     reportNumber: ims.typedElement("report_number", HTMLInputElement),
     reportNumberField: ims.typedElement("report_number_field", HTMLElement),
     reportSummary: ims.typedElement("report_summary", HTMLInputElement),
+    reporterAdd: ims.typedElement("reporter_add", HTMLInputElement),
+    reporterAddResults: ims.typedElement("reporter_add_results", HTMLElement),
+    submitterDisplay: ims.typedElement("submitter_display", HTMLInputElement),
     incidentNumber: ims.typedElement("incident_number", HTMLInputElement),
     incidentNumberField: ims.typedElement("incident_number_field", HTMLElement),
     incidentNumberLink: ims.typedElement("incident_number_link", HTMLAnchorElement),
@@ -63,6 +73,7 @@ async function initReportPage(): Promise<void> {
         await ims.redirectToLogin();
         return;
     }
+    currentUserHandle = initResult.authInfo.user ?? "";
     const canReadReports = ims.eventAccess!.readIncidents || ims.eventAccess!.writeReports;
     if (!canReadReports) {
         ims.setErrorMessage(
@@ -169,6 +180,38 @@ async function initReportPage(): Promise<void> {
     });
     ims.setupJournalSubmitMode();
     ims.setupJournalMentionAutocomplete(ims.pathIds.eventName ?? "");
+    setupReporterPicker();
+}
+
+// On a new report the Reporter field is a search-first person picker that can
+// also create a person inline (6m); it defaults to the submitter (you) when left
+// blank. On a saved report the field is read-only (drawReporterSubmitter fills
+// it), so the picker is only wired for new reports.
+function setupReporterPicker(): void {
+    if (report?.number != null || !ims.eventAccess?.writeReports) {
+        return;
+    }
+    const eventName = ims.pathIds.eventName ?? "";
+    el.reporterAdd.readOnly = false;
+    el.reporterAdd.classList.remove("form-control-static");
+    el.reporterAdd.placeholder = currentUserHandle ? `Defaults to you (${currentUserHandle})` : "Defaults to you";
+    ims.setupPersonCombobox({
+        input: el.reporterAdd,
+        results: el.reporterAddResults,
+        eventName: eventName,
+        allowCreate: true,
+        onPick: (person): void => {
+            reporterPersonID = person.person_id ?? null;
+            el.reporterAdd.value = ims.personDisplayLabel(person);
+        },
+        onCreate: (name) => ims.openQuickAddPersonModal(name, eventName),
+    });
+    // Clearing the field reverts to the default (you).
+    el.reporterAdd.addEventListener("input", (): void => {
+        if (el.reporterAdd.value.trim() === "") {
+            reporterPersonID = null;
+        }
+    });
 }
 
 //
@@ -218,6 +261,7 @@ async function loadAndDisplayReport(): Promise<void> {
     drawTitle();
     drawNumber();
     drawIncident();
+    drawReporterSubmitter();
     drawSummary();
     ims.toggleShowHistory();
     ims.drawJournalEntries(report.journal_entries??[]);
@@ -356,6 +400,32 @@ function drawSummary(): void {
 
 
 //
+// Populate reporter and submitter (6m)
+//
+
+function drawReporterSubmitter(): void {
+    const isNewReport = report!.number == null;
+
+    // Submitter is stamped by the server on save; before then it'll be you.
+    el.submitterDisplay.placeholder = "(unknown)";
+    el.submitterDisplay.value = report!.submitter
+        ? ims.personDisplayLabel(report!.submitter)
+        : (isNewReport ? currentUserHandle : "");
+
+    if (isNewReport) {
+        // The editable picker (setupReporterPicker) owns the field; don't clobber
+        // a pick the user already made this session.
+        return;
+    }
+    // Saved report: show the stored reporter, read-only.
+    el.reporterAdd.readOnly = true;
+    el.reporterAdd.classList.add("form-control-static");
+    el.reporterAdd.placeholder = "(unknown)";
+    el.reporterAdd.value = report!.reporter ? ims.personDisplayLabel(report!.reporter) : "";
+}
+
+
+//
 // Editing
 //
 
@@ -367,7 +437,11 @@ async function reportSendEdits(edits: ims.Report): Promise<{err:string|null}> {
     let url = ims.urlReplace(url_reports);
 
     if (number == null) {
-        // No fields are required for a new Report, nothing to do here
+        // No fields are required for a new Report. Name a reporter other than the
+        // submitter if one was picked/created (6m); blank means "default to you".
+        if (reporterPersonID != null) {
+            edits.reporter_person_id = reporterPersonID;
+        }
     } else {
         // We're editing an existing report.
         edits.number = number;
@@ -403,6 +477,8 @@ async function reportSendEdits(edits: ims.Report): Promise<{err:string|null}> {
 
         // Store the new number in our report object
         ims.pathIds.reportNumber = report.number = newAsNumber;
+        // The reporter is now persisted; subsequent reloads read it from the server.
+        reporterPersonID = null;
         // Carry any locally-saved journal draft from the "new" key over to the
         // freshly-assigned number, so a reload after creation still finds it.
         ims.migrateJournalDraftToNumber(newAsNumber);
