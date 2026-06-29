@@ -58,6 +58,16 @@ services:
       IMS_DB_PORT: "3306"
       IMS_DB_USER_NAME: "${IMS_DB_USER_NAME:-ims}"
       IMS_DB_PASSWORD: "${IMS_DB_PASSWORD:-ims}"
+      # Sessions (6q). The refresh token is the felt session length; give it 7 days
+      # so it isn't the limit people hit. IMS_JWT_SECRET signs the tokens, and its
+      # default is random *per boot* — so without a stable value, every restart
+      # (air rebuilds + the nightly reboot) logs everyone out. Set a stable secret
+      # on the HOST (a gitignored .env beside this file, or the shell env):
+      #   IMS_JWT_SECRET=<long random string>
+      # Leave it unset for throwaway local dev and a fresh random one is used each
+      # boot (the empty passthrough below falls back to that default).
+      IMS_TOKEN_LIFETIME: "604800"
+      IMS_JWT_SECRET: "${IMS_JWT_SECRET:-}"
       # Disable HTTP caching in dev so rebuilt JS/CSS propagate without a hard
       # refresh. The static cache-buster (?v=…) is a constant ("deadbeef") in dev
       # because git VCS stamping is off, so a non-zero cache TTL serves stale JS

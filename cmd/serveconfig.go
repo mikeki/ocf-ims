@@ -93,7 +93,11 @@ func mustApplyEnvConfig(baseCfg *conf.IMSConfig, envFileName string) *conf.IMSCo
 	if v, ok := lookupEnv("IMS_SEED"); ok {
 		baseCfg.Core.Seed = conf.SeedProfile(strings.ToLower(v))
 	}
-	if v, ok := lookupEnv("IMS_JWT_SECRET"); ok {
+	// Treat an empty IMS_JWT_SECRET as "unset" so the random per-boot default
+	// stands. This lets docker-compose forward a host-provided secret with
+	// "${IMS_JWT_SECRET:-}" (stable sessions across restarts when the host sets it)
+	// without an empty passthrough silently signing tokens with a blank key.
+	if v, ok := lookupEnv("IMS_JWT_SECRET"); ok && v != "" {
 		baseCfg.Core.JWTSecret = v
 	}
 	if v, ok := lookupEnv("IMS_DB_STORE_TYPE"); ok {
