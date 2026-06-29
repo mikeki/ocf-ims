@@ -211,5 +211,17 @@ func (action EditEvent) editEvents(req *http.Request) (newEventID *int32, errHTT
 		return nil, herr.InternalServerError("Failed to update event", err).From("[UpdateEvent]")
 	}
 
+	// A brand-new real event (not an event group) is given a starting area set:
+	// the first event ever is seeded from the canonical OCF list, and later
+	// events inherit the previous event's areas so admin edits carry forward (see
+	// store.PopulateNewEventAreas). Either way production gets real areas with no
+	// seed file or manual entry. Event groups are mere containers and hold none.
+	if newEventID != nil && !updateParams.IsGroup {
+		err = action.imsDBQ.PopulateNewEventAreas(req.Context(), *newEventID)
+		if err != nil {
+			return nil, herr.InternalServerError("Failed to populate event areas", err).From("[PopulateNewEventAreas]")
+		}
+	}
+
 	return newEventID, nil
 }

@@ -63,6 +63,50 @@ func TestSeedDemoData(t *testing.T) {
 	assert.Equal(t, people, rowCount(t, ctx, db, "PERSON"), "seed must not duplicate on re-run")
 }
 
+// TestSeedAreasMatchCanonical guards against drift between the dev/demo seed's
+// AREA rows (event 1) and store.CanonicalAreas — the Go list every new event is
+// auto-populated from. Both must stay identical (same slugs, names, and order)
+// so a seeded dev event and a freshly-created prod event have the same areas.
+func TestSeedAreasMatchCanonical(t *testing.T) {
+	t.Parallel()
+	ctx := t.Context()
+
+	database := rand.Text()
+	username := rand.Text()
+	password := rand.Text()
+
+	_, db := newUnmigratedDB(t, ctx, database, username, password)
+	defer shut(db)
+
+	require.NoError(t, store.MigrateDB(ctx, db))
+	require.NoError(t, store.Seed(ctx, db, conf.SeedDemo))
+
+	rows, err := db.QueryContext(ctx,
+		"select SLUG, NAME, SORT_ORDER from AREA where EVENT = 1 order by SORT_ORDER")
+	require.NoError(t, err)
+	defer func() { require.NoError(t, rows.Close()) }()
+
+	type seededArea struct {
+		slug, name string
+		sortOrder  int
+	}
+	var seeded []seededArea
+	for rows.Next() {
+		var a seededArea
+		require.NoError(t, rows.Scan(&a.slug, &a.name, &a.sortOrder))
+		seeded = append(seeded, a)
+	}
+	require.NoError(t, rows.Err())
+
+	require.Len(t, seeded, len(store.CanonicalAreas),
+		"dev seed area count must match store.CanonicalAreas")
+	for i, want := range store.CanonicalAreas {
+		assert.Equal(t, want.Slug, seeded[i].slug, "slug at index %d", i)
+		assert.Equal(t, want.Name, seeded[i].name, "name at index %d", i)
+		assert.Equal(t, i, seeded[i].sortOrder, "sort order at index %d", i)
+	}
+}
+
 func rowCount(t *testing.T, ctx context.Context, db *sql.DB, table string) int {
 	t.Helper()
 	var count int

@@ -35,9 +35,12 @@ var demoSeedSQL string
 
 // seedSpec describes a seed profile: the SQL to run, and the table whose
 // emptiness decides whether the seed still needs loading (the idempotency
-// probe). Each profile probes a table it actually populates — e.g. the demo
-// fixture probes PERSON; a future secret-free "prod" profile that seeds areas
-// (and no people) would probe AREA instead.
+// probe). Each profile probes a table it actually populates — the demo fixture
+// probes PERSON.
+//
+// Production does not seed areas through a profile: every new event is populated
+// with the canonical OCF area list when it is created (see store.CanonicalAreas
+// and the event-create handler), so a fresh prod database needs no area seed.
 type seedSpec struct {
 	sql        string
 	probeTable string

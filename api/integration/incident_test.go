@@ -431,11 +431,12 @@ func TestIncidentLocationArea(t *testing.T) {
 	require.Equal(t, http.StatusNoContent, resp.StatusCode)
 	require.NoError(t, resp.Body.Close())
 
-	// Admin creates an area in this event.
-	slug, resp := admin.editArea(ctx, eventName, imsjson.Area{Name: new("Chela Mela")})
+	// Admin creates an area in this event; the test uses the returned slug, so its
+	// exact value doesn't matter (events start with an inherited area set).
+	slug, resp := admin.editArea(ctx, eventName, imsjson.Area{Name: new("Test Area One")})
 	require.Equal(t, http.StatusNoContent, resp.StatusCode)
 	require.NoError(t, resp.Body.Close())
-	require.Equal(t, "chela-mela", slug)
+	require.NotEmpty(t, slug)
 
 	// Create an incident referencing that area plus a freeform detail.
 	num := writer.newIncidentSuccess(ctx, imsjson.Incident{
@@ -463,9 +464,10 @@ func TestIncidentLocationArea(t *testing.T) {
 
 	// An area that exists only in another event is also rejected (areas are per-event).
 	otherEvent := makeEvent(ctx, t, admin)
-	otherSlug, resp := admin.editArea(ctx, otherEvent, imsjson.Area{Name: new("Far Side")})
+	otherSlug, resp := admin.editArea(ctx, otherEvent, imsjson.Area{Name: new("Other Event Spot")})
 	require.Equal(t, http.StatusNoContent, resp.StatusCode)
 	require.NoError(t, resp.Body.Close())
+	require.NotEmpty(t, otherSlug)
 	resp = writer.updateIncident(ctx, eventName, num, imsjson.Incident{
 		Event:    eventName,
 		Number:   num,
