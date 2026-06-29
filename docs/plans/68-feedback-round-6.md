@@ -272,24 +272,27 @@ leak-window protection and the ~15-min permission freshness. **Recommendation: k
 two tokens.** The felt problem is entirely the refresh-token lifetime + the per-boot
 secret, addressed below.
 
-### Proposed fixes (in priority order)
+### Fix (decided Q1): deploy config only — no code this round
 
-1. **Deploy config (no code, biggest win):** set a **stable `IMS_JWT_SECRET`** and a
-   longer **`IMS_TOKEN_LIFETIME`** (e.g. `604800` = 7 days, as in `.env.example`) on
-   the demo/prod deployment so restarts and the nightly reboot stop nuking sessions.
-   *This is an ops change on the host — needs the user to set it.*
-2. **Sliding refresh (code, optional):** re-issue the refresh-token cookie on each
-   successful `POST /ims/api/auth/refresh` (`api/auth.go:312–381`) so an active user
-   is never cut mid-use; only true inactivity (no refresh within the window) logs
-   them out. Keep an absolute cap if desired.
-3. **Fail-loud secret (code, defensive):** at boot, **warn** (or refuse to start in a
-   non-`dev` deployment) when `IMS_JWT_SECRET` is unset, so production never silently
-   runs on a per-boot random secret. Prevents this class of bug recurring.
+Keep the two-token design. Curb the logouts purely with deployment config:
 
-**Decision Q1 (revised):** keep the two-token design (see above). Open sub-question:
-which of (2)/(3) to ship now vs. just do (1). Recommended: do **(1)** immediately
-(config) and ship **(3)** (cheap guardrail); treat **(2)** sliding-refresh as a small
-follow-up if 7-day tokens aren't enough.
+1. **Stable `IMS_JWT_SECRET`** — so restarts (air rebuilds + the nightly 02:00 reboot)
+   stop invalidating every session. **Must not be committed** — set it on the host
+   (gitignored `.env` / host environment, referenced from `docker-compose.dev.yml`
+   like the DB creds are: `IMS_JWT_SECRET: "${IMS_JWT_SECRET:?…}"`). Generate once,
+   keep stable.
+2. **`IMS_TOKEN_LIFETIME=604800`** (7 days, as in `.env.example`) — the refresh token
+   is still non-sliding, but 7 days is long enough that the fixed window stops being
+   the felt limit. This value is non-secret, so it **can** be added to
+   `docker-compose.dev.yml`'s `environment:` directly.
+
+So 6q is mainly an **ops change the user makes on the host** (the stable secret); the
+only repo change is wiring `IMS_TOKEN_LIFETIME` (and a `${IMS_JWT_SECRET}` reference)
+into the demo compose.
+
+**Deferred (not this round):** sliding-refresh (re-issue the refresh cookie on each
+`/auth/refresh`) and a boot-time fail-loud/refuse-to-start when `IMS_JWT_SECRET` is
+unset in a non-`dev` deployment. Revisit only if 7-day tokens still aren't enough.
 
 ---
 
@@ -301,14 +304,12 @@ follow-up if 7-day tokens aren't enough.
   (Docker). 6o: migrate_test version bump + area approval cases.
 - Action log: 6o's approve/reject are new mutating endpoints → `LogRequest(true, …)`.
 
-## Decisions (resolved in review)
+## Decisions (all resolved — ready to implement)
 - **N1** ✅ — word "admin" moves to the Role-column pill; name keeps an **icon** badge.
 - **M2** ✅ — hard-code the two map URLs for now.
 - **P1** ✅ — home-page copy finalized (sentence after the em dash dropped).
 - **6o approval** ✅ — propose (writer) → admin **edit / approve / mark-duplicate-and-link**.
-
-## Open inputs still to confirm
-- **D1** — areas approval flag: `APPROVED` boolean (recommended) vs. `STATUS` enum.
-- **D-opt** — record `PROPOSED_BY_PERSON_ID` on a proposal? (recommended yes)
-- **Q1** — keep two tokens (recommended); ship sliding-refresh / fail-loud secret now
-  or just the deploy-config fix?
+- **D1** ✅ — `APPROVED` **boolean** (not an enum).
+- **D-opt** ✅ — record `PROPOSED_BY_PERSON_ID` on a proposal.
+- **Q1** ✅ — keep two tokens; **deploy-config only** (stable secret + 7-day token);
+  sliding-refresh / fail-loud deferred.
