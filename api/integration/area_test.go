@@ -92,6 +92,44 @@ func TestNewEventHasAreas(t *testing.T) {
 	assert.NotEmpty(t, areas, "a new event should start with a populated area set")
 }
 
+// TestEventInheritsNestedAreas guards copyAreas' parent-before-child ordering. A
+// new event inherits the previous event's areas; if that set holds a child area
+// whose row sorts ahead of its parent (lower sort_order), the copy must still
+// insert the parent first — otherwise AREA's self-referential AREA_PARENT FK
+// rejects the child with error 1452 and event creation 500s. Deliberately NOT
+// parallel: the source event must be the latest-with-areas when the heir inherits.
+//
+//nolint:paralleltest // must run serially: the source event has to be the latest-with-areas when the heir inherits it.
+func TestEventInheritsNestedAreas(t *testing.T) {
+	ctx := t.Context()
+	apis := ApiHelper{t: t, serverURL: shared.serverURL, jwt: jwtForAdmin(ctx, t)}
+
+	source := makeEvent(ctx, t, apis)
+	// Parent sorts last (high sort_order); child sorts near the front (low), so the
+	// inherited copy would otherwise try to insert the child before its parent.
+	parentName := "Zzz Nested Parent"
+	highSort := int32(900)
+	parentSlug, resp := apis.editArea(ctx, source, imsjson.Area{Name: &parentName, SortOrder: &highSort})
+	require.Equal(t, http.StatusNoContent, resp.StatusCode)
+	require.NoError(t, resp.Body.Close())
+	childName := "Aaa Nested Child"
+	lowSort := int32(1)
+	_, resp = apis.editArea(ctx, source, imsjson.Area{Name: &childName, ParentSlug: &parentSlug, SortOrder: &lowSort})
+	require.Equal(t, http.StatusNoContent, resp.StatusCode)
+	require.NoError(t, resp.Body.Close())
+
+	// The heir inherits from `source`. Before the fix this 500'd (FK 1452), which
+	// makeEvent surfaces via createEvent's 204 assertion.
+	heir := makeEvent(ctx, t, apis)
+	areas, resp := apis.getAreas(ctx, heir)
+	require.Equal(t, http.StatusOK, resp.StatusCode)
+	require.NoError(t, resp.Body.Close())
+	child, ok := findArea(areas, "aaa-nested-child")
+	require.True(t, ok, "heir should have inherited the nested child area")
+	require.NotNil(t, child.ParentSlug)
+	assert.Equal(t, parentSlug, *child.ParentSlug)
+}
+
 // TestNewEventGroupHasNoAreas verifies that an event *group* (a container) is
 // not populated with areas — only real events are.
 func TestNewEventGroupHasNoAreas(t *testing.T) {
