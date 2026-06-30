@@ -67,80 +67,97 @@ templ People(deployment, versionName, versionRef, eventName string) {
             <p class="modal-title fs-5" id="addPersonModalLabel">Add Person</p>
             <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close" />
           </div>
-          <div class="modal-body row">
-            <div id="add_person_search_section" class="hidden mb-2">
-              <label for="add_person_search" class="form-label">Add an existing person to <strong id="add_person_search_event"></strong></label>
+          <div class="modal-body">
+            <!-- Step 1 — find someone already in the registry to add to this event.
+                 Only meaningful with an event selected; people.ts starts here when one
+                 is, and skips straight to the create form (step 2) otherwise. -->
+            <div id="add_person_search_section" class="hidden">
+              <label for="add_person_search" class="form-label fw-semibold">Search existing people</label>
               <div class="position-relative">
-                <input id="add_person_search" type="search" class="form-control" autocomplete="off" placeholder="Search by name, handle, or wristband…" />
+                <input id="add_person_search" type="search" class="form-control" autocomplete="off" placeholder="Name, handle, or wristband…" />
                 <div id="add_person_search_results"
                      class="list-group position-absolute w-100 shadow-sm hidden"
                      style="z-index: 1100; max-height: 16rem; overflow-y: auto;"></div>
               </div>
-              <div class="form-text">Pick someone to add them to this event. Not listed? Create them with the form below.</div>
-              <hr />
+              <div class="form-text">Pick a match to add them to <strong id="add_person_search_event"></strong>.</div>
+              <hr class="my-3" />
+              <p class="text-body-secondary small mb-2">Not in the system yet?</p>
+              <button type="button" class="btn btn-outline-success w-100" id="add_person_show_create" onclick="showCreatePersonForm()">
+                Create a new person
+              </button>
             </div>
-            <div class="form-floating mb-3">
-              <input id="add_person_name" type="text" class="form-control" autocomplete="off" placeholder="Full name" />
-              <label for="add_person_name">Full name</label>
-            </div>
-            <!-- Access is opt-in. Most people added at the fair are volunteers / public
-                 with no login; only staff who actually use the IMS get an account. The
-                 button reveals the credential fields, where a handle + email become
-                 required — so we never mint a password no one can sign in with. -->
-            <button type="button" class="btn btn-outline-primary w-100 mb-3" id="add_person_access_toggle" onclick="toggleProvideAccess()">
-              Provide Access to IMS
-            </button>
-            <div id="add_person_access_section" class="hidden">
-              <div class="form-floating mb-3">
-                <input id="add_person_email" type="email" class="form-control" autocomplete="off" placeholder="Email" />
-                <label for="add_person_email">Email (required for login)</label>
+
+            <!-- Step 2 — create a brand-new person. -->
+            <div id="add_person_create_section" class="hidden">
+              <button type="button" class="btn btn-sm btn-link px-0 mb-1 hidden" id="add_person_back_to_search" onclick="backToPersonSearch()">
+                ← Back to search
+              </button>
+              <div class="form-floating mb-2">
+                <input id="add_person_name" type="text" class="form-control" autocomplete="off" placeholder="Full name" />
+                <label for="add_person_name">Full name</label>
               </div>
-              <div class="form-floating mb-3">
-                <input id="add_person_handle" type="text" class="form-control" autocomplete="off" placeholder="Handle" />
-                <label for="add_person_handle">Handle (required for login)</label>
-              </div>
-              <div class="input-group mb-3">
-                <div class="form-floating">
-                  <input id="add_person_password" type="password" class="form-control" autocomplete="new-password" placeholder="Password" />
-                  <label for="add_person_password">Password</label>
+              <div class="form-text mb-3">Just a name records someone at the fair. They get no login unless you add one below.</div>
+
+              <!-- Access is opt-in: only staff who actually sign in to the IMS need an
+                   account. The button reveals the credential fields, where a handle +
+                   email are required so we never mint a password no one can use. -->
+              <button type="button" class="btn btn-outline-primary w-100 mb-3" id="add_person_access_toggle" onclick="toggleProvideAccess()">
+                Provide Access to IMS
+              </button>
+              <div id="add_person_access_section" class="hidden">
+                <div class="form-floating mb-3">
+                  <input id="add_person_email" type="email" class="form-control" autocomplete="off" placeholder="Email" />
+                  <label for="add_person_email">Email (required for login)</label>
                 </div>
-                <button class="btn btn-outline-secondary" type="button" id="add_person_password_toggle">Show</button>
-              </div>
-              <div class="input-group mb-3">
-                <div class="form-floating">
-                  <input id="add_person_password_confirm" type="password" class="form-control" autocomplete="new-password" placeholder="Confirm password" />
-                  <label for="add_person_password_confirm">Confirm password</label>
+                <div class="form-floating mb-3">
+                  <input id="add_person_handle" type="text" class="form-control" autocomplete="off" placeholder="Handle" />
+                  <label for="add_person_handle">Handle (required for login)</label>
                 </div>
-                <button class="btn btn-outline-secondary" type="button" id="add_person_password_confirm_toggle">Show</button>
+                <div class="input-group mb-3">
+                  <div class="form-floating">
+                    <input id="add_person_password" type="password" class="form-control" autocomplete="new-password" placeholder="Password" />
+                    <label for="add_person_password">Password</label>
+                  </div>
+                  <button class="btn btn-outline-secondary" type="button" id="add_person_password_toggle">Show</button>
+                </div>
+                <div class="input-group mb-3">
+                  <div class="form-floating">
+                    <input id="add_person_password_confirm" type="password" class="form-control" autocomplete="new-password" placeholder="Confirm password" />
+                    <label for="add_person_password_confirm">Confirm password</label>
+                  </div>
+                  <button class="btn btn-outline-secondary" type="button" id="add_person_password_confirm_toggle">Show</button>
+                </div>
+              </div>
+
+              <div id="add_person_event_section" class="hidden mt-1">
+                <hr class="my-3" />
+                <p class="text-body-secondary small mb-2">At <strong id="add_person_event_name"></strong></p>
+                <!-- Inviter mode (53d): a non-admin inviter adds people only as reporters,
+                     so the wristband + role pickers are hidden and this note shows instead. -->
+                <p id="add_person_invite_note" class="text-body-secondary small mb-2 hidden">They'll be added as a <strong>reporter</strong> on this event.</p>
+                <div id="add_person_wristband_wrap" class="form-floating mb-3">
+                  <input id="add_person_wristband" type="text" class="form-control" autocomplete="off" placeholder="Wristband" />
+                  <label for="add_person_wristband">Wristband (optional)</label>
+                </div>
+                <div id="add_person_participation_wrap" class="form-floating mb-3">
+                  <select id="add_person_participation" class="form-select" aria-label="Role">
+                    <option value="">— none —</option>
+                    <option value="writer">writer (full access)</option>
+                    <option value="crew_leader">crew leader (invite reporters)</option>
+                    <option value="reporter">reporter (own reports)</option>
+                    <option value="volunteer">volunteer</option>
+                    <option value="public">public</option>
+                    <option value="not_present">not present</option>
+                    <option value="ejected">ejected</option>
+                  </select>
+                  <label for="add_person_participation">Role</label>
+                </div>
               </div>
             </div>
-            <div id="add_person_event_section" class="hidden mt-3">
-              <p class="text-body-secondary small mb-2">Participation for <strong id="add_person_event_name"></strong></p>
-              <!-- Inviter mode (53d): a non-admin inviter adds people only as reporters,
-                   so the wristband + role pickers are hidden and this note shows instead. -->
-              <p id="add_person_invite_note" class="text-body-secondary small mb-2 hidden">They'll be added as a <strong>reporter</strong> on this event.</p>
-              <div id="add_person_wristband_wrap" class="form-floating mb-3">
-                <input id="add_person_wristband" type="text" class="form-control" autocomplete="off" placeholder="Wristband" />
-                <label for="add_person_wristband">Wristband (optional)</label>
-              </div>
-              <div id="add_person_participation_wrap" class="form-floating mb-3">
-                <select id="add_person_participation" class="form-select" aria-label="Participation">
-                  <option value="">— none —</option>
-                  <option value="writer">writer (full access)</option>
-                  <option value="crew_leader">crew leader (invite reporters)</option>
-                  <option value="reporter">reporter (own reports)</option>
-                  <option value="volunteer">volunteer</option>
-                  <option value="public">public</option>
-                  <option value="not_present">not present</option>
-                  <option value="ejected">ejected</option>
-                </select>
-                <label for="add_person_participation">Role</label>
-              </div>
-            </div>
-            <div class="form-text">Add someone by name to track them at the fair. Use <strong>Provide Access to IMS</strong> only for people who'll sign in — a handle, email, and password are all required, and they can then log in with their handle or email.</div>
           </div>
           <div class="modal-footer">
-            <button type="button" class="btn btn-primary" id="add_person_submit" onclick="submitCreatePerson()">Add person</button>
+            <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+            <button type="button" class="btn btn-primary hidden" id="add_person_submit" onclick="submitCreatePerson()">Add person</button>
           </div>
         </div>
       </div>

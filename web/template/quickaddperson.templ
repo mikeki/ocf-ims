@@ -28,14 +28,16 @@ templ QuickAddPersonModal() {
     <div class="modal-dialog">
       <div class="modal-content">
         <div class="modal-header">
-          <p class="modal-title fs-5" id="quickAddPersonModalLabel">Add Person</p>
+          <p class="modal-title fs-5" id="quickAddPersonModalLabel">Create Person</p>
           <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close" />
         </div>
-        <div class="modal-body row">
-          <div class="form-floating mb-3">
+        <div class="modal-body">
+          <p class="text-body-secondary small mb-3">This person isn't in the system yet — fill in their details to add them.</p>
+          <div class="form-floating mb-2">
             <input id="quick_add_person_name" type="text" class="form-control" autocomplete="off" placeholder="Full name" />
             <label for="quick_add_person_name">Full name</label>
           </div>
+          <div class="form-text mb-3">Just a name records the person. They get no login unless you add one below.</div>
           <!-- Access is opt-in: a person attached to an incident usually needs no login.
                The button reveals the credential fields and makes a handle + email required. -->
           <button type="button" class="btn btn-outline-primary w-100 mb-3" id="quick_add_person_access_toggle">
@@ -65,22 +67,22 @@ templ QuickAddPersonModal() {
               <button class="btn btn-outline-secondary" type="button" id="quick_add_person_password_confirm_toggle">Show</button>
             </div>
           </div>
-          <div id="quick_add_person_event_section" class="hidden mt-3">
-            <p class="text-body-secondary small mb-2">Participation for <strong id="quick_add_person_event_name"></strong></p>
+          <div id="quick_add_person_event_section" class="hidden mt-1">
+            <hr class="my-3" />
+            <p class="text-body-secondary small mb-2">At <strong id="quick_add_person_event_name"></strong></p>
             <div class="form-floating mb-3">
               <input id="quick_add_person_wristband" type="text" class="form-control" autocomplete="off" placeholder="Wristband" />
               <label for="quick_add_person_wristband">Wristband (optional)</label>
             </div>
             <div class="form-floating mb-3">
-              <select id="quick_add_person_participation" class="form-select" aria-label="Participation">
+              <select id="quick_add_person_participation" class="form-select" aria-label="Role">
                 <option value="">— none —</option>
                 <option value="public">public</option>
                 <option value="volunteer">volunteer</option>
               </select>
-              <label for="quick_add_person_participation">Participation</label>
+              <label for="quick_add_person_participation">Role</label>
             </div>
           </div>
-          <div class="form-text">Add a person by name. Use <strong>Provide Access to IMS</strong> only if they'll sign in — a handle, email, and password are all required for login.</div>
           <div id="quick_add_person_error" class="text-danger small mt-2 hidden"></div>
         </div>
         <div class="modal-footer">
