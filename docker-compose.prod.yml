@@ -1,14 +1,20 @@
 # Production compose for OCF IMS.
 #
-#   docker compose -f docker-compose.prod.yml up -d --build
+#   docker compose -f docker-compose.prod.yml pull
+#   docker compose -f docker-compose.prod.yml up -d
 #
 # How this differs from docker-compose.dev.yml (which you should NOT run in prod):
 #
-#   * Builds the real multi-stage `Dockerfile` (a small static binary run
+#   * Runs the real multi-stage `Dockerfile` image (a small static binary run
 #     directly) instead of `dev.Dockerfile` + air. No source bind-mount, no
 #     live-reload. air masks a crashed process as "Up" and never self-heals on a
 #     panic (this caused the 2026-06-28 outage) — a plain binary with a real
 #     healthcheck + `restart: unless-stopped` recovers on its own.
+#   * Pulls a PREBUILT image from GHCR (built + pushed by .github/workflows/
+#     publish-image.yml on merge to master) rather than compiling on the host.
+#     The deploy box never needs the Go toolchain or build-time RAM — it just
+#     `docker compose pull && up -d`. Pin IMAGE_TAG to a commit SHA in .env for a
+#     controlled rollout, or leave it at the rolling `latest`.
 #   * A real container `healthcheck` that calls `ims healthcheck` (hits
 #     /ims/api/ping), so Docker knows the app is actually serving, not just running.
 #   * Persistent NAMED volumes for the DB and attachments (not host bind-mounts),
@@ -26,10 +32,10 @@
 services:
 
   ims-go:
-    build:
-      context: .
-      dockerfile: Dockerfile
-    image: "ocf-ims:${IMAGE_TAG:-latest}"
+    image: "ghcr.io/mikeki/ocf-ims:${IMAGE_TAG:-latest}"
+    # Always reconcile with the registry on `up`, so `docker compose pull && up -d`
+    # rolls forward and a plain `up -d` after a tag bump picks up the new image.
+    pull_policy: always
     container_name: "ocf-ims"
     restart: unless-stopped
     env_file:

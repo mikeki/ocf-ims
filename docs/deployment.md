@@ -7,6 +7,13 @@ process has crashed and never self-heals, which is how the 2026-06-28 demo outag
 went unnoticed. Production uses the real `Dockerfile` (a plain static binary) with
 a healthcheck and `restart: unless-stopped`, so a crash is visible and recovers.
 
+**The host never compiles the app.** The image is built and pushed to GHCR by CI
+(`.github/workflows/publish-image.yml`) on every merge to master; the deploy box
+just pulls it. This matters on a small box — building the Go binary needs far more
+RAM than running it — and makes redeploys fast. You still keep a lightweight
+checkout of this repo on the host, but only for the compose files and `deploy/`
+scripts, not to build.
+
 ## Topology
 
 ```
@@ -26,10 +33,17 @@ a healthcheck and `restart: unless-stopped`, so a crash is visible and recovers.
 
 ## One-time host setup
 
-1. Install Docker + Compose (done) and clone the repo:
+1. Install Docker + Compose (done) and clone the repo (for the compose files and
+   `deploy/` scripts — nothing is built here):
    ```bash
-   sudo git clone https://github.com/mikeki/ocf-ims /opt/ocf-ims
+   sudo git clone --depth 1 https://github.com/mikeki/ocf-ims /opt/ocf-ims
    cd /opt/ocf-ims
+   ```
+   The app image is pulled from GHCR. If the `ocf-ims` package is public, no
+   registry login is needed. If it's private, authenticate once with a PAT that
+   has `read:packages`:
+   ```bash
+   echo "$GHCR_PAT" | docker login ghcr.io -u <github-user> --password-stdin
    ```
 2. Create the shared proxy network and attach your Caddy container to it:
    ```bash
@@ -52,13 +66,14 @@ a healthcheck and `restart: unless-stopped`, so a crash is visible and recovers.
 
 ```bash
 cd /opt/ocf-ims
-docker compose -f docker-compose.prod.yml up -d --build
+docker compose -f docker-compose.prod.yml pull        # fetch the GHCR image
+docker compose -f docker-compose.prod.yml up -d
 docker compose -f docker-compose.monitoring.yml up -d
 ```
 
-The build runs sqlc/templ/tsgo codegen then compiles — it needs ≥2 GB RAM and a
-few minutes. On first boot the app runs goose migrations against the empty DB
-(`start_period: 40s` keeps the healthcheck from failing meanwhile).
+No compile happens on the host — the app image is pulled from GHCR. On first boot
+the app runs goose migrations against the empty DB (`start_period: 40s` keeps the
+healthcheck from failing meanwhile).
 
 Verify:
 ```bash
@@ -86,17 +101,32 @@ SQL
 Log in matches HANDLE or EMAIL (never Name), so the admin row needs at least one
 of those plus the password.
 
+## How the image is built
+
+`.github/workflows/publish-image.yml` builds the production `Dockerfile` and
+pushes it to `ghcr.io/mikeki/ocf-ims` on every merge to master:
+
+- `:<commit-sha>` — every master build (immutable; use for pinned rollouts/rollback).
+- `:latest` — moved to the newest master build.
+
+You can also trigger it manually from the Actions tab (`workflow_dispatch`); a
+dispatch from a non-master branch pushes only its `:<sha>` tag, never `:latest`.
+
 ## Deploying an update
+
+Merge to master → wait for the **Publish image** workflow to go green → on the host:
 
 ```bash
 cd /opt/ocf-ims
-git pull
-docker compose -f docker-compose.prod.yml up -d --build   # rebuild + rolling restart
-docker compose -f docker-compose.prod.yml logs -f ims-go   # watch boot/migrations
+git pull                                                # refresh compose/deploy files
+docker compose -f docker-compose.prod.yml pull          # fetch the new image
+docker compose -f docker-compose.prod.yml up -d         # rolling restart onto it
+docker compose -f docker-compose.prod.yml logs -f ims-go # watch boot/migrations
 ```
 
-Migrations are append-only and run automatically on boot. Take a DB backup
-(below) before deploying anything that adds a migration.
+To pin or roll back, set `IMAGE_TAG=<commit-sha>` in `.env` and re-run `pull` +
+`up -d`. Migrations are append-only and run automatically on boot — take a DB
+backup (below) before deploying anything that adds a migration.
 
 ## Monitoring
 
