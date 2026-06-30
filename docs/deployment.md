@@ -8,8 +8,8 @@ went unnoticed. Production uses the real `Dockerfile` (a plain static binary) wi
 a healthcheck and `restart: unless-stopped`, so a crash is visible and recovers.
 
 **The host never compiles the app.** The image is built and pushed to GHCR by CI
-(`.github/workflows/publish-image.yml`) on every merge to master; the deploy box
-just pulls it. This matters on a small box — building the Go binary needs far more
+(the `docker-publish` job in `.github/workflows/cicd.yml`, gated on the tests) on
+every merge to master; the deploy box just pulls it. This matters on a small box — building the Go binary needs far more
 RAM than running it — and makes redeploys fast. You still keep a lightweight
 checkout of this repo on the host, but only for the compose files and `deploy/`
 scripts, not to build.
@@ -94,8 +94,10 @@ admin by hand, then manage everyone else in-app (Admin → People & Passwords):
 # with a leading space, or `history -d`).
 docker exec ocf-ims /opt/ims/bin/ims hash_password --password 'choose-a-strong-one'
 # insert the admin (HANDLE + EMAIL are required to log in; see the login note).
-# CREATED is NOT NULL with no default, so it must be set. Pass the DB password
+# CREATED is NOT NULL with no default, so it must be set. The DB password lives
+# only in .env (compose reads it) — load it into this shell first, then pass it
 # via MYSQL_PWD so it never lands in the process list.
+set -a; source .env; set +a
 MYSQL_PWD="$IMS_DB_PASSWORD" docker exec -e MYSQL_PWD -i ocf-ims-db mariadb -uims ims <<'SQL'
 INSERT INTO PERSON (HANDLE, EMAIL, NAME, PASSWORD, IS_ADMIN, CREATED)
 VALUES ('YourHandle', 'you@ocf.example.org', 'Your Name', '<argon2id-hash>', true, UNIX_TIMESTAMP());
@@ -107,29 +109,35 @@ of those plus the password.
 
 ## How the image is built
 
-`.github/workflows/publish-image.yml` builds the production `Dockerfile` and
-pushes it to `ghcr.io/mikeki/ocf-ims` on every merge to master:
+The `docker-publish` job in `.github/workflows/cicd.yml` pushes to
+`ghcr.io/mikeki/ocf-ims` — but only **after** lint, the Go test suite, and the
+Docker-image test pass, and only on master pushes. It republishes the exact image
+bytes that were tested (no rebuild). PRs build + test the image but never push.
 
 - `:<commit-sha>` — every master build (immutable; use for pinned rollouts/rollback).
 - `:latest` — moved to the newest master build.
 
-You can also trigger it manually from the Actions tab (`workflow_dispatch`); a
-dispatch from a non-master branch pushes only its `:<sha>` tag, never `:latest`.
-
 ## Deploying an update
 
-Merge to master → wait for the **Publish image** workflow to go green → on the host:
+`pull_policy: missing` means the host never upgrades on its own: a plain `up -d`
+keeps running the local image. Upgrading is a deliberate `pull` + `up -d`.
+
+**For the event, pin the version** — set `IMAGE_TAG=<commit-sha>` in `.env` so the
+running version is fixed and reproducible, and nothing (not even an accidental
+`pull`) moves it. To deploy a new build: merge to master → wait for **CI/CD** to go
+green → on the host:
 
 ```bash
 cd /opt/ocf-ims
 git pull                                                # refresh compose/deploy files
-docker compose -f docker-compose.prod.yml pull          # fetch the new image
+# bump IMAGE_TAG=<new-sha> in .env (or leave at latest if you accept rolling),
+docker compose -f docker-compose.prod.yml pull          # fetch that image
 docker compose -f docker-compose.prod.yml up -d         # rolling restart onto it
 docker compose -f docker-compose.prod.yml logs -f ims-go # watch boot/migrations
 ```
 
-To pin or roll back, set `IMAGE_TAG=<commit-sha>` in `.env` and re-run `pull` +
-`up -d`. Migrations are append-only and run automatically on boot — take a DB
+Roll back by setting `IMAGE_TAG` to the previous SHA and re-running `pull` + `up
+-d`. Migrations are append-only and run automatically on boot — take a DB
 backup (below) before deploying anything that adds a migration.
 
 ## Monitoring
@@ -178,9 +186,15 @@ docker run --rm -v ocf-ims_ims-attachments:/data -v "$PWD/backups":/out alpine \
 
 - **Stable `IMS_JWT_SECRET`.** Changing it (or leaving it unset → random per boot)
   logs everyone out on restart. Set it once in `.env`.
-- **Reboots.** `restart: unless-stopped` brings everything back after a reboot. If
-  the host has unattended auto-reboots (the demo host rebooted nightly at 02:00),
-  consider disabling them for the event window so nothing restarts mid-Fair.
+- **Reboots.** `restart: unless-stopped` brings everything back after a reboot,
+  but Docker does **not** honor `depends_on`/health ordering across a reboot — it
+  just restarts both containers. If `ims-go` comes up before MariaDB is accepting
+  connections, it fails its DB ping and exits; Docker restarts it, and it keeps
+  cycling until the DB is healthy (typically tens of seconds while MariaDB does its
+  InnoDB recovery). So recovery is automatic but **not instant** — expect a brief
+  502 window right after a cold reboot, until `ims-go` catches a healthy DB. To
+  avoid surprise reboots entirely, disable the host's unattended auto-reboots (the
+  demo host rebooted nightly at 02:00) for the event window.
 - **Recreate after compose changes.** A long-lived container can outlive its
   compose definition (a deleted bind-mount once exited a container 127 on the next
   reboot). After editing a compose file, `up -d` to recreate the affected service

@@ -10,11 +10,11 @@
 #     live-reload. air masks a crashed process as "Up" and never self-heals on a
 #     panic (this caused the 2026-06-28 outage) — a plain binary with a real
 #     healthcheck + `restart: unless-stopped` recovers on its own.
-#   * Pulls a PREBUILT image from GHCR (built + pushed by .github/workflows/
-#     publish-image.yml on merge to master) rather than compiling on the host.
-#     The deploy box never needs the Go toolchain or build-time RAM — it just
-#     `docker compose pull && up -d`. Pin IMAGE_TAG to a commit SHA in .env for a
-#     controlled rollout, or leave it at the rolling `latest`.
+#   * Pulls a PREBUILT image from GHCR (built + pushed by the docker-publish job
+#     in .github/workflows/cicd.yml, gated on the tests, on merge to master)
+#     rather than compiling on the host. The deploy box never needs the Go
+#     toolchain or build-time RAM — it just `docker compose pull && up -d`. Pin
+#     IMAGE_TAG to a commit SHA in .env for a controlled rollout.
 #   * A real container `healthcheck` that calls `ims healthcheck` (hits
 #     /ims/api/ping), so Docker knows the app is actually serving, not just running.
 #   * Persistent NAMED volumes for the DB and attachments (not host bind-mounts),
@@ -29,13 +29,21 @@
 # the network once and attach your Caddy container to it:
 #   docker network create web
 
+# Explicit project name (independent of the host directory) so this stack and the
+# monitoring stack stay isolated — a `docker compose ... up --remove-orphans` on
+# one can't delete the other's containers. It also makes the volume names
+# deterministic (e.g. ocf-ims_ims-attachments) regardless of the clone path.
+name: ocf-ims
+
 services:
 
   ims-go:
     image: "ghcr.io/mikeki/ocf-ims:${IMAGE_TAG:-latest}"
-    # Always reconcile with the registry on `up`, so `docker compose pull && up -d`
-    # rolls forward and a plain `up -d` after a tag bump picks up the new image.
-    pull_policy: always
+    # `missing`: use the local image on `up` — a plain `up -d` (e.g. after a
+    # compose edit) does NOT silently upgrade the app. Upgrades are deliberate:
+    # `docker compose pull` then `up -d`. For the event, also PIN IMAGE_TAG=<sha>
+    # in .env so even an explicit pull can't move the running version.
+    pull_policy: missing
     container_name: "ocf-ims"
     restart: unless-stopped
     env_file:

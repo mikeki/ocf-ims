@@ -11,7 +11,9 @@
 # Cron (daily 03:30, after the nightly reboot window settles) — `crontab -e`:
 #   30 3 * * * cd /opt/ocf-ims && BACKUP_DIR=/mnt/backups ./deploy/backup-db.sh >> /var/log/ims-backup.log 2>&1
 #
-# Restore (DESTRUCTIVE — overwrites the live DB):
+# Restore (DESTRUCTIVE — overwrites the live DB). Load the creds from .env first,
+# since they live there, not in your shell:
+#   set -a; source .env; set +a
 #   gunzip -c backups/ims-YYYYmmdd-HHMMSS.sql.gz | \
 #     MYSQL_PWD="$IMS_DB_PASSWORD" docker exec -e MYSQL_PWD -i ocf-ims-db \
 #       mariadb -u"$IMS_DB_USER_NAME" "$IMS_DB_DATABASE"

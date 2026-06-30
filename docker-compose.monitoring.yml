@@ -32,6 +32,11 @@
 # monitor can't see a fully dead host — keep the Kuma notification channel
 # off-host, and ideally add one external check hitting the public URL as a backstop.
 
+# Distinct project name so this stack is isolated from the prod stack (which is
+# `ocf-ims`) even though both run from the same directory — a `--remove-orphans`
+# on either can't reach across and delete the other's containers/volumes.
+name: ocf-ims-monitoring
+
 services:
 
   uptime-kuma:

@@ -218,3 +218,64 @@ jobs:
         run: ./bin/test_docker
         env:
           IMAGE_TAG: ${{ github.sha }}
+
+
+  docker-publish:
+
+    name: Publish image to GHCR
+
+    # Only publish an image that passed lint, the test suite, AND the docker
+    # image test — and only from master pushes (PRs build + test but never push).
+    needs: [lint, build, docker-test]
+    if: ${{ github.event_name == 'push' && github.ref == 'refs/heads/master' }}
+
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    permissions:
+      contents: read
+      packages: write
+
+    steps:
+
+      - name: Harden Runner
+        uses: step-security/harden-runner@v2.19.4
+        with:
+          egress-policy: block
+          allowed-endpoints: >
+            *.docker.com:443
+            *.docker.io:443
+            *.golang.org:443
+            cdn.datatables.net:443
+            cdn.jsdelivr.net:443
+            code.jquery.com:443
+            dl-cdn.alpinelinux.org:443
+            ghcr.io:443
+            github.com:443
+            pkg-containers.githubusercontent.com:443
+            storage.googleapis.com:443
+
+      - name: Download Docker image artifact
+        uses: actions/download-artifact@v8
+        with:
+          name: docker
+
+      - name: Load Docker image
+        run: gzip --uncompress --stdout docker_image.tgz | docker image load
+
+      - name: Log in to GHCR
+        env:
+          GHCR_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: echo "$GHCR_TOKEN" | docker login ghcr.io -u "$GITHUB_ACTOR" --password-stdin
+
+      - name: Tag and push the tested image (no rebuild)
+        env:
+          # github.repository is "mikeki/ocf-ims" (lowercase, as GHCR requires).
+          # Pass workflow context through env per injection-hardening guidance.
+          IMAGE: "ghcr.io/${{ github.repository }}"
+          SHA: ${{ github.sha }}
+        run: |
+          docker tag "ocf-ims:${SHA}" "${IMAGE}:${SHA}"
+          docker tag "ocf-ims:${SHA}" "${IMAGE}:latest"
+          docker push "${IMAGE}:${SHA}"
+          docker push "${IMAGE}:latest"
