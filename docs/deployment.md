@@ -147,14 +147,22 @@ backup (below) before deploying anything that adds a migration.
 
 ## Backups
 
-The DB lives in the `ims-db-data` volume — **a volume is not a backup.** Take
-logical dumps and copy them off-host:
+The DB lives in the `ims-db-data` volume — **a volume is not a backup.** Run
+`backup-db.sh` on a schedule for logical dumps:
 
 ```bash
 deploy/backup-db.sh                       # writes ./backups/ims-<ts>.sql.gz
 # cron (daily 03:30):
-30 3 * * * cd /opt/ocf-ims && BACKUP_DIR=/mnt/backups ./deploy/backup-db.sh >> /var/log/ims-backup.log 2>&1
+30 3 * * * cd /opt/ocf-ims && ./deploy/backup-db.sh >> /var/log/ims-backup.log 2>&1
 ```
+
+These local dumps are the baseline and recover from the most likely mishaps —
+a bad migration, an accidental delete, or DB-volume corruption — instantly and
+with no extra infra. They do **not** survive losing the whole host, so the
+upgrade (do it when convenient) is to copy each dump off the box: set
+`BACKUP_DIR=/mnt/some-mount`, or add an `scp`/`rsync`/`aws s3 cp` of the latest
+`.sql.gz` to another machine or bucket (reuse the attachments S3 bucket if you
+configure one).
 
 Attachments (if used) live in the `ims-attachments` volume — back it up separately:
 ```bash
