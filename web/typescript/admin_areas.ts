@@ -26,6 +26,7 @@ declare global {
         setAreaName: (el: HTMLInputElement)=>Promise<void>;
         setAreaParent: (el: HTMLSelectElement)=>Promise<void>;
         setAreaSortOrder: (el: HTMLInputElement)=>Promise<void>;
+        submitMarkDuplicate: ()=>Promise<void>;
     }
 }
 
@@ -50,6 +51,9 @@ const el = {
     addAreaName: ims.typedElement("add_area_name", HTMLInputElement),
     addAreaParent: ims.typedElement("add_area_parent", HTMLSelectElement),
     addAreaSortOrder: ims.typedElement("add_area_sort_order", HTMLInputElement),
+    markDuplicateModal: ims.typedElement("markDuplicateModal", HTMLElement),
+    markDuplicateName: ims.typedElement("mark_duplicate_name", HTMLElement),
+    markDuplicateCanonical: ims.typedElement("mark_duplicate_canonical", HTMLSelectElement),
 };
 
 initAdminAreasPage();
@@ -67,6 +71,7 @@ async function initAdminAreasPage(): Promise<void> {
     window.setAreaName = setAreaName;
     window.setAreaParent = setAreaParent;
     window.setAreaSortOrder = setAreaSortOrder;
+    window.submitMarkDuplicate = submitMarkDuplicate;
 
     await loadEventOptions();
 
@@ -205,7 +210,77 @@ function appendAreaRow(
         editAreaModal.show();
     });
 
+    // A still-unapproved area is a writer's proposal (6o-2): flag it and offer the
+    // admin's two resolutions — approve it, or mark it a duplicate of a real area.
+    if (area.approved === false) {
+        const proposed: HTMLElement = li.querySelector(".area-proposed")!;
+        proposed.classList.remove("hidden");
+        const who = area.proposer?.handle || area.proposer?.name;
+        if (who) {
+            proposed.title = `Proposed by ${who}`;
+        }
+        const approveBtn: HTMLElement = li.querySelector(".approve-area")!;
+        approveBtn.classList.remove("hidden");
+        approveBtn.addEventListener("click", () => approveArea(area.slug??""));
+        const dupBtn: HTMLElement = li.querySelector(".mark-duplicate-area")!;
+        dupBtn.classList.remove("hidden");
+        dupBtn.addEventListener("click", () => showMarkDuplicateModal(area));
+    }
+
     container.append(frag);
+}
+
+// approveArea promotes a proposed area to an approved one.
+async function approveArea(slug: string): Promise<void> {
+    if (!slug) {
+        return;
+    }
+    const {err} = await sendArea({slug: slug, approved: true});
+    if (err != null) {
+        return;
+    }
+    await loadAreas();
+}
+
+// showMarkDuplicateModal opens the duplicate-resolution modal, prefilled with the
+// event's approved areas (a proposal can only be folded into a real one) other
+// than the proposal itself.
+function showMarkDuplicateModal(area: ims.Area): void {
+    el.markDuplicateModal.dataset["areaSlug"] = area.slug??"";
+    el.markDuplicateName.textContent = area.name??(area.slug??"");
+    const select = el.markDuplicateCanonical;
+    select.querySelectorAll("option:not([value=''])").forEach(o => {o.remove()});
+    const candidates = adminAreas
+        .filter(a => a.approved !== false && a.slug !== area.slug)
+        .sort(compareAreas);
+    for (const a of candidates) {
+        const opt = document.createElement("option");
+        opt.value = a.slug??"";
+        opt.textContent = a.name??"";
+        select.append(opt);
+    }
+    select.value = "";
+    ims.bsModal(el.markDuplicateModal).show();
+}
+
+async function submitMarkDuplicate(): Promise<void> {
+    const slug = el.markDuplicateModal.dataset["areaSlug"];
+    const canonical = el.markDuplicateCanonical.value;
+    if (!slug) {
+        return;
+    }
+    if (!canonical) {
+        ims.controlHasError(el.markDuplicateCanonical);
+        ims.setErrorMessage("Choose the area this is a duplicate of.");
+        return;
+    }
+    const {err} = await sendArea({slug: slug, duplicate_of: canonical});
+    if (err != null) {
+        ims.controlHasError(el.markDuplicateCanonical);
+        return;
+    }
+    ims.bsModal(el.markDuplicateModal).hide();
+    await loadAreas();
 }
 
 // populateParentOptions fills the parent <select> with the event's top-level

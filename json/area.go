@@ -25,6 +25,17 @@ type Area struct {
 	Name       *string `json:"name,omitempty"`
 	ParentSlug *string `json:"parent_slug,omitempty"`
 	SortOrder  *int32  `json:"sort_order,omitempty"`
+	// Approved is false while an area is a writer's pending proposal awaiting an
+	// admin's review. On a read it is present on every area. On a write, an admin
+	// sends approved=true (with a Slug, no other fields) to approve a proposal.
+	Approved *bool `json:"approved,omitempty"`
+	// Proposer is the person who proposed a still-unapproved area; read-only, and
+	// nil for canonical/admin-created/approved areas.
+	Proposer *Mention `json:"proposer,omitempty"`
+	// DuplicateOf, on a write, marks this area (Slug) a duplicate of the named
+	// existing area: an admin action that re-points this area's incidents to the
+	// canonical one and then deletes this area.
+	DuplicateOf *string `json:"duplicate_of,omitempty"`
 }
 
 // Areas is the list of areas for an event.

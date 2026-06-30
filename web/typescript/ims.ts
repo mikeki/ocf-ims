@@ -3316,6 +3316,13 @@ export interface Area {
     name?: string|null;
     parent_slug?: string|null;
     sort_order?: number|null;
+    // approved is false while an area is a writer's pending proposal awaiting an
+    // admin's review (6o-2). Sent true on a write to approve it.
+    approved?: boolean|null;
+    // proposer is who proposed a still-unapproved area (read-only).
+    proposer?: Mention|null;
+    // duplicate_of, on a write, marks this area a duplicate of the named area.
+    duplicate_of?: string|null;
 }
 
 export type Areas = Area[];

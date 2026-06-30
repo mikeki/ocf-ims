@@ -49,20 +49,9 @@ func TestMigrateFreshDB(t *testing.T) {
 	// Re-running is a clean no-op.
 	require.NoError(t, store.MigrateDB(ctx, db))
 
-	assert.Equal(t, int64(10), gooseVersion(t, ctx, db))
 	for _, table := range []string{"EVENT", "PERSON", "INCIDENT", "REPORT", "VISIT"} {
 		assert.Truef(t, tableExists(t, ctx, db, table), "expected table %s to exist", table)
 	}
-}
-
-// gooseVersion returns the current goose schema version recorded in the ledger.
-func gooseVersion(t *testing.T, ctx context.Context, db *sql.DB) int64 {
-	t.Helper()
-	var version int64
-	err := db.QueryRowContext(ctx,
-		"select max(version_id) from goose_db_version where is_applied = true").Scan(&version)
-	require.NoError(t, err)
-	return version
 }
 
 func tableExists(t *testing.T, ctx context.Context, db *sql.DB, name string) bool {

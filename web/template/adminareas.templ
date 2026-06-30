@@ -72,6 +72,32 @@ templ AdminAreas(deployment, versionName, versionRef, eventName string) {
       </div>
     </div>
 
+    <div class="modal no-print" id="markDuplicateModal" tabindex="-1" aria-labelledby="markDuplicateModalLabel" aria-hidden="true">
+      <div class="modal-dialog">
+        <div class="modal-content">
+          <div class="modal-header">
+            <p class="modal-title fs-5" id="markDuplicateModalLabel">Mark as duplicate</p>
+            <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close" />
+          </div>
+          <div class="modal-body row">
+            <p class="small">
+              Re-points every incident using <span id="mark_duplicate_name" class="fw-semibold"></span>
+              to the area you choose, then removes the duplicate. This can't be undone.
+            </p>
+            <div class="input-group mb-1">
+              <label for="mark_duplicate_canonical" class="control-label input-group-text">Duplicate of</label>
+              <select id="mark_duplicate_canonical" class="form-control form-select form-select-sm">
+                <option value="">Select an area…</option>
+              </select>
+            </div>
+          </div>
+          <div class="modal-footer">
+            <button type="button" class="btn btn-danger" id="mark_duplicate_submit" onclick="submitMarkDuplicate()">Mark duplicate</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
     <div class="modal no-print" id="addAreaModal" tabindex="-1" aria-labelledby="addAreaModalLabel" aria-hidden="true">
       <div class="modal-dialog">
         <div class="modal-content">
@@ -120,10 +146,19 @@ templ AdminAreas(deployment, versionName, versionRef, eventName string) {
         <ul class="list-group list-group-small list-group-flush card-body">
           <template id="area_li_template">
             <li class="list-group-item ps-3" data-area-slug="">
-              <button class="show-edit-modal badge btn btn-primary float-end me-2">
-                Edit
-              </button>
+              <span class="float-end">
+                <button class="mark-duplicate-area badge btn btn-outline-secondary me-2 hidden">
+                  Mark duplicate…
+                </button>
+                <button class="approve-area badge btn btn-success me-2 hidden">
+                  Approve
+                </button>
+                <button class="show-edit-modal badge btn btn-primary me-2">
+                  Edit
+                </button>
+              </span>
               <span class="area-name"></span>
+              <span class="area-proposed badge text-bg-warning ms-2 hidden">proposed</span>
               <span class="area-slug text-body-secondary ms-2 font-monospace small"></span>
             </li>
           </template>

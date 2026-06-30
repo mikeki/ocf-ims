@@ -19,6 +19,7 @@ package api
 import (
 	"context"
 	"database/sql"
+	"errors"
 	"fmt"
 	"net/http"
 	"regexp"
@@ -64,9 +65,9 @@ func (action GetAreas) run(req *http.Request) (imsjson.Areas, *herr.HTTPError) {
 		return nil, herr.Forbidden("The requestor does not have EventReadAreas permission", nil)
 	}
 
-	areaRows, err := action.imsDBQ.Areas(ctx, action.imsDBQ, event.ID)
+	areaRows, err := action.imsDBQ.AreasWithProposer(ctx, action.imsDBQ, event.ID)
 	if err != nil {
-		return nil, herr.InternalServerError("Failed to fetch Areas", err).From("[Areas]")
+		return nil, herr.InternalServerError("Failed to fetch Areas", err).From("[AreasWithProposer]")
 	}
 
 	resp := make(imsjson.Areas, 0, len(areaRows))
@@ -95,7 +96,7 @@ func (action EditAreas) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 
 func (action EditAreas) run(req *http.Request) (newSlug string, errHTTP *herr.HTTPError) {
 	ctx := req.Context()
-	event, _, eventPermissions, errHTTP := getEventPermissions(req, action.imsDBQ, action.userStore)
+	event, jwtCtx, eventPermissions, errHTTP := getEventPermissions(req, action.imsDBQ, action.userStore)
 	if errHTTP != nil {
 		return "", errHTTP.From("[getEventPermissions]")
 	}
@@ -107,25 +108,38 @@ func (action EditAreas) run(req *http.Request) (newSlug string, errHTTP *herr.HT
 	if errHTTP != nil {
 		return "", errHTTP.From("[readBodyAs]")
 	}
+	isAreaAdmin := globalPermissions&authz.GlobalAdministrateAreas != 0
 
 	if areaReq.Slug == "" {
 		// Creating a new area is allowed for incident editors (so a Ranger can
 		// add a missing location on the fly from the incident form) as well as
-		// for area admins.
-		if globalPermissions&authz.GlobalAdministrateAreas == 0 &&
-			eventPermissions&authz.EventWriteIncidents == 0 {
+		// for area admins. A non-admin's area is a *proposal* (unapproved) that
+		// an admin reviews later; an admin's area is approved immediately.
+		if !isAreaAdmin && eventPermissions&authz.EventWriteIncidents == 0 {
 			return "", herr.Forbidden("The requestor may not create Areas", nil)
 		}
-		return action.create(ctx, event.ID, areaReq)
+		return action.create(ctx, event.ID, areaReq, isAreaAdmin, jwtCtx.Claims.PersonID())
 	}
-	// Editing an existing area (rename / reparent / reorder) stays admin-only.
-	if globalPermissions&authz.GlobalAdministrateAreas == 0 {
+	// Every operation on an existing area (rename / reparent / reorder, approve,
+	// mark-duplicate) stays admin-only.
+	if !isAreaAdmin {
 		return "", herr.Forbidden("The requestor does not have GlobalAdministrateAreas permission", nil)
 	}
-	return "", action.update(ctx, event.ID, areaReq)
+	switch {
+	case areaReq.DuplicateOf != nil:
+		// Mark a proposed area a duplicate of an existing one: re-point its
+		// incidents to the canonical area, then delete it.
+		return "", action.markDuplicate(ctx, event.ID, areaReq.Slug, *areaReq.DuplicateOf)
+	case areaReq.Approved != nil && *areaReq.Approved:
+		return "", action.approve(ctx, event.ID, areaReq.Slug)
+	default:
+		return "", action.update(ctx, event.ID, areaReq)
+	}
 }
 
-func (action EditAreas) create(ctx context.Context, eventID int32, areaReq imsjson.Area) (string, *herr.HTTPError) {
+func (action EditAreas) create(
+	ctx context.Context, eventID int32, areaReq imsjson.Area, isAreaAdmin bool, proposerID int32,
+) (string, *herr.HTTPError) {
 	if areaReq.Name == nil || strings.TrimSpace(*areaReq.Name) == "" {
 		return "", herr.BadRequest("Area name is required for a new Area", nil)
 	}
@@ -144,18 +158,94 @@ func (action EditAreas) create(ctx context.Context, eventID int32, areaReq imsjs
 		return "", errHTTP
 	}
 
+	// An admin's area is approved on the spot; a writer's is a proposal awaiting
+	// an admin's review, tagged with who proposed it.
+	var proposedBy sql.NullInt32
+	if !isAreaAdmin {
+		proposedBy = sql.NullInt32{Int32: proposerID, Valid: true}
+	}
+
 	slug := uniqueSlug(*areaReq.Name, taken)
 	err = action.imsDBQ.CreateArea(ctx, action.imsDBQ, imsdb.CreateAreaParams{
-		Event:      eventID,
-		Slug:       slug,
-		Name:       strings.TrimSpace(*areaReq.Name),
-		ParentSlug: parent,
-		SortOrder:  derefInt32(areaReq.SortOrder, 0),
+		Event:              eventID,
+		Slug:               slug,
+		Name:               strings.TrimSpace(*areaReq.Name),
+		ParentSlug:         parent,
+		SortOrder:          derefInt32(areaReq.SortOrder, 0),
+		Approved:           isAreaAdmin,
+		ProposedByPersonID: proposedBy,
 	})
 	if err != nil {
 		return "", herr.InternalServerError("Failed to create Area", err).From("[CreateArea]")
 	}
 	return slug, nil
+}
+
+// approve marks a proposed area approved. The proposer is kept for audit.
+func (action EditAreas) approve(ctx context.Context, eventID int32, slug string) *herr.HTTPError {
+	_, err := action.imsDBQ.Area(ctx, action.imsDBQ, imsdb.AreaParams{Event: eventID, Slug: slug})
+	if errors.Is(err, sql.ErrNoRows) {
+		return herr.NotFound("No such Area", nil)
+	}
+	if err != nil {
+		return herr.InternalServerError("Failed to look up Area", err).From("[Area]")
+	}
+	err = action.imsDBQ.ApproveArea(ctx, action.imsDBQ, imsdb.ApproveAreaParams{Event: eventID, Slug: slug})
+	if err != nil {
+		return herr.InternalServerError("Failed to approve Area", err).From("[ApproveArea]")
+	}
+	return nil
+}
+
+// markDuplicate resolves a proposed (or otherwise unwanted) area into an existing
+// canonical one: every incident pointing at dupSlug is re-pointed to canonSlug,
+// then dupSlug is deleted. Both happen in one transaction so an incident is never
+// left pointing at a deleted area.
+func (action EditAreas) markDuplicate(ctx context.Context, eventID int32, dupSlug, canonSlug string) *herr.HTTPError {
+	if canonSlug == "" {
+		return herr.BadRequest("A canonical area slug is required", nil)
+	}
+	if canonSlug == dupSlug {
+		return herr.BadRequest("An area cannot be a duplicate of itself", nil)
+	}
+	existing, err := action.imsDBQ.Areas(ctx, action.imsDBQ, eventID)
+	if err != nil {
+		return herr.InternalServerError("Failed to fetch Areas", err).From("[Areas]")
+	}
+	dupIdx := slices.IndexFunc(existing, func(a imsdb.Area) bool { return a.Slug == dupSlug })
+	if dupIdx < 0 {
+		return herr.NotFound("No such Area", nil)
+	}
+	if slices.IndexFunc(existing, func(a imsdb.Area) bool { return a.Slug == canonSlug }) < 0 {
+		return herr.BadRequest("The canonical area does not exist in this event", nil)
+	}
+	// A duplicate with sub-areas would orphan them (AREA_PARENT FK), and a writer
+	// proposal is always flat anyway — refuse rather than cascade-delete.
+	if slices.ContainsFunc(existing, func(a imsdb.Area) bool {
+		return a.ParentSlug.Valid && a.ParentSlug.String == dupSlug
+	}) {
+		return herr.BadRequest("Reparent or remove this area's sub-areas before marking it a duplicate", nil)
+	}
+
+	runErr := action.imsDBQ.RunInTx(ctx, func(tx *sql.Tx) error {
+		txErr := action.imsDBQ.RepointIncidentsArea(ctx, tx, imsdb.RepointIncidentsAreaParams{
+			ToSlug:   sql.NullString{String: canonSlug, Valid: true},
+			Event:    eventID,
+			FromSlug: sql.NullString{String: dupSlug, Valid: true},
+		})
+		if txErr != nil {
+			return herr.InternalServerError("Failed to re-point incidents", txErr).From("[RepointIncidentsArea]")
+		}
+		txErr = action.imsDBQ.DeleteArea(ctx, tx, imsdb.DeleteAreaParams{Event: eventID, Slug: dupSlug})
+		if txErr != nil {
+			return herr.InternalServerError("Failed to delete duplicate Area", txErr).From("[DeleteArea]")
+		}
+		return nil
+	})
+	if runErr != nil {
+		return herr.AsHTTPError(runErr).From("[RunInTx]")
+	}
+	return nil
 }
 
 func (action EditAreas) update(ctx context.Context, eventID int32, areaReq imsjson.Area) *herr.HTTPError {
@@ -227,14 +317,22 @@ func validateParent(existing []imsdb.Area, parentSlug *string, selfSlug string) 
 	return sql.NullString{String: *parentSlug, Valid: true}, nil
 }
 
-func areaRowToJSON(a imsdb.Area) imsjson.Area {
+func areaRowToJSON(a imsdb.AreasWithProposerRow) imsjson.Area {
 	out := imsjson.Area{
 		Slug:      a.Slug,
 		Name:      new(a.Name),
 		SortOrder: new(a.SortOrder),
+		Approved:  new(a.Approved),
 	}
 	if a.ParentSlug.Valid {
 		out.ParentSlug = new(a.ParentSlug.String)
+	}
+	if a.ProposedByPersonID.Valid {
+		out.Proposer = &imsjson.Mention{
+			PersonID: a.ProposedByPersonID.Int32,
+			Handle:   a.ProposerHandle.String,
+			Name:     a.ProposerName.String,
+		}
 	}
 	return out
 }

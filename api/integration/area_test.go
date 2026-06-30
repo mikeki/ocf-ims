@@ -323,3 +323,165 @@ func TestAreaRequiresNameOnCreate(t *testing.T) {
 	assert.Equal(t, http.StatusBadRequest, resp.StatusCode)
 	require.NoError(t, resp.Body.Close())
 }
+
+// TestWriterProposalIsUnapproved verifies the 6o-2 split: an admin's new area is
+// approved on the spot, while an event writer's on-the-fly area is an unapproved
+// proposal tagged with who proposed it.
+func TestWriterProposalIsUnapproved(t *testing.T) {
+	t.Parallel()
+	ctx := t.Context()
+	admin := ApiHelper{t: t, serverURL: shared.serverURL, jwt: jwtForAdmin(ctx, t)}
+	eventName := makeEvent(ctx, t, admin)
+
+	// Admin-created area: approved, no proposer.
+	adminName := "Admin Made Area Aaa"
+	adminSlug, resp := admin.editArea(ctx, eventName, imsjson.Area{Name: &adminName})
+	require.Equal(t, http.StatusNoContent, resp.StatusCode)
+	require.NoError(t, resp.Body.Close())
+
+	// Grant Alice write access, then have her propose an area on the fly.
+	resp = admin.addWriter(ctx, eventName, userAliceHandle)
+	require.Equal(t, http.StatusNoContent, resp.StatusCode)
+	require.NoError(t, resp.Body.Close())
+	alice := ApiHelper{t: t, serverURL: shared.serverURL, jwt: jwtForAlice(t, ctx)}
+	propName := "Writer Proposed Area Bbb"
+	propSlug, resp := alice.editArea(ctx, eventName, imsjson.Area{Name: &propName})
+	require.Equal(t, http.StatusNoContent, resp.StatusCode)
+	require.NoError(t, resp.Body.Close())
+
+	areas, resp := admin.getAreas(ctx, eventName)
+	require.Equal(t, http.StatusOK, resp.StatusCode)
+	require.NoError(t, resp.Body.Close())
+
+	adminArea, ok := findArea(areas, adminSlug)
+	require.True(t, ok)
+	require.NotNil(t, adminArea.Approved)
+	assert.True(t, *adminArea.Approved, "an admin's area is approved immediately")
+	assert.Nil(t, adminArea.Proposer, "an admin's area has no proposer")
+
+	proposal, ok := findArea(areas, propSlug)
+	require.True(t, ok)
+	require.NotNil(t, proposal.Approved)
+	assert.False(t, *proposal.Approved, "a writer's area starts as an unapproved proposal")
+	require.NotNil(t, proposal.Proposer, "a proposal records who proposed it")
+	assert.Equal(t, userAliceHandle, proposal.Proposer.Handle)
+}
+
+// TestApproveArea verifies an admin can approve a writer's proposal, and that a
+// non-admin writer cannot.
+func TestApproveArea(t *testing.T) {
+	t.Parallel()
+	ctx := t.Context()
+	admin := ApiHelper{t: t, serverURL: shared.serverURL, jwt: jwtForAdmin(ctx, t)}
+	eventName := makeEvent(ctx, t, admin)
+
+	resp := admin.addWriter(ctx, eventName, userAliceHandle)
+	require.Equal(t, http.StatusNoContent, resp.StatusCode)
+	require.NoError(t, resp.Body.Close())
+	alice := ApiHelper{t: t, serverURL: shared.serverURL, jwt: jwtForAlice(t, ctx)}
+
+	name := "Approvable Area Ccc"
+	slug, resp := alice.editArea(ctx, eventName, imsjson.Area{Name: &name})
+	require.Equal(t, http.StatusNoContent, resp.StatusCode)
+	require.NoError(t, resp.Body.Close())
+
+	// A writer may not approve.
+	_, resp = alice.editArea(ctx, eventName, imsjson.Area{Slug: slug, Approved: new(true)})
+	assert.Equal(t, http.StatusForbidden, resp.StatusCode)
+	require.NoError(t, resp.Body.Close())
+
+	// The admin approves it.
+	_, resp = admin.editArea(ctx, eventName, imsjson.Area{Slug: slug, Approved: new(true)})
+	require.Equal(t, http.StatusNoContent, resp.StatusCode)
+	require.NoError(t, resp.Body.Close())
+
+	areas, resp := admin.getAreas(ctx, eventName)
+	require.Equal(t, http.StatusOK, resp.StatusCode)
+	require.NoError(t, resp.Body.Close())
+	got, ok := findArea(areas, slug)
+	require.True(t, ok)
+	require.NotNil(t, got.Approved)
+	assert.True(t, *got.Approved, "the area is approved after the admin approves it")
+}
+
+// TestMarkDuplicateRepointsIncidents verifies the merge action: marking a
+// proposed area a duplicate re-points any incident using it to the canonical
+// area, then removes the duplicate.
+func TestMarkDuplicateRepointsIncidents(t *testing.T) {
+	t.Parallel()
+	ctx := t.Context()
+	admin := ApiHelper{t: t, serverURL: shared.serverURL, jwt: jwtForAdmin(ctx, t)}
+	eventName := makeEvent(ctx, t, admin)
+
+	canonName := "Canonical Place Ddd"
+	canonSlug, resp := admin.editArea(ctx, eventName, imsjson.Area{Name: &canonName})
+	require.Equal(t, http.StatusNoContent, resp.StatusCode)
+	require.NoError(t, resp.Body.Close())
+
+	dupName := "Duplicate Place Eee"
+	dupSlug, resp := admin.editArea(ctx, eventName, imsjson.Area{Name: &dupName})
+	require.Equal(t, http.StatusNoContent, resp.StatusCode)
+	require.NoError(t, resp.Body.Close())
+
+	// An incident pinned to the soon-to-be-duplicate area.
+	incidentNumber := admin.newIncidentSuccess(ctx, imsjson.Incident{
+		Event:    eventName,
+		State:    "new",
+		Priority: 3,
+		Summary:  new("at the dupe"),
+		Location: imsjson.Location{AreaSlug: new(dupSlug)},
+	})
+
+	// Mark the duplicate: incidents move to the canonical area, the dupe is gone.
+	_, resp = admin.editArea(ctx, eventName, imsjson.Area{Slug: dupSlug, DuplicateOf: &canonSlug})
+	require.Equal(t, http.StatusNoContent, resp.StatusCode)
+	require.NoError(t, resp.Body.Close())
+
+	got, resp := admin.getIncident(ctx, eventName, incidentNumber)
+	require.Equal(t, http.StatusOK, resp.StatusCode)
+	require.NoError(t, resp.Body.Close())
+	assert.Equal(t, canonSlug, deref(got.Location.AreaSlug), "the incident was re-pointed to the canonical area")
+
+	areas, resp := admin.getAreas(ctx, eventName)
+	require.Equal(t, http.StatusOK, resp.StatusCode)
+	require.NoError(t, resp.Body.Close())
+	_, ok := findArea(areas, dupSlug)
+	assert.False(t, ok, "the duplicate area was deleted")
+	_, ok = findArea(areas, canonSlug)
+	assert.True(t, ok, "the canonical area remains")
+}
+
+// TestMarkDuplicateRequiresAdmin verifies a writer cannot mark an area a
+// duplicate (the merge is admin-only).
+func TestMarkDuplicateRequiresAdmin(t *testing.T) {
+	t.Parallel()
+	ctx := t.Context()
+	admin := ApiHelper{t: t, serverURL: shared.serverURL, jwt: jwtForAdmin(ctx, t)}
+	eventName := makeEvent(ctx, t, admin)
+
+	canonName := "Keep This Area Fff"
+	canonSlug, resp := admin.editArea(ctx, eventName, imsjson.Area{Name: &canonName})
+	require.Equal(t, http.StatusNoContent, resp.StatusCode)
+	require.NoError(t, resp.Body.Close())
+
+	resp = admin.addWriter(ctx, eventName, userAliceHandle)
+	require.Equal(t, http.StatusNoContent, resp.StatusCode)
+	require.NoError(t, resp.Body.Close())
+	alice := ApiHelper{t: t, serverURL: shared.serverURL, jwt: jwtForAlice(t, ctx)}
+	dupName := "Writer Dupe Area Ggg"
+	dupSlug, resp := alice.editArea(ctx, eventName, imsjson.Area{Name: &dupName})
+	require.Equal(t, http.StatusNoContent, resp.StatusCode)
+	require.NoError(t, resp.Body.Close())
+
+	// The writer may not mark her own proposal a duplicate.
+	_, resp = alice.editArea(ctx, eventName, imsjson.Area{Slug: dupSlug, DuplicateOf: &canonSlug})
+	assert.Equal(t, http.StatusForbidden, resp.StatusCode)
+	require.NoError(t, resp.Body.Close())
+
+	// And the area is still there.
+	areas, resp := admin.getAreas(ctx, eventName)
+	require.Equal(t, http.StatusOK, resp.StatusCode)
+	require.NoError(t, resp.Body.Close())
+	_, ok := findArea(areas, dupSlug)
+	assert.True(t, ok, "the forbidden merge left the area intact")
+}

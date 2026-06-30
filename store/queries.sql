@@ -592,12 +592,36 @@ select
     `SLUG`,
     `NAME`,
     `PARENT_SLUG`,
-    `SORT_ORDER`
+    `SORT_ORDER`,
+    `APPROVED`,
+    `PROPOSED_BY_PERSON_ID`
 from
     AREA
 where
     `EVENT` = ?
 order by `SORT_ORDER`, `NAME`
+;
+
+-- name: AreasWithProposer :many
+-- Like Areas but resolves the proposer's handle/name for display (the Areas tab
+-- shows who proposed a still-unapproved area). LEFT JOIN: approved/canonical
+-- areas have no proposer.
+select
+    a.`EVENT`,
+    a.`SLUG`,
+    a.`NAME`,
+    a.`PARENT_SLUG`,
+    a.`SORT_ORDER`,
+    a.`APPROVED`,
+    a.`PROPOSED_BY_PERSON_ID`,
+    p.HANDLE as PROPOSER_HANDLE,
+    p.NAME as PROPOSER_NAME
+from
+    AREA a
+    left join PERSON p on p.ID = a.`PROPOSED_BY_PERSON_ID`
+where
+    a.`EVENT` = ?
+order by a.`SORT_ORDER`, a.`NAME`
 ;
 
 -- name: LatestEventWithAreas :one
@@ -619,7 +643,9 @@ select
     `SLUG`,
     `NAME`,
     `PARENT_SLUG`,
-    `SORT_ORDER`
+    `SORT_ORDER`,
+    `APPROVED`,
+    `PROPOSED_BY_PERSON_ID`
 from
     AREA
 where
@@ -629,9 +655,36 @@ where
 
 -- name: CreateArea :exec
 insert into AREA
-    (`EVENT`, `SLUG`, `NAME`, `PARENT_SLUG`, `SORT_ORDER`)
+    (`EVENT`, `SLUG`, `NAME`, `PARENT_SLUG`, `SORT_ORDER`, `APPROVED`, `PROPOSED_BY_PERSON_ID`)
 values
-    (?, ?, ?, ?, ?)
+    (?, ?, ?, ?, ?, ?, ?)
+;
+
+-- name: ApproveArea :exec
+-- An admin approves a writer's proposed area; the proposer is kept for audit.
+update AREA set
+    `APPROVED` = true
+where
+    `EVENT` = ?
+    and `SLUG` = ?
+;
+
+-- name: DeleteArea :exec
+delete from AREA
+where
+    `EVENT` = ?
+    and `SLUG` = ?
+;
+
+-- name: RepointIncidentsArea :exec
+-- Re-point every incident in an event from one area slug to another. Used when
+-- an admin marks a proposed area a duplicate: incidents move to the canonical
+-- area before the duplicate is deleted (its AREA FK would otherwise block it).
+update INCIDENT set
+    `LOCATION_AREA_SLUG` = sqlc.arg(to_slug)
+where
+    `EVENT` = sqlc.arg(event)
+    and `LOCATION_AREA_SLUG` = sqlc.arg(from_slug)
 ;
 
 -- name: UpdateArea :exec
