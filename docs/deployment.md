@@ -75,8 +75,9 @@ admin by hand, then manage everyone else in-app (Admin → People & Passwords):
 ```bash
 # hash a password
 docker exec -it ocf-ims /opt/ims/bin/ims hash_password
-# insert the admin (HANDLE + EMAIL are required to log in; see the login note)
-docker exec -i ocf-ims-db mariadb -uims -p"$IMS_DB_PASSWORD" ims <<'SQL'
+# insert the admin (HANDLE + EMAIL are required to log in; see the login note).
+# Pass the DB password via MYSQL_PWD so it never lands in the process list.
+MYSQL_PWD="$IMS_DB_PASSWORD" docker exec -e MYSQL_PWD -i ocf-ims-db mariadb -uims ims <<'SQL'
 INSERT INTO PERSON (HANDLE, EMAIL, NAME, PASSWORD, IS_ADMIN)
 VALUES ('YourHandle', 'you@ocf.example.org', 'Your Name', '<argon2id-hash>', true);
 SQL
@@ -105,10 +106,14 @@ Migrations are append-only and run automatically on boot. Take a DB backup
   - Notification (email / Slack / ntfy / push) that leaves the host, so a full
     host-down still reaches you. Consider one *external* free uptime check too —
     an on-host monitor can't report that the host itself is dead.
-- **Dozzle** (`logs.` subdomain) — live logs for every container.
-- **Beszel** (`metrics.` subdomain) — host + per-container CPU/mem/disk. On first
-  boot, open the hub, "Add system", copy the KEY into `BESZEL_KEY` in `.env`, then
-  `docker compose -f docker-compose.monitoring.yml up -d beszel-agent`.
+- **Dozzle** (`logs.` subdomain) — live logs for every container. Reads through
+  the read-only `docker-socket-proxy`, not a mounted root socket.
+- **Beszel** (`metrics.` subdomain) — host + per-container CPU/mem/disk. The agent
+  is opt-in (it needs an auth KEY first): open the hub, "Add system", copy the KEY
+  into `BESZEL_KEY` in `.env`, then start it under the `agent` profile:
+  ```bash
+  docker compose -f docker-compose.monitoring.yml --profile agent up -d beszel-agent
+  ```
 
 ## Backups
 

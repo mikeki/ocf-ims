@@ -13,7 +13,8 @@
 #
 # Restore (DESTRUCTIVE — overwrites the live DB):
 #   gunzip -c backups/ims-YYYYmmdd-HHMMSS.sql.gz | \
-#     docker exec -i ocf-ims-db mariadb -u"$IMS_DB_USER_NAME" -p"$IMS_DB_PASSWORD" "$IMS_DB_DATABASE"
+#     MYSQL_PWD="$IMS_DB_PASSWORD" docker exec -e MYSQL_PWD -i ocf-ims-db \
+#       mariadb -u"$IMS_DB_USER_NAME" "$IMS_DB_DATABASE"
 
 set -euo pipefail
 
@@ -40,8 +41,13 @@ stamp="$(date +%Y%m%d-%H%M%S)"
 out="$BACKUP_DIR/ims-$stamp.sql.gz"
 
 echo "[$(date -Is)] dumping $DB_NAME from $DB_CONTAINER -> $out"
-docker exec "$DB_CONTAINER" \
-	mariadb-dump --single-transaction --quick --user="$DB_USER" --password="$DB_PASS" "$DB_NAME" \
+# Pass the password via MYSQL_PWD, never `--password=` (which exposes it in the
+# process list). `docker exec -e MYSQL_PWD` with NO value passes the variable
+# through from this script's own environment, so the secret stays out of argv on
+# the host too — only the export below holds it.
+export MYSQL_PWD="$DB_PASS"
+docker exec -e MYSQL_PWD "$DB_CONTAINER" \
+	mariadb-dump --single-transaction --quick --user="$DB_USER" "$DB_NAME" \
 	| gzip > "$out"
 
 # Fail loudly on an empty/short dump rather than silently keeping a bad backup.

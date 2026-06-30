@@ -9,18 +9,28 @@
 #     "ack") and at the public URL, and wire a notification (email / Slack / ntfy
 #     / web push) that leaves the host so a full host-down still reaches you. This
 #     is what would have paged you the instant the 2026-06-28 502 began.
-#   * dozzle — real-time browser log tailing for every container (read-only socket).
+#   * dozzle — real-time browser log tailing for every container.
 #   * beszel — host + per-container CPU / memory / disk dashboard with its own
-#     alerts (hub UI + a local agent that reads the docker socket).
+#     alerts (hub UI + an agent that gathers stats).
 #
-# All are reached through Caddy on the shared external `web` network — they
-# publish NO host ports. Put them on internal-only subdomains and PROTECT THEM
-# (Caddy basic_auth) — they expose logs and metrics. See deploy/Caddyfile.example.
+# Security posture:
+#   * No container mounts the raw /var/run/docker.sock. dozzle and the beszel
+#     agent read container info/logs/stats through `docker-socket-proxy`, a
+#     hardened, READ-ONLY Docker-API proxy that only exposes GET endpoints — the
+#     raw socket is root-equivalent control of the host, so we keep it behind one
+#     audited chokepoint that runs no app code and is reachable only on the
+#     internal `monitoring` network.
+#   * Nothing publishes host ports. The web UIs are reached only through Caddy on
+#     the shared external `web` network — put them on internal-only subdomains and
+#     PROTECT THEM with Caddy basic_auth (they expose logs and metrics). See
+#     deploy/Caddyfile.example.
+#   * The beszel agent is NOT on the host network (so its port is never exposed on
+#     a host interface) and is gated behind the `agent` profile, so it starts only
+#     after you've set its auth KEY (see below).
 #
-# These restart unless-stopped so they survive the nightly reboot too. Note an
-# on-host monitor can't see a fully dead host — keep the Kuma notification channel
-# off-host, and ideally add one external check (e.g. a free uptime service) hitting
-# the public URL as a backstop.
+# All restart unless-stopped so they survive the nightly reboot. An on-host
+# monitor can't see a fully dead host — keep the Kuma notification channel
+# off-host, and ideally add one external check hitting the public URL as a backstop.
 
 services:
 
@@ -33,18 +43,39 @@ services:
     networks:
       - web
 
+  # Hardened read-only Docker-API proxy. dozzle and the beszel agent talk to this
+  # instead of mounting docker.sock directly. Only the GET endpoints they need are
+  # enabled; everything mutating (POST/exec/secrets/…) stays off (default 0).
+  docker-socket-proxy:
+    image: "tecnativa/docker-socket-proxy:latest"
+    container_name: "docker-socket-proxy"
+    restart: unless-stopped
+    environment:
+      CONTAINERS: "1"   # list + inspect + logs + stats (read)
+      IMAGES: "1"
+      NETWORKS: "1"
+      INFO: "1"
+      PING: "1"
+      VERSION: "1"
+      POST: "0"         # no mutating calls
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+    networks:
+      - monitoring
+
   dozzle:
     image: "amir20/dozzle:latest"
     container_name: "dozzle"
     restart: unless-stopped
     environment:
-      # Require a login even though it's behind Caddy basic_auth — defense in depth.
-      # Generate users with: docker run --rm amir20/dozzle generate <user> --password <pw>
       DOZZLE_NO_ANALYTICS: "true"
-    volumes:
-      - /var/run/docker.sock:/var/run/docker.sock:ro
+      # Read containers via the socket proxy, not a mounted socket.
+      DOZZLE_REMOTE_HOST: "tcp://docker-socket-proxy:2375"
     networks:
-      - web
+      - web          # reached by Caddy
+      - monitoring   # reaches the socket proxy
+    depends_on:
+      - docker-socket-proxy
 
   beszel-hub:
     image: "henrygd/beszel:latest"
@@ -53,26 +84,38 @@ services:
     volumes:
       - beszel-hub-data:/beszel_data
     networks:
-      - web
+      - web          # reached by Caddy
+      - monitoring   # reaches the agent
 
   beszel-agent:
     image: "henrygd/beszel-agent:latest"
     container_name: "beszel-agent"
     restart: unless-stopped
-    network_mode: host
-    volumes:
-      - /var/run/docker.sock:/var/run/docker.sock:ro
+    # Opt-in: starts only with `--profile agent`, after you've set BESZEL_KEY.
+    profiles: [ "agent" ]
     environment:
-      # On first run, open the beszel-hub UI, "Add system", and copy the public
-      # KEY it shows here (then `docker compose -f docker-compose.monitoring.yml
-      # up -d beszel-agent`). The agent listens on 45876 for the hub.
-      LISTEN: "45876"
+      # The hub authenticates to the agent with this ed25519 public KEY. Open the
+      # beszel-hub UI, "Add system", copy the KEY into BESZEL_KEY in .env, then:
+      #   docker compose -f docker-compose.monitoring.yml --profile agent up -d beszel-agent
       KEY: "${BESZEL_KEY:-}"
+      LISTEN: "45876"
+      # Read container stats via the socket proxy, not a mounted socket.
+      DOCKER_HOST: "tcp://docker-socket-proxy:2375"
+    # Reachable only by the hub on the internal network — no host port, no host
+    # networking. Trade-off: host-level NIC/temperature metrics are reduced versus
+    # the upstream host-network setup; container + CPU/mem/disk stats still report.
+    networks:
+      - monitoring
+    depends_on:
+      - docker-socket-proxy
 
 volumes:
   uptime-kuma-data:
   beszel-hub-data:
 
 networks:
+  # Caddy-facing network (UIs only).
   web:
     external: true
+  # Private network for the socket proxy + its consumers + hub↔agent. Not exposed.
+  monitoring:
