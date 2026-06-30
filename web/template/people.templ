@@ -85,19 +85,19 @@ templ People(deployment, versionName, versionRef, eventName string) {
             </div>
             <!-- Access is opt-in. Most people added at the fair are volunteers / public
                  with no login; only staff who actually use the IMS get an account. The
-                 button reveals the credential fields, and the nickname (handle) becomes
-                 required there — so we never mint a password no one can sign in with. -->
+                 button reveals the credential fields, where a handle + email become
+                 required — so we never mint a password no one can sign in with. -->
             <button type="button" class="btn btn-outline-primary w-100 mb-3" id="add_person_access_toggle" onclick="toggleProvideAccess()">
               Provide Access to IMS
             </button>
             <div id="add_person_access_section" class="hidden">
               <div class="form-floating mb-3">
                 <input id="add_person_email" type="email" class="form-control" autocomplete="off" placeholder="Email" />
-                <label for="add_person_email">Email (optional)</label>
+                <label for="add_person_email">Email (required for login)</label>
               </div>
               <div class="form-floating mb-3">
-                <input id="add_person_handle" type="text" class="form-control" autocomplete="off" placeholder="Nickname" />
-                <label for="add_person_handle">Nickname (required for login)</label>
+                <input id="add_person_handle" type="text" class="form-control" autocomplete="off" placeholder="Handle" />
+                <label for="add_person_handle">Handle (required for login)</label>
               </div>
               <div class="input-group mb-3">
                 <div class="form-floating">
@@ -137,7 +137,7 @@ templ People(deployment, versionName, versionRef, eventName string) {
                 <label for="add_person_participation">Role</label>
               </div>
             </div>
-            <div class="form-text">Add someone by name to track them at the fair. Use <strong>Provide Access to IMS</strong> only for people who'll sign in — they'll log in with their nickname (or email) and password.</div>
+            <div class="form-text">Add someone by name to track them at the fair. Use <strong>Provide Access to IMS</strong> only for people who'll sign in — a handle, email, and password are all required, and they can then log in with their handle or email.</div>
           </div>
           <div class="modal-footer">
             <button type="button" class="btn btn-primary" id="add_person_submit" onclick="submitCreatePerson()">Add person</button>
@@ -270,7 +270,11 @@ templ People(deployment, versionName, versionRef, eventName string) {
                 <th scope="col" class="text-end">Actions</th>
               </tr>
             </thead>
-            <tbody id="people_tbody"></tbody>
+            <!-- Two groups: people who can sign in to the IMS (top) and name-only
+                 people tracked at the fair (below). people.ts fills each, prefixed
+                 by a section-header row, and sorts each group by role. -->
+            <tbody id="people_with_access"></tbody>
+            <tbody id="people_without_access"></tbody>
           </table>
         </div>
         <template id="person_row_template">

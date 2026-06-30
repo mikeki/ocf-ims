@@ -99,6 +99,8 @@ const el = {
     eventName: ims.typedElement("event-name", HTMLSelectElement),
     peopleSearch: ims.typedElement("people-search", HTMLInputElement),
     people: ims.typedElement("people", HTMLElement),
+    peopleWithAccess: ims.typedElement("people_with_access", HTMLTableSectionElement),
+    peopleWithoutAccess: ims.typedElement("people_without_access", HTMLTableSectionElement),
     personRowTemplate: ims.typedElement("person_row_template", HTMLTemplateElement),
     setPasswordModal: ims.typedElement("setPasswordModal", HTMLElement),
     setPasswordHandle: ims.typedElement("set_password_handle", HTMLElement),
@@ -334,12 +336,82 @@ async function loadPeople(): Promise<{err:string|null}> {
 }
 
 function drawPeople(): void {
-    const container = el.people.querySelector("tbody")!;
-    container.querySelectorAll("tr").forEach(entry => {entry.remove()});
+    el.peopleWithAccess.replaceChildren();
+    el.peopleWithoutAccess.replaceChildren();
 
     const setPasswordModal = ims.bsModal(el.setPasswordModal);
 
-    for (const person of people??[]) {
+    const all = people ?? [];
+    // Split into people who can sign in to the IMS (a handle/email set, or admin) and
+    // name-only people tracked at the fair; sort each group by role (most access
+    // first), then by name. Each is rendered as its own labelled section.
+    const withAccess = all.filter(hasImsAccess).sort(comparePeopleByRole);
+    const withoutAccess = all.filter((p: ims.Personnel): boolean => !hasImsAccess(p)).sort(comparePeopleByRole);
+
+    renderPeopleSection(el.peopleWithAccess, "With IMS access", withAccess, setPasswordModal);
+    renderPeopleSection(el.peopleWithoutAccess, "No access (name only)", withoutAccess, setPasswordModal);
+
+    applyFilter();
+}
+
+// hasImsAccess reports whether a person can sign in — they have a handle or email to
+// authenticate with, or they're an admin. Name-only people (neither) are tracked at
+// the fair but have no login.
+function hasImsAccess(person: ims.Personnel): boolean {
+    return Boolean(person.is_admin) || Boolean(person.handle?.trim()) || Boolean(person.email?.trim());
+}
+
+// Role ladder, most access first, used to sort each people group. Admins sort ahead
+// of everyone; someone with no per-event role sorts last.
+const roleSortOrder = ["writer", "crew_leader", "reporter", "volunteer", "public", "not_present", "ejected"];
+function roleRank(person: ims.Personnel): number {
+    if (person.is_admin) {
+        return -1;
+    }
+    const idx = roleSortOrder.indexOf(person.participation_type ?? "");
+    return idx === -1 ? roleSortOrder.length : idx;
+}
+function comparePeopleByRole(a: ims.Personnel, b: ims.Personnel): number {
+    const byRole = roleRank(a) - roleRank(b);
+    return byRole !== 0
+        ? byRole
+        : ims.personDisplayLabel(a).localeCompare(ims.personDisplayLabel(b));
+}
+
+// sectionHeaderRow builds the labelled divider row that introduces a people group.
+function sectionHeaderRow(label: string, count: number): HTMLTableRowElement {
+    const tr = document.createElement("tr");
+    tr.classList.add("table-group-divider");
+    const th = document.createElement("th");
+    th.colSpan = 5;
+    th.scope = "colgroup";
+    th.classList.add("text-body-secondary", "small", "fw-semibold", "pt-3");
+    th.textContent = `${label} (${count})`;
+    tr.append(th);
+    return tr;
+}
+
+// renderPeopleSection fills a tbody with a section-header row and a row per person.
+// An empty group hides the whole tbody (header included).
+function renderPeopleSection(
+    tbody: HTMLTableSectionElement, label: string, group: ims.Personnel[],
+    setPasswordModal: ReturnType<typeof ims.bsModal>,
+): void {
+    tbody.classList.toggle("hidden", group.length === 0);
+    if (group.length === 0) {
+        return;
+    }
+    tbody.append(sectionHeaderRow(label, group.length));
+    for (const person of group) {
+        tbody.append(buildPersonRow(person, setPasswordModal));
+    }
+}
+
+// buildPersonRow clones the row template and fills it in for one person, returning
+// the <tr> ready to append.
+function buildPersonRow(
+    person: ims.Personnel, setPasswordModal: ReturnType<typeof ims.bsModal>,
+): HTMLTableRowElement {
         const entryItemFrag = el.personRowTemplate.content.cloneNode(true) as DocumentFragment;
         const entryItem = entryItemFrag.querySelector("tr")!;
 
@@ -448,9 +520,7 @@ function drawPeople(): void {
             entryItem.querySelector(".person-actions-toggle")!.classList.add("hidden");
         }
 
-        container.append(entryItemFrag);
-    }
-    applyFilter();
+        return entryItem;
 }
 
 // filterPeople hides rows that don't match the search box, over the already-loaded
@@ -462,11 +532,13 @@ function filterPeople(): void {
 
 function applyFilter(): void {
     const term = el.peopleSearch.value.trim().toLowerCase();
-    const container = el.people.querySelector("tbody")!;
-    container.querySelectorAll("tr").forEach((row: HTMLTableRowElement): void => {
-        const hay = row.dataset["search"] ?? "";
-        row.classList.toggle("hidden", term !== "" && !hay.includes(term));
-    });
+    // Only the data rows carry data-person-id; the section-header rows don't, so this
+    // leaves the headers alone while filtering people across both groups.
+    el.people.querySelectorAll<HTMLTableRowElement>("tbody tr[data-person-id]")
+        .forEach((row: HTMLTableRowElement): void => {
+            const hay = row.dataset["search"] ?? "";
+            row.classList.toggle("hidden", term !== "" && !hay.includes(term));
+        });
 }
 
 // drawParticipationDropdown turns the role badge into a one-click menu (slice 52e).
@@ -707,7 +779,12 @@ async function submitCreatePerson(): Promise<void> {
     if (wantAccess) {
         if (!handle) {
             ims.controlHasError(el.addPersonHandle);
-            ims.setErrorMessage("A nickname is required to provide IMS access.");
+            ims.setErrorMessage("A handle is required to provide IMS access.");
+            return;
+        }
+        if (!el.addPersonEmail.value.trim()) {
+            ims.controlHasError(el.addPersonEmail);
+            ims.setErrorMessage("An email is required to provide IMS access.");
             return;
         }
         if (password.length < minPasswordLength) {

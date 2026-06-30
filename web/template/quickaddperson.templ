@@ -37,18 +37,18 @@ templ QuickAddPersonModal() {
             <label for="quick_add_person_name">Full name</label>
           </div>
           <!-- Access is opt-in: a person attached to an incident usually needs no login.
-               The button reveals the credential fields and makes the nickname required. -->
+               The button reveals the credential fields and makes a handle + email required. -->
           <button type="button" class="btn btn-outline-primary w-100 mb-3" id="quick_add_person_access_toggle">
             Provide Access to IMS
           </button>
           <div id="quick_add_person_access_section" class="hidden">
             <div class="form-floating mb-3">
               <input id="quick_add_person_email" type="email" class="form-control" autocomplete="off" placeholder="Email" />
-              <label for="quick_add_person_email">Email (optional)</label>
+              <label for="quick_add_person_email">Email (required for login)</label>
             </div>
             <div class="form-floating mb-3">
-              <input id="quick_add_person_handle" type="text" class="form-control" autocomplete="off" placeholder="Nickname" />
-              <label for="quick_add_person_handle">Nickname (required for login)</label>
+              <input id="quick_add_person_handle" type="text" class="form-control" autocomplete="off" placeholder="Handle" />
+              <label for="quick_add_person_handle">Handle (required for login)</label>
             </div>
             <div class="input-group mb-3">
               <div class="form-floating">
@@ -80,7 +80,7 @@ templ QuickAddPersonModal() {
               <label for="quick_add_person_participation">Participation</label>
             </div>
           </div>
-          <div class="form-text">Add a person by name. Use <strong>Provide Access to IMS</strong> only if they'll sign in — a nickname and password are required for login.</div>
+          <div class="form-text">Add a person by name. Use <strong>Provide Access to IMS</strong> only if they'll sign in — a handle, email, and password are all required for login.</div>
           <div id="quick_add_person_error" class="text-danger small mt-2 hidden"></div>
         </div>
         <div class="modal-footer">

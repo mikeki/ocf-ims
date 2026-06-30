@@ -1245,7 +1245,11 @@ export function openQuickAddPersonModal(prefillName: string, eventName: string):
             const handle = handleEl.value.trim();
             if (wantAccess) {
                 if (!handle) {
-                    showError("A nickname is required to provide IMS access.");
+                    showError("A handle is required to provide IMS access.");
+                    return;
+                }
+                if (!emailEl.value.trim()) {
+                    showError("An email is required to provide IMS access.");
                     return;
                 }
                 if (passwordEl.value.length < 8) {
