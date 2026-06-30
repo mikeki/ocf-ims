@@ -58,12 +58,17 @@ func copyAreas(ctx context.Context, dbq *DBQ, tx imsdb.DBTX, sourceID, destID in
 		return err
 	}
 	insert := func(a imsdb.Area) error {
+		// Carry the approval state and proposer forward: an event inherits the
+		// previous year's areas as-is, so an unresolved proposal stays a proposal
+		// for the admin to review in the new event too.
 		return dbq.CreateArea(ctx, tx, imsdb.CreateAreaParams{
-			Event:      destID,
-			Slug:       a.Slug,
-			Name:       a.Name,
-			ParentSlug: a.ParentSlug,
-			SortOrder:  a.SortOrder,
+			Event:              destID,
+			Slug:               a.Slug,
+			Name:               a.Name,
+			ParentSlug:         a.ParentSlug,
+			SortOrder:          a.SortOrder,
+			Approved:           a.Approved,
+			ProposedByPersonID: a.ProposedByPersonID,
 		})
 	}
 	for _, a := range src { // top-level areas first
@@ -92,11 +97,13 @@ func copyAreas(ctx context.Context, dbq *DBQ, tx imsdb.DBTX, sourceID, destID in
 func seedCanonicalAreas(ctx context.Context, dbq *DBQ, tx imsdb.DBTX, eventID int32) error {
 	for i, a := range CanonicalAreas {
 		err := dbq.CreateArea(ctx, tx, imsdb.CreateAreaParams{
-			Event:      eventID,
-			Slug:       a.Slug,
-			Name:       a.Name,
-			ParentSlug: sql.NullString{},
-			SortOrder:  int32(i),
+			Event:              eventID,
+			Slug:               a.Slug,
+			Name:               a.Name,
+			ParentSlug:         sql.NullString{},
+			SortOrder:          int32(i),
+			Approved:           true,
+			ProposedByPersonID: sql.NullInt32{},
 		})
 		if err != nil {
 			return err

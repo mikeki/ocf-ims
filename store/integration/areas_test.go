@@ -75,6 +75,7 @@ func TestPopulateNewEventAreas(t *testing.T) {
 		Name:       "Extra Spot",
 		ParentSlug: sql.NullString{},
 		SortOrder:  int32(len(store.CanonicalAreas)),
+		Approved:   true,
 	}))
 	const renamedSlug = "chela-mela"
 	const renamedName = "Chela Mela (Renamed)"
