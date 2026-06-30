@@ -1,0 +1,78 @@
+# Lean monitoring stack for the IMS host (run alongside docker-compose.prod.yml).
+#
+#   docker compose -f docker-compose.monitoring.yml up -d
+#
+# Three small, independent tools:
+#
+#   * uptime-kuma — synthetic uptime checks + ALERTING. This is the highest-value
+#     piece: point a monitor at https://<your-domain>/ims/api/ping (expects body
+#     "ack") and at the public URL, and wire a notification (email / Slack / ntfy
+#     / web push) that leaves the host so a full host-down still reaches you. This
+#     is what would have paged you the instant the 2026-06-28 502 began.
+#   * dozzle — real-time browser log tailing for every container (read-only socket).
+#   * beszel — host + per-container CPU / memory / disk dashboard with its own
+#     alerts (hub UI + a local agent that reads the docker socket).
+#
+# All are reached through Caddy on the shared external `web` network — they
+# publish NO host ports. Put them on internal-only subdomains and PROTECT THEM
+# (Caddy basic_auth) — they expose logs and metrics. See deploy/Caddyfile.example.
+#
+# These restart unless-stopped so they survive the nightly reboot too. Note an
+# on-host monitor can't see a fully dead host — keep the Kuma notification channel
+# off-host, and ideally add one external check (e.g. a free uptime service) hitting
+# the public URL as a backstop.
+
+services:
+
+  uptime-kuma:
+    image: "louislam/uptime-kuma:1"
+    container_name: "uptime-kuma"
+    restart: unless-stopped
+    volumes:
+      - uptime-kuma-data:/app/data
+    networks:
+      - web
+
+  dozzle:
+    image: "amir20/dozzle:latest"
+    container_name: "dozzle"
+    restart: unless-stopped
+    environment:
+      # Require a login even though it's behind Caddy basic_auth — defense in depth.
+      # Generate users with: docker run --rm amir20/dozzle generate <user> --password <pw>
+      DOZZLE_NO_ANALYTICS: "true"
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+    networks:
+      - web
+
+  beszel-hub:
+    image: "henrygd/beszel:latest"
+    container_name: "beszel-hub"
+    restart: unless-stopped
+    volumes:
+      - beszel-hub-data:/beszel_data
+    networks:
+      - web
+
+  beszel-agent:
+    image: "henrygd/beszel-agent:latest"
+    container_name: "beszel-agent"
+    restart: unless-stopped
+    network_mode: host
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+    environment:
+      # On first run, open the beszel-hub UI, "Add system", and copy the public
+      # KEY it shows here (then `docker compose -f docker-compose.monitoring.yml
+      # up -d beszel-agent`). The agent listens on 45876 for the hub.
+      LISTEN: "45876"
+      KEY: "${BESZEL_KEY:-}"
+
+volumes:
+  uptime-kuma-data:
+  beszel-hub-data:
+
+networks:
+  web:
+    external: true
