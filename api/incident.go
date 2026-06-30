@@ -63,7 +63,7 @@ func (action GetIncidents) getIncidents(req *http.Request) (imsjson.Incidents, *
 	// grantedSet is nil when the caller has event-wide incident read (sees everything).
 	// Otherwise it's the set of incident numbers a reporter has been granted access to
 	// (52f); the listing is filtered to those. A caller with neither the bit nor any
-	// grant stays forbidden, so participant/public access isn't loosened.
+	// grant stays forbidden, so volunteer/public access isn't loosened.
 	var grantedSet map[int32]bool
 	if eventPermissions&authz.EventReadIncidents == 0 {
 		grantedNums, err := action.imsDBQ.GrantedIncidentNumbersForPerson(req.Context(), action.imsDBQ,

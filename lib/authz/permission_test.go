@@ -43,7 +43,7 @@ func TestManyEventPermissions_participationLadder(t *testing.T) {
 		{imsdb.PersonEventParticipationTypeWriter, writerPerm},
 		{imsdb.PersonEventParticipationTypeCrewLeader, crewLeaderPerm},
 		{imsdb.PersonEventParticipationTypeReporter, reporterPerm},
-		{imsdb.PersonEventParticipationTypeParticipant, EventNoPermissions},
+		{imsdb.PersonEventParticipationTypeVolunteer, EventNoPermissions},
 		{imsdb.PersonEventParticipationTypePublic, EventNoPermissions},
 		{imsdb.PersonEventParticipationTypeNotPresent, EventNoPermissions},
 		{imsdb.PersonEventParticipationTypeEjected, EventNoPermissions},
@@ -68,7 +68,7 @@ func TestManyEventPermissions_adminBypass(t *testing.T) {
 	permissions, globalPermissions := ManyEventPermissions(
 		map[int32]imsdb.PersonEventParticipationType{
 			123: imsdb.PersonEventParticipationTypePublic,
-			999: imsdb.PersonEventParticipationTypeParticipant,
+			999: imsdb.PersonEventParticipationTypeVolunteer,
 		},
 		"FlaggedAdmin",
 		true,

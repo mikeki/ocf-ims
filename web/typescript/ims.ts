@@ -1094,6 +1094,22 @@ export function personDisplayLabel(p: {name?: string|null|undefined, handle?: st
     return p.handle ?? "";
 }
 
+// flipPasswordVisibility toggles a single password input between masked and plain
+// text, updating its Show/Hide button label. Kept separate from wirePasswordToggle
+// so modals that re-open (and re-bind) can call it without stacking listeners.
+export function flipPasswordVisibility(input: HTMLInputElement, button: HTMLButtonElement): void {
+    const reveal = input.type === "password";
+    input.type = reveal ? "text" : "password";
+    button.textContent = reveal ? "Hide" : "Show";
+}
+
+// wirePasswordToggle binds a Show/Hide button to its password input for the life of
+// the page. Use on fields that are created once (e.g. the People page modals); for a
+// modal re-opened many times, bind/unbind flipPasswordVisibility per open instead.
+export function wirePasswordToggle(button: HTMLButtonElement, input: HTMLInputElement): void {
+    button.addEventListener("click", (): void => flipPasswordVisibility(input, button));
+}
+
 // searchPersonnel queries the typeahead endpoint, scoped to an event so each hit
 // carries that event's wristband + participation type and wristbands are searchable.
 export async function searchPersonnel(query: string, eventName: string): Promise<PersonSearchResult[]> {
@@ -1140,16 +1156,31 @@ export function openQuickAddPersonModal(prefillName: string, eventName: string):
     const participationEl = typedElement("quick_add_person_participation", HTMLSelectElement);
     const errorEl = typedElement("quick_add_person_error", HTMLElement);
     const submitEl = typedElement("quick_add_person_submit", HTMLButtonElement);
+    const accessToggleEl = typedElement("quick_add_person_access_toggle", HTMLButtonElement);
+    const accessSectionEl = typedElement("quick_add_person_access_section", HTMLElement);
+    const passwordConfirmEl = typedElement("quick_add_person_password_confirm", HTMLInputElement);
+    const passwordToggleEl = typedElement("quick_add_person_password_toggle", HTMLButtonElement);
+    const passwordConfirmToggleEl = typedElement("quick_add_person_password_confirm_toggle", HTMLButtonElement);
 
     // Reset the form to a clean state, seeded with the typed text.
     nameEl.value = prefillName;
     handleEl.value = "";
     emailEl.value = "";
     passwordEl.value = "";
+    passwordConfirmEl.value = "";
     wristbandEl.value = "";
-    participationEl.value = "";
+    // Default a new event person to "volunteer" (the common at-the-fair role).
+    participationEl.value = "volunteer";
     errorEl.textContent = "";
     errorEl.classList.add("hidden");
+    // Access is opt-in and collapsed by default; reset its reveal + show/hide state.
+    accessSectionEl.classList.add("hidden");
+    accessToggleEl.classList.remove("active");
+    accessToggleEl.textContent = "Provide Access to IMS";
+    passwordEl.type = "password";
+    passwordToggleEl.textContent = "Show";
+    passwordConfirmEl.type = "password";
+    passwordConfirmToggleEl.textContent = "Show";
     // Per-event fields only make sense when scoped to an actual event.
     eventSectionEl.classList.toggle("hidden", !eventName);
     eventNameEl.textContent = eventName;
@@ -1167,7 +1198,32 @@ export function openQuickAddPersonModal(prefillName: string, eventName: string):
         function cleanup(): void {
             submitEl.removeEventListener("click", onSubmit);
             modalEl.removeEventListener("hidden.bs.modal", onHidden);
+            accessToggleEl.removeEventListener("click", onToggleAccess);
+            passwordToggleEl.removeEventListener("click", onTogglePassword);
+            passwordConfirmToggleEl.removeEventListener("click", onToggleConfirm);
         }
+
+        // Reveal/hide the credential fields. Showing them makes the nickname required
+        // (enforced in onSubmit); hiding discards any half-entered credentials.
+        function onToggleAccess(): void {
+            const nowShown = accessSectionEl.classList.toggle("hidden") === false;
+            accessToggleEl.classList.toggle("active", nowShown);
+            accessToggleEl.textContent = nowShown ? "Don't provide IMS access" : "Provide Access to IMS";
+            if (nowShown) {
+                handleEl.focus();
+            } else {
+                handleEl.value = "";
+                emailEl.value = "";
+                passwordEl.value = "";
+                passwordConfirmEl.value = "";
+                passwordEl.type = "password";
+                passwordToggleEl.textContent = "Show";
+                passwordConfirmEl.type = "password";
+                passwordConfirmToggleEl.textContent = "Show";
+            }
+        }
+        function onTogglePassword(): void { flipPasswordVisibility(passwordEl, passwordToggleEl); }
+        function onToggleConfirm(): void { flipPasswordVisibility(passwordConfirmEl, passwordConfirmToggleEl); }
 
         // Dismiss (Cancel / × / backdrop) resolves null unless a create already settled.
         function onHidden(): void {
@@ -1181,16 +1237,31 @@ export function openQuickAddPersonModal(prefillName: string, eventName: string):
 
         async function onSubmit(): Promise<void> {
             const name = nameEl.value.trim();
-            const handle = handleEl.value.trim();
-            if (!name && !handle) {
-                showError("A name or handle is required.");
+            if (!name) {
+                showError("A full name is required.");
                 return;
+            }
+            const wantAccess = !accessSectionEl.classList.contains("hidden");
+            const handle = handleEl.value.trim();
+            if (wantAccess) {
+                if (!handle) {
+                    showError("A nickname is required to provide IMS access.");
+                    return;
+                }
+                if (passwordEl.value.length < 8) {
+                    showError("Password must be at least 8 characters.");
+                    return;
+                }
+                if (passwordEl.value !== passwordConfirmEl.value) {
+                    showError("Passwords do not match.");
+                    return;
+                }
             }
             const body: Record<string, unknown> = {
                 name: name,
-                handle: handle,
-                email: emailEl.value.trim(),
-                password: passwordEl.value,
+                handle: wantAccess ? handle : "",
+                email: wantAccess ? emailEl.value.trim() : "",
+                password: wantAccess ? passwordEl.value : "",
             };
             if (eventName) {
                 body["event"] = eventName;
@@ -1214,6 +1285,9 @@ export function openQuickAddPersonModal(prefillName: string, eventName: string):
 
         submitEl.addEventListener("click", onSubmit);
         modalEl.addEventListener("hidden.bs.modal", onHidden);
+        accessToggleEl.addEventListener("click", onToggleAccess);
+        passwordToggleEl.addEventListener("click", onTogglePassword);
+        passwordConfirmToggleEl.addEventListener("click", onToggleConfirm);
         modal.show();
     });
 }

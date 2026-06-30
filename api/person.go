@@ -76,7 +76,7 @@ type CreatePersonRequest struct {
 	// PERSON__EVENT row is written so the new person carries a wristband and
 	// classification for that fair. participation_type is honored explicitly only
 	// for personnel admins; for field (event-writer) creates it defaults from the
-	// wristband (present -> participant, absent -> public). See R3 / D-P1.
+	// wristband (present -> volunteer, absent -> public). See R3 / D-P1.
 	Event             string `json:"event"`
 	Wristband         string `json:"wristband"`
 	ParticipationType string `json:"participation_type"`
@@ -151,7 +151,7 @@ func (action CreatePerson) createPerson(req *http.Request) (imsjson.Person, *her
 	// Per-event participation type: honored explicitly for admins and non-admin
 	// inviters alike, but a non-admin is ceilinged to reporter / no-access rungs
 	// (never writer or crew_leader). Absent an explicit type, default from the
-	// wristband (present -> participant, absent -> public).
+	// wristband (present -> volunteer, absent -> public).
 	participation := defaultParticipation(wristband)
 	if ptStr := strings.TrimSpace(body.ParticipationType); ptStr != "" {
 		pt, ok := validParticipation(ptStr)
@@ -170,6 +170,13 @@ func (action CreatePerson) createPerson(req *http.Request) (imsjson.Person, *her
 	var emailNull sql.NullString
 	if email != "" {
 		emailNull = conv.StringToSql(&email, maxEmailLength)
+	}
+
+	// A password only enables login alongside a handle or email to match it against
+	// — postAuth checks the identification against HANDLE/EMAIL, never the name. Reject
+	// a password with neither, so we never mint a login no one can actually use.
+	if body.Password != "" && handle == "" && email == "" {
+		return empty, herr.BadRequest("A handle or email is required to set a password", nil)
 	}
 
 	// A password is optional, but if given it must satisfy the same bounds as the
@@ -273,11 +280,11 @@ func (action CreatePerson) eventForInvite(req *http.Request, jwtCtx JWTContext, 
 }
 
 // defaultParticipation classifies a new person from their wristband: someone with
-// a wristband is a participant; without one, public. Admins can override (e.g. to
+// a wristband is a volunteer; without one, public. Admins can override (e.g. to
 // promote a volunteer to reporter/writer on the People page). See R3.
 func defaultParticipation(wristband string) imsdb.PersonEventParticipationType {
 	if strings.TrimSpace(wristband) != "" {
-		return imsdb.PersonEventParticipationTypeParticipant
+		return imsdb.PersonEventParticipationTypeVolunteer
 	}
 	return imsdb.PersonEventParticipationTypePublic
 }
@@ -286,7 +293,7 @@ func defaultParticipation(wristband string) imsdb.PersonEventParticipationType {
 // validParticipation recognizes every PARTICIPATION_TYPE value (plan 52b's single
 // access ladder, extended by 53a): writer/crew_leader/reporter are the
 // access-bearing rungs an admin promotes to (crew_leader has reporter-level access
-// plus the invite-reporters power); participant/public are the no-access roster
+// plus the invite-reporters power); volunteer/public are the no-access roster
 // roles; not_present/ejected are the kept-but-inactive states set by the roster's
 // "remove" flow (eject / not present), recorded on the row rather than deleting it
 // (slice 6j).
@@ -295,7 +302,7 @@ func validParticipation(s string) (imsdb.PersonEventParticipationType, bool) {
 	case imsdb.PersonEventParticipationTypeWriter,
 		imsdb.PersonEventParticipationTypeCrewLeader,
 		imsdb.PersonEventParticipationTypeReporter,
-		imsdb.PersonEventParticipationTypeParticipant,
+		imsdb.PersonEventParticipationTypeVolunteer,
 		imsdb.PersonEventParticipationTypePublic,
 		imsdb.PersonEventParticipationTypeNotPresent,
 		imsdb.PersonEventParticipationTypeEjected:
@@ -307,7 +314,7 @@ func validParticipation(s string) (imsdb.PersonEventParticipationType, bool) {
 // mayAssignParticipation enforces the anti-escalation ceiling (plan 53b). An admin
 // (GlobalAdministratePersonnel) may assign any rung. A non-admin inviter
 // (EventInviteReporters) may assign only 'reporter' or a no-access rung
-// (participant/public/not_present/ejected) — NEVER 'writer' or 'crew_leader', so a
+// (volunteer/public/not_present/ejected) — NEVER 'writer' or 'crew_leader', so a
 // crew leader can't mint other inviters/writers. This is the authoritative
 // server-side boundary; the UI restrictions in 53d are convenience only.
 func mayAssignParticipation(callerIsAdmin bool, target imsdb.PersonEventParticipationType) bool {
@@ -517,7 +524,7 @@ type SetPersonParticipation struct {
 }
 
 // SetParticipationRequest carries only the per-event fields. A blank
-// participation_type defaults from the wristband (present -> participant, absent ->
+// participation_type defaults from the wristband (present -> volunteer, absent ->
 // public); a blank wristband clears it (so callers preserving a wristband — e.g. on
 // eject — resend the current value).
 type SetParticipationRequest struct {
@@ -597,7 +604,7 @@ func (action SetPersonParticipation) setParticipation(req *http.Request) *herr.H
 		})
 		switch {
 		case errors.Is(err, sql.ErrNoRows):
-			// No participation row yet — enrolling a new participant is allowed.
+			// No participation row yet — enrolling a new volunteer is allowed.
 		case err != nil:
 			return herr.InternalServerError("Failed to read participation", err).From("[PersonEvent]")
 		default:

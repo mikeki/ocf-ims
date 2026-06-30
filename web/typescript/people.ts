@@ -25,6 +25,7 @@ declare global {
         filterPeople: ()=>void;
         submitSetPassword: ()=>Promise<void>;
         showAddPersonModal: ()=>void;
+        toggleProvideAccess: ()=>void;
         submitCreatePerson: ()=>Promise<void>;
         submitEditPerson: ()=>Promise<void>;
         submitMarkParticipation: (participation: string)=>Promise<void>;
@@ -50,7 +51,7 @@ const adminOnlyRungs: RoleRung[] = [
 ];
 const inviterRungs: RoleRung[] = [
     {value: "reporter", label: "Reporter", hint: "own reports"},
-    {value: "participant", label: "Participant", hint: "at the fair, no access"},
+    {value: "volunteer", label: "Volunteer", hint: "at the fair, no access"},
     {value: "public", label: "Public", hint: "attendee / on an incident"},
 ];
 
@@ -78,7 +79,7 @@ function participationBadgeClass(type: string): string {
         case "reporter": return "text-bg-info";
         case "ejected": return "text-bg-warning";
         case "not_present": return "text-bg-secondary";
-        default: return "text-bg-light"; // participant, public
+        default: return "text-bg-light"; // volunteer, public
     }
 }
 
@@ -103,6 +104,8 @@ const el = {
     setPasswordHandle: ims.typedElement("set_password_handle", HTMLElement),
     setPasswordInput: ims.typedElement("set_password_input", HTMLInputElement),
     setPasswordConfirm: ims.typedElement("set_password_confirm", HTMLInputElement),
+    setPasswordToggle: ims.typedElement("set_password_toggle", HTMLButtonElement),
+    setPasswordConfirmToggle: ims.typedElement("set_password_confirm_toggle", HTMLButtonElement),
     addPersonButton: ims.typedElement("add_person_button", HTMLButtonElement),
     addPersonModal: ims.typedElement("addPersonModal", HTMLElement),
     addPersonModalLabel: ims.typedElement("addPersonModalLabel", HTMLElement),
@@ -114,6 +117,11 @@ const el = {
     addPersonHandle: ims.typedElement("add_person_handle", HTMLInputElement),
     addPersonEmail: ims.typedElement("add_person_email", HTMLInputElement),
     addPersonPassword: ims.typedElement("add_person_password", HTMLInputElement),
+    addPersonPasswordConfirm: ims.typedElement("add_person_password_confirm", HTMLInputElement),
+    addPersonPasswordToggle: ims.typedElement("add_person_password_toggle", HTMLButtonElement),
+    addPersonPasswordConfirmToggle: ims.typedElement("add_person_password_confirm_toggle", HTMLButtonElement),
+    addPersonAccessToggle: ims.typedElement("add_person_access_toggle", HTMLButtonElement),
+    addPersonAccessSection: ims.typedElement("add_person_access_section", HTMLElement),
     addPersonEventSection: ims.typedElement("add_person_event_section", HTMLElement),
     addPersonEventName: ims.typedElement("add_person_event_name", HTMLElement),
     addPersonWristband: ims.typedElement("add_person_wristband", HTMLInputElement),
@@ -174,7 +182,15 @@ async function initPeoplePage(): Promise<void> {
     window.filterPeople = filterPeople;
     window.submitSetPassword = submitSetPassword;
     window.showAddPersonModal = showAddPersonModal;
+    window.toggleProvideAccess = toggleProvideAccess;
     window.submitCreatePerson = submitCreatePerson;
+
+    // Bind the Show/Hide buttons on every password field once (these inputs live for
+    // the life of the page; the modals just reset them to masked on open).
+    ims.wirePasswordToggle(el.setPasswordToggle, el.setPasswordInput);
+    ims.wirePasswordToggle(el.setPasswordConfirmToggle, el.setPasswordConfirm);
+    ims.wirePasswordToggle(el.addPersonPasswordToggle, el.addPersonPassword);
+    ims.wirePasswordToggle(el.addPersonPasswordConfirmToggle, el.addPersonPasswordConfirm);
     window.submitEditPerson = submitEditPerson;
     window.submitMarkParticipation = submitMarkParticipation;
     window.submitRemoveFromEvent = submitRemoveFromEvent;
@@ -619,8 +635,12 @@ function showAddPersonModal(): void {
     el.addPersonHandle.value = "";
     el.addPersonEmail.value = "";
     el.addPersonPassword.value = "";
+    el.addPersonPasswordConfirm.value = "";
     el.addPersonWristband.value = "";
-    el.addPersonParticipation.value = "";
+    // Default a new event participant to "volunteer" (the common at-the-fair role).
+    el.addPersonParticipation.value = "volunteer";
+    resetPasswordToggle(el.addPersonPassword, el.addPersonPasswordToggle);
+    resetPasswordToggle(el.addPersonPasswordConfirm, el.addPersonPasswordConfirmToggle);
 
     // Admins get the full Add-person form (all rungs, wristband). A non-admin inviter
     // gets the scoped "Invite reporter" form: identity + initial password, role fixed
@@ -632,29 +652,81 @@ function showAddPersonModal(): void {
     el.addPersonParticipationWrap.classList.toggle("hidden", !isAdmin);
     el.addPersonInviteNote.classList.toggle("hidden", isAdmin);
 
+    // Access (login) is opt-in for an admin — the button reveals the credential
+    // fields. Inviting a reporter, though, exists to give login, so the section is
+    // forced open and its toggle hidden in that flow.
+    const forceAccess = !isAdmin;
+    el.addPersonAccessToggle.classList.toggle("hidden", forceAccess);
+    setAccessShown(forceAccess);
+
     ims.bsModal(el.addPersonModal).show();
+}
+
+// resetPasswordToggle returns a password field + its Show/Hide button to the masked
+// default — called whenever a modal is (re)opened.
+function resetPasswordToggle(input: HTMLInputElement, button: HTMLButtonElement): void {
+    input.type = "password";
+    button.textContent = "Show";
+}
+
+// setAccessShown reveals or hides the "Provide Access to IMS" credential section and
+// keeps the toggle button's label/state in sync.
+function setAccessShown(shown: boolean): void {
+    el.addPersonAccessSection.classList.toggle("hidden", !shown);
+    el.addPersonAccessToggle.classList.toggle("active", shown);
+    el.addPersonAccessToggle.textContent = shown ? "Don't provide IMS access" : "Provide Access to IMS";
+}
+
+function toggleProvideAccess(): void {
+    const show = el.addPersonAccessSection.classList.contains("hidden"); // currently hidden -> reveal
+    setAccessShown(show);
+    if (show) {
+        el.addPersonHandle.focus();
+    } else {
+        // Collapsing discards any half-entered credentials so they aren't submitted.
+        el.addPersonHandle.value = "";
+        el.addPersonEmail.value = "";
+        el.addPersonPassword.value = "";
+        el.addPersonPasswordConfirm.value = "";
+        resetPasswordToggle(el.addPersonPassword, el.addPersonPasswordToggle);
+        resetPasswordToggle(el.addPersonPasswordConfirm, el.addPersonPasswordConfirmToggle);
+    }
 }
 
 async function submitCreatePerson(): Promise<void> {
     const name = el.addPersonName.value.trim();
-    const handle = el.addPersonHandle.value.trim();
-    if (!name && !handle) {
+    if (!name) {
         ims.controlHasError(el.addPersonName);
-        ims.setErrorMessage("A name or handle is required.");
+        ims.setErrorMessage("A full name is required.");
         return;
     }
+    // Credentials are only collected (and required) when the access section is open.
+    const wantAccess = !el.addPersonAccessSection.classList.contains("hidden");
+    const handle = el.addPersonHandle.value.trim();
     const password = el.addPersonPassword.value;
-    if (password !== "" && password.length < minPasswordLength) {
-        ims.controlHasError(el.addPersonPassword);
-        ims.setErrorMessage(`Password must be at least ${minPasswordLength} characters (or left blank).`);
-        return;
+    if (wantAccess) {
+        if (!handle) {
+            ims.controlHasError(el.addPersonHandle);
+            ims.setErrorMessage("A nickname is required to provide IMS access.");
+            return;
+        }
+        if (password.length < minPasswordLength) {
+            ims.controlHasError(el.addPersonPassword);
+            ims.setErrorMessage(`Password must be at least ${minPasswordLength} characters.`);
+            return;
+        }
+        if (password !== el.addPersonPasswordConfirm.value) {
+            ims.controlHasError(el.addPersonPasswordConfirm);
+            ims.setErrorMessage("Passwords do not match.");
+            return;
+        }
     }
 
     const body: Record<string, unknown> = {
         "name": name,
-        "handle": handle,
-        "email": el.addPersonEmail.value.trim(),
-        "password": password,
+        "handle": wantAccess ? handle : "",
+        "email": wantAccess ? el.addPersonEmail.value.trim() : "",
+        "password": wantAccess ? password : "",
     };
     if (currentEvent) {
         body["event"] = currentEvent;
