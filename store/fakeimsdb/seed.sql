@@ -49,14 +49,14 @@ values  (2, '2025', false, 6),
 -- single access ladder. 601 is a writer (full incident + report access + the
 -- dashboard); 602 is a reporter (own reports only). 600 (Miguel) is also marked
 -- 'writer', but his access comes from PERSON.IS_ADMIN — an admin bypasses the
--- per-event role regardless of the tier on the row. 603 is a plain participant and
+-- per-event role regardless of the tier on the row. 603 is a plain volunteer and
 -- the registry-only guest (607) is public; neither gets IMS access. Identity is
 -- global (PERSON); this relationship is per-event and changes each fair.
 insert into PERSON__EVENT (PERSON_ID, EVENT, WRISTBAND, PARTICIPATION_TYPE)
 values  (600, 1, 'A-1001', 'writer'),
         (601, 1, 'A-1002', 'writer'),
         (602, 1, 'B-2001', 'reporter'),
-        (603, 1, 'B-2002', 'participant'),
+        (603, 1, 'B-2002', 'volunteer'),
         (607, 1, null,     'public');
 
 -- OCF location areas (flat, no nesting). SLUG is derived from NAME and
@@ -631,14 +631,14 @@ values
 -- 5e.3 demo: a few visit guests linked to registry PERSON rows. Their preferred
 -- name now lives on PERSON.NAME (GUEST_PREFERRED_NAME was dropped in migration 43);
 -- the visit points at the guest via GUEST_PERSON_ID. Two are handle-less people met
--- at the fair (a participant with a wristband, a public guest); the third reuses the
+-- at the fair (a volunteer with a wristband, a public guest); the third reuses the
 -- registry-only person 607 seeded above.
 insert into PERSON (ID, HANDLE, NAME, CREATED)
 values  (6100, null, 'Cedar',      0),
         (6101, null, 'Dust Devil', 0);
 
 insert into PERSON__EVENT (PERSON_ID, EVENT, WRISTBAND, PARTICIPATION_TYPE)
-values  (6100, 1, 'P-3001', 'participant'),
+values  (6100, 1, 'P-3001', 'volunteer'),
         (6101, 1, null,     'public');
 
 update VISIT set GUEST_PERSON_ID = 6100 where EVENT = 1 and NUMBER = 1;

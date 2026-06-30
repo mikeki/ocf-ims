@@ -347,7 +347,7 @@ var participationLadder = []struct {
 	{imsdb.PersonEventParticipationTypeWriter, "Writer"},
 	{imsdb.PersonEventParticipationTypeCrewLeader, "Crew leader"},
 	{imsdb.PersonEventParticipationTypeReporter, "Reporter"},
-	{imsdb.PersonEventParticipationTypeParticipant, "Participant"},
+	{imsdb.PersonEventParticipationTypeVolunteer, "Volunteer"},
 	{imsdb.PersonEventParticipationTypePublic, "Public"},
 	{imsdb.PersonEventParticipationTypeNotPresent, "Not present"},
 	{imsdb.PersonEventParticipationTypeEjected, "Ejected"},

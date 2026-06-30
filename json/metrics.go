@@ -38,7 +38,7 @@ type Metrics struct {
 	ByType     []MetricCount `json:"by_type"`
 
 	// ByRole is the event roster broken down by participation rung (writer,
-	// crew_leader, reporter, participant, public, not_present, ejected), in ladder
+	// crew_leader, reporter, volunteer, public, not_present, ejected), in ladder
 	// order and zero-filled, so the chart has a stable shape. Each person has at most
 	// one rung per event, so these partition the roster.
 	ByRole []MetricCount `json:"by_role"`

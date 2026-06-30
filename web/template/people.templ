@@ -38,13 +38,19 @@ templ People(deployment, versionName, versionRef, eventName string) {
           </div>
           <div class="modal-body row">
             <p>Set a new password for <strong id="set_password_handle"></strong>.</p>
-            <div class="form-floating mb-3">
-              <input id="set_password_input" type="password" class="form-control" autocomplete="new-password" placeholder="New password" />
-              <label for="set_password_input">New password</label>
+            <div class="input-group mb-3">
+              <div class="form-floating">
+                <input id="set_password_input" type="password" class="form-control" autocomplete="new-password" placeholder="New password" />
+                <label for="set_password_input">New password</label>
+              </div>
+              <button class="btn btn-outline-secondary" type="button" id="set_password_toggle">Show</button>
             </div>
-            <div class="form-floating mb-3">
-              <input id="set_password_confirm" type="password" class="form-control" autocomplete="new-password" placeholder="Confirm password" />
-              <label for="set_password_confirm">Confirm password</label>
+            <div class="input-group mb-3">
+              <div class="form-floating">
+                <input id="set_password_confirm" type="password" class="form-control" autocomplete="new-password" placeholder="Confirm password" />
+                <label for="set_password_confirm">Confirm password</label>
+              </div>
+              <button class="btn btn-outline-secondary" type="button" id="set_password_confirm_toggle">Show</button>
             </div>
           </div>
           <div class="modal-footer">
@@ -74,20 +80,39 @@ templ People(deployment, versionName, versionRef, eventName string) {
               <hr />
             </div>
             <div class="form-floating mb-3">
-              <input id="add_person_name" type="text" class="form-control" autocomplete="off" placeholder="Name" />
-              <label for="add_person_name">Name</label>
+              <input id="add_person_name" type="text" class="form-control" autocomplete="off" placeholder="Full name" />
+              <label for="add_person_name">Full name</label>
             </div>
-            <div class="form-floating mb-3">
-              <input id="add_person_email" type="email" class="form-control" autocomplete="off" placeholder="Email" />
-              <label for="add_person_email">Email (for login)</label>
-            </div>
-            <div class="form-floating mb-3">
-              <input id="add_person_handle" type="text" class="form-control" autocomplete="off" placeholder="Handle" />
-              <label for="add_person_handle">Handle (optional)</label>
-            </div>
-            <div class="form-floating mb-3">
-              <input id="add_person_password" type="password" class="form-control" autocomplete="new-password" placeholder="Password" />
-              <label for="add_person_password">Initial password (optional)</label>
+            <!-- Access is opt-in. Most people added at the fair are volunteers / public
+                 with no login; only staff who actually use the IMS get an account. The
+                 button reveals the credential fields, and the nickname (handle) becomes
+                 required there — so we never mint a password no one can sign in with. -->
+            <button type="button" class="btn btn-outline-primary w-100 mb-3" id="add_person_access_toggle" onclick="toggleProvideAccess()">
+              Provide Access to IMS
+            </button>
+            <div id="add_person_access_section" class="hidden">
+              <div class="form-floating mb-3">
+                <input id="add_person_email" type="email" class="form-control" autocomplete="off" placeholder="Email" />
+                <label for="add_person_email">Email (optional)</label>
+              </div>
+              <div class="form-floating mb-3">
+                <input id="add_person_handle" type="text" class="form-control" autocomplete="off" placeholder="Nickname" />
+                <label for="add_person_handle">Nickname (required for login)</label>
+              </div>
+              <div class="input-group mb-3">
+                <div class="form-floating">
+                  <input id="add_person_password" type="password" class="form-control" autocomplete="new-password" placeholder="Password" />
+                  <label for="add_person_password">Password</label>
+                </div>
+                <button class="btn btn-outline-secondary" type="button" id="add_person_password_toggle">Show</button>
+              </div>
+              <div class="input-group mb-3">
+                <div class="form-floating">
+                  <input id="add_person_password_confirm" type="password" class="form-control" autocomplete="new-password" placeholder="Confirm password" />
+                  <label for="add_person_password_confirm">Confirm password</label>
+                </div>
+                <button class="btn btn-outline-secondary" type="button" id="add_person_password_confirm_toggle">Show</button>
+              </div>
             </div>
             <div id="add_person_event_section" class="hidden mt-3">
               <p class="text-body-secondary small mb-2">Participation for <strong id="add_person_event_name"></strong></p>
@@ -104,7 +129,7 @@ templ People(deployment, versionName, versionRef, eventName string) {
                   <option value="writer">writer (full access)</option>
                   <option value="crew_leader">crew leader (invite reporters)</option>
                   <option value="reporter">reporter (own reports)</option>
-                  <option value="participant">participant</option>
+                  <option value="volunteer">volunteer</option>
                   <option value="public">public</option>
                   <option value="not_present">not present</option>
                   <option value="ejected">ejected</option>
@@ -112,7 +137,7 @@ templ People(deployment, versionName, versionRef, eventName string) {
                 <label for="add_person_participation">Role</label>
               </div>
             </div>
-            <div class="form-text">A person needs a name or a handle. To let them log in, give them a password plus an email — they can then sign in with their email or their handle.</div>
+            <div class="form-text">Add someone by name to track them at the fair. Use <strong>Provide Access to IMS</strong> only for people who'll sign in — they'll log in with their nickname (or email) and password.</div>
           </div>
           <div class="modal-footer">
             <button type="button" class="btn btn-primary" id="add_person_submit" onclick="submitCreatePerson()">Add person</button>
@@ -151,7 +176,7 @@ templ People(deployment, versionName, versionRef, eventName string) {
                   <option value="writer">writer (full access)</option>
                   <option value="crew_leader">crew leader (invite reporters)</option>
                   <option value="reporter">reporter (own reports)</option>
-                  <option value="participant">participant</option>
+                  <option value="volunteer">volunteer</option>
                   <option value="public">public</option>
                   <option value="not_present">not present</option>
                   <option value="ejected">ejected</option>

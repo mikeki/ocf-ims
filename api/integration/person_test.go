@@ -65,6 +65,17 @@ func TestCreateAndEditPerson(t *testing.T) {
 	require.Equal(t, http.StatusBadRequest, resp.StatusCode)
 	require.NoError(t, resp.Body.Close())
 
+	// A password with neither a handle nor an email is rejected (the reported
+	// add-person bug): login matches HANDLE/EMAIL, never the name, so a name-only
+	// person with a password could never sign in. Don't mint that unusable login.
+	resp = apisAdmin.createPerson(ctx, api.CreatePersonRequest{Name: "No Login Person", Password: newPassword})
+	require.Equal(t, http.StatusBadRequest, resp.StatusCode)
+	require.NoError(t, resp.Body.Close())
+	// The same name-only person without a password is a fine registry entry, though.
+	resp = apisAdmin.createPerson(ctx, api.CreatePersonRequest{Name: "No Login Person"})
+	require.Equal(t, http.StatusCreated, resp.StatusCode)
+	require.NoError(t, resp.Body.Close())
+
 	// The admin creates the person.
 	resp = apisAdmin.createPerson(ctx, api.CreatePersonRequest{
 		Handle:   newHandle,
@@ -159,7 +170,7 @@ func TestEditPersonProfileAndParticipation(t *testing.T) {
 
 	// --- per-event participation upsert, with name/email left unchanged (nil). ---
 	resp = apisAdmin.editPerson(ctx, frankID, api.EditPersonRequest{
-		Event: eventName, Wristband: "Z-9001", ParticipationType: "participant",
+		Event: eventName, Wristband: "Z-9001", ParticipationType: "volunteer",
 	})
 	require.Equal(t, http.StatusNoContent, resp.StatusCode)
 	require.NoError(t, resp.Body.Close())
@@ -168,7 +179,7 @@ func TestEditPersonProfileAndParticipation(t *testing.T) {
 	require.NoError(t, resp.Body.Close())
 	got = findPerson(t, people, frankID)
 	require.Equal(t, "Z-9001", got.Wristband)
-	require.Equal(t, "participant", got.ParticipationType)
+	require.Equal(t, "volunteer", got.ParticipationType)
 	// The nil-pointer name/email were preserved, not cleared.
 	require.Equal(t, newName, got.Name)
 	require.Equal(t, newEmail, got.Email)
@@ -187,7 +198,7 @@ func TestEditPersonProfileAndParticipation(t *testing.T) {
 	require.NoError(t, json.NewDecoder(resp.Body).Decode(&grace))
 	require.NoError(t, resp.Body.Close())
 	resp = apisAdmin.editPerson(ctx, grace.PersonID, api.EditPersonRequest{
-		Event: eventName, Wristband: "Z-9001", ParticipationType: "participant",
+		Event: eventName, Wristband: "Z-9001", ParticipationType: "volunteer",
 	})
 	require.Equal(t, http.StatusConflict, resp.StatusCode)
 	require.NoError(t, resp.Body.Close())
@@ -253,8 +264,8 @@ func TestEventRosterAddRemove(t *testing.T) {
 	require.False(t, containsPerson(roster, ivanID))
 	require.False(t, containsPerson(roster, juliaID))
 
-	// Enroll Ivan (only) as a participant.
-	resp = apisAdmin.setParticipation(ctx, ivanID, eventName, api.SetParticipationRequest{ParticipationType: "participant"})
+	// Enroll Ivan (only) as a volunteer.
+	resp = apisAdmin.setParticipation(ctx, ivanID, eventName, api.SetParticipationRequest{ParticipationType: "volunteer"})
 	require.Equal(t, http.StatusNoContent, resp.StatusCode)
 	require.NoError(t, resp.Body.Close())
 
@@ -262,7 +273,7 @@ func TestEventRosterAddRemove(t *testing.T) {
 	require.NoError(t, resp.Body.Close())
 	require.True(t, containsPerson(roster, ivanID))
 	require.False(t, containsPerson(roster, juliaID))
-	require.Equal(t, "participant", findPerson(t, roster, ivanID).ParticipationType)
+	require.Equal(t, "volunteer", findPerson(t, roster, ivanID).ParticipationType)
 
 	// "Show all" lists everyone for the event, enrolled or not.
 	all, resp := apisAdmin.getAllPersonnelForEvent(ctx, eventName)
@@ -271,7 +282,7 @@ func TestEventRosterAddRemove(t *testing.T) {
 	require.True(t, containsPerson(all, juliaID))
 
 	// Eject Ivan, resending the wristband so it's preserved on the kept row.
-	resp = apisAdmin.setParticipation(ctx, ivanID, eventName, api.SetParticipationRequest{Wristband: "W-1", ParticipationType: "participant"})
+	resp = apisAdmin.setParticipation(ctx, ivanID, eventName, api.SetParticipationRequest{Wristband: "W-1", ParticipationType: "volunteer"})
 	require.Equal(t, http.StatusNoContent, resp.StatusCode)
 	require.NoError(t, resp.Body.Close())
 	resp = apisAdmin.setParticipation(ctx, ivanID, eventName, api.SetParticipationRequest{Wristband: "W-1", ParticipationType: "ejected"})
@@ -318,7 +329,7 @@ func TestEventRosterAddRemove(t *testing.T) {
 	require.NoError(t, resp.Body.Close())
 
 	// A non-admin can neither set nor remove participation.
-	resp = apisAlice.setParticipation(ctx, juliaID, eventName, api.SetParticipationRequest{ParticipationType: "participant"})
+	resp = apisAlice.setParticipation(ctx, juliaID, eventName, api.SetParticipationRequest{ParticipationType: "volunteer"})
 	require.Equal(t, http.StatusForbidden, resp.StatusCode)
 	require.NoError(t, resp.Body.Close())
 	resp = apisAlice.removeParticipation(ctx, ivanID, eventName)

@@ -105,7 +105,7 @@ var RolesToEventPerms = map[Role]EventPermissionMask{
 // participationToEventPerms maps a person's per-event participation tier to the
 // event permissions it grants (plans 52b, 53a). 'writer' carries full access;
 // 'reporter' carries own-reports-only; 'crew_leader' has reporter-level access
-// plus the invite-reporters power. participant/public/not_present/ejected — and
+// plus the invite-reporters power. volunteer/public/not_present/ejected — and
 // any unrecognized value — grant nothing.
 func participationToEventPerms(pt imsdb.PersonEventParticipationType) EventPermissionMask {
 	switch pt {
