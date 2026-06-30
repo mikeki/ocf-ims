@@ -61,6 +61,19 @@ function roleRungsForViewer(): RoleRung[] {
     return isAdmin ? [...adminOnlyRungs, ...inviterRungs] : inviterRungs;
 }
 
+// The roles assignable to someone with no IMS login. The access-bearing rungs
+// (writer / crew_leader / reporter) grant permissions that only mean something with
+// a sign-in, so a name-only person is limited to the no-access roles.
+const noLoginRoleValues = new Set(["volunteer", "public"]);
+
+// roleRungsForPerson narrows the viewer's assignable rungs to those that make sense
+// for this person: a name-only person (no handle/email) can only be a volunteer or
+// public, since the higher rungs imply a login they don't have.
+function roleRungsForPerson(person: ims.Personnel): RoleRung[] {
+    const rungs = roleRungsForViewer();
+    return hasImsAccess(person) ? rungs : rungs.filter(r => noLoginRoleValues.has(r.value));
+}
+
 // targetAboveInviterCeiling reports whether a person's current per-event role is one
 // a non-admin inviter may not touch (writer / crew_leader) — the anti-escalation
 // ceiling mirrored from the server (53b). Admins are never ceilinged.
@@ -591,7 +604,7 @@ function drawParticipationDropdown(
     button.setAttribute("aria-label", `Role: ${type.replace("_", " ")}. Change.`);
 
     menu.replaceChildren();
-    for (const rung of roleRungsForViewer()) {
+    for (const rung of roleRungsForPerson(person)) {
         const li = document.createElement("li");
         const item = document.createElement("button");
         item.type = "button";
