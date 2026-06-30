@@ -229,7 +229,7 @@ templ People(deployment, versionName, versionRef, eventName string) {
     </div>
 
   <div class="row mb-3">
-    <div class="col-sm-6 col-md-4 mb-2">
+    <div id="event_picker_wrap" class="col-sm-6 col-md-4 mb-2">
       <label for="event-name" class="form-label">Event</label>
       <select id="event-name" class="form-select" onchange="changeEvent();">
         <option value="">— no event —</option>

@@ -110,6 +110,7 @@ const lastEventKey = "admin_people_event";
 
 const el = {
     eventName: ims.typedElement("event-name", HTMLSelectElement),
+    eventPickerWrap: ims.typedElement("event_picker_wrap", HTMLElement),
     peopleSearch: ims.typedElement("people-search", HTMLInputElement),
     people: ims.typedElement("people", HTMLElement),
     peopleWithAccess: ims.typedElement("people_with_access", HTMLTableSectionElement),
@@ -226,7 +227,9 @@ async function initPeoplePage(): Promise<void> {
             el.eventName.append(opt);
         }
         el.eventName.value = urlEvent;
-        el.eventName.disabled = true;
+        // The event is already pinned by the URL, so the picker is redundant here —
+        // hide the whole control rather than showing a disabled, unusable dropdown.
+        el.eventPickerWrap.classList.add("hidden");
         currentEvent = urlEvent;
     } else {
         // Admin doorway: restore the last-scoped event so per-event info shows again.

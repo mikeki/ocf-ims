@@ -129,7 +129,7 @@ templ AdminAreas(deployment, versionName, versionRef, eventName string) {
       </div>
     </div>
 
-  <div class="mb-3">
+  <div id="event_picker_wrap" class="mb-3">
     <label for="event-name" class="form-label">Event</label>
     <select id="event-name" class="form-select auto-width" onchange="loadAreas();">
       <option value="">Select an event…</option>

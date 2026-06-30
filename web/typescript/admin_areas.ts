@@ -40,6 +40,7 @@ const lastEventKey = "admin_areas_event";
 
 const el = {
     eventName: ims.typedElement("event-name", HTMLSelectElement),
+    eventPickerWrap: ims.typedElement("event_picker_wrap", HTMLElement),
     areasContainer: ims.typedElement("areas_container", HTMLElement),
     areas: ims.typedElement("areas", HTMLElement),
     areaLiTemplate: ims.typedElement("area_li_template", HTMLTemplateElement),
@@ -91,7 +92,9 @@ async function initAdminAreasPage(): Promise<void> {
             el.eventName.append(opt);
         }
         el.eventName.value = urlEvent;
-        el.eventName.disabled = true;
+        // The event is already pinned by the URL, so the picker is redundant here —
+        // hide the whole control rather than showing a disabled, unusable dropdown.
+        el.eventPickerWrap.classList.add("hidden");
         await loadAreas();
     } else {
         // Admin doorway: reselect the last-viewed event and load it automatically.
