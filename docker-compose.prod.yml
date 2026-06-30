@@ -48,7 +48,8 @@ services:
       IMS_LOG_LEVEL: "${IMS_LOG_LEVEL:-INFO}"
       IMS_DB_STORE_TYPE: "mariadb"
       IMS_DB_HOST_NAME: "ims-db"
-      IMS_DB_PORT: "3306"
+      # The app reads IMS_DB_HOST_PORT (not IMS_DB_PORT — that key is ignored).
+      IMS_DB_HOST_PORT: "3306"
       IMS_DB_DATABASE: "${IMS_DB_DATABASE:-ims}"
       IMS_DB_USER_NAME: "${IMS_DB_USER_NAME:-ims}"
       IMS_DB_PASSWORD: "${IMS_DB_PASSWORD:?set IMS_DB_PASSWORD in .env}"

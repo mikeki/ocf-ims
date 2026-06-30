@@ -88,13 +88,17 @@ A fresh prod DB is schema-only (`IMS_SEED=none`) — no users. Create the first
 admin by hand, then manage everyone else in-app (Admin → People & Passwords):
 
 ```bash
-# hash a password
-docker exec -it ocf-ims /opt/ims/bin/ims hash_password
+# hash a password — `--password` is required (the command is non-interactive).
+# Heads up: the plaintext lands in your shell history and the process list, so
+# this is a deliberately one-off local bootstrap — clear it afterward (run it
+# with a leading space, or `history -d`).
+docker exec ocf-ims /opt/ims/bin/ims hash_password --password 'choose-a-strong-one'
 # insert the admin (HANDLE + EMAIL are required to log in; see the login note).
-# Pass the DB password via MYSQL_PWD so it never lands in the process list.
+# CREATED is NOT NULL with no default, so it must be set. Pass the DB password
+# via MYSQL_PWD so it never lands in the process list.
 MYSQL_PWD="$IMS_DB_PASSWORD" docker exec -e MYSQL_PWD -i ocf-ims-db mariadb -uims ims <<'SQL'
-INSERT INTO PERSON (HANDLE, EMAIL, NAME, PASSWORD, IS_ADMIN)
-VALUES ('YourHandle', 'you@ocf.example.org', 'Your Name', '<argon2id-hash>', true);
+INSERT INTO PERSON (HANDLE, EMAIL, NAME, PASSWORD, IS_ADMIN, CREATED)
+VALUES ('YourHandle', 'you@ocf.example.org', 'Your Name', '<argon2id-hash>', true, UNIX_TIMESTAMP());
 SQL
 ```
 
