@@ -229,7 +229,7 @@ templ People(deployment, versionName, versionRef, eventName string) {
     </div>
 
   <div class="row mb-3">
-    <div class="col-sm-6 col-md-4 mb-2">
+    <div id="event_picker_wrap" class="col-sm-6 col-md-4 mb-2">
       <label for="event-name" class="form-label">Event</label>
       <select id="event-name" class="form-select" onchange="changeEvent();">
         <option value="">— no event —</option>
@@ -260,7 +260,7 @@ templ People(deployment, versionName, versionRef, eventName string) {
              collapses into a single ⋯ kebab menu so the row isn't a wall of buttons.
              The Wristband/Role columns only carry data when an event is selected. -->
         <div class="table-responsive">
-          <table class="table table-sm table-hover align-middle mb-0">
+          <table class="table table-sm table-striped table-hover align-middle mb-0">
             <thead>
               <tr>
                 <th scope="col">Name</th>
