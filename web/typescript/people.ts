@@ -25,6 +25,8 @@ declare global {
         filterPeople: ()=>void;
         submitSetPassword: ()=>Promise<void>;
         showAddPersonModal: ()=>void;
+        showCreatePersonForm: ()=>void;
+        backToPersonSearch: ()=>void;
         toggleProvideAccess: ()=>void;
         submitCreatePerson: ()=>Promise<void>;
         submitEditPerson: ()=>Promise<void>;
@@ -138,6 +140,8 @@ const el = {
     addPersonPasswordConfirmToggle: ims.typedElement("add_person_password_confirm_toggle", HTMLButtonElement),
     addPersonAccessToggle: ims.typedElement("add_person_access_toggle", HTMLButtonElement),
     addPersonAccessSection: ims.typedElement("add_person_access_section", HTMLElement),
+    addPersonCreateSection: ims.typedElement("add_person_create_section", HTMLElement),
+    addPersonBackToSearch: ims.typedElement("add_person_back_to_search", HTMLButtonElement),
     addPersonEventSection: ims.typedElement("add_person_event_section", HTMLElement),
     addPersonEventName: ims.typedElement("add_person_event_name", HTMLElement),
     addPersonWristband: ims.typedElement("add_person_wristband", HTMLInputElement),
@@ -198,6 +202,8 @@ async function initPeoplePage(): Promise<void> {
     window.filterPeople = filterPeople;
     window.submitSetPassword = submitSetPassword;
     window.showAddPersonModal = showAddPersonModal;
+    window.showCreatePersonForm = showCreatePersonForm;
+    window.backToPersonSearch = backToPersonSearch;
     window.toggleProvideAccess = toggleProvideAccess;
     window.submitCreatePerson = submitCreatePerson;
 
@@ -317,8 +323,8 @@ function reflectEventSelection(): void {
     // "Show all people" lists everyone for the event (admin-only listing); a non-admin
     // inviter only ever sees the event roster, so the toggle stays hidden for them.
     el.showAllWrap.classList.toggle("hidden", !hasEvent || !isAdmin);
-    // The "add an existing person" search only makes sense with an event to add to.
-    el.addPersonSearchSection.classList.toggle("hidden", !hasEvent);
+    // The search step's visibility is owned by setAddPersonStep (it's step 1 of the
+    // Add-Person modal); here we only keep its event label in sync.
     el.addPersonSearchEvent.textContent = currentEvent;
 }
 
@@ -718,6 +724,28 @@ async function submitSetPassword(): Promise<void> {
 }
 
 function showAddPersonModal(): void {
+    resetAddPersonForm();
+
+    // Admins get the full Add-person form (all rungs, wristband). A non-admin inviter
+    // gets the scoped "Invite reporter" form: identity + initial password, role fixed
+    // to reporter — so the wristband + role pickers are hidden and a note explains it
+    // (53d). The server enforces the same ceiling regardless of the UI.
+    el.addPersonModalLabel.textContent = isAdmin ? "Add Person" : "Invite reporter";
+    el.addPersonSubmit.textContent = isAdmin ? "Add person" : "Invite";
+    el.addPersonWristbandWrap.classList.toggle("hidden", !isAdmin);
+    el.addPersonParticipationWrap.classList.toggle("hidden", !isAdmin);
+    el.addPersonInviteNote.classList.toggle("hidden", isAdmin);
+
+    // Start by searching the registry when there's an event to add someone to; with no
+    // event there's nothing to enrol into, so go straight to the create form.
+    setAddPersonStep(currentEvent ? "search" : "create");
+
+    ims.bsModal(el.addPersonModal).show();
+}
+
+// resetAddPersonForm clears every field and collapses the opt-in access section to its
+// default (masked inputs; hidden for an admin, forced-open for an inviter).
+function resetAddPersonForm(): void {
     el.addPersonSearch.value = "";
     el.addPersonName.value = "";
     el.addPersonHandle.value = "";
@@ -730,24 +758,38 @@ function showAddPersonModal(): void {
     resetPasswordToggle(el.addPersonPassword, el.addPersonPasswordToggle);
     resetPasswordToggle(el.addPersonPasswordConfirm, el.addPersonPasswordConfirmToggle);
 
-    // Admins get the full Add-person form (all rungs, wristband). A non-admin inviter
-    // gets the scoped "Invite reporter" form: identity + initial password, role fixed
-    // to reporter — so the wristband + role pickers are hidden and a note explains it
-    // (53d). The server enforces the same ceiling regardless of the UI.
-    el.addPersonModalLabel.textContent = isAdmin ? "Add Person" : "Invite reporter";
-    el.addPersonSubmit.textContent = isAdmin ? "Add person" : "Invite";
-    el.addPersonWristbandWrap.classList.toggle("hidden", !isAdmin);
-    el.addPersonParticipationWrap.classList.toggle("hidden", !isAdmin);
-    el.addPersonInviteNote.classList.toggle("hidden", isAdmin);
-
     // Access (login) is opt-in for an admin — the button reveals the credential
     // fields. Inviting a reporter, though, exists to give login, so the section is
     // forced open and its toggle hidden in that flow.
     const forceAccess = !isAdmin;
     el.addPersonAccessToggle.classList.toggle("hidden", forceAccess);
     setAccessShown(forceAccess);
+}
 
-    ims.bsModal(el.addPersonModal).show();
+// setAddPersonStep switches the modal between searching the registry (step 1) and
+// creating a brand-new person (step 2). The submit button and the Back link belong to
+// the create step; Back only appears when search is actually an option (event picked).
+function setAddPersonStep(step: "search" | "create"): void {
+    const creating = step === "create";
+    el.addPersonSearchSection.classList.toggle("hidden", creating);
+    el.addPersonCreateSection.classList.toggle("hidden", !creating);
+    el.addPersonSubmit.classList.toggle("hidden", !creating);
+    el.addPersonBackToSearch.classList.toggle("hidden", !creating || currentEvent === "");
+}
+
+// showCreatePersonForm moves from the search step to the create form — invoked by the
+// "Create a new person" button, so the redundant "search existing" UI is dropped once
+// the user has decided they're adding someone new.
+function showCreatePersonForm(): void {
+    setAddPersonStep("create");
+    el.addPersonName.focus();
+}
+
+function backToPersonSearch(): void {
+    // Re-entering search → create should start from a clean form.
+    resetAddPersonForm();
+    setAddPersonStep("search");
+    el.addPersonSearch.focus();
 }
 
 // resetPasswordToggle returns a password field + its Show/Hide button to the masked
