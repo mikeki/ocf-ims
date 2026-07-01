@@ -90,6 +90,13 @@ func Conflict(userMessage string, err error) *HTTPError {
 	return New(http.StatusConflict, userMessage, err)
 }
 
+// TooManyRequests returns an http.StatusTooManyRequests HTTPError. Callers that
+// want to advertise a cool-off window should set a Retry-After header on the
+// ResponseWriter before calling WriteResponse.
+func TooManyRequests(userMessage string, err error) *HTTPError {
+	return New(http.StatusTooManyRequests, userMessage, err)
+}
+
 // From wraps the InternalErr using fmt.Sprintf. This should be used to specify
 // the name of a function that returned an error. See httperror_test.go for
 // examples of wrapping.

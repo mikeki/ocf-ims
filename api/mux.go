@@ -75,6 +75,10 @@ func AddToMux(
 	incidentTypesCache := newIncidentTypesCache()
 	areasCache := newAreasCache()
 
+	// Failed-login throttle/lockout for POST /ims/api/auth (plan 90, findings H1 +
+	// M4). Enabled in real deployments; the shared test suite disables it via config.
+	loginLimiter := newLoginRateLimiter(defaultLoginRateLimiterConfig(cfg.Core.LoginRateLimitEnabled))
+
 	mux.Handle("GET /ims/api/actionlogs",
 		Adapt(
 			GetActionLogs{db, userStore},
@@ -97,6 +101,10 @@ func AddToMux(
 			RecoverFromPanic(),
 			LogRequest(true, actionLogger, userStore),
 			LimitRequestBytes(cfg.Core.MaxRequestBytes),
+			// ThrottleLogin sits inside LimitRequestBytes so the body it peeks at
+			// for per-account keying is already size-capped. It sheds excess/failed
+			// attempts with 429 before the argon2 verify runs.
+			ThrottleLogin(loginLimiter),
 			// This endpoint does not require authentication, nor
 			// does it even consider the request's Authorization header,
 			// because the point of this is to make a new JWT.

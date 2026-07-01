@@ -9,6 +9,13 @@
 # with a hello-world site — drop the hello-world and add these).
 
 # ---- The IMS app (public) -------------------------------------------------
+# The app's login throttle (per-IP failed-attempt lockout) keys on the RIGHTMOST
+# X-Forwarded-For entry — the hop Caddy appends here. Caddy's reverse_proxy sets
+# that header by default, so this works as-is. Do NOT strip or overwrite
+# X-Forwarded-For for this site, or the per-IP limit loses the real client IP.
+# (This assumes Caddy is the sole proxy in front of the app; if you later add
+# another proxy/CDN ahead of Caddy, revisit clientIPForRateLimit's one-hop
+# assumption in api/ratelimit.go.)
 ims.ocf.example.org {
 	reverse_proxy ocf-ims:80
 }
