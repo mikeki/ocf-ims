@@ -21,6 +21,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"os"
+	"strings"
 	"testing"
 )
 
@@ -69,11 +70,34 @@ func TestValidateNonDevDeployment(t *testing.T) {
 	cfg.Core.Deployment = "not a valid deployment"
 	require.Error(t, cfg.Validate())
 
-	// non-dev deployment requires MariaDB store
+	// non-dev deployment requires MariaDB store (give it a valid-length secret so
+	// this asserts the store-type failure, not the JWT-secret rule below).
 	cfg = conf.DefaultIMS()
 	cfg.Core.Deployment = conf.DeploymentTypeProduction
+	cfg.Core.JWTSecret = strings.Repeat("a", 32)
 	cfg.Store.Type = conf.DBStoreTypeNoOp
 	require.Error(t, cfg.Validate())
+}
+
+func TestValidateJWTSecretLength(t *testing.T) {
+	t.Parallel()
+
+	// Dev is exempt: the short random per-boot default is fine.
+	cfg := conf.DefaultIMS()
+	require.NoError(t, cfg.Validate())
+	require.Less(t, len(cfg.Core.JWTSecret), 32, "dev default is expected to be short")
+
+	// A non-dev deployment with a short secret is rejected.
+	cfg = conf.DefaultIMS()
+	cfg.Core.Deployment = conf.DeploymentTypeProduction
+	cfg.Core.JWTSecret = "too-short"
+	require.Error(t, cfg.Validate())
+
+	// A non-dev deployment with a >=32-character secret is accepted.
+	cfg = conf.DefaultIMS()
+	cfg.Core.Deployment = conf.DeploymentTypeProduction
+	cfg.Core.JWTSecret = strings.Repeat("a", 32)
+	require.NoError(t, cfg.Validate())
 }
 func TestValidateAttachmentsStore(t *testing.T) {
 	t.Parallel()
