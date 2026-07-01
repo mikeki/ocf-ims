@@ -706,10 +706,13 @@ function renderCommonPageItems(authInfo: AuthInfo): void {
             }
         }
 
-        // Areas: admin-only (6o). Reveal it when an event is active AND the viewer
-        // is an admin; the page itself serves the event-scoped doorway.
+        // Areas: visible to everyone with event access (round 7). Reveal it when an
+        // event is active AND the viewer is an admin OR has area-read on that event
+        // (reporters and up). The page shows a read-only list to non-editors and
+        // hides the mutating controls; the event-scoped doorway is served here.
         const activeEventAreas = document.getElementById("active-event-areas") as HTMLAnchorElement|null;
-        if (activeEventAreas != null && authInfo.authenticated && authInfo.admin) {
+        if (activeEventAreas != null && authInfo.authenticated
+            && (authInfo.admin || (authInfo.event_access?.[event]?.readAreas ?? false))) {
             activeEventAreas.href = urlReplace(url_viewAreas);
             activeEventAreas.classList.remove("hidden");
 
@@ -3442,6 +3445,9 @@ export type AuthInfoEventAccess = {
     readVisits: boolean,
     writeVisits: boolean,
     attachFiles: boolean,
+    // Reporters and up may view areas (a rung below incident read), gating the
+    // read-only Areas nav/page separately from the write flags.
+    readAreas: boolean,
     // 52f: caller lacks event-wide incident read but has ≥1 per-incident grant in
     // this event — reveal the Incidents nav/list (filtered to granted incidents).
     readIncidentsViaGrant: boolean,
