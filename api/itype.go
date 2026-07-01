@@ -17,6 +17,7 @@
 package api
 
 import (
+	"context"
 	"database/sql"
 	"errors"
 	"fmt"
@@ -39,6 +40,7 @@ import (
 type GetIncidentTypes struct {
 	imsDBQ            *store.DBQ
 	userStore         directory.UserStore
+	cache             *incidentTypesCache
 	cacheControlShort time.Duration
 }
 
@@ -52,24 +54,35 @@ func (action GetIncidentTypes) ServeHTTP(w http.ResponseWriter, req *http.Reques
 	mustWriteJSON(w, req, resp)
 }
 func (action GetIncidentTypes) getIncidentTypes(req *http.Request) (imsjson.IncidentTypes, *herr.HTTPError) {
-	response := make(imsjson.IncidentTypes, 0)
 	_, globalPermissions, errHTTP := getGlobalPermissions(req, action.imsDBQ, action.userStore)
 	if errHTTP != nil {
-		return response, errHTTP.From("[getGlobalPermissions]")
+		return nil, errHTTP.From("[getGlobalPermissions]")
 	}
 	if globalPermissions&authz.GlobalReadIncidentTypes == 0 {
-		return response, herr.Forbidden("The requestor does not have GlobalReadIncidentTypes permission", nil)
+		return nil, herr.Forbidden("The requestor does not have GlobalReadIncidentTypes permission", nil)
 	}
 
-	err := req.ParseForm()
+	// The taxonomy is global and identical for every reader, so it is served from
+	// an in-memory cache (refDataCacheTTL) rather than re-reading the whole table
+	// on every form load. Writes invalidate it; see loadIncidentTypesJSON.
+	response, err := action.cache.get(req.Context(), func(ctx context.Context) (imsjson.IncidentTypes, error) {
+		return loadIncidentTypesJSON(ctx, action.imsDBQ)
+	})
 	if err != nil {
-		return response, herr.BadRequest("Unable to parse HTTP form", err).From("[ParseForm]")
+		return nil, herr.InternalServerError("Failed to fetch Incident Types", err).From("[cache.get]")
 	}
-	typeRows, err := action.imsDBQ.IncidentTypesWithProposer(req.Context(), action.imsDBQ)
-	if err != nil {
-		return response, herr.InternalServerError("Failed to fetch Incident Types", err).From("[IncidentTypesWithProposer]")
-	}
+	return response, nil
+}
 
+// loadIncidentTypesJSON reads the whole incident-type taxonomy and builds the
+// sorted JSON list. It is the cache refresher, so the sort happens once per load
+// and cached readers only ever read the shared (never mutated) slice.
+func loadIncidentTypesJSON(ctx context.Context, imsDBQ *store.DBQ) (imsjson.IncidentTypes, error) {
+	typeRows, err := imsDBQ.IncidentTypesWithProposer(ctx, imsDBQ)
+	if err != nil {
+		return nil, err
+	}
+	response := make(imsjson.IncidentTypes, 0, len(typeRows))
 	for _, t := range typeRows {
 		it := imsjson.IncidentType{
 			ID:          t.ID,
@@ -91,7 +104,6 @@ func (action GetIncidentTypes) getIncidentTypes(req *http.Request) (imsjson.Inci
 	slices.SortFunc(response, func(a, b imsjson.IncidentType) int {
 		return int(a.ID) - int(b.ID)
 	})
-
 	return response, nil
 }
 
@@ -99,6 +111,7 @@ type EditIncidentTypes struct {
 	imsDBQ    *store.DBQ
 	userStore directory.UserStore
 	metrics   *metricsCache
+	types     *incidentTypesCache
 }
 
 func (action EditIncidentTypes) ServeHTTP(w http.ResponseWriter, req *http.Request) {
@@ -111,6 +124,8 @@ func (action EditIncidentTypes) ServeHTTP(w http.ResponseWriter, req *http.Reque
 	// every event (the by-type / by-category breakdown), so a create/rename/hide
 	// can shift any event's aggregate — drop them all.
 	action.metrics.InvalidateAll()
+	// Also drop the cached taxonomy so the change shows up on the next form load.
+	action.types.Invalidate()
 	if newID != nil {
 		w.Header().Set("IMS-Incident-Type-ID", strconv.Itoa(int(*newID)))
 	}
@@ -208,6 +223,7 @@ type ProposeIncidentType struct {
 	imsDBQ    *store.DBQ
 	userStore directory.UserStore
 	metrics   *metricsCache
+	types     *incidentTypesCache
 }
 
 func (action ProposeIncidentType) ServeHTTP(w http.ResponseWriter, req *http.Request) {
@@ -219,6 +235,8 @@ func (action ProposeIncidentType) ServeHTTP(w http.ResponseWriter, req *http.Req
 	// A new type shifts the dashboard's by-type / by-category aggregation, which
 	// spans every event, so drop all cached metrics.
 	action.metrics.InvalidateAll()
+	// And drop the cached taxonomy so the proposed type appears on the next load.
+	action.types.Invalidate()
 	w.Header().Set("IMS-Incident-Type-ID", strconv.Itoa(int(newID)))
 	herr.WriteCreatedResponse(w, http.StatusText(http.StatusCreated))
 }
