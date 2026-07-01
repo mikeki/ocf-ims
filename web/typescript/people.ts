@@ -134,6 +134,7 @@ const el = {
     addPersonName: ims.typedElement("add_person_name", HTMLInputElement),
     addPersonHandle: ims.typedElement("add_person_handle", HTMLInputElement),
     addPersonEmail: ims.typedElement("add_person_email", HTMLInputElement),
+    addPersonPhone: ims.typedElement("add_person_phone", HTMLInputElement),
     addPersonPassword: ims.typedElement("add_person_password", HTMLInputElement),
     addPersonPasswordConfirm: ims.typedElement("add_person_password_confirm", HTMLInputElement),
     addPersonPasswordToggle: ims.typedElement("add_person_password_toggle", HTMLButtonElement),
@@ -147,9 +148,10 @@ const el = {
     addPersonWristband: ims.typedElement("add_person_wristband", HTMLInputElement),
     addPersonParticipation: ims.typedElement("add_person_participation", HTMLSelectElement),
     editPersonModal: ims.typedElement("editPersonModal", HTMLElement),
-    editPersonHandle: ims.typedElement("edit_person_handle", HTMLElement),
+    editPersonHandle: ims.typedElement("edit_person_handle", HTMLInputElement),
     editPersonName: ims.typedElement("edit_person_name", HTMLInputElement),
     editPersonEmail: ims.typedElement("edit_person_email", HTMLInputElement),
+    editPersonPhone: ims.typedElement("edit_person_phone", HTMLInputElement),
     editPersonEventSection: ims.typedElement("edit_person_event_section", HTMLElement),
     editPersonEventName: ims.typedElement("edit_person_event_name", HTMLElement),
     editPersonWristband: ims.typedElement("edit_person_wristband", HTMLInputElement),
@@ -485,9 +487,10 @@ function buildPersonRow(
             showEdit.addEventListener("click",
                 function (_e: MouseEvent): void {
                     el.editPersonModal.dataset["personId"] = (person.person_id ?? "").toString();
-                    el.editPersonHandle.textContent = label;
+                    el.editPersonHandle.value = person.handle ?? "";
                     el.editPersonName.value = person.name ?? "";
                     el.editPersonEmail.value = person.email ?? "";
+                    el.editPersonPhone.value = person.phone ?? "";
                     el.editPersonWristband.value = person.wristband ?? "";
                     el.editPersonParticipation.value = person.participation_type ?? "";
                     ims.bsModal(el.editPersonModal).show();
@@ -814,8 +817,9 @@ function toggleProvideAccess(): void {
         el.addPersonHandle.focus();
     } else {
         // Collapsing discards any half-entered credentials so they aren't submitted.
+        // Email is left alone — it's contact info, not a credential, and stays even
+        // without access.
         el.addPersonHandle.value = "";
-        el.addPersonEmail.value = "";
         el.addPersonPassword.value = "";
         el.addPersonPasswordConfirm.value = "";
         resetPasswordToggle(el.addPersonPassword, el.addPersonPasswordToggle);
@@ -860,7 +864,9 @@ async function submitCreatePerson(): Promise<void> {
     const body: Record<string, unknown> = {
         "name": name,
         "handle": wantAccess ? handle : "",
-        "email": wantAccess ? el.addPersonEmail.value.trim() : "",
+        // Email and phone are contact info, sent whether or not access is granted.
+        "email": el.addPersonEmail.value.trim(),
+        "phone": el.addPersonPhone.value.trim(),
         "password": wantAccess ? password : "",
     };
     if (currentEvent) {
@@ -895,8 +901,10 @@ async function submitEditPerson(): Promise<void> {
         return;
     }
     const body: Record<string, unknown> = {
+        "handle": el.editPersonHandle.value.trim(),
         "name": el.editPersonName.value.trim(),
         "email": el.editPersonEmail.value.trim(),
+        "phone": el.editPersonPhone.value.trim(),
     };
     if (currentEvent) {
         body["event"] = currentEvent;

@@ -3466,6 +3466,9 @@ export type Personnel = {
     name?: string|null;
     // email is sent only by the admin People listing (?all=true) so it can be edited.
     email?: string|null;
+    // phone is a contact number, sent only by the admin People listing so it can be
+    // edited; collectable for login-less people too.
+    phone?: string|null;
     person_id?: number|null;
     is_admin?: boolean;
     // wristband and participation_type are per-event; the admin listing populates

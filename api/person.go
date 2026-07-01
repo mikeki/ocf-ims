@@ -40,6 +40,7 @@ const (
 	maxHandleLength    = 64
 	maxNameLength      = 255
 	maxEmailLength     = 128
+	maxPhoneLength     = 32
 	maxWristbandLength = 32
 )
 
@@ -70,6 +71,8 @@ type CreatePersonRequest struct {
 	Handle string `json:"handle"`
 	Name   string `json:"name"`
 	Email  string `json:"email"`
+	// Phone is an optional contact number, collectable even for a login-less person.
+	Phone string `json:"phone"`
 	// #nosec G117 // Exported secret field
 	Password string `json:"password"`
 	// Event-scoped participation (all optional). When an event is named a
@@ -106,6 +109,7 @@ func (action CreatePerson) createPerson(req *http.Request) (imsjson.Person, *her
 	handle := strings.TrimSpace(body.Handle)
 	name := strings.TrimSpace(body.Name)
 	email := strings.TrimSpace(body.Email)
+	phone := strings.TrimSpace(body.Phone)
 	wristband := strings.TrimSpace(body.Wristband)
 
 	// Identity: a registry person needs at least a handle or a name.
@@ -120,6 +124,9 @@ func (action CreatePerson) createPerson(req *http.Request) (imsjson.Person, *her
 	}
 	if len(email) > maxEmailLength {
 		return empty, herr.BadRequest("Email is too long", nil)
+	}
+	if len(phone) > maxPhoneLength {
+		return empty, herr.BadRequest("Phone number is too long", nil)
 	}
 	if len(wristband) > maxWristbandLength {
 		return empty, herr.BadRequest("Wristband is too long", nil)
@@ -172,6 +179,11 @@ func (action CreatePerson) createPerson(req *http.Request) (imsjson.Person, *her
 		emailNull = conv.StringToSql(&email, maxEmailLength)
 	}
 
+	var phoneNull sql.NullString
+	if phone != "" {
+		phoneNull = conv.StringToSql(&phone, maxPhoneLength)
+	}
+
 	// A password only enables login alongside a handle or email to match it against
 	// — postAuth checks the identification against HANDLE/EMAIL, never the name. Reject
 	// a password with neither, so we never mint a login no one can actually use.
@@ -209,6 +221,7 @@ func (action CreatePerson) createPerson(req *http.Request) (imsjson.Person, *her
 		Handle:   handleNull,
 		Name:     nameNull,
 		Email:    emailNull,
+		Phone:    phoneNull,
 		Password: passwordNull,
 		Created:  conv.TimeToFloat(time.Now()),
 	})
@@ -224,6 +237,8 @@ func (action CreatePerson) createPerson(req *http.Request) (imsjson.Person, *her
 		PersonID: newID,
 		Handle:   handle,
 		Name:     name,
+		Email:    email,
+		Phone:    phone,
 	}
 
 	// Write the per-event participation row when an event was named. The person is
@@ -331,22 +346,26 @@ func mayAssignParticipation(callerIsAdmin bool, target imsdb.PersonEventParticip
 
 // EditPerson updates a person's editable profile and, when an event is named, that
 // person's per-event participation. Gated on GlobalAdministratePersonnel like
-// CreatePerson. The handle is immutable (it is the identifier in person: access
-// expressions); the password and admin flag are changed via their own endpoints.
+// CreatePerson. The handle is now editable (authorization derives from
+// PERSON__EVENT + IS_ADMIN, not the handle, since EVENT_ACCESS was retired); the
+// password and admin flag are still changed via their own endpoints.
 type EditPerson struct {
 	imsDBQ    *store.DBQ
 	userStore directory.UserStore
 }
 
 // EditPersonRequest carries the profile edit plus an optional per-event update.
-// Name and Email are pointers so the field can be distinguished from "" (clear):
-// nil leaves the value unchanged, a non-nil pointer sets it (empty string clears).
-// The per-event block is applied only when Event is named (the admin People page
-// scopes it to the selected event); Wristband/ParticipationType then upsert that
-// person's PERSON__EVENT row.
+// Handle, Name, Email, and Phone are pointers so the field can be distinguished
+// from "" (clear): nil leaves the value unchanged, a non-nil pointer sets it (empty
+// string clears). Email and Phone are contact fields collectable for login-less
+// people too. The per-event block is applied only when Event is named (the admin
+// People page scopes it to the selected event); Wristband/ParticipationType then
+// upsert that person's PERSON__EVENT row.
 type EditPersonRequest struct {
+	Handle            *string `json:"handle"`
 	Name              *string `json:"name"`
 	Email             *string `json:"email"`
+	Phone             *string `json:"phone"`
 	Event             string  `json:"event"`
 	Wristband         string  `json:"wristband"`
 	ParticipationType string  `json:"participation_type"`
@@ -382,19 +401,28 @@ func (action EditPerson) editPerson(req *http.Request) *herr.HTTPError {
 		return errHTTP
 	}
 
-	// Name/Email default to the stored values; a non-nil pointer overrides (empty
-	// clears). Keep the identity invariant: a handle-less registry person must keep
-	// a name, else they'd have no human identifier left.
+	// Handle/Name/Email/Phone default to the stored values; a non-nil pointer
+	// overrides (empty clears). Compute handle and name first, then enforce the
+	// identity invariant on the *resulting* pair: a person must keep at least a
+	// handle or a name, else they'd have no human identifier left.
+	handle := person.Handle
+	if body.Handle != nil {
+		trimmed := strings.TrimSpace(*body.Handle)
+		if len(trimmed) > maxHandleLength {
+			return herr.BadRequest("Handle is too long", nil)
+		}
+		handle = conv.StringToSql(&trimmed, maxHandleLength) // null when empty
+	}
 	name := person.Name
 	if body.Name != nil {
 		trimmed := strings.TrimSpace(*body.Name)
 		if len(trimmed) > maxNameLength {
 			return herr.BadRequest("Name is too long", nil)
 		}
-		if trimmed == "" && person.Handle.String == "" {
-			return herr.BadRequest("A handle or name is required", nil)
-		}
 		name = conv.StringToSql(&trimmed, maxNameLength) // null when empty
+	}
+	if handle.String == "" && name.String == "" {
+		return herr.BadRequest("A handle or name is required", nil)
 	}
 	email := person.Email
 	if body.Email != nil {
@@ -404,16 +432,26 @@ func (action EditPerson) editPerson(req *http.Request) *herr.HTTPError {
 		}
 		email = conv.StringToSql(&trimmed, maxEmailLength) // null when empty
 	}
+	phone := person.Phone
+	if body.Phone != nil {
+		trimmed := strings.TrimSpace(*body.Phone)
+		if len(trimmed) > maxPhoneLength {
+			return herr.BadRequest("Phone number is too long", nil)
+		}
+		phone = conv.StringToSql(&trimmed, maxPhoneLength) // null when empty
+	}
 
 	err := action.imsDBQ.EditPerson(req.Context(), action.imsDBQ, imsdb.EditPersonParams{
-		Name:  name,
-		Email: email,
-		ID:    person.ID,
+		Handle: handle,
+		Name:   name,
+		Email:  email,
+		Phone:  phone,
+		ID:     person.ID,
 	})
 	if err != nil {
 		var mysqlErr *mysql.MySQLError
 		if errors.As(err, &mysqlErr) && mysqlErr.Number == dupEntryError {
-			return herr.Conflict("That email is already in use", nil)
+			return herr.Conflict("That handle or email is already in use", nil)
 		}
 		return herr.InternalServerError("Failed to edit person", err).From("[EditPerson]")
 	}

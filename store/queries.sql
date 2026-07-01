@@ -894,7 +894,7 @@ from PERSON;
 -- attach-person autocompletes use the People query instead.
 -- name: AllPeople :many
 select
-    p.ID, p.HANDLE, p.NAME, p.EMAIL, p.IS_ADMIN,
+    p.ID, p.HANDLE, p.NAME, p.EMAIL, p.PHONE, p.IS_ADMIN,
     pe.WRISTBAND, pe.PARTICIPATION_TYPE
 from PERSON p
     left join PERSON__EVENT pe on pe.PERSON_ID = p.ID and pe.EVENT = sqlc.arg(event)
@@ -909,22 +909,24 @@ where HANDLE = ?;
 -- addresses people by person_id (registry people may have no handle), so the
 -- attach/detach and personnel-edit handlers look people up here.
 -- name: PersonByID :one
-select ID, HANDLE, NAME, EMAIL, IS_ADMIN
+select ID, HANDLE, NAME, EMAIL, PHONE, IS_ADMIN
 from PERSON
 where ID = ?;
 
 -- name: CreatePerson :execlastid
-insert into PERSON (HANDLE, NAME, EMAIL, PASSWORD, CREATED)
-values (?, ?, ?, ?, ?);
+insert into PERSON (HANDLE, NAME, EMAIL, PHONE, PASSWORD, CREATED)
+values (?, ?, ?, ?, ?, ?);
 
--- EditPerson updates a person's editable profile fields. NAME and EMAIL are
--- nullable identity fields the admin People page can change (the email gap closed
--- in 5e.4); HANDLE stays immutable (it's the identifier in person: access
--- expressions). Per-event wristband/participation live on PERSON__EVENT via
--- UpsertPersonEvent, not here.
+-- EditPerson updates a person's editable profile fields, all nullable: HANDLE,
+-- NAME, EMAIL, and PHONE. Authorization no longer keys off HANDLE (it derives from
+-- PERSON__EVENT + IS_ADMIN since EVENT_ACCESS was retired), so the handle is now
+-- editable from the admin People page; its unique key still rejects collisions.
+-- EMAIL and PHONE are contact fields collectable for login-less people too.
+-- Per-event wristband/participation live on PERSON__EVENT via UpsertPersonEvent,
+-- not here.
 -- name: EditPerson :exec
 update PERSON
-set NAME = ?, EMAIL = ?
+set HANDLE = ?, NAME = ?, EMAIL = ?, PHONE = ?
 where ID = ?;
 
 -- name: SetPersonPassword :exec
@@ -1005,7 +1007,7 @@ where PERSON_ID = ? and EVENT = ?;
 -- stays visible in the roster rather than disappearing.
 -- name: EventRoster :many
 select
-    p.ID, p.HANDLE, p.NAME, p.EMAIL, p.IS_ADMIN,
+    p.ID, p.HANDLE, p.NAME, p.EMAIL, p.PHONE, p.IS_ADMIN,
     pe.WRISTBAND, pe.PARTICIPATION_TYPE
 from PERSON p
     join PERSON__EVENT pe on pe.PERSON_ID = p.ID and pe.EVENT = sqlc.arg(event)

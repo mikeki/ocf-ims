@@ -220,6 +220,62 @@ func TestEditPersonProfileAndParticipation(t *testing.T) {
 	require.NoError(t, resp.Body.Close())
 }
 
+// TestPersonPhoneAndEditableHandle covers the contact-phone field and the
+// now-editable handle: a login-less person can carry an email + phone as contact
+// info, and an admin can later change the handle, email, and phone (with the handle
+// unique key still rejecting a collision).
+func TestPersonPhoneAndEditableHandle(t *testing.T) {
+	t.Parallel()
+	ctx := t.Context()
+
+	apisAdmin := ApiHelper{t: t, serverURL: shared.serverURL, jwt: jwtForAdmin(ctx, t)}
+
+	// A login-less contact: just a name, plus phone + email contact info (no handle,
+	// no password).
+	resp := apisAdmin.createPerson(ctx, api.CreatePersonRequest{
+		Name:  "Contact Only Person",
+		Email: "contact@example.com",
+		Phone: "555-0100",
+	})
+	require.Equal(t, http.StatusCreated, resp.StatusCode)
+	var contact imsjson.Person
+	require.NoError(t, json.NewDecoder(resp.Body).Decode(&contact))
+	require.NoError(t, resp.Body.Close())
+
+	people, resp := apisAdmin.getAllPersonnel(ctx)
+	require.NoError(t, resp.Body.Close())
+	got := findPerson(t, people, contact.PersonID)
+	require.Equal(t, "contact@example.com", got.Email)
+	require.Equal(t, "555-0100", got.Phone)
+	require.Empty(t, got.Handle)
+
+	// Give them a handle and change the phone in one edit.
+	newHandle := "NowHasAHandle"
+	newPhone := "555-0199"
+	resp = apisAdmin.editPerson(ctx, contact.PersonID, api.EditPersonRequest{
+		Handle: &newHandle, Phone: &newPhone,
+	})
+	require.Equal(t, http.StatusNoContent, resp.StatusCode)
+	require.NoError(t, resp.Body.Close())
+
+	people, resp = apisAdmin.getAllPersonnel(ctx)
+	require.NoError(t, resp.Body.Close())
+	got = findPerson(t, people, contact.PersonID)
+	require.Equal(t, newHandle, got.Handle)
+	require.Equal(t, newPhone, got.Phone)
+	require.Equal(t, "contact@example.com", got.Email)
+
+	// A second person can't take the same handle: the unique key surfaces as 409.
+	resp = apisAdmin.createPerson(ctx, api.CreatePersonRequest{Handle: "OtherHandle", Password: "other-password"})
+	require.Equal(t, http.StatusCreated, resp.StatusCode)
+	var other imsjson.Person
+	require.NoError(t, json.NewDecoder(resp.Body).Decode(&other))
+	require.NoError(t, resp.Body.Close())
+	resp = apisAdmin.editPerson(ctx, other.PersonID, api.EditPersonRequest{Handle: &newHandle})
+	require.Equal(t, http.StatusConflict, resp.StatusCode)
+	require.NoError(t, resp.Body.Close())
+}
+
 // TestEventRosterAddRemove exercises the per-event participation roster (slice 6j):
 // enrolling an existing person, the roster-vs-show-all listings, recording an
 // ejection (the row is kept and the wristband preserved), deleting a participation
