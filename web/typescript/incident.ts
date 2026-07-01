@@ -618,6 +618,12 @@ function drawIncidentFields() {
 
     el.journalEntryAdd.addEventListener("input", ims.journalEntryEdited);
     el.journalEntryAdd.addEventListener("input", ims.saveJournalDraft);
+
+    // Keep the "Other" free-entry suggestion at the bottom of the type/area
+    // datalists as the user types (native datalists would otherwise filter a
+    // static "Other" option out).
+    el.incidentTypeAdd.addEventListener("input", refreshTypeOtherSuggestion);
+    el.locationArea.addEventListener("input", refreshAreaOtherSuggestion);
 }
 
 
@@ -845,10 +851,51 @@ function drawIncidentTypesToAdd(): void {
         option.value = incidentType.name!;
         el.incidentTypes.append(option);
     }
-    // "Other" pinned last: the free-entry trigger.
-    const other: HTMLOptionElement = document.createElement("option");
-    other.value = OTHER_OPTION_LABEL;
-    el.incidentTypes.append(other);
+    // "Other" pinned last: the free-entry trigger. refreshTypeOtherSuggestion keeps
+    // it present as the user types (a native datalist would otherwise filter a
+    // static "Other" out once the text isn't a substring of it).
+    refreshTypeOtherSuggestion();
+}
+
+// refreshOtherSuggestion keeps an "Other" escape hatch visible at the bottom of a
+// native <datalist> while the user types. A datalist filters its options to those
+// whose value contains the typed text, so a fixed "Other" option vanishes as soon
+// as the text isn't a substring of "Other". To keep it offered, the trailing
+// option's value is set to the *typed text itself* (which therefore always passes
+// the filter) with "Other" as its shown label; committing it keeps the typed text,
+// which flows into the existing propose/create offer. When the field is empty, or
+// the text already matches a real option exactly, it falls back to a plain "Other".
+function refreshOtherSuggestion(
+    input: HTMLInputElement,
+    datalist: HTMLDataListElement,
+    hasExactMatch: (typed: string) => boolean,
+): void {
+    let other = datalist.querySelector<HTMLOptionElement>("option[data-other-suggestion]");
+    if (other == null) {
+        other = document.createElement("option");
+        other.setAttribute("data-other-suggestion", "");
+    }
+    // Always keep it last.
+    datalist.append(other);
+
+    const typed = input.value.trim();
+    if (typed === "" || hasExactMatch(typed)) {
+        other.value = OTHER_OPTION_LABEL;
+        other.textContent = "";
+    } else {
+        other.value = typed;
+        other.textContent = OTHER_OPTION_LABEL;
+    }
+}
+
+function refreshTypeOtherSuggestion(): void {
+    refreshOtherSuggestion(el.incidentTypeAdd, el.incidentTypes, typed =>
+        allIncidentTypes.some(t => !t.hidden && !!t.name && normalize(t.name) === normalize(typed)),
+    );
+}
+
+function refreshAreaOtherSuggestion(): void {
+    refreshOtherSuggestion(el.locationArea, el.locationAreaList, typed => areaByName(typed) != null);
 }
 
 // The type name the user typed that matched no existing type, kept so the
@@ -984,9 +1031,8 @@ function drawAreaOptions(): void {
     }
     // "Other" pinned last: selecting it prompts the user to type a new area name,
     // which then flows into the existing "create it for this event" offer.
-    const other = document.createElement("option");
-    other.value = OTHER_OPTION_LABEL;
-    datalist.append(other);
+    // refreshAreaOtherSuggestion keeps it visible as the user types.
+    refreshAreaOtherSuggestion();
 }
 
 // areaByName returns the area whose name matches the given text (case- and
