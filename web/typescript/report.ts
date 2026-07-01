@@ -272,6 +272,17 @@ async function updateIncident(el: HTMLInputElement): Promise<void> {
         await loadAndDisplayReport();
         return;
     }
+    // On a brand-new (unsaved) Report there's nothing to POST yet: just validate the
+    // typed IMS# and leave it in the field so it rides along with the create (see
+    // reportSendEdits). Don't reload — that would wipe the typed value.
+    if (report?.number == null) {
+        if (el.value !== "" && ims.parseInt10(el.value) == null) {
+            ims.controlHasError(el);
+            return;
+        }
+        ims.controlHasSuccess(el);
+        return;
+    }
     let url: string|null = null;
     if (report?.incident && el.value === "") {
         // The Report is attached to an incident and the user wants to detach it.
@@ -337,9 +348,16 @@ function drawIncident(): void {
     el.historyToggle.classList.toggle("hidden", isNewReport);
 
     el.incidentNumber.value = "";
-    // New Report. There can be no Incident yet.
+    // New Report. There's no attached Incident yet, but an incident writer may type
+    // an IMS# now so the Report is attached to that Incident at creation time (that's
+    // how a Report gets collected onto an Incident). It rides along with the create
+    // in reportSendEdits.
     if (isNewReport) {
-        el.incidentNumber.placeholder = "(none)";
+        el.incidentNumber.placeholder = ims.eventAccess?.writeIncidents ? "(optional)" : "(none)";
+        if (ims.eventAccess?.writeIncidents) {
+            el.incidentNumber.readOnly = false;
+            el.incidentNumber.classList.remove("form-control-static");
+        }
         return;
     }
     // If there's an attached Incident, then show a link to it
@@ -392,7 +410,12 @@ async function reportSendEdits(edits: ims.Report): Promise<{err:string|null}> {
     let url = ims.urlReplace(url_reports);
 
     if (number == null) {
-        // No fields are required for a new Report, nothing to do here
+        // No fields are required for a new Report. If an incident writer entered an
+        // IMS#, attach the Report to that Incident as part of the create.
+        const incidentNumber = ims.parseInt10(el.incidentNumber.value);
+        if (incidentNumber != null) {
+            edits.incident = incidentNumber;
+        }
     } else {
         // We're editing an existing report.
         edits.number = number;

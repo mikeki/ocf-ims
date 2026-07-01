@@ -501,8 +501,15 @@ func (action NewReport) newReport(req *http.Request) (reportNumber int32, locati
 		return 0, "", errHTTP.From("[readBodyAs]")
 	}
 
+	// A new Report may be attached to an Incident at creation time (that's how
+	// booth staff collect a Report onto an Incident right away). Attaching an
+	// Incident needs the incident-write permission, over and above report-write.
+	var incidentNumber sql.NullInt32
 	if report.Incident != nil {
-		return 0, "", herr.BadRequest("A new Report may not be attached to an incident", nil)
+		if eventPermissions&authz.EventWriteIncidents == 0 {
+			return 0, "", herr.Forbidden("The requestor does not have permission to attach Reports to Incidents on this Event", nil)
+		}
+		incidentNumber = sql.NullInt32{Int32: *report.Incident, Valid: true}
 	}
 
 	authorPersonID := jwtCtx.Claims.PersonID()
@@ -519,10 +526,17 @@ func (action NewReport) newReport(req *http.Request) (reportNumber int32, locati
 			Number:         newReportNum,
 			Created:        conv.TimeToFloat(time.Now()),
 			Summary:        conv.StringToSql(report.Summary, 0),
-			IncidentNumber: sql.NullInt32{},
+			IncidentNumber: incidentNumber,
 		},
 	)
 	if err != nil {
+		// A bad Incident number trips the INCIDENT FK; surface as 404, matching
+		// handleLinkToIncident.
+		var mysqlErr *mysql.MySQLError
+		const mySQLErNoReferencedRow2 = 1452
+		if errors.As(err, &mysqlErr) && mysqlErr.Number == mySQLErNoReferencedRow2 {
+			return 0, "", herr.NotFound("No such Incident", err).From("[CreateReport]")
+		}
 		return 0, "", herr.InternalServerError("Failed to create Report", err).From("[CreateReport]")
 	}
 
@@ -534,6 +548,14 @@ func (action NewReport) newReport(req *http.Request) (reportNumber int32, locati
 
 	if report.Summary != nil {
 		text := "Changed summary to: " + *report.Summary
+		_, errHTTP := addJournalEntry(ctx, action.imsDBQ, txn, event.ID, report.Number, authorPersonID, text, true, "", "", "", sql.NullInt32{})
+		if errHTTP != nil {
+			return 0, "", errHTTP.From("[addJournalEntry]")
+		}
+	}
+
+	if incidentNumber.Valid {
+		text := fmt.Sprintf("Attached to incident: %v", incidentNumber.Int32)
 		_, errHTTP := addJournalEntry(ctx, action.imsDBQ, txn, event.ID, report.Number, authorPersonID, text, true, "", "", "", sql.NullInt32{})
 		if errHTTP != nil {
 			return 0, "", errHTTP.From("[addJournalEntry]")

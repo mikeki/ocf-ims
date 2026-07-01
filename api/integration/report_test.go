@@ -372,3 +372,55 @@ func TestJournalEntryOnBehalfOf(t *testing.T) {
 	require.Equal(t, http.StatusBadRequest, resp.StatusCode)
 	require.NoError(t, resp.Body.Close())
 }
+
+func TestCreateReportAttachedToIncident(t *testing.T) {
+	t.Parallel()
+	ctx := t.Context()
+
+	apisAdmin := ApiHelper{t: t, serverURL: shared.serverURL, jwt: jwtForAdmin(ctx, t)}
+	apisAlice := ApiHelper{t: t, serverURL: shared.serverURL, jwt: jwtForAlice(t, ctx)}
+
+	eventName := rand.NonCryptoText()
+	_, resp := apisAdmin.createEvent(ctx, imsjson.Event{Name: &eventName})
+	require.Equal(t, http.StatusNoContent, resp.StatusCode)
+	require.NoError(t, resp.Body.Close())
+
+	// An Incident to attach the new Report to. Admins bypass per-event checks.
+	incidentNum := apisAdmin.newIncidentSuccess(ctx, imsjson.Incident{Event: eventName})
+
+	// A writer (admin here) can create a Report already attached to that Incident.
+	report := sampleReport1(eventName)
+	report.Incident = &incidentNum
+	reportNum := apisAdmin.newReportSuccess(ctx, report)
+
+	retrieved, resp := apisAdmin.getReport(ctx, eventName, reportNum)
+	require.Equal(t, http.StatusOK, resp.StatusCode)
+	require.NoError(t, resp.Body.Close())
+	require.NotNil(t, retrieved.Incident)
+	require.Equal(t, incidentNum, *retrieved.Incident)
+	// The attachment is recorded as a generated journal entry.
+	var foundAttach bool
+	for _, e := range retrieved.JournalEntries {
+		if strings.Contains(e.Text, "Attached to incident:") {
+			foundAttach = true
+		}
+	}
+	require.True(t, foundAttach, "expected a generated 'Attached to incident' journal entry")
+
+	// A non-existent Incident number is rejected with 404.
+	badReport := sampleReport1(eventName)
+	badReport.Incident = new(int32(999999))
+	resp = apisAdmin.newReport(ctx, badReport)
+	require.Equal(t, http.StatusNotFound, resp.StatusCode)
+	require.NoError(t, resp.Body.Close())
+
+	// A reporter (report-write but no incident-write) may not attach on create: 403.
+	resp = apisAdmin.addReporter(ctx, eventName, userAliceHandle)
+	require.Equal(t, http.StatusNoContent, resp.StatusCode)
+	require.NoError(t, resp.Body.Close())
+	reporterReport := sampleReport1(eventName)
+	reporterReport.Incident = &incidentNum
+	resp = apisAlice.newReport(ctx, reporterReport)
+	require.Equal(t, http.StatusForbidden, resp.StatusCode)
+	require.NoError(t, resp.Body.Close())
+}
