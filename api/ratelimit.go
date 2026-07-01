@@ -220,16 +220,22 @@ func (l *loginRateLimiter) pruneLocked(now time.Time) {
 	}
 }
 
-// clientIPForRateLimit derives the throttling IP. Behind the deployment's reverse
-// proxy the app is not reachable directly (no published port — see
-// deploy/Caddyfile.example), so proxy-supplied headers are trustworthy: prefer
-// Cloudflare's single CF-Connecting-IP, else the RIGHTMOST X-Forwarded-For entry
-// (the hop our own proxy appended — a client-supplied XFF is pushed left of it and
-// so can't spoof the key), else the transport RemoteAddr.
+// clientIPForRateLimit derives the throttling IP, and must resist spoofing — a
+// forgeable key would let one host masquerade as many and slip the per-IP limit.
+//
+// The app is not reachable directly (no published port — see
+// deploy/Caddyfile.example); the sole ingress is our own reverse proxy (Caddy),
+// which appends the real connecting peer to the RIGHT of any client-supplied
+// X-Forwarded-For. So the RIGHTMOST XFF entry is Caddy's own trustworthy view and
+// can't be spoofed (a forged XFF is pushed left of it); we key on that, else the
+// transport RemoteAddr.
+//
+// We deliberately do NOT trust CF-Connecting-IP (or a left/whole XFF): Caddy does
+// not manage those, so a client could vary them per request to mint a fresh key
+// each time and defeat the per-IP throttle entirely. This assumes exactly one
+// trusted proxy hop (the Caddy-only topology we ship); a future Cloudflare→Caddy
+// deployment would need the trusted-hop count made configurable here.
 func clientIPForRateLimit(r *http.Request) string {
-	if cf := strings.TrimSpace(r.Header.Get("CF-Connecting-IP")); cf != "" {
-		return cf
-	}
 	if xff := r.Header.Get("X-Forwarded-For"); xff != "" {
 		parts := strings.Split(xff, ",")
 		last := strings.TrimSpace(parts[len(parts)-1])

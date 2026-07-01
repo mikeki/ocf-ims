@@ -190,9 +190,12 @@ func TestClientIPForRateLimit(t *testing.T) {
 		want       string
 	}{
 		{"remoteaddr only", "203.0.113.7:5555", "", "", "203.0.113.7"},
-		{"cf header wins", "10.0.0.1:80", "198.51.100.9", "1.1.1.1", "198.51.100.9"},
 		{"xff rightmost is the trusted hop", "10.0.0.1:80", "", "1.2.3.4, 203.0.113.9", "203.0.113.9"},
 		{"single xff", "10.0.0.1:80", "", "203.0.113.5", "203.0.113.5"},
+		// A spoofable CF-Connecting-IP must be ignored — a forged XFF prefix must
+		// not become the key either; only Caddy's rightmost XFF hop counts.
+		{"cf header ignored", "10.0.0.1:80", "198.51.100.9", "", "10.0.0.1"},
+		{"forged xff prefix ignored", "10.0.0.1:80", "6.6.6.6", "1.1.1.1, 203.0.113.9", "203.0.113.9"},
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
