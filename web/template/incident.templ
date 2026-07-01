@@ -160,8 +160,8 @@ templ Incident(deployment, versionName, versionRef, eventName string) {
             <template id="incident_people_li_template">
               <li class="list-group-item flex-input-container ps-3 hidden">
                 <span><a href="#" tabindex="-1"></a></span>
-                <input aria-label="Description of involvement" type="text" class="form-control form-control-sm short-input auto-width hover-placeholder border-0"
-                    placeholder="Short description of involvement" onchange="setPersonInvolvement(this)" maxlength="50"
+                <input aria-label="Description of involvement" type="text" class="form-control form-control-sm short-input auto-width"
+                    list="involvement_presets" placeholder="Involvement (e.g. Witness)" onchange="setPersonInvolvement(this)" maxlength="50"
                 />
                 <!-- 52f: grant this involved reporter read + journal-add access to
                      this incident. Revealed by incident.ts only for a writer editing
@@ -176,6 +176,16 @@ templ Incident(deployment, versionName, versionRef, eventName string) {
               </li>
             </template>
           </ul>
+          <!-- Suggested involvement roles for the per-person field above. A
+               datalist is suggestions only: any free-text is still accepted. -->
+          <datalist id="involvement_presets">
+            <option value="Witness"></option>
+            <option value="Reporting Party"></option>
+            <option value="Subject"></option>
+            <option value="Injured Party"></option>
+            <option value="First Responder"></option>
+            <option value="Staff"></option>
+          </datalist>
           <div class="card-footer no-print">
             <div class="flex-input-container">
               <label for="person_add" class="control-label">Add:</label>
