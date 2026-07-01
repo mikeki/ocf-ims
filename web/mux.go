@@ -19,6 +19,7 @@ package web
 import (
 	"fmt"
 	"log/slog"
+	"mime"
 	"net/http"
 	"net/url"
 	"path"
@@ -32,6 +33,15 @@ import (
 	"github.com/mikeki/ocf-ims/lib/herr"
 	"github.com/mikeki/ocf-ims/web/template"
 )
+
+// Go's default MIME table has no entry for .webmanifest, so http.FileServerFS
+// would serve the PWA manifest as text/plain (content sniffing). Register the
+// spec media type so it's served as application/manifest+json — browsers want
+// that for install, and iOS Add-to-Home-Screen (the web-push prerequisite on
+// iPhone) is pickier about it.
+func init() {
+	_ = mime.AddExtensionType(".webmanifest", "application/manifest+json")
+}
 
 func AddToMux(mux *http.ServeMux, cfg *conf.IMSConfig) *http.ServeMux {
 	if mux == nil {
