@@ -120,10 +120,11 @@ func (action GetPersonnel) getPersonnel(req *http.Request) (GetPersonnelResponse
 					Wristband:         person.Wristband.String,
 					ParticipationType: string(person.ParticipationType),
 				}
-				// Email + admin flag drive the admin-only profile/password/admin
+				// Email/phone + admin flag drive the admin-only profile/password/admin
 				// controls; a non-admin inviter has none of those, so don't leak them.
 				if isPersonnelAdmin {
 					p.Email = person.Email.String
+					p.Phone = person.Phone.String
 					p.IsAdmin = person.IsAdmin
 				}
 				response = append(response, p)
@@ -139,8 +140,9 @@ func (action GetPersonnel) getPersonnel(req *http.Request) (GetPersonnelResponse
 			p := imsjson.Person{
 				Handle: person.Handle.String,
 				Name:   person.Name.String,
-				// Email goes only to this admin-gated listing so it can be edited.
+				// Email + phone go only to this admin-gated listing so they can be edited.
 				Email:     person.Email.String,
+				Phone:     person.Phone.String,
 				IsAdmin:   person.IsAdmin,
 				PersonID:  int64(person.ID),
 				Wristband: person.Wristband.String,

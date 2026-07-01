@@ -96,19 +96,27 @@ templ People(deployment, versionName, versionRef, eventName string) {
                 <input id="add_person_name" type="text" class="form-control" autocomplete="off" placeholder="Full name" />
                 <label for="add_person_name">Full name</label>
               </div>
-              <div class="form-text mb-3">Just a name records someone at the fair. They get no login unless you add one below.</div>
+              <!-- Email and phone are contact info, collectable for anyone at the fair
+                   (with or without a login). Email doubles as a login identifier when
+                   access is provided below. -->
+              <div class="form-floating mb-2">
+                <input id="add_person_email" type="email" class="form-control" autocomplete="off" placeholder="Email" />
+                <label for="add_person_email">Email (optional)</label>
+              </div>
+              <div class="form-floating mb-2">
+                <input id="add_person_phone" type="tel" class="form-control" autocomplete="off" placeholder="Phone" />
+                <label for="add_person_phone">Phone (optional)</label>
+              </div>
+              <div class="form-text mb-3">A name (plus optional email/phone) records someone at the fair as a contact. They get no login unless you add one below.</div>
 
               <!-- Access is opt-in: only staff who actually sign in to the IMS need an
-                   account. The button reveals the credential fields, where a handle +
-                   email are required so we never mint a password no one can use. -->
+                   account. The button reveals the credential fields; a handle and the
+                   email above are required so we never mint a password no one can use. -->
               <button type="button" class="btn btn-outline-primary w-100 mb-3" id="add_person_access_toggle" onclick="toggleProvideAccess()">
                 Provide Access to IMS
               </button>
               <div id="add_person_access_section" class="hidden">
-                <div class="form-floating mb-3">
-                  <input id="add_person_email" type="email" class="form-control" autocomplete="off" placeholder="Email" />
-                  <label for="add_person_email">Email (required for login)</label>
-                </div>
+                <div class="form-text mb-2">Access requires a handle, plus the email above to sign in with.</div>
                 <div class="form-floating mb-3">
                   <input id="add_person_handle" type="text" class="form-control" autocomplete="off" placeholder="Handle" />
                   <label for="add_person_handle">Handle (required for login)</label>
@@ -171,14 +179,21 @@ templ People(deployment, versionName, versionRef, eventName string) {
             <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close" />
           </div>
           <div class="modal-body row">
-            <p>Editing <strong id="edit_person_handle"></strong>.</p>
+            <div class="form-floating mb-3">
+              <input id="edit_person_handle" type="text" class="form-control" autocomplete="off" placeholder="Handle" />
+              <label for="edit_person_handle">Handle</label>
+            </div>
             <div class="form-floating mb-3">
               <input id="edit_person_name" type="text" class="form-control" autocomplete="off" placeholder="Name" />
               <label for="edit_person_name">Name</label>
             </div>
             <div class="form-floating mb-3">
               <input id="edit_person_email" type="email" class="form-control" autocomplete="off" placeholder="Email" />
-              <label for="edit_person_email">Email (for login)</label>
+              <label for="edit_person_email">Email (login &amp; contact)</label>
+            </div>
+            <div class="form-floating mb-3">
+              <input id="edit_person_phone" type="tel" class="form-control" autocomplete="off" placeholder="Phone" />
+              <label for="edit_person_phone">Phone (contact)</label>
             </div>
             <div id="edit_person_event_section" class="hidden mt-3">
               <hr />

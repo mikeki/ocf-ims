@@ -23,7 +23,11 @@ type Person struct {
 	// on GlobalAdministratePersonnel) so admins can edit it; the login directory and
 	// the typeahead search leave it empty, so omitempty withholds it there. Password
 	// is never serialized.
-	Email    string `json:"email,omitempty"`
+	Email string `json:"email,omitempty"`
+	// Phone is a contact number, collectable for anyone (including login-less
+	// people). Like Email it is sent only by the admin People listing so admins can
+	// view/edit it; other endpoints leave it empty and omitempty withholds it.
+	Phone    string `json:"phone,omitempty"`
 	Password string `json:"-"`
 	IsAdmin  bool   `json:"is_admin"`
 	PersonID int64  `json:"person_id,omitzero"`
