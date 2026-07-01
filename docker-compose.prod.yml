@@ -1,0 +1,120 @@
+# Production compose for OCF IMS.
+#
+#   docker compose -f docker-compose.prod.yml pull
+#   docker compose -f docker-compose.prod.yml up -d
+#
+# How this differs from docker-compose.dev.yml (which you should NOT run in prod):
+#
+#   * Runs the real multi-stage `Dockerfile` image (a small static binary run
+#     directly) instead of `dev.Dockerfile` + air. No source bind-mount, no
+#     live-reload. air masks a crashed process as "Up" and never self-heals on a
+#     panic (this caused the 2026-06-28 outage) — a plain binary with a real
+#     healthcheck + `restart: unless-stopped` recovers on its own.
+#   * Pulls a PREBUILT image from GHCR (built + pushed by the docker-publish job
+#     in .github/workflows/cicd.yml, gated on the tests, on merge to master)
+#     rather than compiling on the host. The deploy box never needs the Go
+#     toolchain or build-time RAM — it just `docker compose pull && up -d`. Pin
+#     IMAGE_TAG to a commit SHA in .env for a controlled rollout.
+#   * A real container `healthcheck` that calls `ims healthcheck` (hits
+#     /ims/api/ping), so Docker knows the app is actually serving, not just running.
+#   * Persistent NAMED volumes for the DB and attachments (not host bind-mounts),
+#     which avoids the host-permission / vanished-mount-file fragility from the
+#     dev setup. Back the DB up logically with deploy/backup-db.sh (a volume on
+#     its own is not a backup).
+#   * Secrets and deployment-specific values come from a gitignored `.env` at the
+#     repo root — copy deploy/.env.prod.example to ./.env and fill it in.
+#
+# Caddy (your existing reverse proxy) reaches the app over the shared external
+# `web` network as http://ocf-ims:80 — the app publishes NO host ports. Create
+# the network once and attach your Caddy container to it:
+#   docker network create web
+
+# Explicit project name (independent of the host directory) so this stack and the
+# monitoring stack stay isolated — a `docker compose ... up --remove-orphans` on
+# one can't delete the other's containers. It also makes the volume names
+# deterministic (e.g. ocf-ims_ims-attachments) regardless of the clone path.
+name: ocf-ims
+
+services:
+
+  ims-go:
+    image: "ghcr.io/mikeki/ocf-ims:${IMAGE_TAG:-latest}"
+    # `missing`: use the local image on `up` — a plain `up -d` (e.g. after a
+    # compose edit) does NOT silently upgrade the app. Upgrades are deliberate:
+    # `docker compose pull` then `up -d`. For the event, also PIN IMAGE_TAG=<sha>
+    # in .env so even an explicit pull can't move the running version.
+    pull_policy: missing
+    container_name: "ocf-ims"
+    restart: unless-stopped
+    env_file:
+      - .env
+    environment:
+      # These point the app at the sibling DB container and pin prod-correct
+      # values. Anything set here overrides .env; secrets (JWT, DB password,
+      # VAPID) live in .env so they stay out of git.
+      IMS_DEPLOYMENT: "production"
+      IMS_LOG_LEVEL: "${IMS_LOG_LEVEL:-INFO}"
+      IMS_DB_STORE_TYPE: "mariadb"
+      IMS_DB_HOST_NAME: "ims-db"
+      # The app reads IMS_DB_HOST_PORT (not IMS_DB_PORT — that key is ignored).
+      IMS_DB_HOST_PORT: "3306"
+      IMS_DB_DATABASE: "${IMS_DB_DATABASE:-ims}"
+      IMS_DB_USER_NAME: "${IMS_DB_USER_NAME:-ims}"
+      IMS_DB_PASSWORD: "${IMS_DB_PASSWORD:?set IMS_DB_PASSWORD in .env}"
+      # Stable signing key — without it every restart logs everyone out.
+      IMS_JWT_SECRET: "${IMS_JWT_SECRET:?set IMS_JWT_SECRET in .env}"
+      # Refresh-token lifetime = the felt session length (7 days).
+      IMS_TOKEN_LIFETIME: "${IMS_TOKEN_LIFETIME:-604800}"
+      # Local attachments on the named volume mounted below (writable by daemon,
+      # see Dockerfile). Switch to S3 by setting IMS_ATTACHMENTS_STORE=s3 + the
+      # AWS_* / IMS_ATTACHMENTS_S3_* values in .env.
+      IMS_ATTACHMENTS_STORE: "${IMS_ATTACHMENTS_STORE:-local}"
+      IMS_ATTACHMENTS_LOCAL_DIR: "/opt/ims/attachments"
+      # Schema-only on a fresh DB; the first admin is seeded by hand (see runbook).
+      IMS_SEED: "none"
+    volumes:
+      - ims-attachments:/opt/ims/attachments
+    networks:
+      - default
+      - web
+    depends_on:
+      ims-db:
+        condition: service_healthy
+    healthcheck:
+      test: [ "CMD", "/opt/ims/bin/ims", "healthcheck", "--server_url", "http://localhost:80" ]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      # First boot runs goose migrations before serving; don't fail it meanwhile.
+      start_period: 40s
+
+  ims-db:
+    image: "mariadb:10.5.27"
+    container_name: "ocf-ims-db"
+    restart: unless-stopped
+    environment:
+      MARIADB_DATABASE: "${IMS_DB_DATABASE:-ims}"
+      MARIADB_USER: "${IMS_DB_USER_NAME:-ims}"
+      MARIADB_PASSWORD: "${IMS_DB_PASSWORD:?set IMS_DB_PASSWORD in .env}"
+      # No app traffic uses root; a random root password is fine. Logical backups
+      # (deploy/backup-db.sh) authenticate as the IMS user against its own DB.
+      MARIADB_RANDOM_ROOT_PASSWORD: "yes"
+    volumes:
+      - ims-db-data:/var/lib/mysql
+    # No host port published — only ims-go (same default network) talks to it.
+    healthcheck:
+      test: [ "CMD", "healthcheck.sh", "--connect", "--innodb_initialized" ]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+volumes:
+  ims-db-data:
+  ims-attachments:
+
+networks:
+  # Shared with the Caddy reverse proxy. Create it once with:
+  #   docker network create web
+  web:
+    external: true
+  default:

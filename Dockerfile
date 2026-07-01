@@ -46,6 +46,13 @@ RUN setcap "cap_net_bind_service=+ep" /app/ocf-ims
 FROM alpine:latest
 COPY --from=build /app/ocf-ims /opt/ims/bin/ims
 
+# Pre-create the local-attachments directory owned by the runtime user. When a
+# production deployment mounts a named volume here (see docker-compose.prod.yml),
+# Docker seeds the empty volume from this path — including its daemon ownership —
+# so the non-root server can write to it. Harmless when attachments are disabled
+# or backed by S3 (the dir just stays empty).
+RUN mkdir -p /opt/ims/attachments && chown -R daemon:daemon /opt/ims/attachments
+
 # Docker-specific default configuration
 ENV IMS_HOSTNAME="0.0.0.0"
 ENV IMS_PORT="80"

@@ -1,0 +1,40 @@
+# Example Caddy reverse-proxy config for the IMS host.
+#
+# Caddy and the IMS app share the external `web` Docker network (created with
+# `docker network create web`), so Caddy reaches containers BY NAME — no host
+# ports are published. Caddy auto-provisions HTTPS, which web-push/service-workers
+# require. Replace the domains with your real ones.
+#
+# Merge the blocks below into your existing Caddyfile (you already run a Caddy
+# with a hello-world site — drop the hello-world and add these).
+
+# ---- The IMS app (public) -------------------------------------------------
+ims.ocf.example.org {
+	reverse_proxy ocf-ims:80
+}
+
+# ---- Monitoring (lock these down — they expose logs and metrics) ----------
+# Generate a password hash with:  caddy hash-password
+# Then put real bcrypt hashes below. Protect every monitoring tool.
+
+(admins_only) {
+	basic_auth {
+		# username  bcrypt-hash-from-`caddy hash-password`
+		ops $2a$14$REPLACE_WITH_A_REAL_BCRYPT_HASH
+	}
+}
+
+status.ocf.example.org {
+	import admins_only
+	reverse_proxy uptime-kuma:3001
+}
+
+logs.ocf.example.org {
+	import admins_only
+	reverse_proxy dozzle:8080
+}
+
+metrics.ocf.example.org {
+	import admins_only
+	reverse_proxy beszel-hub:8090
+}
