@@ -205,6 +205,10 @@ type AccessForEvent struct {
 	ReadVisits     bool  `json:"readVisits"`
 	WriteVisits    bool  `json:"writeVisits"`
 	AttachFiles    bool  `json:"attachFiles"`
+	// ReadAreas is true when the caller may view this event's areas. Held by
+	// reporters and up (a rung below incident read), so it gates the read-only
+	// Areas nav/page separately from the incident/write flags.
+	ReadAreas bool `json:"readAreas"`
 	// ReadIncidentsViaGrant (52f) is true when the caller lacks event-wide incident
 	// read but has at least one per-incident grant in this event. It reveals the
 	// Incidents nav/list (filtered to granted incidents) for an involved reporter,
@@ -301,6 +305,7 @@ func (action GetAuth) getAuth(req *http.Request) (GetAuthResponse, *herr.HTTPErr
 				ReadVisits:            eventPermissions[event.ID]&authz.EventReadVisits != 0,
 				WriteVisits:           eventPermissions[event.ID]&authz.EventWriteVisits != 0,
 				AttachFiles:           action.attachmentsEnabled,
+				ReadAreas:             eventPermissions[event.ID]&authz.EventReadAreas != 0,
 				ReadIncidentsViaGrant: readIncidentsViaGrant,
 				InviteReporters:       eventPermissions[event.ID]&authz.EventInviteReporters != 0,
 			},

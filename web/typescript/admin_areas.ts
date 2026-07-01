@@ -55,7 +55,20 @@ const el = {
     markDuplicateModal: ims.typedElement("markDuplicateModal", HTMLElement),
     markDuplicateName: ims.typedElement("mark_duplicate_name", HTMLElement),
     markDuplicateCanonical: ims.typedElement("mark_duplicate_canonical", HTMLSelectElement),
+    addAreaButton: ims.typedElement("add_area_button", HTMLButtonElement),
 };
+
+// The viewer's role, captured at init. Areas are visible to everyone with event
+// access (round 7); the controls are gated: only an admin may edit / approve /
+// mark-duplicate an existing area, and a writer (or admin) may propose a new one.
+let viewerIsAdmin = false;
+let viewerEventAccess: Record<string, ims.AuthInfoEventAccess>|undefined;
+
+// canProposeAreas reports whether the viewer may create (propose) an area for the
+// currently loaded event: admins anywhere, writers on that event.
+function canProposeAreas(): boolean {
+    return viewerIsAdmin || (viewerEventAccess?.[currentEvent]?.writeIncidents ?? false);
+}
 
 initAdminAreasPage();
 
@@ -65,6 +78,8 @@ async function initAdminAreasPage(): Promise<void> {
         await ims.redirectToLogin();
         return;
     }
+    viewerIsAdmin = initResult.authInfo.admin;
+    viewerEventAccess = initResult.authInfo.event_access;
 
     window.loadAreas = loadAreas;
     window.showAddAreaModal = showAddAreaModal;
@@ -142,6 +157,9 @@ async function loadAreas(): Promise<void> {
     // The areas table (and its New-area button) only make sense once an event is
     // chosen, so keep the whole card hidden until then.
     el.areasContainer.classList.toggle("hidden", !currentEvent);
+    // Only an area editor (writer/admin) may propose a new area; a read-only
+    // viewer (reporter) sees the list without the New-area control.
+    el.addAreaButton.classList.toggle("hidden", !currentEvent || !canProposeAreas());
     if (!currentEvent) {
         adminAreas = [];
         drawAreas();
@@ -204,17 +222,25 @@ function appendAreaRow(
     li.getElementsByClassName("area-name")[0]!.textContent = area.name??"";
     li.getElementsByClassName("area-slug")[0]!.textContent = area.slug??"";
 
+    // Editing an existing area (rename / reparent / reorder) is admin-only, and so
+    // are the approve / mark-duplicate resolutions below. A read-only viewer or a
+    // writer sees the list without any of these controls.
     const showEditModal: HTMLElement = li.querySelector(".show-edit-modal")!;
-    showEditModal.addEventListener("click", (_e: MouseEvent): void => {
-        el.editAreaModal.dataset["areaSlug"] = area.slug??"";
-        el.editAreaName.value = area.name??"";
-        el.editAreaSortOrder.value = (area.sort_order??0).toString();
-        populateParentOptions(area);
-        editAreaModal.show();
-    });
+    if (viewerIsAdmin) {
+        showEditModal.addEventListener("click", (_e: MouseEvent): void => {
+            el.editAreaModal.dataset["areaSlug"] = area.slug??"";
+            el.editAreaName.value = area.name??"";
+            el.editAreaSortOrder.value = (area.sort_order??0).toString();
+            populateParentOptions(area);
+            editAreaModal.show();
+        });
+    } else {
+        showEditModal.classList.add("hidden");
+    }
 
-    // A still-unapproved area is a writer's proposal (6o-2): flag it and offer the
-    // admin's two resolutions — approve it, or mark it a duplicate of a real area.
+    // A still-unapproved area is a writer's proposal (6o-2): flag it for everyone,
+    // and offer the admin's two resolutions — approve it, or mark it a duplicate of
+    // a real area.
     if (area.approved === false) {
         const proposed: HTMLElement = li.querySelector(".area-proposed")!;
         proposed.classList.remove("hidden");
@@ -222,12 +248,14 @@ function appendAreaRow(
         if (who) {
             proposed.title = `Proposed by ${who}`;
         }
-        const approveBtn: HTMLElement = li.querySelector(".approve-area")!;
-        approveBtn.classList.remove("hidden");
-        approveBtn.addEventListener("click", () => approveArea(area.slug??""));
-        const dupBtn: HTMLElement = li.querySelector(".mark-duplicate-area")!;
-        dupBtn.classList.remove("hidden");
-        dupBtn.addEventListener("click", () => showMarkDuplicateModal(area));
+        if (viewerIsAdmin) {
+            const approveBtn: HTMLElement = li.querySelector(".approve-area")!;
+            approveBtn.classList.remove("hidden");
+            approveBtn.addEventListener("click", () => approveArea(area.slug??""));
+            const dupBtn: HTMLElement = li.querySelector(".mark-duplicate-area")!;
+            dupBtn.classList.remove("hidden");
+            dupBtn.addEventListener("click", () => showMarkDuplicateModal(area));
+        }
     }
 
     container.append(frag);

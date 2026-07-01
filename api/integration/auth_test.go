@@ -148,6 +148,7 @@ func TestGetAuthWithEvent(t *testing.T) {
 				ReadVisits:      true,
 				WriteVisits:     true,
 				AttachFiles:     true,
+				ReadAreas:       true,
 				InviteReporters: true,
 			},
 		},
