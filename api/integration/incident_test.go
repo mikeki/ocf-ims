@@ -603,6 +603,19 @@ func TestIncidentOutcome(t *testing.T) {
 	require.NoError(t, resp.Body.Close())
 	require.Equal(t, "resolved_on_scene", deref(got.Outcome))
 
+	// An OCF-specific disposition (added in migration 00013) is accepted.
+	resp = writer.updateIncident(ctx, eventName, num, imsjson.Incident{
+		Event:   eventName,
+		Number:  num,
+		Outcome: new("transported_in_ambulance"),
+	})
+	require.Equal(t, http.StatusNoContent, resp.StatusCode)
+	require.NoError(t, resp.Body.Close())
+	got, resp = writer.getIncident(ctx, eventName, num)
+	require.Equal(t, http.StatusOK, resp.StatusCode)
+	require.NoError(t, resp.Body.Close())
+	require.Equal(t, "transported_in_ambulance", deref(got.Outcome))
+
 	// An unknown outcome is rejected with 400 (stricter than STATE's silent ignore).
 	resp = writer.updateIncident(ctx, eventName, num, imsjson.Incident{
 		Event:   eventName,
@@ -612,11 +625,11 @@ func TestIncidentOutcome(t *testing.T) {
 	require.Equal(t, http.StatusBadRequest, resp.StatusCode)
 	require.NoError(t, resp.Body.Close())
 
-	// The original outcome survived the rejected update.
+	// The prior outcome survived the rejected update.
 	got, resp = writer.getIncident(ctx, eventName, num)
 	require.Equal(t, http.StatusOK, resp.StatusCode)
 	require.NoError(t, resp.Body.Close())
-	require.Equal(t, "resolved_on_scene", deref(got.Outcome))
+	require.Equal(t, "transported_in_ambulance", deref(got.Outcome))
 
 	// An empty string clears the outcome back to unset (null).
 	resp = writer.updateIncident(ctx, eventName, num, imsjson.Incident{
