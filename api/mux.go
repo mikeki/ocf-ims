@@ -64,6 +64,11 @@ func AddToMux(
 	}
 	pusher := NewPusher(db, pushSender)
 
+	// One dashboard-metrics cache shared by the read handler (GetMetrics) and the
+	// mutation handlers that must invalidate it on a write, so the dashboard
+	// reflects changes immediately rather than waiting out the TTL.
+	metricsCache := newMetricsCache()
+
 	mux.Handle("GET /ims/api/actionlogs",
 		Adapt(
 			GetActionLogs{db, userStore},
@@ -138,7 +143,7 @@ func AddToMux(
 
 	mux.Handle("POST /ims/api/events/{eventName}/incidents",
 		Adapt(
-			NewIncident{db, userStore, es, pusher},
+			NewIncident{db, userStore, es, pusher, metricsCache},
 			RecoverFromPanic(),
 			RequireAuthN(jwter),
 			LogRequest(true, actionLogger, userStore),
@@ -158,7 +163,7 @@ func AddToMux(
 
 	mux.Handle("POST /ims/api/events/{eventName}/incidents/{incidentNumber}",
 		Adapt(
-			EditIncident{db, userStore, es, pusher},
+			EditIncident{db, userStore, es, pusher, metricsCache},
 			RecoverFromPanic(),
 			RequireAuthN(jwter),
 			LogRequest(true, actionLogger, userStore),
@@ -388,7 +393,7 @@ func AddToMux(
 
 	mux.Handle("POST /ims/api/events/{eventName}/areas",
 		Adapt(
-			EditAreas{db, userStore},
+			EditAreas{db, userStore, metricsCache},
 			RecoverFromPanic(),
 			RequireAuthN(jwter),
 			LogRequest(true, actionLogger, userStore),
@@ -398,7 +403,7 @@ func AddToMux(
 
 	mux.Handle("GET /ims/api/events/{eventName}/metrics",
 		Adapt(
-			GetMetrics{db, userStore, newMetricsCache()},
+			GetMetrics{db, userStore, metricsCache},
 			RecoverFromPanic(),
 			RequireAuthN(jwter),
 			LogRequest(false, actionLogger, userStore),
@@ -438,7 +443,7 @@ func AddToMux(
 
 	mux.Handle("POST /ims/api/incident_types",
 		Adapt(
-			EditIncidentTypes{db, userStore},
+			EditIncidentTypes{db, userStore, metricsCache},
 			RecoverFromPanic(),
 			RequireAuthN(jwter),
 			LogRequest(true, actionLogger, userStore),

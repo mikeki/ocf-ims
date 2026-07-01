@@ -80,6 +80,7 @@ func (action GetAreas) run(req *http.Request) (imsjson.Areas, *herr.HTTPError) {
 type EditAreas struct {
 	imsDBQ    *store.DBQ
 	userStore directory.UserStore
+	metrics   *metricsCache
 }
 
 func (action EditAreas) ServeHTTP(w http.ResponseWriter, req *http.Request) {
@@ -88,6 +89,9 @@ func (action EditAreas) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 		errHTTP.From("[run]").WriteResponse(w)
 		return
 	}
+	// Any area create / approve / merge / rename can shift the dashboard's
+	// per-area breakdown for this event. The path event name is the cache key.
+	action.metrics.InvalidateEvent(req.PathValue("eventName"))
 	if slug != "" {
 		w.Header().Set("IMS-Area-Slug", slug)
 	}
