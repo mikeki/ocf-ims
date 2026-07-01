@@ -528,6 +528,21 @@ where ID IN (
       and JOURNAL_ENTRY = ?
 );
 
+-- name: ReportJournalEntryAuthor :one
+-- Author handle of a single journal entry on a report, used to enforce that a
+-- reporter may only strike their own entries. Returns no rows if the entry isn't
+-- on that report.
+select p.HANDLE as AUTHOR
+from REPORT__JOURNAL_ENTRY rje
+    join JOURNAL_ENTRY je
+        on rje.JOURNAL_ENTRY = je.ID
+    join PERSON p
+        on p.ID = je.AUTHOR_PERSON_ID
+where rje.EVENT = ?
+    and rje.REPORT_NUMBER = ?
+    and rje.JOURNAL_ENTRY = ?
+;
+
 -- name: SetVisitJournalEntryStricken :exec
 update JOURNAL_ENTRY
 set STRICKEN = ?
