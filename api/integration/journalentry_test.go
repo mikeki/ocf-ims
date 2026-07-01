@@ -159,6 +159,100 @@ func TestEditReportJournalEntry(t *testing.T) {
 	require.NoError(t, resp.Body.Close())
 }
 
+// TestReportJournalEntryStrikeOwnership verifies the per-entry ownership limit on
+// the report journal-entry strike endpoint (plan 90 finding M1): a reporter (who
+// has EventWriteOwnReports but not EventWriteAllReports) may strike only the entries
+// they authored themselves. A report is a collection of entries owned by their
+// individual authors, so the limit is per-entry — a reporter can't strike another
+// person's entry even on a report they contributed to. Writers/admins strike any.
+func TestReportJournalEntryStrikeOwnership(t *testing.T) {
+	t.Parallel()
+	ctx := t.Context()
+
+	apisAdmin := ApiHelper{t: t, serverURL: shared.serverURL, jwt: jwtForAdmin(ctx, t)}
+	apisAlice := ApiHelper{t: t, serverURL: shared.serverURL, jwt: jwtForAlice(t, ctx)}
+	apisDave := ApiHelper{t: t, serverURL: shared.serverURL, jwt: jwtForDave(t, ctx)}
+
+	// Alice gets writer (can author + read all reports); Dave gets reporter
+	// (own-reports only). Participation is per-event, so this doesn't perturb the
+	// users' roles in other parallel tests.
+	eventName := rand.NonCryptoText()
+	_, resp := apisAdmin.createEvent(ctx, imsjson.Event{Name: &eventName})
+	require.Equal(t, http.StatusNoContent, resp.StatusCode)
+	require.NoError(t, resp.Body.Close())
+	resp = apisAdmin.addWriter(ctx, eventName, userAliceHandle)
+	require.Equal(t, http.StatusNoContent, resp.StatusCode)
+	require.NoError(t, resp.Body.Close())
+	resp = apisAdmin.addReporter(ctx, eventName, userDaveHandle)
+	require.Equal(t, http.StatusNoContent, resp.StatusCode)
+	require.NoError(t, resp.Body.Close())
+
+	// Alice authors a report; Dave has never contributed to it.
+	aliceReport := apisAlice.newReportSuccess(ctx, sampleReport1(eventName))
+	retrieved, resp := apisAdmin.getReport(ctx, eventName, aliceReport)
+	require.Equal(t, http.StatusOK, resp.StatusCode)
+	require.NoError(t, resp.Body.Close())
+	require.Len(t, retrieved.JournalEntries, 2)
+	aliceEntry := retrieved.JournalEntries[1]
+
+	// Dave (reporter) tries to strike an entry on Alice's report → forbidden.
+	aliceEntry.Stricken = new(true)
+	resp = apisDave.updateReportJournalEntry(ctx, eventName, aliceReport, aliceEntry)
+	require.Equal(t, http.StatusForbidden, resp.StatusCode)
+	require.NoError(t, resp.Body.Close())
+
+	// The entry is untouched.
+	retrieved, resp = apisAdmin.getReport(ctx, eventName, aliceReport)
+	require.Equal(t, http.StatusOK, resp.StatusCode)
+	require.NoError(t, resp.Body.Close())
+	require.False(t, *retrieved.JournalEntries[1].Stricken)
+
+	// But Dave may strike an entry he authored himself — the limit is per-entry
+	// ownership, not a blanket block on reporters.
+	daveReport := apisDave.newReportSuccess(ctx, sampleReport1(eventName))
+	own, resp := apisDave.getReport(ctx, eventName, daveReport)
+	require.Equal(t, http.StatusOK, resp.StatusCode)
+	require.NoError(t, resp.Body.Close())
+	daveEntry := own.JournalEntries[1]
+	require.Equal(t, userDaveHandle, daveEntry.Author)
+	daveEntry.Stricken = new(true)
+	resp = apisDave.updateReportJournalEntry(ctx, eventName, daveReport, daveEntry)
+	require.Equal(t, http.StatusNoContent, resp.StatusCode)
+	require.NoError(t, resp.Body.Close())
+
+	own, resp = apisDave.getReport(ctx, eventName, daveReport)
+	require.Equal(t, http.StatusOK, resp.StatusCode)
+	require.NoError(t, resp.Body.Close())
+	require.True(t, *own.JournalEntries[1].Stricken)
+
+	// The decisive per-entry case: Alice (writer) adds an entry to DAVE'S report,
+	// so Dave's own report now contains an entry authored by Alice. Dave may not
+	// strike that entry — ownership is per-entry, not per-report. (Under a coarse
+	// per-report rule Dave would wrongly be allowed, since he authored the report.)
+	resp = apisAlice.updateReport(ctx, eventName, daveReport, imsjson.Report{
+		Number:         daveReport,
+		JournalEntries: []imsjson.JournalEntry{{Text: "writer note on Dave's report"}},
+	})
+	require.Equal(t, http.StatusNoContent, resp.StatusCode)
+	require.NoError(t, resp.Body.Close())
+
+	withAlice, resp := apisAdmin.getReport(ctx, eventName, daveReport)
+	require.Equal(t, http.StatusOK, resp.StatusCode)
+	require.NoError(t, resp.Body.Close())
+	var aliceOnDave imsjson.JournalEntry
+	for _, e := range withAlice.JournalEntries {
+		if e.Author == userAliceHandle {
+			aliceOnDave = e
+		}
+	}
+	require.NotZero(t, aliceOnDave.ID, "Alice's entry should be present on Dave's report")
+
+	aliceOnDave.Stricken = new(true)
+	resp = apisDave.updateReportJournalEntry(ctx, eventName, daveReport, aliceOnDave)
+	require.Equal(t, http.StatusForbidden, resp.StatusCode)
+	require.NoError(t, resp.Body.Close())
+}
+
 // TestJournalEntryMentions verifies that the @mention person IDs sent on a
 // journal entry (plan 81) are persisted and round-trip on read, resolved to the
 // mentioned person's handle/name. It also covers the insert-ignore semantics:

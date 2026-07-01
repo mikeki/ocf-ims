@@ -18,6 +18,7 @@ package api
 
 import (
 	"database/sql"
+	"errors"
 	"fmt"
 	"net/http"
 	"time"
@@ -83,6 +84,31 @@ func (action EditReportJournalEntry) editJournalEntry(req *http.Request) *herr.H
 	if re.Stricken == nil {
 		// Nothing to do if no Stricken value is set, since Stricken is the only field this endpoint can modify
 		return nil
+	}
+
+	// A user with only EventWriteOwnReports (a reporter) may strike/unstrike only
+	// the journal entries they authored themselves — striking someone else's entry
+	// would let them tamper with another person's words in the report's audit trail
+	// (plan 90 finding M1). Writers/admins (EventWriteAllReports) may strike any
+	// entry. A report is a collection of entries owned by their individual authors,
+	// so this is a per-entry check, not per-report.
+	if eventPermissions&authz.EventWriteAllReports == 0 {
+		author, err := action.imsDBQ.ReportJournalEntryAuthor(ctx, action.imsDBQ,
+			imsdb.ReportJournalEntryAuthorParams{
+				Event:        event.ID,
+				ReportNumber: reportNumber,
+				JournalEntry: journalEntryId,
+			},
+		)
+		if errors.Is(err, sql.ErrNoRows) {
+			return herr.NotFound("There is no such JournalEntry on this Report", err)
+		}
+		if err != nil {
+			return herr.InternalServerError("Failed to fetch JournalEntry author", err).From("[ReportJournalEntryAuthor]")
+		}
+		if author.String != jwtCtx.Claims.PersonHandle() {
+			return herr.Forbidden("The requestor may only strike their own journal entries", nil)
+		}
 	}
 
 	txn, err := action.imsDBQ.Begin()
