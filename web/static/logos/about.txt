@@ -1,6 +1,7 @@
-This favicon was generated using the following font:
+These favicons place the Oregon Country Fair peach (from ocf-logo-white.png,
+recolored coral) behind the "IMS" wordmark on a cream background. Regenerated
+from that source logo; the wordmark is set in a bold sans-serif.
 
+The earlier plain-square favicon was generated using:
 - Font Title: Reddit Sans Condensed
-- Font Author: undefined
-- Font Source: https://fonts.gstatic.com/s/redditsanscondensed/v3/m8J_jepOc6WYkkm2Dey9A5QGAQXmuL3va5IfZsq2gyKtWVJro_ANUpU4u7XDIuc.ttf
-- Font License: undefined)
+- Font Source: https://fonts.gstatic.com/s/redditsanscondensed/
