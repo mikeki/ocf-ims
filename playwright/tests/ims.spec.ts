@@ -187,8 +187,11 @@ test("incidents", async ({ page, browser }) => {
     // add several incident types to the incident
     {
       async function addType(page: Page, type: string): Promise<void> {
+        // The type picker is a search-first, category-grouped combobox: type to
+        // filter, then pick the match from the dropdown (round-7 item 1).
         await page.getByLabel("Add Incident Type").fill(type);
-        await page.getByLabel("Add Incident Type").press("Tab");
+        await page.locator("#incident_type_add_results")
+            .getByRole("button", {name: type, exact: true}).click();
 
         await expect(
             page.locator("div.card").filter(
