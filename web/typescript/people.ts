@@ -134,6 +134,9 @@ const el = {
     addPersonName: ims.typedElement("add_person_name", HTMLInputElement),
     addPersonHandle: ims.typedElement("add_person_handle", HTMLInputElement),
     addPersonEmail: ims.typedElement("add_person_email", HTMLInputElement),
+    addPersonEmailWrap: ims.typedElement("add_person_email_wrap", HTMLElement),
+    addPersonEmailLabel: ims.typedElement("add_person_email_label", HTMLElement),
+    addPersonEmailHome: ims.typedElement("add_person_email_home", HTMLElement),
     addPersonPhone: ims.typedElement("add_person_phone", HTMLInputElement),
     addPersonPassword: ims.typedElement("add_person_password", HTMLInputElement),
     addPersonPasswordConfirm: ims.typedElement("add_person_password_confirm", HTMLInputElement),
@@ -808,13 +811,24 @@ function setAccessShown(shown: boolean): void {
     el.addPersonAccessSection.classList.toggle("hidden", !shown);
     el.addPersonAccessToggle.classList.toggle("active", shown);
     el.addPersonAccessToggle.textContent = shown ? "Don't provide IMS access" : "Provide Access to IMS";
+    // With access on, email is a login credential: move it up next to the handle
+    // and relabel it required. With access off it's back to optional contact info
+    // in its original spot (right after its home anchor).
+    if (shown) {
+        el.addPersonAccessSection.insertBefore(el.addPersonEmailWrap, el.addPersonHandle.parentElement);
+        el.addPersonEmailLabel.textContent = "Email (required for login)";
+    } else {
+        el.addPersonEmailHome.after(el.addPersonEmailWrap);
+        el.addPersonEmailLabel.textContent = "Email (optional)";
+    }
 }
 
 function toggleProvideAccess(): void {
     const show = el.addPersonAccessSection.classList.contains("hidden"); // currently hidden -> reveal
     setAccessShown(show);
     if (show) {
-        el.addPersonHandle.focus();
+        // Send them to whichever required login field still needs filling first.
+        (el.addPersonEmail.value.trim() === "" ? el.addPersonEmail : el.addPersonHandle).focus();
     } else {
         // Collapsing discards any half-entered credentials so they aren't submitted.
         // Email is left alone — it's contact info, not a credential, and stays even

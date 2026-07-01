@@ -98,10 +98,13 @@ templ People(deployment, versionName, versionRef, eventName string) {
               </div>
               <!-- Email and phone are contact info, collectable for anyone at the fair
                    (with or without a login). Email doubles as a login identifier when
-                   access is provided below. -->
-              <div class="form-floating mb-2">
+                   access is provided, so toggleProvideAccess() moves this field up next
+                   to the handle and relabels it required. add_person_email_home marks
+                   where it returns to when access is turned back off. -->
+              <span id="add_person_email_home" class="d-none"></span>
+              <div class="form-floating mb-2" id="add_person_email_wrap">
                 <input id="add_person_email" type="email" class="form-control" autocomplete="off" placeholder="Email" />
-                <label for="add_person_email">Email (optional)</label>
+                <label id="add_person_email_label" for="add_person_email">Email (optional)</label>
               </div>
               <div class="form-floating mb-2">
                 <input id="add_person_phone" type="tel" class="form-control" autocomplete="off" placeholder="Phone" />
@@ -116,7 +119,9 @@ templ People(deployment, versionName, versionRef, eventName string) {
                 Provide Access to IMS
               </button>
               <div id="add_person_access_section" class="hidden">
-                <div class="form-text mb-2">Access requires a handle, plus the email above to sign in with.</div>
+                <div class="form-text mb-2">Signing in needs an email, a handle, and a password.</div>
+                <!-- toggleProvideAccess() moves #add_person_email_wrap in here (before
+                     the handle) while access is on, so the login fields sit together. -->
                 <div class="form-floating mb-3">
                   <input id="add_person_handle" type="text" class="form-control" autocomplete="off" placeholder="Handle" />
                   <label for="add_person_handle">Handle (required for login)</label>
