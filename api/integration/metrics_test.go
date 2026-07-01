@@ -207,3 +207,49 @@ func TestMetricsAggregation(t *testing.T) {
 	assert.Equal(t, int64(0), countFor(m.ByRole, "reporter"))
 	assert.Equal(t, "writer", m.ByRole[0].Key) // ladder order: writer first
 }
+
+// TestMetricsCacheInvalidation verifies that a write invalidates the per-event
+// dashboard cache immediately, rather than serving a stale aggregate until the
+// TTL expires. The cache TTL is a minute, so within a single test tick a second
+// read would return the primed value unless the write cleared the entry.
+func TestMetricsCacheInvalidation(t *testing.T) {
+	t.Parallel()
+	ctx := t.Context()
+
+	admin := ApiHelper{t: t, serverURL: shared.serverURL, jwt: jwtForAdmin(ctx, t)}
+	eventName := makeEvent(ctx, t, admin)
+	resp := admin.addWriter(ctx, eventName, userAdminHandle)
+	require.Equal(t, http.StatusNoContent, resp.StatusCode)
+	require.NoError(t, resp.Body.Close())
+
+	// Prime the cache on the empty event.
+	m, resp := admin.getMetrics(ctx, eventName)
+	require.Equal(t, http.StatusOK, resp.StatusCode)
+	require.NoError(t, resp.Body.Close())
+	require.Equal(t, int64(0), m.Total)
+
+	// Creating an incident must be reflected on the very next read.
+	num := admin.newIncidentSuccess(ctx, imsjson.Incident{
+		Event:   eventName,
+		State:   "new",
+		Summary: new("cache buster"),
+	})
+	m, resp = admin.getMetrics(ctx, eventName)
+	require.Equal(t, http.StatusOK, resp.StatusCode)
+	require.NoError(t, resp.Body.Close())
+	require.Equal(t, int64(1), m.Total, "incident create should invalidate the dashboard cache")
+	assert.Equal(t, int64(1), countFor(m.ByState, "new"))
+
+	// Editing that incident (closing it) must also invalidate immediately.
+	resp = admin.updateIncident(ctx, eventName, num, imsjson.Incident{
+		Event:  eventName,
+		Number: num,
+		State:  "closed",
+	})
+	require.Equal(t, http.StatusNoContent, resp.StatusCode)
+	require.NoError(t, resp.Body.Close())
+	m, resp = admin.getMetrics(ctx, eventName)
+	require.Equal(t, http.StatusOK, resp.StatusCode)
+	require.NoError(t, resp.Body.Close())
+	assert.Equal(t, int64(1), m.Closed, "incident edit should invalidate the dashboard cache")
+}

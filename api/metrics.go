@@ -53,6 +53,30 @@ func newMetricsCache() *metricsCache {
 	return &metricsCache{byEvent: map[string]*cache.InMemory[imsjson.Metrics]{}}
 }
 
+// InvalidateEvent drops the cached aggregate for one event so the next dashboard
+// read recomputes from the database. Called after an event-scoped mutation
+// (incident or area change) so the dashboard reflects the write immediately
+// instead of waiting out the TTL. A no-op if the event was never cached.
+func (c *metricsCache) InvalidateEvent(eventName string) {
+	c.mu.Lock()
+	entry, ok := c.byEvent[eventName]
+	c.mu.Unlock()
+	if ok {
+		entry.Invalidate()
+	}
+}
+
+// InvalidateAll drops every event's cached aggregate. Used after a change to
+// global reference data that the dashboard aggregates across events (the
+// incident-type taxonomy), where a single event key can't target the effect.
+func (c *metricsCache) InvalidateAll() {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	for _, entry := range c.byEvent {
+		entry.Invalidate()
+	}
+}
+
 // get returns the cached aggregate for eventName, computing it via refresh on a
 // miss (or expiry). refresh is only consulted once per TTL per event even under
 // concurrent load; errors are not cached.

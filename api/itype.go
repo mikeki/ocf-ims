@@ -85,6 +85,7 @@ func (action GetIncidentTypes) getIncidentTypes(req *http.Request) (imsjson.Inci
 type EditIncidentTypes struct {
 	imsDBQ    *store.DBQ
 	userStore directory.UserStore
+	metrics   *metricsCache
 }
 
 func (action EditIncidentTypes) ServeHTTP(w http.ResponseWriter, req *http.Request) {
@@ -93,6 +94,10 @@ func (action EditIncidentTypes) ServeHTTP(w http.ResponseWriter, req *http.Reque
 		errHTTP.From("[editIncidentTypes]").WriteResponse(w)
 		return
 	}
+	// Incident types are global reference data the dashboard aggregates across
+	// every event (the by-type / by-category breakdown), so a create/rename/hide
+	// can shift any event's aggregate — drop them all.
+	action.metrics.InvalidateAll()
 	if newID != nil {
 		w.Header().Set("IMS-Incident-Type-ID", strconv.Itoa(int(*newID)))
 	}

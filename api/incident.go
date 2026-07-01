@@ -475,6 +475,7 @@ type NewIncident struct {
 	userStore directory.UserStore
 	es        *EventSourcerer
 	pusher    *Pusher
+	metrics   *metricsCache
 }
 
 func (action NewIncident) ServeHTTP(w http.ResponseWriter, req *http.Request) {
@@ -530,6 +531,9 @@ func (action NewIncident) newIncident(req *http.Request) (incidentNumber int32, 
 	if errHTTP != nil {
 		return 0, "", errHTTP.From("[updateIncident]")
 	}
+
+	// A new incident shifts the dashboard aggregate for this event.
+	action.metrics.InvalidateEvent(event.Name)
 
 	return newIncident.Number, fmt.Sprintf("/ims/api/events/%v/incidents/%d", event.Name, newIncident.Number), nil
 }
@@ -1019,6 +1023,7 @@ type EditIncident struct {
 	userStore directory.UserStore
 	es        *EventSourcerer
 	pusher    *Pusher
+	metrics   *metricsCache
 }
 
 func (action EditIncident) ServeHTTP(w http.ResponseWriter, req *http.Request) {
@@ -1075,6 +1080,9 @@ func (action EditIncident) editIncident(req *http.Request) *herr.HTTPError {
 	if errHTTP != nil {
 		return errHTTP.From("[updateIncident]")
 	}
+
+	// State / priority / outcome / area edits all feed the dashboard aggregate.
+	action.metrics.InvalidateEvent(event.Name)
 
 	return nil
 }
