@@ -29,6 +29,13 @@ import (
 // mib is the number of bytes in 1 MiB.
 const mib = 1 << 20
 
+// minJWTSecretLen is the minimum IMS_JWT_SECRET length (in characters) accepted
+// for non-dev deployments. Access/refresh tokens are signed with HS256, whose
+// security rests entirely on this key, so we require at least the 32-byte /
+// 256-bit width of the underlying hash. A shorter secret is brute-forceable and
+// would let an attacker forge tokens (plan 90 finding M2).
+const minJWTSecretLen = 32
+
 // DefaultIMS is the base configuration used for the IMS server.
 // It gets overridden by values in .env, if present, then the result
 // of that gets overridden by environment variables. See mustApplyEnvConfig
@@ -89,6 +96,14 @@ func (c *IMSConfig) Validate() error {
 	if c.Core.Deployment != DeploymentTypeDev {
 		if c.Store.Type != DBStoreTypeMaria {
 			errs = append(errs, errors.New("non-dev environments must use a MariaDB datastore"))
+		}
+		// A non-dev deployment must supply a substantial JWT secret (operators set
+		// IMS_JWT_SECRET explicitly). Dev is exempt: DefaultIMS seeds a strong
+		// random per-boot secret and dev isn't internet-exposed.
+		if len(c.Core.JWTSecret) < minJWTSecretLen {
+			errs = append(errs, fmt.Errorf(
+				"IMS_JWT_SECRET must be at least %d characters in non-dev deployments (got %d)",
+				minJWTSecretLen, len(c.Core.JWTSecret)))
 		}
 	}
 
