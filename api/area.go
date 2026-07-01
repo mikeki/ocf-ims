@@ -38,6 +38,7 @@ import (
 type GetAreas struct {
 	imsDBQ            *store.DBQ
 	userStore         directory.UserStore
+	cache             *areasCache
 	cacheControlShort time.Duration
 }
 
@@ -65,11 +66,27 @@ func (action GetAreas) run(req *http.Request) (imsjson.Areas, *herr.HTTPError) {
 		return nil, herr.Forbidden("The requestor does not have EventReadAreas permission", nil)
 	}
 
-	areaRows, err := action.imsDBQ.AreasWithProposer(ctx, action.imsDBQ, event.ID)
+	// An event's area list is read on every incident form load but changes rarely,
+	// so it is served from an in-memory cache (refDataCacheTTL) keyed by event
+	// name; EditAreas invalidates it on every write. The refresher captures the
+	// resolved event id.
+	resp, err := action.cache.get(ctx, req.PathValue("eventName"), func(ctx context.Context) (imsjson.Areas, error) {
+		return loadAreasJSON(ctx, action.imsDBQ, event.ID)
+	})
 	if err != nil {
-		return nil, herr.InternalServerError("Failed to fetch Areas", err).From("[AreasWithProposer]")
+		return nil, herr.InternalServerError("Failed to fetch Areas", err).From("[cache.get]")
 	}
+	return resp, nil
+}
 
+// loadAreasJSON reads one event's areas and builds the JSON list. It is the areas
+// cache refresher, so cached readers only ever read the shared (never mutated)
+// slice.
+func loadAreasJSON(ctx context.Context, imsDBQ *store.DBQ, eventID int32) (imsjson.Areas, error) {
+	areaRows, err := imsDBQ.AreasWithProposer(ctx, imsDBQ, eventID)
+	if err != nil {
+		return nil, err
+	}
 	resp := make(imsjson.Areas, 0, len(areaRows))
 	for _, a := range areaRows {
 		resp = append(resp, areaRowToJSON(a))
@@ -81,6 +98,7 @@ type EditAreas struct {
 	imsDBQ    *store.DBQ
 	userStore directory.UserStore
 	metrics   *metricsCache
+	areas     *areasCache
 }
 
 func (action EditAreas) ServeHTTP(w http.ResponseWriter, req *http.Request) {
@@ -92,6 +110,8 @@ func (action EditAreas) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 	// Any area create / approve / merge / rename can shift the dashboard's
 	// per-area breakdown for this event. The path event name is the cache key.
 	action.metrics.InvalidateEvent(req.PathValue("eventName"))
+	// Drop the cached area list too so the change shows on the next read.
+	action.areas.InvalidateEvent(req.PathValue("eventName"))
 	if slug != "" {
 		w.Header().Set("IMS-Area-Slug", slug)
 	}

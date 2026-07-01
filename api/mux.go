@@ -69,6 +69,12 @@ func AddToMux(
 	// reflects changes immediately rather than waiting out the TTL.
 	metricsCache := newMetricsCache()
 
+	// Reference-data caches: the incident-type taxonomy (global) and each event's
+	// area list are read on nearly every incident form load but change rarely, so
+	// they are memoized here and invalidated by their write handlers.
+	incidentTypesCache := newIncidentTypesCache()
+	areasCache := newAreasCache()
+
 	mux.Handle("GET /ims/api/actionlogs",
 		Adapt(
 			GetActionLogs{db, userStore},
@@ -383,7 +389,7 @@ func AddToMux(
 
 	mux.Handle("GET /ims/api/events/{eventName}/areas",
 		Adapt(
-			GetAreas{db, userStore, cfg.Core.CacheControlShort},
+			GetAreas{db, userStore, areasCache, cfg.Core.CacheControlShort},
 			RecoverFromPanic(),
 			RequireAuthN(jwter),
 			LogRequest(true, actionLogger, userStore),
@@ -393,7 +399,7 @@ func AddToMux(
 
 	mux.Handle("POST /ims/api/events/{eventName}/areas",
 		Adapt(
-			EditAreas{db, userStore, metricsCache},
+			EditAreas{db, userStore, metricsCache, areasCache},
 			RecoverFromPanic(),
 			RequireAuthN(jwter),
 			LogRequest(true, actionLogger, userStore),
@@ -433,7 +439,7 @@ func AddToMux(
 
 	mux.Handle("GET /ims/api/incident_types",
 		Adapt(
-			GetIncidentTypes{db, userStore, cfg.Core.CacheControlShort},
+			GetIncidentTypes{db, userStore, incidentTypesCache, cfg.Core.CacheControlShort},
 			RecoverFromPanic(),
 			RequireAuthN(jwter),
 			LogRequest(false, actionLogger, userStore),
@@ -443,7 +449,7 @@ func AddToMux(
 
 	mux.Handle("POST /ims/api/incident_types",
 		Adapt(
-			EditIncidentTypes{db, userStore, metricsCache},
+			EditIncidentTypes{db, userStore, metricsCache, incidentTypesCache},
 			RecoverFromPanic(),
 			RequireAuthN(jwter),
 			LogRequest(true, actionLogger, userStore),
@@ -456,7 +462,7 @@ func AddToMux(
 	// global). Approval happens back on the global admin endpoint above.
 	mux.Handle("POST /ims/api/events/{eventName}/incident_types",
 		Adapt(
-			ProposeIncidentType{db, userStore, metricsCache},
+			ProposeIncidentType{db, userStore, metricsCache, incidentTypesCache},
 			RecoverFromPanic(),
 			RequireAuthN(jwter),
 			LogRequest(true, actionLogger, userStore),
