@@ -113,11 +113,22 @@ func (e *HTTPError) Unwrap() error {
 
 func (e *HTTPError) WriteResponse(w http.ResponseWriter) {
 	if !e.ExpectedError {
-		slog.Error("Writing error HTTP response",
+		// Split severity by status so a warn-level log still surfaces the things
+		// that matter without miscategorizing them. A 5xx is our fault (a server
+		// fault) → Error. A 4xx is the client's (a failed login, a forbidden
+		// attempt, a conflict, bad input) — notable enough to see at warn, but not
+		// a server error → Warn. ExpectedError silences the routine cases (e.g. a
+		// missing refresh-token cookie) entirely.
+		args := []any{
 			"code", e.Code,
 			"message", e.ResponseMessage,
 			"internalError", e.InternalErr,
-		)
+		}
+		if e.Code >= http.StatusInternalServerError {
+			slog.Error("Writing error HTTP response", args...)
+		} else {
+			slog.Warn("Writing error HTTP response", args...)
+		}
 	}
 
 	p := Problem{
