@@ -247,6 +247,8 @@ func TestPublicAPIs_RequireNoAuthn(t *testing.T) {
 	public := []MethodURL{
 		{http.MethodGet, "/"},
 		{http.MethodGet, "/ims/api/ping"},
+		// readyz is unauthenticated like ping; with a healthy DB it returns 200.
+		{http.MethodGet, "/ims/api/readyz"},
 	}
 	apisNotAuthenticated := ApiHelper{t: t, serverURL: shared.serverURL, jwt: ""}
 	for _, api := range public {
