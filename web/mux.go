@@ -87,40 +87,39 @@ func AddToMux(mux *http.ServeMux, cfg *conf.IMSConfig) *http.ServeMux {
 		),
 	)
 	mux.Handle("GET /ims/app",
-		AdaptTempl(template.Root(deployment, versionName, versionRef), cfg.Core.CacheControlLong),
+		AdaptTempl(template.Root(deployment, versionName, versionRef)),
 	)
 	mux.Handle("GET /ims/app/admin",
-		AdaptTempl(template.AdminRoot(deployment, versionName, versionRef), cfg.Core.CacheControlLong),
+		AdaptTempl(template.AdminRoot(deployment, versionName, versionRef)),
 	)
 	mux.Handle("GET /ims/app/admin/events",
-		AdaptTempl(template.AdminEvents(deployment, versionName, versionRef), cfg.Core.CacheControlLong),
+		AdaptTempl(template.AdminEvents(deployment, versionName, versionRef)),
 	)
 	mux.Handle("GET /ims/app/admin/actionlogs",
-		AdaptTempl(template.AdminActionLogs(deployment, versionName, versionRef), cfg.Core.CacheControlLong),
+		AdaptTempl(template.AdminActionLogs(deployment, versionName, versionRef)),
 	)
 	mux.Handle("GET /ims/app/admin/types",
-		AdaptTempl(template.AdminTypes(deployment, versionName, versionRef), cfg.Core.CacheControlLong),
+		AdaptTempl(template.AdminTypes(deployment, versionName, versionRef)),
 	)
 	mux.Handle("GET /ims/app/admin/debug",
-		AdaptTempl(template.AdminDebug(deployment, versionName, versionRef), cfg.Core.CacheControlLong),
+		AdaptTempl(template.AdminDebug(deployment, versionName, versionRef)),
 	)
 	// Areas: the global Admin doorway (event picker, eventName ""). The primary
 	// doorway is the event-scoped page registered below; the same template serves
 	// both, mirroring People. See docs/plans/68-feedback-round-6.md (6o).
 	mux.Handle("GET /ims/app/admin/areas",
-		AdaptTempl(template.AdminAreas(deployment, versionName, versionRef, ""), cfg.Core.CacheControlLong),
+		AdaptTempl(template.AdminAreas(deployment, versionName, versionRef, "")),
 	)
 	mux.Handle("GET /ims/app/admin/people",
-		AdaptTempl(template.People(deployment, versionName, versionRef, ""), cfg.Core.CacheControlLong),
+		AdaptTempl(template.People(deployment, versionName, versionRef, "")),
 	)
 	mux.Handle("GET /ims/app/settings",
-		AdaptTempl(template.Settings(deployment, versionName, versionRef), cfg.Core.CacheControlLong),
+		AdaptTempl(template.Settings(deployment, versionName, versionRef)),
 	)
 	mux.HandleFunc("GET /ims/app/events/{eventName}/reports",
 		func(w http.ResponseWriter, r *http.Request) {
 			AdaptTempl(
 				template.Reports(deployment, versionName, versionRef, r.PathValue("eventName")),
-				cfg.Core.CacheControlLong,
 			).ServeHTTP(w, r)
 		},
 	)
@@ -128,7 +127,6 @@ func AddToMux(mux *http.ServeMux, cfg *conf.IMSConfig) *http.ServeMux {
 		func(w http.ResponseWriter, r *http.Request) {
 			AdaptTempl(
 				template.Report(deployment, versionName, versionRef, r.PathValue("eventName")),
-				cfg.Core.CacheControlLong,
 			).ServeHTTP(w, r)
 		},
 	)
@@ -136,7 +134,6 @@ func AddToMux(mux *http.ServeMux, cfg *conf.IMSConfig) *http.ServeMux {
 		func(w http.ResponseWriter, r *http.Request) {
 			AdaptTempl(
 				template.Incidents(deployment, versionName, versionRef, r.PathValue("eventName")),
-				cfg.Core.CacheControlLong,
 			).ServeHTTP(w, r)
 		},
 	)
@@ -144,7 +141,6 @@ func AddToMux(mux *http.ServeMux, cfg *conf.IMSConfig) *http.ServeMux {
 		func(w http.ResponseWriter, r *http.Request) {
 			AdaptTempl(
 				template.Incident(deployment, versionName, versionRef, r.PathValue("eventName")),
-				cfg.Core.CacheControlLong,
 			).ServeHTTP(w, r)
 		},
 	)
@@ -152,7 +148,6 @@ func AddToMux(mux *http.ServeMux, cfg *conf.IMSConfig) *http.ServeMux {
 		func(w http.ResponseWriter, r *http.Request) {
 			AdaptTempl(
 				template.SanctuaryVisits(deployment, versionName, versionRef, r.PathValue("eventName")),
-				cfg.Core.CacheControlLong,
 			).ServeHTTP(w, r)
 		},
 	)
@@ -160,7 +155,6 @@ func AddToMux(mux *http.ServeMux, cfg *conf.IMSConfig) *http.ServeMux {
 		func(w http.ResponseWriter, r *http.Request) {
 			AdaptTempl(
 				template.SanctuaryVisit(deployment, versionName, versionRef, r.PathValue("eventName")),
-				cfg.Core.CacheControlLong,
 			).ServeHTTP(w, r)
 		},
 	)
@@ -171,7 +165,6 @@ func AddToMux(mux *http.ServeMux, cfg *conf.IMSConfig) *http.ServeMux {
 		func(w http.ResponseWriter, r *http.Request) {
 			AdaptTempl(
 				template.People(deployment, versionName, versionRef, r.PathValue("eventName")),
-				cfg.Core.CacheControlLong,
 			).ServeHTTP(w, r)
 		},
 	)
@@ -182,7 +175,6 @@ func AddToMux(mux *http.ServeMux, cfg *conf.IMSConfig) *http.ServeMux {
 		func(w http.ResponseWriter, r *http.Request) {
 			AdaptTempl(
 				template.AdminAreas(deployment, versionName, versionRef, r.PathValue("eventName")),
-				cfg.Core.CacheControlLong,
 			).ServeHTTP(w, r)
 		},
 	)
@@ -193,7 +185,6 @@ func AddToMux(mux *http.ServeMux, cfg *conf.IMSConfig) *http.ServeMux {
 		func(w http.ResponseWriter, r *http.Request) {
 			AdaptTempl(
 				template.Dashboard(deployment, versionName, versionRef, r.PathValue("eventName")),
-				cfg.Core.CacheControlLong,
 			).ServeHTTP(w, r)
 		},
 	)
@@ -205,7 +196,7 @@ func AddToMux(mux *http.ServeMux, cfg *conf.IMSConfig) *http.ServeMux {
 	)
 
 	mux.Handle("GET /ims/auth/login",
-		AdaptTempl(template.Login(deployment, versionName, versionRef), cfg.Core.CacheControlLong),
+		AdaptTempl(template.Login(deployment, versionName, versionRef)),
 	)
 	mux.Handle("GET /ims/auth/logout",
 		Adapt(
@@ -253,6 +244,21 @@ func CacheControl(maxAge time.Duration) Adapter {
 	}
 }
 
+// NoCache marks a response as always-revalidate ("Cache-Control: no-cache").
+// The browser may store the response but must check with the origin before
+// serving it, so an updated document (with new versioned asset URLs) is picked
+// up on the next request rather than after the max-age expires. Used for the
+// server-rendered HTML documents; the versioned static assets they reference
+// keep their long cache.
+func NoCache() Adapter {
+	return func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			w.Header().Set("Cache-Control", "no-cache")
+			next.ServeHTTP(w, r)
+		})
+	}
+}
+
 // CdnCacheControlOff prevents Cloudflare from caching a resource. An agent can still cache
 // the file locally based on Cache-Control. This setting just stops Cloudflare from doing
 // its additional level of caching.
@@ -280,8 +286,15 @@ func Adapt(h http.HandlerFunc, adapters ...Adapter) http.Handler {
 	return handler
 }
 
-func AdaptTempl(comp templ.Component, cacheControlLong time.Duration, adapters ...Adapter) http.Handler {
-	adapters = append(adapters, CacheControl(cacheControlLong))
+// AdaptTempl serves a server-rendered HTML document. HTML is sent with
+// "Cache-Control: no-cache" so the browser always revalidates it before use.
+// The document carries the "?v=${gitRef}" busters on our JS and CSS (see Head),
+// so it MUST stay fresh — otherwise a returning user keeps a cached page that
+// still points at the previous release's assets, and a new deploy only shows up
+// after a manual hard refresh. The referenced JS/CSS keep their long cache: their
+// URLs change every release, so caching them is both safe and desirable.
+func AdaptTempl(comp templ.Component, adapters ...Adapter) http.Handler {
+	adapters = append(adapters, NoCache())
 	return Adapt(
 		func(w http.ResponseWriter, req *http.Request) {
 			err := comp.Render(req.Context(), w)

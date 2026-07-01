@@ -72,10 +72,18 @@ func TestTemplEndpoints(t *testing.T) {
 		require.Equal(t, http.StatusOK, resp.StatusCode)
 		require.Equalf(t, "text/html; charset=utf-8", resp.Header.Get("Content-Type"),
 			"Wrong content type for templ endpoint %v", endpoint)
+		// HTML documents must be revalidated (no-cache): they carry the "?v=" asset
+		// busters, so a stale cached page would keep pointing at old JS/CSS and a new
+		// deploy would need a manual hard refresh to appear.
+		require.Equalf(t, "no-cache", resp.Header.Get("Cache-Control"),
+			"Wrong Cache-Control for templ endpoint %v", endpoint)
 		bod, err := io.ReadAll(resp.Body)
 		require.NoError(t, resp.Body.Close())
 		require.NoError(t, err)
 		require.Contains(t, string(bod), "IMS © Oregon Country Fair")
+		// The stylesheet must carry the version buster so a new release invalidates it.
+		require.Containsf(t, string(bod), "/ims/static/style.css?v=",
+			"Missing style.css cache-buster on templ endpoint %v", endpoint)
 	}
 }
 
