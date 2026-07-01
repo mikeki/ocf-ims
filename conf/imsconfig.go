@@ -36,18 +36,19 @@ const mib = 1 << 20
 func DefaultIMS() *IMSConfig {
 	return &IMSConfig{
 		Core: ConfigCore{
-			Host:                 "localhost",
-			Port:                 8080,
-			JWTSecret:            rand.Text(),
-			Deployment:           "dev",
-			LogLevel:             "INFO",
-			AccessTokenLifetime:  15 * time.Minute,
-			RefreshTokenLifetime: 8 * time.Hour,
-			CacheControlShort:    20 * time.Minute,
-			CacheControlLong:     2 * time.Hour,
-			MaxRequestBytes:      100 * mib,
-			ActionLogEnabled:     true,
-			Seed:                 SeedNone,
+			Host:                  "localhost",
+			Port:                  8080,
+			JWTSecret:             rand.Text(),
+			Deployment:            "dev",
+			LogLevel:              "INFO",
+			AccessTokenLifetime:   15 * time.Minute,
+			RefreshTokenLifetime:  8 * time.Hour,
+			CacheControlShort:     20 * time.Minute,
+			CacheControlLong:      2 * time.Hour,
+			MaxRequestBytes:       100 * mib,
+			ActionLogEnabled:      true,
+			LoginRateLimitEnabled: true,
+			Seed:                  SeedNone,
 		},
 		Store: DBStore{
 			Type: DBStoreTypeMaria,
@@ -229,6 +230,11 @@ type ConfigCore struct {
 
 	// ActionLogEnabled is a global toggle switch for enabling writing to the ACTION_LOG table.
 	ActionLogEnabled bool
+
+	// LoginRateLimitEnabled toggles the failed-login throttle/lockout on
+	// POST /ims/api/auth (plan 90, finding H1). Defaults to true; tests that
+	// hammer the auth endpoint from a shared address disable it.
+	LoginRateLimitEnabled bool
 
 	// Seed selects which seed dataset (if any) is loaded into an empty database
 	// on boot. Defaults to SeedNone; "demo" loads the dev fixture. The load is

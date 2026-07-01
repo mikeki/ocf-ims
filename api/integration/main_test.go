@@ -160,6 +160,11 @@ func setup(ctx context.Context, tempDir string) {
 	shared.cfg.Store.MariaDB.Database = "ims-" + rand.NonCryptoText()
 	shared.cfg.Store.MariaDB.Username = "rangers-" + rand.NonCryptoText()
 	shared.cfg.Store.MariaDB.Password = "password-" + rand.NonCryptoText()
+	// The shared suite runs many parallel tests that intentionally fail logins from
+	// the same loopback address; leave the login throttle off here so they don't
+	// trip each other. The throttle itself is covered on a dedicated server in
+	// ratelimit_test.go.
+	shared.cfg.Core.LoginRateLimitEnabled = false
 	must(shared.cfg.Validate())
 	shared.es = api.NewEventSourcerer()
 
