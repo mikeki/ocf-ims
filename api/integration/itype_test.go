@@ -150,6 +150,7 @@ func TestProposeAndApproveIncidentType(t *testing.T) {
 	typeName := rand.NonCryptoText()
 	id, resp := apisAlice.proposeType(ctx, eventName, imsjson.IncidentType{Name: &typeName})
 	require.Equal(t, http.StatusCreated, resp.StatusCode)
+	require.NoError(t, resp.Body.Close())
 	require.NotNil(t, id)
 
 	types, resp := apisAdmin.getTypes(ctx)
@@ -177,6 +178,7 @@ func TestProposeAndApproveIncidentType(t *testing.T) {
 	// NAME is collation-insensitive), rather than failing.
 	dupID, resp := apisAlice.proposeType(ctx, eventName, imsjson.IncidentType{Name: &typeName})
 	require.Equal(t, http.StatusCreated, resp.StatusCode)
+	require.NoError(t, resp.Body.Close())
 	require.NotNil(t, dupID)
 	require.Equal(t, *id, *dupID)
 
