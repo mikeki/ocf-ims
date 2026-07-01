@@ -139,6 +139,30 @@ h1, h2, h3, h4, h5, h6 {
   font-size: var(--font-size-smaller);
 }
 
+/* Attached-people rows on an incident: keep the name and the involvement field
+   from crowding each other. The name takes the free space on the left; the
+   involvement input is bounded so it stops sprawling across the row (it used to
+   inherit flex:2 from .flex-input-container > input). The row wraps on narrow
+   screens rather than overflowing. */
+.incident-person-item {
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.25rem 0.5rem;
+}
+
+.incident-person-item > .person-name {
+  flex: 1 1 auto;
+  min-width: 6rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.incident-person-item > .involvement-input {
+  flex: 0 1 12rem;
+  max-width: 12rem;
+}
+
 .auto-width {
   width: auto;
   display: inline;
