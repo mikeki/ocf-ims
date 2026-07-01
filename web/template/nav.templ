@@ -289,8 +289,11 @@ templ Nav(eventName string) {
      this device has no active subscription yet, and the user hasn't dismissed
      it. "Enable" runs the same opt-in as Settings; "Not now" remembers the
      dismissal so we don't nag (the Settings toggle remains available). -->
+<!-- d-lg-none: the nudge is for phones/tablets, where web push is the point (get
+     notified while IMS isn't open). On desktop it's just clutter — a user at a
+     keyboard can flip the Settings toggle — so hide it at the lg breakpoint up. -->
 <div id="push_optin_prompt"
-     class="alert alert-info d-flex flex-wrap align-items-center gap-2 my-2 hidden no-print" role="alert">
+     class="alert alert-info d-flex d-lg-none flex-wrap align-items-center gap-2 my-2 hidden no-print" role="alert">
   <svg class="bi flex-shrink-0" fill="currentColor" width="16" height="16"><use href="#bell"></use></svg>
   <span class="flex-grow-1">
     Get notified on this device when you're mentioned or added to an incident — even when IMS isn't open.
