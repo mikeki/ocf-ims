@@ -629,6 +629,26 @@ func AddToMux(
 		),
 	)
 
+	// Readiness probe: unlike /ping (liveness — "is the process serving HTTP?",
+	// used to decide a restart), /readyz reports whether the app can actually
+	// reach its dependencies, so a monitor can tell "DB down" from "process
+	// dead". It lives here rather than in AddBasicHandlers because that's where
+	// the *store.DBQ handle is. Deliberately unauthenticated (like /ping, it only
+	// leaks up/down) and unlogged (high-frequency; it would spam the action log).
+	// The short timeout makes a hung/locked DB fail the probe fast instead of
+	// hanging it, and the body avoids echoing the DB error.
+	mux.HandleFunc("GET /ims/api/readyz",
+		func(w http.ResponseWriter, req *http.Request) {
+			ctx, cancel := context.WithTimeout(req.Context(), 2*time.Second)
+			defer cancel()
+			if err := db.PingContext(ctx); err != nil {
+				http.Error(w, "not ready", http.StatusServiceUnavailable)
+				return
+			}
+			herr.WriteOKResponse(w, "ready")
+		},
+	)
+
 	// Uncomment these to add pprof into the program. Note that we'd probably want
 	// these endpoints to be restricted to admins only, were this going to run in
 	// production.
