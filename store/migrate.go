@@ -53,6 +53,10 @@ func init() {
 func MigrateDB(ctx context.Context, imsDBQ *sql.DB) error {
 	err := goose.UpContext(ctx, imsDBQ, migrationsDir)
 	if err != nil {
+		// A failed migration blocks boot; log it at Error so it's unmistakable in
+		// the structured logs (the caller turns startup errors into a panic, whose
+		// stderr trace is easy to miss).
+		slog.Error("Database migration failed", "err", err)
 		return fmt.Errorf("[goose.UpContext]: %w", err)
 	}
 

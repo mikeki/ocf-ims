@@ -17,15 +17,18 @@
 package herr
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
-	"github.com/stretchr/testify/assert"
-	"github.com/stretchr/testify/require"
+	"log/slog"
 	"net/http"
 	"net/http/httptest"
 	"testing"
 	"testing/synctest"
 	"time"
+
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func TestNew(t *testing.T) {
@@ -126,4 +129,44 @@ func sampleFunction() *HTTPError {
 		return err.From("[outer]")
 	}
 	return nil
+}
+
+// levelCaptureHandler records the level of every log record it handles.
+type levelCaptureHandler struct{ levels *[]slog.Level }
+
+func (h levelCaptureHandler) Enabled(context.Context, slog.Level) bool { return true }
+func (h levelCaptureHandler) Handle(_ context.Context, r slog.Record) error {
+	*h.levels = append(*h.levels, r.Level)
+	return nil
+}
+func (h levelCaptureHandler) WithAttrs([]slog.Attr) slog.Handler { return h }
+func (h levelCaptureHandler) WithGroup(string) slog.Handler      { return h }
+
+// TestWriteResponseLogLevel pins the severity split: a 5xx logs at Error, a 4xx
+// at Warn (so it's still visible at a warn log level), and an ExpectedError logs
+// nothing at all. It swaps the global slog default logger, so it deliberately does
+// not run in parallel.
+//
+//nolint:paralleltest // swaps the global slog default logger; must run serially
+func TestWriteResponseLogLevel(t *testing.T) {
+	var levels []slog.Level
+	prev := slog.Default()
+	slog.SetDefault(slog.New(levelCaptureHandler{levels: &levels}))
+	t.Cleanup(func() { slog.SetDefault(prev) })
+
+	cases := []struct {
+		name     string
+		err      *HTTPError
+		wantLogs []slog.Level
+	}{
+		{"server error is Error", InternalServerError("boom", errors.New("x")), []slog.Level{slog.LevelError}},
+		{"forbidden is Warn", Forbidden("nope", nil), []slog.Level{slog.LevelWarn}},
+		{"unauthorized is Warn", Unauthorized("nope", nil), []slog.Level{slog.LevelWarn}},
+		{"expected error is silent", Forbidden("nope", nil).SetExpectedError(), nil},
+	}
+	for _, tc := range cases {
+		levels = nil
+		tc.err.WriteResponse(httptest.NewRecorder())
+		assert.Equal(t, tc.wantLogs, levels, tc.name)
+	}
 }
