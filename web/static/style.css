@@ -139,11 +139,12 @@ h1, h2, h3, h4, h5, h6 {
   font-size: var(--font-size-smaller);
 }
 
-/* Attached-people rows on an incident: keep the name and the involvement field
-   from crowding each other. The name takes the free space on the left; the
-   involvement input is bounded so it stops sprawling across the row (it used to
-   inherit flex:2 from .flex-input-container > input). The row wraps on narrow
-   screens rather than overflowing. */
+/* Attached-people rows on an incident: keep the involvement field right next to
+   the name rather than sprawling across the row (it used to inherit flex:2 from
+   .flex-input-container > input). The name sits at natural width; the involvement
+   input follows it (bounded), and its auto right-margin absorbs the free space so
+   the trailing controls (access checkbox / badge / remove) stay at the far right.
+   The row wraps on narrow screens rather than overflowing. */
 .incident-person-item {
   align-items: center;
   flex-wrap: wrap;
@@ -151,8 +152,8 @@ h1, h2, h3, h4, h5, h6 {
 }
 
 .incident-person-item > .person-name {
-  flex: 1 1 auto;
-  min-width: 6rem;
+  flex: 0 1 auto;
+  min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -161,6 +162,7 @@ h1, h2, h3, h4, h5, h6 {
 .incident-person-item > .involvement-input {
   flex: 0 1 12rem;
   max-width: 12rem;
+  margin-right: auto;
 }
 
 .auto-width {
