@@ -1055,6 +1055,12 @@ export function outcomeNameFromID(outcomeID: IncidentOutcome): string {
         case "referred_to_mediation"       : return "Referred to Mediation";
         case "follow_up_required"          : return "Follow-Up Required";
         case "no_action_needed"            : return "No Action Needed";
+        case "taken_to_big_bird"           : return "Taken to Big Bird";
+        case "taken_to_little_wing"        : return "Taken to Little Wing";
+        case "asked_to_leave"              : return "Asked to Leave";
+        case "booted"                      : return "Booted";
+        case "arrested"                    : return "Arrested";
+        case "transported_in_ambulance"    : return "Transported in Ambulance";
         default:
             console.warn(`Unknown incident outcome ID: ${outcomeID satisfies never}`);
             return "Unknown";
@@ -3223,7 +3229,9 @@ export type IncidentState = 'new'|'on_hold'|'dispatched'|'on_scene'|'closed'|'nu
 export type IncidentOutcome =
     ''|'information_only'|'resolved_on_scene'|'referred_to_coordinator'|
     'referred_to_management'|'referred_to_community_support'|
-    'referred_to_mediation'|'follow_up_required'|'no_action_needed';
+    'referred_to_mediation'|'follow_up_required'|'no_action_needed'|
+    'taken_to_big_bird'|'taken_to_little_wing'|'asked_to_leave'|
+    'booted'|'arrested'|'transported_in_ambulance';
 
 export type Incident = {
     number?: number|null;
