@@ -164,9 +164,9 @@ templ Incident(deployment, versionName, versionRef, eventName string) {
           </label>
           <ul id="incident_people_list" class="list-group list-group-flush list-group-small card-body">
             <template id="incident_people_li_template">
-              <li class="list-group-item flex-input-container ps-3 hidden">
-                <span><a href="#" tabindex="-1"></a></span>
-                <input aria-label="Description of involvement" type="text" class="form-control form-control-sm short-input auto-width"
+              <li class="list-group-item flex-input-container incident-person-item ps-3 hidden">
+                <span class="person-name"><a href="#" tabindex="-1"></a></span>
+                <input aria-label="Description of involvement" type="text" class="form-control form-control-sm short-input involvement-input"
                     list="involvement_presets" placeholder="Involvement (e.g. Witness)" onchange="setPersonInvolvement(this)" maxlength="50"
                 />
                 <!-- 52f: grant this involved reporter read + journal-add access to
