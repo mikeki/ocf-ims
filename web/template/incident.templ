@@ -191,6 +191,7 @@ templ Incident(deployment, versionName, versionRef, eventName string) {
             <option value="Injured Party"></option>
             <option value="First Responder"></option>
             <option value="Staff"></option>
+            <option value="Other"></option>
           </datalist>
           <div class="card-footer no-print">
             <div class="flex-input-container">
@@ -237,19 +238,27 @@ templ Incident(deployment, versionName, versionRef, eventName string) {
           <div class="card-footer no-print">
             <div class="flex-input-container">
               <label for="incident_type_add" class="control-label">Add:</label>
-              <div class="position-relative auto-width">
-                <input
-                        type="text"
-                        id="incident_type_add"
-                        aria-label="Add Incident Type"
-                        autocomplete="off"
-                        placeholder="Search incident types…"
-                        class="form-control form-control-sm w-100"
-                />
-                <div id="incident_type_add_results"
-                     class="list-group position-absolute w-100 shadow-sm hidden"
-                     style="z-index: 1000; max-height: 16rem; overflow-y: auto;"></div>
-              </div>
+              <input
+                      type="text"
+                      id="incident_type_add"
+                      aria-label="Add Incident Type"
+                      list="incident_types"
+                      autocomplete="off"
+                      placeholder="Type or pick a type…"
+                      class="form-control form-control-sm auto-width"
+                      onchange="addIncidentType()"
+              />
+              <datalist id="incident_types">
+                <option value=""/>
+              </datalist>
+            </div>
+            <div id="incident_type_create" class="form-text no-print hidden">
+              No incident type matches "<span id="incident_type_create_name"></span>".
+              <button type="button" class="btn btn-sm btn-link p-0 align-baseline"
+                      id="incident_type_create_btn"
+                      onclick="proposeIncidentType()">
+                Propose it for this event
+              </button>
             </div>
           </div>
         </div>

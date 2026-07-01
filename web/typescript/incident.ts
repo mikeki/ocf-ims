@@ -30,6 +30,8 @@ declare global {
         removePerson: (el: HTMLElement)=>void;
         setPersonInvolvement: (el: HTMLInputElement)=>void;
         setPersonGrant: (el: HTMLInputElement)=>void;
+        addIncidentType: ()=>Promise<void>;
+        proposeIncidentType: ()=>Promise<void>;
         removeIncidentType: (el: HTMLElement)=>Promise<void>;
         detachReport: (el: HTMLElement)=>Promise<void>;
         attachReport: ()=>Promise<void>;
@@ -51,6 +53,11 @@ let allEvents: ims.EventData[]|null = null;
 
 // The current event's areas, used to populate the location Area combobox.
 let eventAreas: ims.Area[] = [];
+
+// The reserved "type your own" option, pinned last in the incident-type, area,
+// and involvement pickers. Selecting it clears the field and prompts free-text
+// entry, rather than attaching a literal option named "Other".
+const OTHER_OPTION_LABEL = "Other";
 
 //
 // Initialize UI
@@ -77,7 +84,9 @@ const el = {
     peopleLiTemplate: ims.typedElement("incident_people_li_template", HTMLTemplateElement),
 
     incidentTypeAdd: ims.typedElement("incident_type_add", HTMLInputElement),
-    incidentTypeAddResults: ims.typedElement("incident_type_add_results", HTMLElement),
+    incidentTypes: ims.typedElement("incident_types", HTMLDataListElement),
+    incidentTypeCreate: ims.typedElement("incident_type_create", HTMLDivElement),
+    incidentTypeCreateName: ims.typedElement("incident_type_create_name", HTMLSpanElement),
     incidentTypesList: ims.typedElement("incident_types_list", HTMLUListElement),
     incidentTypesRequired: ims.typedElement("incident_types_required", HTMLElement),
     incidentTypesLiTemplate: ims.typedElement("incident_types_li_template", HTMLTemplateElement),
@@ -129,6 +138,8 @@ async function initIncidentPage(): Promise<void> {
     window.removePerson = removePerson;
     window.setPersonInvolvement = setPersonInvolvement;
     window.setPersonGrant = setPersonGrant;
+    window.addIncidentType = addIncidentType;
+    window.proposeIncidentType = proposeIncidentType;
     window.removeIncidentType = removeIncidentType;
     window.detachReport = detachReport;
     window.attachReport = attachReport;
@@ -168,7 +179,7 @@ async function initIncidentPage(): Promise<void> {
     drawPeople();
     setupPersonAdd();
     ims.setupJournalMentionAutocomplete(ims.pathIds.eventName ?? "");
-    setupIncidentTypeAdd();
+    drawIncidentTypesToAdd();
     drawIncidentTypeInfo();
     renderReportData();
 
@@ -814,151 +825,102 @@ function drawIncidentTypes() {
 }
 
 
-// setupIncidentTypeAdd wires the "Add incident type" input as a search-first,
-// category-grouped combobox (round-7 item 1). The native <datalist> it replaces
-// showed a flat, ungrouped list that hid the OCF category structure. This filters
-// the client-side allIncidentTypes by substring, clusters matches under their
-// category heading, and adds the picked type — mirroring the person combobox
-// (ims.setupPersonCombobox) in look and keyboard behaviour.
-function setupIncidentTypeAdd(): void {
-    const input = el.incidentTypeAdd;
-    const results = el.incidentTypeAddResults;
-    // A row is either an existing type to attach or the "propose new type" action.
-    type Row = {type?: ims.IncidentType; proposeName?: string};
-    let rows: Row[] = [];
-    let activeIndex = -1;
+const TYPE_ADD_PLACEHOLDER = "Type or pick a type…";
+const TYPE_ADD_PROMPT = "Type a new incident type…";
 
-    function closeList(): void {
-        results.replaceChildren();
-        results.classList.add("hidden");
-        rows = [];
-        activeIndex = -1;
+// drawIncidentTypesToAdd rebuilds the flat <datalist> backing the "Add incident
+// type" field. Non-hidden types are listed plain alphabetically (this native
+// datalist has no group headers, so a category ordering would read as
+// "unsorted" when scanning for a name — slice 6h). A single "Other" entry is
+// pinned LAST as the "type your own" trigger; the literal seeded "Other" type is
+// not offered directly, since "Other" is reserved for free-entry.
+function drawIncidentTypesToAdd(): void {
+    el.incidentTypes.replaceChildren();
+    el.incidentTypes.append(document.createElement("option"));
+    const sorted = allIncidentTypes
+        .filter(t => !t.hidden && t.name && normalize(t.name) !== normalize(OTHER_OPTION_LABEL))
+        .sort((a, b) => (a.name??"").localeCompare(b.name??""));
+    for (const incidentType of sorted) {
+        const option: HTMLOptionElement = document.createElement("option");
+        option.value = incidentType.name!;
+        el.incidentTypes.append(option);
     }
+    // "Other" pinned last: the free-entry trigger.
+    const other: HTMLOptionElement = document.createElement("option");
+    other.value = OTHER_OPTION_LABEL;
+    el.incidentTypes.append(other);
+}
 
-    function highlight(idx: number): void {
-        activeIndex = idx;
-        results.querySelectorAll("button").forEach((b: HTMLElement, i: number): void => {
-            b.classList.toggle("active", i === idx);
-        });
+// The type name the user typed that matched no existing type, kept so the
+// "Propose it" button knows what to create.
+let pendingTypeName = "";
+
+function showIncidentTypeCreateOffer(name: string): void {
+    pendingTypeName = name;
+    el.incidentTypeCreateName.textContent = name;
+    el.incidentTypeCreate.classList.remove("hidden");
+}
+
+function hideIncidentTypeCreateOffer(): void {
+    pendingTypeName = "";
+    el.incidentTypeCreate.classList.add("hidden");
+}
+
+// resetTypeAddField clears the Add-type field and restores its default prompt.
+function resetTypeAddField(): void {
+    el.incidentTypeAdd.value = "";
+    el.incidentTypeAdd.placeholder = TYPE_ADD_PLACEHOLDER;
+}
+
+// addIncidentType runs when the Add-type field commits (round-7 follow-up). It
+// reverts the earlier category combobox to a plain native datalist: "Other" (or
+// an empty value) never attaches — "Other" clears the field and prompts the user
+// to type their own; an exact (case-insensitive) name match attaches that type;
+// anything else offers to propose a brand-new type with the typed name.
+async function addIncidentType(): Promise<void> {
+    hideIncidentTypeCreateOffer();
+    const typed = el.incidentTypeAdd.value.trim();
+    const norm = normalize(typed);
+    if (norm === "") {
+        resetTypeAddField();
+        return;
     }
-
-    function candidates(typed: string): ims.IncidentType[] {
-        const selected = new Set(incident!.incident_type_ids??[]);
-        const norm = normalize(typed);
-        // allIncidentTypes is pre-sorted by category-then-name, which is exactly
-        // the grouped order we render here.
-        return allIncidentTypes.filter(t =>
-            !t.hidden && t.name && !selected.has(t.id??-1) &&
-            (norm === "" || normalize(t.name).includes(norm)));
+    // "Other" is the free-entry trigger: clear and prompt the user to type a new
+    // type name (which, on the next commit, falls through to the propose offer).
+    if (norm === normalize(OTHER_OPTION_LABEL)) {
+        el.incidentTypeAdd.value = "";
+        el.incidentTypeAdd.placeholder = TYPE_ADD_PROMPT;
+        el.incidentTypeAdd.focus();
+        return;
     }
-
-    function renderRows(typed: string): void {
-        const matches = candidates(typed);
-        // Offer "Propose new type" only to incident writers, only when the typed
-        // text is non-empty and doesn't already name an existing type (round-7
-        // item 2). NAME is collation-insensitive on the server, so a case-only
-        // match still counts as existing.
-        const norm = normalize(typed);
-        const exists = allIncidentTypes.some(t => t.name && normalize(t.name) === norm);
-        const canPropose = (ims.eventAccess?.writeIncidents ?? false) && norm !== "" && !exists;
-
-        rows = matches.map((t: ims.IncidentType): Row => ({type: t}));
-        if (canPropose) {
-            rows.push({proposeName: typed});
-        }
-        results.replaceChildren();
-        if (rows.length === 0) {
-            closeList();
-            return;
-        }
-        // Emit a category heading whenever the group changes (types are pre-sorted
-        // by group), so the dropdown shows the OCF category structure.
-        let lastGroup: ims.IncidentTypeGroup|null|undefined;
-        let first = true;
-        rows.forEach((row: Row, idx: number): void => {
-            const item: HTMLButtonElement = document.createElement("button");
-            item.type = "button";
-            item.classList.add("list-group-item", "list-group-item-action", "py-1", "text-start");
-            if (row.type != null) {
-                const group = row.type.group??null;
-                if (first || group !== lastGroup) {
-                    const header: HTMLDivElement = document.createElement("div");
-                    header.classList.add(
-                        "list-group-item", "disabled", "py-1", "small", "fw-bold",
-                        "text-uppercase", "text-body-secondary");
-                    header.textContent = ims.incidentTypeGroupName(group);
-                    results.append(header);
-                    lastGroup = group;
-                    first = false;
-                }
-                item.textContent = row.type.name??"";
-                // A still-unapproved type is visible to everyone, flagged pending.
-                if (row.type.approved === false) {
-                    const badge: HTMLSpanElement = document.createElement("span");
-                    badge.classList.add("badge", "text-bg-warning", "ms-2");
-                    badge.textContent = "pending";
-                    item.append(badge);
-                }
-            } else {
-                item.classList.add("fst-italic");
-                item.textContent = `Propose new type “${row.proposeName}”`;
-            }
-            // mousedown (not click) so selection fires before the input's blur hides the list.
-            item.addEventListener("mousedown", (e: MouseEvent): void => {
-                e.preventDefault();
-                void choose(idx);
-            });
-            results.append(item);
-        });
-        results.classList.remove("hidden");
-        highlight(0);
+    const match = allIncidentTypes.find(
+        t => !t.hidden && t.name && normalize(t.name) === norm,
+    );
+    if (match != null) {
+        await addIncidentTypeById(match.id??null);
+        resetTypeAddField();
+        return;
     }
-
-    async function choose(idx: number): Promise<void> {
-        const row: Row|undefined = rows[idx];
-        closeList();
-        input.value = "";
-        if (row == null) {
-            return;
-        }
-        if (row.type != null) {
-            await addIncidentTypeById(row.type.id??null);
-        } else if (row.proposeName != null) {
-            await proposeAndAddIncidentType(row.proposeName);
-        }
+    // No existing type matches. Only an incident writer may propose a new one;
+    // otherwise silently clear (matching the pre-combobox behaviour).
+    if (!(ims.eventAccess?.writeIncidents ?? false)) {
+        resetTypeAddField();
+        return;
     }
+    showIncidentTypeCreateOffer(typed);
+}
 
-    input.setAttribute("autocomplete", "off");
-    input.addEventListener("input", (): void => renderRows(input.value.trim()));
-    input.addEventListener("focus", (): void => renderRows(input.value.trim()));
-    input.addEventListener("keydown", (e: KeyboardEvent): void => {
-        if (results.classList.contains("hidden")) {
-            return;
-        }
-        switch (e.key) {
-            case "ArrowDown":
-                e.preventDefault();
-                highlight(Math.min(activeIndex + 1, rows.length - 1));
-                break;
-            case "ArrowUp":
-                e.preventDefault();
-                highlight(Math.max(activeIndex - 1, 0));
-                break;
-            case "Enter":
-                e.preventDefault();
-                if (activeIndex >= 0) {
-                    void choose(activeIndex);
-                }
-                break;
-            case "Escape":
-                closeList();
-                break;
-        }
-    });
-    // Delay close so a result's mousedown is handled before the list hides.
-    input.addEventListener("blur", (): void => {
-        window.setTimeout(closeList, 150);
-    });
+// proposeIncidentType proposes the unmatched text the user typed as a brand-new
+// incident type, then attaches it to this incident (reuses the round-7 propose
+// flow). An admin approves it later on the Incident Types admin page.
+async function proposeIncidentType(): Promise<void> {
+    const name = pendingTypeName.trim();
+    if (name === "") {
+        return;
+    }
+    hideIncidentTypeCreateOffer();
+    await proposeAndAddIncidentType(name);
+    resetTypeAddField();
 }
 
 function drawIncidentTypeInfo(): void {
@@ -1020,6 +982,11 @@ function drawAreaOptions(): void {
         opt.value = area.name??"";
         datalist.append(opt);
     }
+    // "Other" pinned last: selecting it prompts the user to type a new area name,
+    // which then flows into the existing "create it for this event" offer.
+    const other = document.createElement("option");
+    other.value = OTHER_OPTION_LABEL;
+    datalist.append(other);
 }
 
 // areaByName returns the area whose name matches the given text (case- and
@@ -1378,6 +1345,14 @@ async function editLocationArea(): Promise<void> {
         await sendAreaSlug("");
         return;
     }
+    // "Other" is the free-entry trigger: clear and prompt the user to type a new
+    // area name (which, on the next commit, falls through to the create offer).
+    if (normalize(typed) === normalize(OTHER_OPTION_LABEL)) {
+        el.locationArea.value = "";
+        el.locationArea.placeholder = "Type a new area name…";
+        el.locationArea.focus();
+        return;
+    }
     const match = areaByName(typed);
     if (match != null) {
         // Normalize the field to the canonical area name, then persist its slug.
@@ -1458,6 +1433,15 @@ async function setPersonInvolvement(sender: HTMLInputElement): Promise<void> {
     const personId = li?.dataset["personId"];
     if (!personId || !li) {
         console.log("no person id for element");
+        return;
+    }
+
+    // "Other" is the free-entry trigger: clear the field and let the user type a
+    // custom involvement, which is saved as free text on the next commit.
+    if (normalize(sender.value) === normalize(OTHER_OPTION_LABEL)) {
+        sender.value = "";
+        sender.placeholder = "Type involvement…";
+        sender.focus();
         return;
     }
 
@@ -1595,10 +1579,10 @@ async function addIncidentTypeById(validTypeInputId: number|null): Promise<void>
 
 
 // proposeAndAddIncidentType lets an incident writer propose a brand-new type from
-// the combobox (round-7 item 2). It creates the type unapproved (recording the
-// caller as proposer) via the event-scoped propose endpoint, registers it locally
-// so its name + "pending" flag render, then attaches it to this incident. An admin
-// approves it later on the Incident Types admin page.
+// the Add-type field (round-7 item 2). It creates the type unapproved (recording
+// the caller as proposer) via the event-scoped propose endpoint, registers it
+// locally so future lookups recognise it, then attaches it to this incident. An
+// admin approves it later on the Incident Types admin page.
 async function proposeAndAddIncidentType(name: string): Promise<void> {
     el.incidentTypeAdd.disabled = true;
     const {resp, err} = await ims.fetchNoThrow(ims.urlReplace(url_proposeIncidentType), {
@@ -1617,6 +1601,7 @@ async function proposeAndAddIncidentType(name: string): Promise<void> {
     if (!allIncidentTypes.some(t => t.id === newId)) {
         allIncidentTypes.push({id: newId, name: name, hidden: false, approved: false});
         allIncidentTypes.sort(ims.compareIncidentTypesByGroup);
+        drawIncidentTypesToAdd();
     }
     await addIncidentTypeById(newId);
 }
