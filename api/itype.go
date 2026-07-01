@@ -17,7 +17,16 @@
 package api
 
 import (
+	"database/sql"
+	"errors"
 	"fmt"
+	"net/http"
+	"slices"
+	"strconv"
+	"strings"
+	"time"
+
+	"github.com/go-sql-driver/mysql"
 	"github.com/mikeki/ocf-ims/directory"
 	imsjson "github.com/mikeki/ocf-ims/json"
 	"github.com/mikeki/ocf-ims/lib/authz"
@@ -25,10 +34,6 @@ import (
 	"github.com/mikeki/ocf-ims/lib/herr"
 	"github.com/mikeki/ocf-ims/store"
 	"github.com/mikeki/ocf-ims/store/imsdb"
-	"net/http"
-	"slices"
-	"strconv"
-	"time"
 )
 
 type GetIncidentTypes struct {
@@ -60,20 +65,28 @@ func (action GetIncidentTypes) getIncidentTypes(req *http.Request) (imsjson.Inci
 	if err != nil {
 		return response, herr.BadRequest("Unable to parse HTTP form", err).From("[ParseForm]")
 	}
-	typeRows, err := action.imsDBQ.IncidentTypes(req.Context(), action.imsDBQ)
+	typeRows, err := action.imsDBQ.IncidentTypesWithProposer(req.Context(), action.imsDBQ)
 	if err != nil {
-		return response, herr.InternalServerError("Failed to fetch Incident Types", err).From("[IncidentTypes]")
+		return response, herr.InternalServerError("Failed to fetch Incident Types", err).From("[IncidentTypesWithProposer]")
 	}
 
-	for _, typeRow := range typeRows {
-		t := typeRow.IncidentType
-		response = append(response, imsjson.IncidentType{
+	for _, t := range typeRows {
+		it := imsjson.IncidentType{
 			ID:          t.ID,
 			Name:        new(t.Name),
 			Description: conv.SqlToString(t.Description),
 			Hidden:      new(t.Hidden),
 			Group:       groupToString(t.Group),
-		})
+			Approved:    new(t.Approved),
+		}
+		if t.ProposedByPersonID.Valid {
+			it.Proposer = &imsjson.Mention{
+				PersonID: t.ProposedByPersonID.Int32,
+				Handle:   t.ProposerHandle.String,
+				Name:     t.ProposerName.String,
+			}
+		}
+		response = append(response, it)
 	}
 	slices.SortFunc(response, func(a, b imsjson.IncidentType) int {
 		return int(a.ID) - int(b.ID)
@@ -129,6 +142,9 @@ func (action EditIncidentTypes) editIncidentTypes(req *http.Request) (newTypeID 
 				Name:   *typeReq.Name,
 				Hidden: typeReq.Hidden != nil && *typeReq.Hidden,
 				Group:  group,
+				// Admin-created types are approved immediately, with no proposer.
+				Approved:           true,
+				ProposedByPersonID: sql.NullInt32{},
 			},
 		)
 		if err != nil {
@@ -136,6 +152,16 @@ func (action EditIncidentTypes) editIncidentTypes(req *http.Request) (newTypeID 
 		}
 		newID := conv.MustInt32(id)
 		return &newID, nil
+	}
+
+	// Approve a writer's proposed type: an admin sends approved=true with an id.
+	// Admin-only, already gated above on GlobalAdministrateIncidentTypes.
+	if typeReq.Approved != nil && *typeReq.Approved {
+		err := action.imsDBQ.ApproveIncidentType(ctx, action.imsDBQ, typeReq.ID)
+		if err != nil {
+			return nil, herr.InternalServerError("Failed to approve Incident Type", err).From("[ApproveIncidentType]")
+		}
+		return nil, nil
 	}
 
 	typeRow, err := action.imsDBQ.IncidentType(ctx, action.imsDBQ, typeReq.ID)
@@ -171,6 +197,76 @@ func (action EditIncidentTypes) editIncidentTypes(req *http.Request) (newTypeID 
 	}
 
 	return nil, nil
+}
+
+// ProposeIncidentType lets an event writer propose a new incident type from the
+// incident form when the one they need doesn't exist yet (round-7 item 2). The
+// type is created unapproved with the caller recorded as proposer; an admin
+// approves it later on the Incident Types admin page. The route is event-scoped
+// only to authorize the caller as a writer — the incident type itself is global.
+type ProposeIncidentType struct {
+	imsDBQ    *store.DBQ
+	userStore directory.UserStore
+	metrics   *metricsCache
+}
+
+func (action ProposeIncidentType) ServeHTTP(w http.ResponseWriter, req *http.Request) {
+	newID, errHTTP := action.proposeIncidentType(req)
+	if errHTTP != nil {
+		errHTTP.From("[proposeIncidentType]").WriteResponse(w)
+		return
+	}
+	// A new type shifts the dashboard's by-type / by-category aggregation, which
+	// spans every event, so drop all cached metrics.
+	action.metrics.InvalidateAll()
+	w.Header().Set("IMS-Incident-Type-ID", strconv.Itoa(int(newID)))
+	herr.WriteCreatedResponse(w, http.StatusText(http.StatusCreated))
+}
+
+func (action ProposeIncidentType) proposeIncidentType(req *http.Request) (int32, *herr.HTTPError) {
+	_, jwtCtx, eventPermissions, errHTTP := getEventPermissions(req, action.imsDBQ, action.userStore)
+	if errHTTP != nil {
+		return 0, errHTTP.From("[getEventPermissions]")
+	}
+	if eventPermissions&authz.EventWriteIncidents == 0 {
+		return 0, herr.Forbidden("The requestor does not have permission to propose Incident Types on this Event", nil)
+	}
+	ctx := req.Context()
+	typeReq, errHTTP := readBodyAs[imsjson.IncidentType](req)
+	if errHTTP != nil {
+		return 0, errHTTP.From("[readBodyAs]")
+	}
+	if typeReq.Name == nil || strings.TrimSpace(*typeReq.Name) == "" {
+		return 0, herr.BadRequest("Incident Type name is required", nil)
+	}
+	name := strings.TrimSpace(*typeReq.Name)
+
+	id, err := action.imsDBQ.CreateIncidentType(ctx, action.imsDBQ,
+		imsdb.CreateIncidentTypeParams{
+			Name:   name,
+			Hidden: false,
+			// An admin categorises the proposal into a group on approval.
+			Group:              imsdb.NullIncidentTypeGroup{},
+			Approved:           false,
+			ProposedByPersonID: sql.NullInt32{Int32: jwtCtx.Claims.PersonID(), Valid: true},
+		},
+	)
+	if err != nil {
+		// A duplicate NAME means the type already exists (seeded, or someone else
+		// added/proposed it — NAME is collation-insensitive, so "theft" collides
+		// with "Theft"). Resolve to that type's id so the caller just attaches it,
+		// rather than failing the proposal.
+		var mysqlErr *mysql.MySQLError
+		const mySQLErDupEntry = 1062
+		if errors.As(err, &mysqlErr) && mysqlErr.Number == mySQLErDupEntry {
+			existing, lookupErr := action.imsDBQ.IncidentTypeByName(ctx, action.imsDBQ, name)
+			if lookupErr == nil {
+				return existing.IncidentType.ID, nil
+			}
+		}
+		return 0, herr.InternalServerError("Failed to propose Incident Type", err).From("[CreateIncidentType]")
+	}
+	return conv.MustInt32(id), nil
 }
 
 // groupToSQL validates an optional incident-type group string and converts it to

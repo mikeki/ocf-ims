@@ -190,6 +190,19 @@ func (a ApiHelper) getTypes(ctx context.Context) (imsjson.IncidentTypes, *http.R
 	return *bod.(*imsjson.IncidentTypes), resp
 }
 
+func (a ApiHelper) proposeType(ctx context.Context, eventName string, req imsjson.IncidentType) (*int32, *http.Response) {
+	a.t.Helper()
+	httpResp := a.imsPost(ctx, req, a.serverURL.JoinPath("/ims/api/events/", eventName, "/incident_types").String())
+	numStr := httpResp.Header.Get("IMS-Incident-Type-ID")
+	require.NoError(a.t, httpResp.Body.Close())
+	if numStr == "" {
+		return nil, httpResp
+	}
+	num, err := conv.ParseInt32(numStr)
+	require.NoError(a.t, err)
+	return &num, httpResp
+}
+
 func (a ApiHelper) editArea(ctx context.Context, eventName string, req imsjson.Area) (slug string, resp *http.Response) {
 	a.t.Helper()
 	httpResp := a.imsPost(ctx, req, a.serverURL.JoinPath("/ims/api/events/", eventName, "/areas").String())

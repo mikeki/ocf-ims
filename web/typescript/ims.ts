@@ -3361,6 +3361,11 @@ export interface IncidentType {
     description?: string|null;
     // OCF category (Phase 4a). Null/absent means ungrouped.
     group?: IncidentTypeGroup|null;
+    // approved is false while a type is a writer's pending proposal awaiting an
+    // admin's review (round-7 item 2). Present on every type on a read.
+    approved?: boolean|null;
+    // proposer is who proposed a still-unapproved type (read-only).
+    proposer?: Mention|null;
 }
 
 // OCF incident-type categories, listed in alphabetical display order so the

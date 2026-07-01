@@ -33,6 +33,7 @@ const url_personnelAdmin = "/ims/api/personnel/<person_id>/admin";
 const url_personnelEdit = "/ims/api/personnel/<person_id>";
 const url_personnelParticipation = "/ims/api/personnel/<person_id>/participation";
 const url_incidentTypes = "/ims/api/incident_types";
+const url_proposeIncidentType = "/ims/api/events/<event_id>/incident_types";
 const url_events = "/ims/api/events";
 const url_event = "/ims/api/events/<event_id>";
 const url_incidents = "/ims/api/events/<event_id>/incidents";

@@ -79,7 +79,13 @@ templ AdminTypes(deployment, versionName, versionRef string) {
               <button class="show-edit-modal badge btn btn-primary float-end me-2">
                 Edit
               </button>
-              <div class="type-name"></div>
+              <button class="approve-type badge btn btn-success float-end me-2 hidden">
+                Approve
+              </button>
+              <div class="type-name">
+                <span class="type-name-text"></span>
+                <span class="type-proposed badge text-bg-warning ms-2 hidden">proposed</span>
+              </div>
               <div class="type-description text-body-secondary ms-3"></div>
             </li>
           </template>

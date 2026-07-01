@@ -208,10 +208,37 @@ where
 select sqlc.embed(it)
 from INCIDENT_TYPE it;
 
+-- name: IncidentTypesWithProposer :many
+-- Like IncidentTypes but resolves the proposer's handle/name for display. The
+-- admin Incident Types page and the incident-form combobox flag a still-unapproved
+-- type and show who proposed it. LEFT JOIN: seeded / admin-created / approved types
+-- have no proposer. Mirrors AreasWithProposer.
+select
+    it.ID,
+    it.NAME,
+    it.HIDDEN,
+    it.DESCRIPTION,
+    it.`GROUP`,
+    it.APPROVED,
+    it.PROPOSED_BY_PERSON_ID,
+    p.HANDLE as PROPOSER_HANDLE,
+    p.NAME as PROPOSER_NAME
+from
+    INCIDENT_TYPE it
+    left join PERSON p on p.ID = it.PROPOSED_BY_PERSON_ID
+;
+
 -- name: IncidentType :one
 select sqlc.embed(it)
 from INCIDENT_TYPE it
 where it.ID = ?;
+
+-- name: IncidentTypeByName :one
+-- Look up a type by its (collation-insensitive, unique) NAME. Used to resolve a
+-- duplicate-name collision when proposing a type into the existing one.
+select sqlc.embed(it)
+from INCIDENT_TYPE it
+where it.NAME = ?;
 
 -- name: Reports :many
 select sqlc.embed(fr)
@@ -557,9 +584,15 @@ where
 
 
 -- name: CreateIncidentType :execlastid
-insert into INCIDENT_TYPE (NAME, HIDDEN, `GROUP`)
-values (?, ?, ?)
+-- Admin create passes APPROVED=true with a null proposer; a writer's proposal from
+-- the incident form passes APPROVED=false with the proposer's PERSON id.
+insert into INCIDENT_TYPE (NAME, HIDDEN, `GROUP`, APPROVED, PROPOSED_BY_PERSON_ID)
+values (?, ?, ?, ?, ?)
 ;
+
+-- name: ApproveIncidentType :exec
+-- An admin approves a writer's proposed type; the proposer is kept for audit.
+update INCIDENT_TYPE set APPROVED = true where ID = ?;
 
 -- name: UpdateIncidentType :exec
 update INCIDENT_TYPE

@@ -823,13 +823,15 @@ function drawIncidentTypes() {
 function setupIncidentTypeAdd(): void {
     const input = el.incidentTypeAdd;
     const results = el.incidentTypeAddResults;
-    let matches: ims.IncidentType[] = [];
+    // A row is either an existing type to attach or the "propose new type" action.
+    type Row = {type?: ims.IncidentType; proposeName?: string};
+    let rows: Row[] = [];
     let activeIndex = -1;
 
     function closeList(): void {
         results.replaceChildren();
         results.classList.add("hidden");
-        matches = [];
+        rows = [];
         activeIndex = -1;
     }
 
@@ -851,9 +853,21 @@ function setupIncidentTypeAdd(): void {
     }
 
     function renderRows(typed: string): void {
-        matches = candidates(typed);
+        const matches = candidates(typed);
+        // Offer "Propose new type" only to incident writers, only when the typed
+        // text is non-empty and doesn't already name an existing type (round-7
+        // item 2). NAME is collation-insensitive on the server, so a case-only
+        // match still counts as existing.
+        const norm = normalize(typed);
+        const exists = allIncidentTypes.some(t => t.name && normalize(t.name) === norm);
+        const canPropose = (ims.eventAccess?.writeIncidents ?? false) && norm !== "" && !exists;
+
+        rows = matches.map((t: ims.IncidentType): Row => ({type: t}));
+        if (canPropose) {
+            rows.push({proposeName: typed});
+        }
         results.replaceChildren();
-        if (matches.length === 0) {
+        if (rows.length === 0) {
             closeList();
             return;
         }
@@ -861,22 +875,34 @@ function setupIncidentTypeAdd(): void {
         // by group), so the dropdown shows the OCF category structure.
         let lastGroup: ims.IncidentTypeGroup|null|undefined;
         let first = true;
-        matches.forEach((t: ims.IncidentType, idx: number): void => {
-            const group = t.group??null;
-            if (first || group !== lastGroup) {
-                const header: HTMLDivElement = document.createElement("div");
-                header.classList.add(
-                    "list-group-item", "disabled", "py-1", "small", "fw-bold",
-                    "text-uppercase", "text-body-secondary");
-                header.textContent = ims.incidentTypeGroupName(group);
-                results.append(header);
-                lastGroup = group;
-                first = false;
-            }
+        rows.forEach((row: Row, idx: number): void => {
             const item: HTMLButtonElement = document.createElement("button");
             item.type = "button";
             item.classList.add("list-group-item", "list-group-item-action", "py-1", "text-start");
-            item.textContent = t.name??"";
+            if (row.type != null) {
+                const group = row.type.group??null;
+                if (first || group !== lastGroup) {
+                    const header: HTMLDivElement = document.createElement("div");
+                    header.classList.add(
+                        "list-group-item", "disabled", "py-1", "small", "fw-bold",
+                        "text-uppercase", "text-body-secondary");
+                    header.textContent = ims.incidentTypeGroupName(group);
+                    results.append(header);
+                    lastGroup = group;
+                    first = false;
+                }
+                item.textContent = row.type.name??"";
+                // A still-unapproved type is visible to everyone, flagged pending.
+                if (row.type.approved === false) {
+                    const badge: HTMLSpanElement = document.createElement("span");
+                    badge.classList.add("badge", "text-bg-warning", "ms-2");
+                    badge.textContent = "pending";
+                    item.append(badge);
+                }
+            } else {
+                item.classList.add("fst-italic");
+                item.textContent = `Propose new type “${row.proposeName}”`;
+            }
             // mousedown (not click) so selection fires before the input's blur hides the list.
             item.addEventListener("mousedown", (e: MouseEvent): void => {
                 e.preventDefault();
@@ -889,11 +915,16 @@ function setupIncidentTypeAdd(): void {
     }
 
     async function choose(idx: number): Promise<void> {
-        const picked: ims.IncidentType|undefined = matches[idx];
+        const row: Row|undefined = rows[idx];
         closeList();
         input.value = "";
-        if (picked != null) {
-            await addIncidentTypeById(picked.id??null);
+        if (row == null) {
+            return;
+        }
+        if (row.type != null) {
+            await addIncidentTypeById(row.type.id??null);
+        } else if (row.proposeName != null) {
+            await proposeAndAddIncidentType(row.proposeName);
         }
     }
 
@@ -907,7 +938,7 @@ function setupIncidentTypeAdd(): void {
         switch (e.key) {
             case "ArrowDown":
                 e.preventDefault();
-                highlight(Math.min(activeIndex + 1, matches.length - 1));
+                highlight(Math.min(activeIndex + 1, rows.length - 1));
                 break;
             case "ArrowUp":
                 e.preventDefault();
@@ -1560,6 +1591,34 @@ async function addIncidentTypeById(validTypeInputId: number|null): Promise<void>
     el.incidentTypeAdd.disabled = false;
     ims.controlHasSuccess(el.incidentTypeAdd);
     el.incidentTypeAdd.focus();
+}
+
+
+// proposeAndAddIncidentType lets an incident writer propose a brand-new type from
+// the combobox (round-7 item 2). It creates the type unapproved (recording the
+// caller as proposer) via the event-scoped propose endpoint, registers it locally
+// so its name + "pending" flag render, then attaches it to this incident. An admin
+// approves it later on the Incident Types admin page.
+async function proposeAndAddIncidentType(name: string): Promise<void> {
+    el.incidentTypeAdd.disabled = true;
+    const {resp, err} = await ims.fetchNoThrow(ims.urlReplace(url_proposeIncidentType), {
+        body: JSON.stringify({name: name}),
+    });
+    el.incidentTypeAdd.disabled = false;
+    const newId = ims.parseInt10(resp?.headers.get("IMS-Incident-Type-ID")??null);
+    if (err != null || newId == null) {
+        ims.controlHasError(el.incidentTypeAdd);
+        el.incidentTypeAdd.value = "";
+        return;
+    }
+    // Register the proposed type locally (name + pending flag) so the badge list
+    // and combobox recognise it without a cache-bypassing refetch. The server may
+    // have resolved a duplicate name to an existing type, so guard against dupes.
+    if (!allIncidentTypes.some(t => t.id === newId)) {
+        allIncidentTypes.push({id: newId, name: name, hidden: false, approved: false});
+        allIncidentTypes.sort(ims.compareIncidentTypesByGroup);
+    }
+    await addIncidentTypeById(newId);
 }
 
 
