@@ -125,13 +125,27 @@ function updateIncidentTypes(): void {
                 entryItem.classList.add("item-visible");
             }
 
-            const typeSpan = entryItem.getElementsByClassName("type-name")[0]!;
+            const typeSpan = entryItem.getElementsByClassName("type-name-text")[0]!;
             typeSpan.textContent = incidentType.name??null;
 
             const descriptionSpan = entryItem.getElementsByClassName("type-description")[0]!;
             descriptionSpan.textContent = `${incidentType.description??""}`;
 
             entryItem.dataset["incidentTypeId"] = incidentType.id?.toString();
+
+            // A still-unapproved type is a writer's proposal (round-7 item 2):
+            // flag it and offer the admin an Approve button.
+            if (incidentType.approved === false) {
+                const proposed: HTMLElement = entryItem.querySelector(".type-proposed")!;
+                proposed.classList.remove("hidden");
+                const who = incidentType.proposer?.handle || incidentType.proposer?.name;
+                if (who) {
+                    proposed.title = `Proposed by ${who}`;
+                }
+                const approveBtn: HTMLElement = entryItem.querySelector(".approve-type")!;
+                approveBtn.classList.remove("hidden");
+                approveBtn.addEventListener("click", () => approveIncidentType(incidentType.id ?? null));
+            }
 
             const showEditModal: HTMLElement = entryItem.querySelector(".show-edit-modal")!;
             showEditModal.addEventListener("click",
@@ -161,6 +175,19 @@ async function createIncidentType(sender: HTMLInputElement): Promise<void> {
 
 function deleteIncidentType(_sender: HTMLElement) {
     alert("Remove unimplemented");
+}
+
+
+// approveIncidentType promotes a writer's proposed type to an approved one.
+async function approveIncidentType(id: number|null): Promise<void> {
+    if (id == null) {
+        return;
+    }
+    const {err} = await sendIncidentTypes({"id": id, "approved": true});
+    if (err != null) {
+        return;
+    }
+    await loadAndDrawIncidentTypes();
 }
 
 

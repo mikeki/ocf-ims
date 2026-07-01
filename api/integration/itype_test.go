@@ -46,9 +46,9 @@ func TestCreateIncidentTypes(t *testing.T) {
 	typesResp, resp := apis.getTypes(ctx)
 	require.Equal(t, http.StatusOK, resp.StatusCode)
 	require.NoError(t, resp.Body.Close())
-	require.Contains(t, typesResp, imsjson.IncidentType{ID: *typeAID, Name: &typeA, Hidden: new(false)})
-	require.Contains(t, typesResp, imsjson.IncidentType{ID: *typeBID, Name: &typeB, Hidden: new(false)})
-	require.Contains(t, typesResp, imsjson.IncidentType{ID: *typeCID, Name: &typeC, Hidden: new(false)})
+	require.Contains(t, typesResp, imsjson.IncidentType{ID: *typeAID, Name: &typeA, Hidden: new(false), Approved: new(true)})
+	require.Contains(t, typesResp, imsjson.IncidentType{ID: *typeBID, Name: &typeB, Hidden: new(false), Approved: new(true)})
+	require.Contains(t, typesResp, imsjson.IncidentType{ID: *typeCID, Name: &typeC, Hidden: new(false), Approved: new(true)})
 
 	// Hide one of those types
 	hideOne := imsjson.IncidentType{ID: *typeAID, Hidden: new(true)}
@@ -59,9 +59,9 @@ func TestCreateIncidentTypes(t *testing.T) {
 	typesResp, resp = apis.getTypes(ctx)
 	require.Equal(t, http.StatusOK, resp.StatusCode)
 	require.NoError(t, resp.Body.Close())
-	require.Contains(t, typesResp, imsjson.IncidentType{ID: *typeAID, Name: &typeA, Hidden: new(true)})
-	require.Contains(t, typesResp, imsjson.IncidentType{ID: *typeBID, Name: &typeB, Hidden: new(false)})
-	require.Contains(t, typesResp, imsjson.IncidentType{ID: *typeCID, Name: &typeC, Hidden: new(false)})
+	require.Contains(t, typesResp, imsjson.IncidentType{ID: *typeAID, Name: &typeA, Hidden: new(true), Approved: new(true)})
+	require.Contains(t, typesResp, imsjson.IncidentType{ID: *typeBID, Name: &typeB, Hidden: new(false), Approved: new(true)})
+	require.Contains(t, typesResp, imsjson.IncidentType{ID: *typeCID, Name: &typeC, Hidden: new(false), Approved: new(true)})
 
 	// Unhide that type we previously hid
 	showItAgain := imsjson.IncidentType{ID: *typeAID, Hidden: new(false)}
@@ -71,9 +71,9 @@ func TestCreateIncidentTypes(t *testing.T) {
 	typesResp, resp = apis.getTypes(ctx)
 	require.Equal(t, http.StatusOK, resp.StatusCode)
 	require.NoError(t, resp.Body.Close())
-	require.Contains(t, typesResp, imsjson.IncidentType{ID: *typeAID, Name: &typeA, Hidden: new(false)})
-	require.Contains(t, typesResp, imsjson.IncidentType{ID: *typeBID, Name: &typeB, Hidden: new(false)})
-	require.Contains(t, typesResp, imsjson.IncidentType{ID: *typeCID, Name: &typeC, Hidden: new(false)})
+	require.Contains(t, typesResp, imsjson.IncidentType{ID: *typeAID, Name: &typeA, Hidden: new(false), Approved: new(true)})
+	require.Contains(t, typesResp, imsjson.IncidentType{ID: *typeBID, Name: &typeB, Hidden: new(false), Approved: new(true)})
+	require.Contains(t, typesResp, imsjson.IncidentType{ID: *typeCID, Name: &typeC, Hidden: new(false), Approved: new(true)})
 }
 
 // TestIncidentTypeGroup exercises the Phase 4a OCF category (group) field:
@@ -94,25 +94,104 @@ func TestIncidentTypeGroup(t *testing.T) {
 	types, resp := apis.getTypes(ctx)
 	require.Equal(t, http.StatusOK, resp.StatusCode)
 	require.NoError(t, resp.Body.Close())
-	require.Contains(t, types, imsjson.IncidentType{ID: *id, Name: &name, Hidden: new(false), Group: &safety})
+	require.Contains(t, types, imsjson.IncidentType{ID: *id, Name: &name, Hidden: new(false), Group: &safety, Approved: new(true)})
 
 	// Change the group.
 	_, resp = apis.editType(ctx, imsjson.IncidentType{ID: *id, Group: &operations})
 	require.NoError(t, resp.Body.Close())
 	types, resp = apis.getTypes(ctx)
 	require.NoError(t, resp.Body.Close())
-	require.Contains(t, types, imsjson.IncidentType{ID: *id, Name: &name, Hidden: new(false), Group: &operations})
+	require.Contains(t, types, imsjson.IncidentType{ID: *id, Name: &name, Hidden: new(false), Group: &operations, Approved: new(true)})
 
 	// An empty string clears the group (ungrouped).
 	_, resp = apis.editType(ctx, imsjson.IncidentType{ID: *id, Group: &empty})
 	require.NoError(t, resp.Body.Close())
 	types, resp = apis.getTypes(ctx)
 	require.NoError(t, resp.Body.Close())
-	require.Contains(t, types, imsjson.IncidentType{ID: *id, Name: &name, Hidden: new(false)})
+	require.Contains(t, types, imsjson.IncidentType{ID: *id, Name: &name, Hidden: new(false), Approved: new(true)})
 
 	// An unrecognized group is rejected with 400.
 	badName, badGroup := rand.NonCryptoText(), "nonsense"
 	_, resp = apis.editType(ctx, imsjson.IncidentType{Name: &badName, Group: &badGroup})
 	require.Equal(t, http.StatusBadRequest, resp.StatusCode)
+	require.NoError(t, resp.Body.Close())
+}
+
+func findType(types imsjson.IncidentTypes, id int32) *imsjson.IncidentType {
+	for i := range types {
+		if types[i].ID == id {
+			return &types[i]
+		}
+	}
+	return nil
+}
+
+// TestProposeAndApproveIncidentType exercises the round-7 propose/approve flow: an
+// event writer proposes a new type (created unapproved with them as proposer), an
+// admin approves it, a duplicate name resolves to the existing type, and a reporter
+// is refused.
+func TestProposeAndApproveIncidentType(t *testing.T) {
+	t.Parallel()
+	ctx := t.Context()
+
+	apisAdmin := ApiHelper{t: t, serverURL: shared.serverURL, jwt: jwtForAdmin(ctx, t)}
+	apisAlice := ApiHelper{t: t, serverURL: shared.serverURL, jwt: jwtForAlice(t, ctx)}
+
+	// An event where Alice is a writer.
+	eventName := rand.NonCryptoText()
+	_, resp := apisAdmin.createEvent(ctx, imsjson.Event{Name: &eventName})
+	require.Equal(t, http.StatusNoContent, resp.StatusCode)
+	require.NoError(t, resp.Body.Close())
+	resp = apisAdmin.addWriter(ctx, eventName, userAliceHandle)
+	require.Equal(t, http.StatusNoContent, resp.StatusCode)
+	require.NoError(t, resp.Body.Close())
+
+	// Alice proposes a new type. It's created unapproved with her as proposer.
+	typeName := rand.NonCryptoText()
+	id, resp := apisAlice.proposeType(ctx, eventName, imsjson.IncidentType{Name: &typeName})
+	require.Equal(t, http.StatusCreated, resp.StatusCode)
+	require.NoError(t, resp.Body.Close())
+	require.NotNil(t, id)
+
+	types, resp := apisAdmin.getTypes(ctx)
+	require.Equal(t, http.StatusOK, resp.StatusCode)
+	require.NoError(t, resp.Body.Close())
+	proposed := findType(types, *id)
+	require.NotNil(t, proposed)
+	require.NotNil(t, proposed.Approved)
+	require.False(t, *proposed.Approved)
+	require.NotNil(t, proposed.Proposer)
+	require.Equal(t, userAliceHandle, proposed.Proposer.Handle)
+
+	// An admin approves it.
+	_, resp = apisAdmin.editType(ctx, imsjson.IncidentType{ID: *id, Approved: new(true)})
+	require.NoError(t, resp.Body.Close())
+
+	types, resp = apisAdmin.getTypes(ctx)
+	require.NoError(t, resp.Body.Close())
+	approved := findType(types, *id)
+	require.NotNil(t, approved)
+	require.NotNil(t, approved.Approved)
+	require.True(t, *approved.Approved)
+
+	// Proposing the same name again resolves to the existing type's id (the unique
+	// NAME is collation-insensitive), rather than failing.
+	dupID, resp := apisAlice.proposeType(ctx, eventName, imsjson.IncidentType{Name: &typeName})
+	require.Equal(t, http.StatusCreated, resp.StatusCode)
+	require.NoError(t, resp.Body.Close())
+	require.NotNil(t, dupID)
+	require.Equal(t, *id, *dupID)
+
+	// A reporter (no incident-write) may not propose: 403.
+	reporterEvent := rand.NonCryptoText()
+	_, resp = apisAdmin.createEvent(ctx, imsjson.Event{Name: &reporterEvent})
+	require.Equal(t, http.StatusNoContent, resp.StatusCode)
+	require.NoError(t, resp.Body.Close())
+	resp = apisAdmin.addReporter(ctx, reporterEvent, userAliceHandle)
+	require.Equal(t, http.StatusNoContent, resp.StatusCode)
+	require.NoError(t, resp.Body.Close())
+	otherName := rand.NonCryptoText()
+	_, resp = apisAlice.proposeType(ctx, reporterEvent, imsjson.IncidentType{Name: &otherName})
+	require.Equal(t, http.StatusForbidden, resp.StatusCode)
 	require.NoError(t, resp.Body.Close())
 }

@@ -451,6 +451,19 @@ func AddToMux(
 		),
 	)
 
+	// An event writer proposes a new incident type from the incident form; the
+	// route is event-scoped only to authorize the caller as a writer (the type is
+	// global). Approval happens back on the global admin endpoint above.
+	mux.Handle("POST /ims/api/events/{eventName}/incident_types",
+		Adapt(
+			ProposeIncidentType{db, userStore, metricsCache},
+			RecoverFromPanic(),
+			RequireAuthN(jwter),
+			LogRequest(true, actionLogger, userStore),
+			LimitRequestBytes(cfg.Core.MaxRequestBytes),
+		),
+	)
+
 	mux.Handle("GET /ims/api/personnel",
 		Adapt(
 			GetPersonnel{db, userStore, cfg.Core.CacheControlShort},
