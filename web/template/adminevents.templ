@@ -1,0 +1,70 @@
+//
+// See the file COPYRIGHT for copyright information.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+//
+
+package template
+
+templ AdminEvents(deployment, versionName, versionRef string) {
+<!DOCTYPE html>
+<html lang="en">
+@Head("Events", "admin_events.js", false, false, versionRef)
+
+<body>
+<div class="container-fluid">
+@Header(deployment)
+@Nav("")
+<h1 id="doc-title">Events</h1>
+@LoadingOverlay()
+@ErrorInfo()
+
+  <div class="row">
+    <div class="col-sm-12 col-md-8 col-lg-6">
+      <div class="card mb-3">
+        <div class="card-header">New Event</div>
+        <div class="card-body">
+          <div class="input-group">
+            <input id="add_event_name" type="text" class="form-control form-control-sm"
+                   placeholder="e.g. 2026" aria-label="New event name" autocomplete="off" />
+            <button type="button" class="btn btn-sm btn-success" id="add_event_submit"
+                    onclick="submitCreateEvent()">Create event</button>
+          </div>
+          <div class="form-text">
+            Letters, numbers, underscores, and hyphens only — no spaces. The name
+            appears in URLs and can't easily be changed later, so keep it short;
+            most events are just the year, like <code>2026</code>. A new event
+            automatically starts with the previous event's areas.
+          </div>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="card-header">Existing Events</div>
+        <ul id="events_list" class="list-group list-group-small list-group-flush card-body">
+          <template id="event_li_template">
+            <li class="list-group-item ps-3">
+              <a class="event-link float-end btn btn-sm btn-link p-0" href="#">Open</a>
+              <span class="event-name"></span>
+              <span class="event-group badge text-bg-secondary ms-2 hidden">group</span>
+            </li>
+          </template>
+        </ul>
+      </div>
+    </div>
+  </div>
+@Footer(versionName, versionRef)
+</div>
+</body>
+</html>
+}
