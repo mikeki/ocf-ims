@@ -265,6 +265,8 @@ func TestCreateAndAttachFileToReport(t *testing.T) {
 	require.Equal(t, http.StatusOK, resp.StatusCode)
 	require.NoError(t, resp.Body.Close())
 	require.Equal(t, fileBytes, returnedAttachment)
+	// A text file is safe to preview, so it's served inline (plan 90 L4).
+	require.Equal(t, "inline", resp.Header.Get("Content-Disposition"))
 
 	// Try to send something too large
 	fileBytes = []byte(strings.Repeat("a", int(shared.cfg.Core.MaxRequestBytes+1)))
