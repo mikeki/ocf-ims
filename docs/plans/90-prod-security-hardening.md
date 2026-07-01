@@ -57,7 +57,7 @@ per-account isolation; success resets the counter). An `api/integration` case th
 lockout events at WARN (aligns with the round-8 severity-logging work).
 
 **Open questions for the user:**
-- Lockout thresholds/windows (e.g. 8 failures → 15-min lockout)? 
+- Lockout thresholds/windows (e.g. 8 failures → 15-min lockout)?
 - In-memory (resets on restart, fine for single instance) vs DB-backed counters?
 - App-layer limiter, Caddy-layer, or both?
 
