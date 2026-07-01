@@ -518,7 +518,7 @@ function buildPersonRow(
                 drawAdminToggle(adminToggle, person.is_admin ?? false);
                 adminToggle.addEventListener("click",
                     function (_e: MouseEvent): void {
-                        void toggleAdmin(person, adminToggle);
+                        void toggleAdmin(person);
                     },
                 );
             }
@@ -680,7 +680,7 @@ function drawAdminToggle(button: HTMLButtonElement, isAdmin: boolean): void {
     button.setAttribute("aria-pressed", isAdmin ? "true" : "false");
 }
 
-async function toggleAdmin(person: ims.Personnel, button: HTMLButtonElement): Promise<void> {
+async function toggleAdmin(person: ims.Personnel): Promise<void> {
     const next = !(person.is_admin ?? false);
     const url = url_personnelAdmin.replace("<person_id>", encodeURIComponent((person.person_id ?? "").toString()));
     const {err} = await ims.fetchNoThrow(url, {
@@ -692,8 +692,12 @@ async function toggleAdmin(person: ims.Personnel, button: HTMLButtonElement): Pr
         ims.setErrorMessage(message);
         return;
     }
-    person.is_admin = next;
-    drawAdminToggle(button, next);
+    ims.clearErrorMessage();
+    // Reload so the whole row reflects the change: the admin badge next to the name,
+    // the Role pill (a static "admin" pill vs. the participation badge), the kebab's
+    // toggle label, and the admin-first sort. A button-only update left the badge and
+    // pill stale (they're rendered once at row build from person.is_admin).
+    await loadAndDrawPeople();
 }
 
 async function submitSetPassword(): Promise<void> {
