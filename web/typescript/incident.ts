@@ -35,7 +35,6 @@ declare global {
         attachReport: ()=>Promise<void>;
         unlinkIncident: (el: HTMLElement)=>Promise<void>;
         linkIncident: (el: HTMLInputElement)=>Promise<void>;
-        addIncidentType: ()=>Promise<void>;
         attachFile: ()=>void;
         drawMergedJournalEntries: ()=>void;
         toggleShowHistory: ()=>void;
@@ -78,7 +77,7 @@ const el = {
     peopleLiTemplate: ims.typedElement("incident_people_li_template", HTMLTemplateElement),
 
     incidentTypeAdd: ims.typedElement("incident_type_add", HTMLInputElement),
-    incidentTypes: ims.typedElement("incident_types", HTMLDataListElement),
+    incidentTypeAddResults: ims.typedElement("incident_type_add_results", HTMLElement),
     incidentTypesList: ims.typedElement("incident_types_list", HTMLUListElement),
     incidentTypesRequired: ims.typedElement("incident_types_required", HTMLElement),
     incidentTypesLiTemplate: ims.typedElement("incident_types_li_template", HTMLTemplateElement),
@@ -135,7 +134,6 @@ async function initIncidentPage(): Promise<void> {
     window.attachReport = attachReport;
     window.unlinkIncident = unlinkIncident;
     window.linkIncident = linkIncident;
-    window.addIncidentType = addIncidentType;
     window.attachFile = attachFile;
     window.drawMergedJournalEntries = drawMergedJournalEntries;
     window.toggleShowHistory = ims.toggleShowHistory;
@@ -170,7 +168,7 @@ async function initIncidentPage(): Promise<void> {
     drawPeople();
     setupPersonAdd();
     ims.setupJournalMentionAutocomplete(ims.pathIds.eventName ?? "");
-    drawIncidentTypesToAdd();
+    setupIncidentTypeAdd();
     drawIncidentTypeInfo();
     renderReportData();
 
@@ -816,21 +814,120 @@ function drawIncidentTypes() {
 }
 
 
-function drawIncidentTypesToAdd() {
-    el.incidentTypes.replaceChildren();
-    el.incidentTypes.append(document.createElement("option"));
-    // allIncidentTypes is pre-sorted by category-then-name (for the grouped
-    // checklist above). This flat <datalist> has no group headers, so a category
-    // ordering reads as "unsorted" when scanning for a name — sort it plain
-    // alphabetically here instead (slice 6h).
-    const sorted = allIncidentTypes
-        .filter(t => !t.hidden && t.name)
-        .sort((a, b) => (a.name??"").localeCompare(b.name??""));
-    for (const incidentType of sorted) {
-        const option: HTMLOptionElement = document.createElement("option");
-        option.value = incidentType.name!;
-        el.incidentTypes.append(option);
+// setupIncidentTypeAdd wires the "Add incident type" input as a search-first,
+// category-grouped combobox (round-7 item 1). The native <datalist> it replaces
+// showed a flat, ungrouped list that hid the OCF category structure. This filters
+// the client-side allIncidentTypes by substring, clusters matches under their
+// category heading, and adds the picked type — mirroring the person combobox
+// (ims.setupPersonCombobox) in look and keyboard behaviour.
+function setupIncidentTypeAdd(): void {
+    const input = el.incidentTypeAdd;
+    const results = el.incidentTypeAddResults;
+    let matches: ims.IncidentType[] = [];
+    let activeIndex = -1;
+
+    function closeList(): void {
+        results.replaceChildren();
+        results.classList.add("hidden");
+        matches = [];
+        activeIndex = -1;
     }
+
+    function highlight(idx: number): void {
+        activeIndex = idx;
+        results.querySelectorAll("button").forEach((b: HTMLElement, i: number): void => {
+            b.classList.toggle("active", i === idx);
+        });
+    }
+
+    function candidates(typed: string): ims.IncidentType[] {
+        const selected = new Set(incident!.incident_type_ids??[]);
+        const norm = normalize(typed);
+        // allIncidentTypes is pre-sorted by category-then-name, which is exactly
+        // the grouped order we render here.
+        return allIncidentTypes.filter(t =>
+            !t.hidden && t.name && !selected.has(t.id??-1) &&
+            (norm === "" || normalize(t.name).includes(norm)));
+    }
+
+    function renderRows(typed: string): void {
+        matches = candidates(typed);
+        results.replaceChildren();
+        if (matches.length === 0) {
+            closeList();
+            return;
+        }
+        // Emit a category heading whenever the group changes (types are pre-sorted
+        // by group), so the dropdown shows the OCF category structure.
+        let lastGroup: ims.IncidentTypeGroup|null|undefined;
+        let first = true;
+        matches.forEach((t: ims.IncidentType, idx: number): void => {
+            const group = t.group??null;
+            if (first || group !== lastGroup) {
+                const header: HTMLDivElement = document.createElement("div");
+                header.classList.add(
+                    "list-group-item", "disabled", "py-1", "small", "fw-bold",
+                    "text-uppercase", "text-body-secondary");
+                header.textContent = ims.incidentTypeGroupName(group);
+                results.append(header);
+                lastGroup = group;
+                first = false;
+            }
+            const item: HTMLButtonElement = document.createElement("button");
+            item.type = "button";
+            item.classList.add("list-group-item", "list-group-item-action", "py-1", "text-start");
+            item.textContent = t.name??"";
+            // mousedown (not click) so selection fires before the input's blur hides the list.
+            item.addEventListener("mousedown", (e: MouseEvent): void => {
+                e.preventDefault();
+                void choose(idx);
+            });
+            results.append(item);
+        });
+        results.classList.remove("hidden");
+        highlight(0);
+    }
+
+    async function choose(idx: number): Promise<void> {
+        const picked: ims.IncidentType|undefined = matches[idx];
+        closeList();
+        input.value = "";
+        if (picked != null) {
+            await addIncidentTypeById(picked.id??null);
+        }
+    }
+
+    input.setAttribute("autocomplete", "off");
+    input.addEventListener("input", (): void => renderRows(input.value.trim()));
+    input.addEventListener("focus", (): void => renderRows(input.value.trim()));
+    input.addEventListener("keydown", (e: KeyboardEvent): void => {
+        if (results.classList.contains("hidden")) {
+            return;
+        }
+        switch (e.key) {
+            case "ArrowDown":
+                e.preventDefault();
+                highlight(Math.min(activeIndex + 1, matches.length - 1));
+                break;
+            case "ArrowUp":
+                e.preventDefault();
+                highlight(Math.max(activeIndex - 1, 0));
+                break;
+            case "Enter":
+                e.preventDefault();
+                if (activeIndex >= 0) {
+                    void choose(activeIndex);
+                }
+                break;
+            case "Escape":
+                closeList();
+                break;
+        }
+    });
+    // Delay close so a result's mousedown is handled before the list hides.
+    input.addEventListener("blur", (): void => {
+        window.setTimeout(closeList, 150);
+    });
 }
 
 function drawIncidentTypeInfo(): void {
@@ -1434,28 +1531,14 @@ async function attachPersonToIncident(person: ims.PersonSearchResult): Promise<v
 }
 
 
-async function addIncidentType(): Promise<void> {
-    let typeInput = el.incidentTypeAdd.value;
-
-    // make a copy of the incident types
-    const currentIncidentTypes = (incident!.incident_type_ids??[]).slice();
-
-    // fuzzy-match on incidentType, to allow case insensitivity and
-    // leading/trailing whitespace.
-    const normalizedTypeInput = normalize(typeInput);
-    // let validTypeInput: string = "";
-    let validTypeInputId: number|null = null;
-    for (const validType of allIncidentTypes) {
-        if (!validType.hidden && validType.name && normalizedTypeInput === normalize(validType.name)) {
-            validTypeInputId = validType.id??null;
-            break;
-        }
-    }
+async function addIncidentTypeById(validTypeInputId: number|null): Promise<void> {
     if (validTypeInputId == null) {
-        // Not a valid incident type
         el.incidentTypeAdd.value = "";
         return;
     }
+
+    // make a copy of the incident types
+    const currentIncidentTypes = (incident!.incident_type_ids??[]).slice();
 
     if (currentIncidentTypes.indexOf(validTypeInputId) !== -1) {
         // Already in the list, so… move along.
