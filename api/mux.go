@@ -641,7 +641,8 @@ func AddToMux(
 		func(w http.ResponseWriter, req *http.Request) {
 			ctx, cancel := context.WithTimeout(req.Context(), 2*time.Second)
 			defer cancel()
-			if err := db.PingContext(ctx); err != nil {
+			err := db.PingContext(ctx)
+			if err != nil {
 				http.Error(w, "not ready", http.StatusServiceUnavailable)
 				return
 			}
