@@ -442,21 +442,23 @@ function buildPersonRow(
         const entryItemFrag = el.personRowTemplate.content.cloneNode(true) as DocumentFragment;
         const entryItem = entryItemFrag.querySelector("tr")!;
 
-        // The People roster shows both identifiers in their own columns — "Name" (the
-        // full legal name) and "Fair Name" (the handle) — so it uses a legal-name-first
-        // label here rather than the shared, fair-name-first personDisplayLabel used in
-        // the single-label contexts (involvement, @mentions, comboboxes).
-        const label = (person.name && person.name.trim() !== "") ? person.name : (person.handle ?? "");
+        // The People roster shows both identifiers in their own labeled columns —
+        // "Legal Name" (the full legal name) and "Fair Name" (the handle) — so each
+        // cell shows exactly its own field, rather than the shared, fair-name-first
+        // personDisplayLabel used in the single-label contexts (involvement,
+        // @mentions, comboboxes).
+        const legalName = person.name ?? "";
+        const fairName = person.handle ?? "";
+        // displayLabel is the single-label rendering (fair name preferred) used for
+        // the row's modal prompts ("Set a new password for …", "Remove … from event").
+        const displayLabel = ims.personDisplayLabel(person);
         entryItem.dataset["personId"] = (person.person_id ?? "").toString();
         // Lowercased haystack for the client-side search box.
         entryItem.dataset["search"] =
-            `${label} ${person.handle ?? ""} ${person.wristband ?? ""}`.toLowerCase();
+            `${legalName} ${fairName} ${person.wristband ?? ""}`.toLowerCase();
 
-        entryItem.getElementsByClassName("person-name")[0]!.textContent = label;
-        // Fair Name column: show the handle when the person also has a legal name in
-        // the Name column; a handle-only person already shows it as the label.
-        entryItem.getElementsByClassName("person-handle")[0]!.textContent =
-            (person.name && person.handle) ? person.handle : "";
+        entryItem.getElementsByClassName("person-name")[0]!.textContent = legalName;
+        entryItem.getElementsByClassName("person-handle")[0]!.textContent = fairName;
 
         // Admin badge next to the name. is_admin is only sent to admin viewers (53d),
         // so a non-admin inviter never sees it (and it stays hidden).
@@ -512,7 +514,7 @@ function buildPersonRow(
                 showPassword.addEventListener("click",
                     function (_e: MouseEvent): void {
                         el.setPasswordModal.dataset["personId"] = (person.person_id ?? "").toString();
-                        el.setPasswordHandle.textContent = label;
+                        el.setPasswordHandle.textContent = displayLabel;
                         el.setPasswordInput.value = "";
                         el.setPasswordConfirm.value = "";
                         setPasswordModal.show();
@@ -539,7 +541,7 @@ function buildPersonRow(
                     // Carry the current wristband so an eject preserves it (the eject
                     // path upserts and would otherwise clear an omitted wristband).
                     el.removeFromEventModal.dataset["wristband"] = person.wristband ?? "";
-                    el.removePersonLabel.textContent = label;
+                    el.removePersonLabel.textContent = displayLabel;
                     el.removeEventName.textContent = currentEvent;
                     ims.bsModal(el.removeFromEventModal).show();
                 },
