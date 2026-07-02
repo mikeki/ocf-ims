@@ -61,7 +61,7 @@ func TestCreateAndEditPerson(t *testing.T) {
 	resp = apisAdmin.createPerson(ctx, api.CreatePersonRequest{Handle: ""})
 	require.Equal(t, http.StatusBadRequest, resp.StatusCode)
 	require.NoError(t, resp.Body.Close())
-	resp = apisAdmin.createPerson(ctx, api.CreatePersonRequest{Handle: newHandle, Password: "short"})
+	resp = apisAdmin.createPerson(ctx, api.CreatePersonRequest{Handle: newHandle, Email: "shorttest@example.com", Password: "short"})
 	require.Equal(t, http.StatusBadRequest, resp.StatusCode)
 	require.NoError(t, resp.Body.Close())
 
@@ -99,8 +99,9 @@ func TestCreateAndEditPerson(t *testing.T) {
 	require.NoError(t, resp.Body.Close())
 	require.Positive(t, created.PersonID)
 
-	// Creating the same handle again is a conflict.
-	resp = apisAdmin.createPerson(ctx, api.CreatePersonRequest{Handle: newHandle, Password: newPassword})
+	// Creating the same handle again is a conflict (a distinct email keeps the handle
+	// the sole collision).
+	resp = apisAdmin.createPerson(ctx, api.CreatePersonRequest{Handle: newHandle, Email: "edith-dup@example.com", Password: newPassword})
 	require.Equal(t, http.StatusConflict, resp.StatusCode)
 	require.NoError(t, resp.Body.Close())
 
@@ -120,6 +121,19 @@ func TestCreateAndEditPerson(t *testing.T) {
 	})
 	require.Equal(t, http.StatusOK, statusCode)
 	require.NotEmpty(t, token)
+
+	// A person who can sign in (has a password) can't have their email cleared —
+	// login is by email only, so clearing it would strand the account.
+	emptyEmail := ""
+	resp = apisAdmin.editPerson(ctx, created.PersonID, api.EditPersonRequest{Email: &emptyEmail})
+	require.Equal(t, http.StatusBadRequest, resp.StatusCode)
+	require.NoError(t, resp.Body.Close())
+
+	// Granting access needs an email: a password with a fair name but no email is
+	// rejected (email is the login identifier).
+	resp = apisAdmin.createPerson(ctx, api.CreatePersonRequest{Handle: "NoEmailAccess", Password: newPassword})
+	require.Equal(t, http.StatusBadRequest, resp.StatusCode)
+	require.NoError(t, resp.Body.Close())
 
 	// Editing an unknown person is a 404.
 	resp = apisAdmin.editPerson(ctx, nonexistentPersonID, api.EditPersonRequest{})
@@ -198,7 +212,7 @@ func TestEditPersonProfileAndParticipation(t *testing.T) {
 	require.Empty(t, gotNoEvent.ParticipationType)
 
 	// --- wristband uniqueness within an event is a conflict. ---
-	resp = apisAdmin.createPerson(ctx, api.CreatePersonRequest{Handle: "GraceTestRanger", Password: "grace-password"})
+	resp = apisAdmin.createPerson(ctx, api.CreatePersonRequest{Handle: "GraceTestRanger", Email: "grace@example.com", Password: "grace-password"})
 	require.Equal(t, http.StatusCreated, resp.StatusCode)
 	var grace imsjson.Person
 	require.NoError(t, json.NewDecoder(resp.Body).Decode(&grace))
@@ -272,7 +286,7 @@ func TestPersonPhoneAndEditableHandle(t *testing.T) {
 	require.Equal(t, "contact@example.com", got.Email)
 
 	// A second person can't take the same handle: the unique key surfaces as 409.
-	resp = apisAdmin.createPerson(ctx, api.CreatePersonRequest{Handle: "OtherHandle", Password: "other-password"})
+	resp = apisAdmin.createPerson(ctx, api.CreatePersonRequest{Handle: "OtherHandle", Email: "otherhandle@example.com", Password: "other-password"})
 	require.Equal(t, http.StatusCreated, resp.StatusCode)
 	var other imsjson.Person
 	require.NoError(t, json.NewDecoder(resp.Body).Decode(&other))
@@ -305,7 +319,7 @@ func TestEventRosterAddRemove(t *testing.T) {
 	require.NoError(t, resp.Body.Close())
 
 	makePerson := func(handle string) int64 {
-		r := apisAdmin.createPerson(ctx, api.CreatePersonRequest{Handle: handle, Password: handle + "-pw-12345"})
+		r := apisAdmin.createPerson(ctx, api.CreatePersonRequest{Handle: handle, Email: handle + "@example.com", Password: handle + "-pw-12345"})
 		require.Equal(t, http.StatusCreated, r.StatusCode)
 		var p imsjson.Person
 		require.NoError(t, json.NewDecoder(r.Body).Decode(&p))

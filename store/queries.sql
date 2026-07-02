@@ -924,7 +924,10 @@ where HANDLE = ?;
 -- addresses people by person_id (registry people may have no handle), so the
 -- attach/detach and personnel-edit handlers look people up here.
 -- name: PersonByID :one
-select ID, HANDLE, NAME, EMAIL, PHONE, IS_ADMIN
+-- HAS_PASSWORD lets the personnel-edit handler tell whether a person can sign in
+-- (so it can refuse clearing the EMAIL — the sole login identifier — out from under
+-- an account that has a password) without ever selecting the password hash itself.
+select ID, HANDLE, NAME, EMAIL, PHONE, IS_ADMIN, PASSWORD is not null as HAS_PASSWORD
 from PERSON
 where ID = ?;
 

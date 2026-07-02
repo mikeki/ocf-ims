@@ -185,11 +185,15 @@ func (action CreatePerson) createPerson(req *http.Request) (imsjson.Person, *her
 	}
 
 	// Identity alone (the fair-name-or-legal-name invariant above) is enough to
-	// CREATE a person, but granting IMS access requires a fair name specifically
-	// (feedback round 9): a login-capable person must have one. (Login itself now
-	// matches EMAIL only; the client also requires an email when access is on.)
+	// CREATE a person, but granting IMS access (a password) requires BOTH a fair name
+	// and an email. The fair name is the operational identity; and since login now
+	// matches EMAIL only, an access-holder with no email could never sign in. Enforced
+	// server-side (the client requires the same) so the API can't mint an unusable login.
 	if body.Password != "" && handle == "" {
 		return empty, herr.BadRequest("A fair name is required to provide IMS access", nil)
+	}
+	if body.Password != "" && email == "" {
+		return empty, herr.BadRequest("An email is required to provide IMS access (it is the login identifier)", nil)
 	}
 
 	// A password is optional, but if given it must satisfy the same bounds as the
@@ -423,7 +427,7 @@ func (action EditPerson) editPerson(req *http.Request) *herr.HTTPError {
 		name = conv.StringToSql(&trimmed, maxNameLength) // null when empty
 	}
 	if handle.String == "" && name.String == "" {
-		return herr.BadRequest("A handle or name is required", nil)
+		return herr.BadRequest("A fair name or full legal name is required", nil)
 	}
 	email := person.Email
 	if body.Email != nil {
@@ -432,6 +436,12 @@ func (action EditPerson) editPerson(req *http.Request) *herr.HTTPError {
 			return herr.BadRequest("Email is too long", nil)
 		}
 		email = conv.StringToSql(&trimmed, maxEmailLength) // null when empty
+	}
+	// A person who can sign in (has a password) must keep an email, since login now
+	// matches EMAIL only — clearing it would strand the account. There's no way to drop
+	// a password through this endpoint, so this can't be circumvented by clearing both.
+	if person.HasPassword && email.String == "" {
+		return herr.BadRequest("This person can sign in, so an email is required and cannot be cleared", nil)
 	}
 	phone := person.Phone
 	if body.Phone != nil {
