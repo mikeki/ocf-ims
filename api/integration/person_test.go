@@ -78,7 +78,7 @@ func TestCreateAndEditPerson(t *testing.T) {
 
 	// The admin creates the person.
 	resp = apisAdmin.createPerson(ctx, api.CreatePersonRequest{
-		FairName:   newHandle,
+		FairName: newHandle,
 		Email:    "edithtestranger@example.com",
 		Password: newPassword,
 	})
@@ -142,7 +142,7 @@ func TestEditPersonProfileAndParticipation(t *testing.T) {
 
 	// A login-capable person to edit.
 	resp = apisAdmin.createPerson(ctx, api.CreatePersonRequest{
-		FairName:   "FrankTestRanger",
+		FairName: "FrankTestRanger",
 		Email:    "frank@example.com",
 		Password: "frank-password",
 	})
@@ -233,9 +233,9 @@ func TestPersonPhoneAndEditableHandle(t *testing.T) {
 	// A login-less contact: just a name, plus phone + email contact info (no handle,
 	// no password).
 	resp := apisAdmin.createPerson(ctx, api.CreatePersonRequest{
-		LegalName:  "Contact Only Person",
-		Email: "contact@example.com",
-		Phone: "555-0100",
+		LegalName: "Contact Only Person",
+		Email:     "contact@example.com",
+		Phone:     "555-0100",
 	})
 	require.Equal(t, http.StatusCreated, resp.StatusCode)
 	var contact imsjson.Person
