@@ -92,17 +92,22 @@ templ People(deployment, versionName, versionRef, eventName string) {
               <button type="button" class="btn btn-sm btn-link px-0 mb-1 hidden" id="add_person_back_to_search" onclick="backToPersonSearch()">
                 ← Back to search
               </button>
+              <!-- Fair Name (the radio callsign) sits on top: it's the primary
+                   identity most people are known by. Either a fair name or a full
+                   legal name is enough to record someone; toggleProvideAccess()
+                   relabels this field required once IMS access is turned on. -->
+              <div class="form-floating mb-2">
+                <input id="add_person_handle" type="text" class="form-control" autocomplete="off" placeholder="Fair Name" />
+                <label id="add_person_handle_label" for="add_person_handle">Fair Name</label>
+              </div>
               <div class="form-floating mb-2">
                 <input id="add_person_name" type="text" class="form-control" autocomplete="off" placeholder="Full Legal Name" />
                 <label for="add_person_name">Full Legal Name</label>
               </div>
               <!-- Email and phone are contact info, collectable for anyone at the fair
-                   (with or without a login). Email doubles as a login identifier when
-                   access is provided, so toggleProvideAccess() moves this field up next
-                   to the handle and relabels it required. add_person_email_home marks
-                   where it returns to when access is turned back off. -->
-              <span id="add_person_email_home" class="d-none"></span>
-              <div class="form-floating mb-2" id="add_person_email_wrap">
+                   (with or without a login). Email doubles as the login identifier when
+                   access is provided, so toggleProvideAccess() relabels it required. -->
+              <div class="form-floating mb-2">
                 <input id="add_person_email" type="email" class="form-control" autocomplete="off" placeholder="Email" />
                 <label id="add_person_email_label" for="add_person_email">Email (optional)</label>
               </div>
@@ -110,7 +115,7 @@ templ People(deployment, versionName, versionRef, eventName string) {
                 <input id="add_person_phone" type="tel" class="form-control" autocomplete="off" placeholder="Phone" />
                 <label for="add_person_phone">Phone (optional)</label>
               </div>
-              <div class="form-text mb-3">A name (plus optional email/phone) records someone at the fair as a contact. They get no login unless you add one below.</div>
+              <div class="form-text mb-3">A fair name or full legal name (plus optional email/phone) records someone at the fair as a contact. They get no login unless you add one below.</div>
 
               <!-- Access is opt-in: only staff who actually sign in to the IMS need an
                    account. The button reveals the credential fields; a handle and the
@@ -119,13 +124,7 @@ templ People(deployment, versionName, versionRef, eventName string) {
                 Provide Access to IMS
               </button>
               <div id="add_person_access_section" class="hidden">
-                <div class="form-text mb-2">Signing in needs an email, a fair name, and a password.</div>
-                <!-- toggleProvideAccess() moves #add_person_email_wrap in here (before
-                     the handle) while access is on, so the login fields sit together. -->
-                <div class="form-floating mb-3">
-                  <input id="add_person_handle" type="text" class="form-control" autocomplete="off" placeholder="Fair Name" />
-                  <label for="add_person_handle">Fair Name (required for login)</label>
-                </div>
+                <div class="form-text mb-2">Signing in needs an email, a fair name (both above), and a password.</div>
                 <div class="input-group mb-3">
                   <div class="form-floating">
                     <input id="add_person_password" type="password" class="form-control" autocomplete="new-password" placeholder="Password" />
@@ -189,8 +188,8 @@ templ People(deployment, versionName, versionRef, eventName string) {
               <label for="edit_person_handle">Fair Name</label>
             </div>
             <div class="form-floating mb-3">
-              <input id="edit_person_name" type="text" class="form-control" autocomplete="off" placeholder="Name" />
-              <label for="edit_person_name">Name</label>
+              <input id="edit_person_name" type="text" class="form-control" autocomplete="off" placeholder="Full Legal Name" />
+              <label for="edit_person_name">Full Legal Name</label>
             </div>
             <div class="form-floating mb-3">
               <input id="edit_person_email" type="email" class="form-control" autocomplete="off" placeholder="Email" />
@@ -300,9 +299,10 @@ templ People(deployment, versionName, versionRef, eventName string) {
           <table class="table table-sm table-striped table-hover align-middle mb-0">
             <thead>
               <tr>
-                <th scope="col">Legal Name</th>
+                <!-- One combined column: "Fair Name (Legal Name)" is unambiguous, so
+                     the roster no longer needs separate Legal Name / Fair Name columns. -->
+                <th scope="col">Name</th>
                 <th scope="col">Role</th>
-                <th scope="col">Fair Name</th>
                 <th scope="col">Wristband</th>
                 <th scope="col" class="text-end">Actions</th>
               </tr>
@@ -335,7 +335,6 @@ templ People(deployment, versionName, versionRef, eventName string) {
                 <ul class="person-participation-menu dropdown-menu"></ul>
               </span>
             </td>
-            <td class="person-handle text-body-secondary font-monospace small"></td>
             <td>
               <span class="person-wristband badge text-bg-secondary hidden"></span>
             </td>

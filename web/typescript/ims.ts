@@ -1095,14 +1095,27 @@ export async function fetchPersonnel(): Promise<{personnel: PersonnelMap|null, e
 // findable and a "create new person" fallback can be offered inline.
 //
 
-// personDisplayLabel resolves a person's display label, preferring the fair name
-// (handle) and falling back to the full legal name (feedback round 9: prefer the
-// fair name over the legal name wherever a single person label is shown).
+// personDisplayLabel renders a person as "Fair Name (Legal Name)" so a reader can
+// see both who is on the radio (the fair name / handle) and who they actually are
+// (the full legal name). When only one is present it degrades gracefully (feedback
+// round 9):
+//   both       -> "Fair Name (Legal Name)"
+//   legal only -> "(Legal Name)"
+//   fair only  -> "Fair Name"
+// Used wherever a single person label is shown (involvement, @mention dropdown,
+// comboboxes, on-behalf-of, guest). The People roster keeps its own two labeled
+// columns and does NOT go through this. Contexts that need a single bare token —
+// @mention insertion, combobox exact-match — use the handle/name directly instead.
 export function personDisplayLabel(p: {name?: string|null|undefined, handle?: string|null|undefined}): string {
-    if (p.handle != null && p.handle.trim() !== "") {
-        return p.handle;
+    const fair = (p.handle ?? "").trim();
+    const legal = (p.name ?? "").trim();
+    if (fair !== "" && legal !== "") {
+        return `${fair} (${legal})`;
     }
-    return p.name ?? "";
+    if (legal !== "") {
+        return `(${legal})`;
+    }
+    return fair;
 }
 
 // flipPasswordVisibility toggles a single password input between masked and plain
@@ -1151,14 +1164,16 @@ export async function createRegistryPerson(name: string, eventName: string): Pro
 }
 
 // openQuickAddPersonModal shows the shared QuickAddPersonModal (web/template/quickaddperson.templ)
-// pre-filled with the typed text, lets the user supply handle/email/password and
-// (when an event is named) wristband/participation, then creates the person and resolves
-// with it. Resolves null if the user cancels or creation fails (the error is shown inline
-// in the modal, which stays open so they can retry). Pages must include @QuickAddPersonModal().
+// pre-filled with the typed text as the FAIR NAME (the search-first picker is usually
+// fed a callsign), lets the user supply legal name/email/password and (when an event is
+// named) wristband/participation, then creates the person and resolves with it. Resolves
+// null if the user cancels or creation fails (the error is shown inline in the modal,
+// which stays open so they can retry). Pages must include @QuickAddPersonModal().
 export function openQuickAddPersonModal(prefillName: string, eventName: string): Promise<PersonSearchResult|null> {
     const modalEl = typedElement("quickAddPersonModal", HTMLElement);
     const nameEl = typedElement("quick_add_person_name", HTMLInputElement);
     const handleEl = typedElement("quick_add_person_handle", HTMLInputElement);
+    const handleLabelEl = typedElement("quick_add_person_handle_label", HTMLElement);
     const emailEl = typedElement("quick_add_person_email", HTMLInputElement);
     const passwordEl = typedElement("quick_add_person_password", HTMLInputElement);
     const eventSectionEl = typedElement("quick_add_person_event_section", HTMLElement);
@@ -1173,9 +1188,11 @@ export function openQuickAddPersonModal(prefillName: string, eventName: string):
     const passwordToggleEl = typedElement("quick_add_person_password_toggle", HTMLButtonElement);
     const passwordConfirmToggleEl = typedElement("quick_add_person_password_confirm_toggle", HTMLButtonElement);
 
-    // Reset the form to a clean state, seeded with the typed text.
-    nameEl.value = prefillName;
-    handleEl.value = "";
+    // Reset the form to a clean state. The typed text seeds the FAIR NAME (a search
+    // in the person picker is usually a callsign), leaving the legal name blank.
+    handleEl.value = prefillName;
+    handleLabelEl.textContent = "Fair Name";
+    nameEl.value = "";
     emailEl.value = "";
     passwordEl.value = "";
     passwordConfirmEl.value = "";
@@ -1220,10 +1237,12 @@ export function openQuickAddPersonModal(prefillName: string, eventName: string):
             const nowShown = accessSectionEl.classList.toggle("hidden") === false;
             accessToggleEl.classList.toggle("active", nowShown);
             accessToggleEl.textContent = nowShown ? "Don't provide IMS access" : "Provide Access to IMS";
+            // The fair name is a top-level identity field; access just makes it (and
+            // the email) required for login. Relabel it, but never clear it.
+            handleLabelEl.textContent = nowShown ? "Fair Name (required for login)" : "Fair Name";
             if (nowShown) {
-                handleEl.focus();
+                (handleEl.value.trim() === "" ? handleEl : emailEl).focus();
             } else {
-                handleEl.value = "";
                 emailEl.value = "";
                 passwordEl.value = "";
                 passwordConfirmEl.value = "";
@@ -1248,12 +1267,13 @@ export function openQuickAddPersonModal(prefillName: string, eventName: string):
 
         async function onSubmit(): Promise<void> {
             const name = nameEl.value.trim();
-            if (!name) {
-                showError("A full legal name is required.");
+            const handle = handleEl.value.trim();
+            // Identity: either a fair name or a full legal name is enough.
+            if (!name && !handle) {
+                showError("A fair name or full legal name is required.");
                 return;
             }
             const wantAccess = !accessSectionEl.classList.contains("hidden");
-            const handle = handleEl.value.trim();
             if (wantAccess) {
                 if (!handle) {
                     showError("A fair name is required to provide IMS access.");
@@ -1274,7 +1294,8 @@ export function openQuickAddPersonModal(prefillName: string, eventName: string):
             }
             const body: Record<string, unknown> = {
                 name: name,
-                handle: wantAccess ? handle : "",
+                // The fair name is identity, sent whether or not access is granted.
+                handle: handle,
                 email: wantAccess ? emailEl.value.trim() : "",
                 password: wantAccess ? passwordEl.value : "",
             };
@@ -1354,8 +1375,11 @@ export function setupPersonCombobox(cfg: PersonComboboxConfig): void {
 
     function renderRows(matches: PersonSearchResult[], typed: string): void {
         const lowerTyped = typed.toLowerCase();
+        // "Exact" match suppresses the "create new" row. Compare the typed text
+        // against the bare fair name or legal name (not the combined display label,
+        // which would only match if the user typed "Fair (Legal)" verbatim).
         const exact = matches.some((m: PersonSearchResult): boolean =>
-            personDisplayLabel(m).toLowerCase() === lowerTyped || (m.handle??"").toLowerCase() === lowerTyped);
+            (m.handle??"").toLowerCase() === lowerTyped || (m.name??"").toLowerCase() === lowerTyped);
         rows = matches.map((p: PersonSearchResult): Row => ({person: p}));
         if (cfg.allowCreate && !exact) {
             rows.push({createName: typed});
@@ -2471,7 +2495,9 @@ let pendingJournalMentions: PendingMention[] = [];
 // mentionTokenFor returns the "@label" token inserted for a person — the handle
 // when present (a stable single word), otherwise the display name.
 function mentionTokenFor(p: PersonSearchResult): string {
-    const label: string = (p.handle != null && p.handle.trim() !== "") ? p.handle : personDisplayLabel(p);
+    // A mention is a single bare word: the fair name (handle) when present, else the
+    // legal name — never the combined "Fair (Legal)" display label.
+    const label: string = (p.handle != null && p.handle.trim() !== "") ? p.handle : (p.name ?? "");
     return "@" + label;
 }
 

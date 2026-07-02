@@ -133,10 +133,9 @@ const el = {
     addPersonParticipationWrap: ims.typedElement("add_person_participation_wrap", HTMLElement),
     addPersonName: ims.typedElement("add_person_name", HTMLInputElement),
     addPersonHandle: ims.typedElement("add_person_handle", HTMLInputElement),
+    addPersonHandleLabel: ims.typedElement("add_person_handle_label", HTMLElement),
     addPersonEmail: ims.typedElement("add_person_email", HTMLInputElement),
-    addPersonEmailWrap: ims.typedElement("add_person_email_wrap", HTMLElement),
     addPersonEmailLabel: ims.typedElement("add_person_email_label", HTMLElement),
-    addPersonEmailHome: ims.typedElement("add_person_email_home", HTMLElement),
     addPersonPhone: ims.typedElement("add_person_phone", HTMLInputElement),
     addPersonPassword: ims.typedElement("add_person_password", HTMLInputElement),
     addPersonPasswordConfirm: ims.typedElement("add_person_password_confirm", HTMLInputElement),
@@ -410,7 +409,7 @@ function sectionHeaderRow(label: string, count: number): HTMLTableRowElement {
     const tr = document.createElement("tr");
     tr.classList.add("table-group-divider");
     const th = document.createElement("th");
-    th.colSpan = 5;
+    th.colSpan = 4;
     th.scope = "colgroup";
     th.classList.add("text-body-secondary", "small", "fw-semibold", "pt-3");
     th.textContent = `${label} (${count})`;
@@ -442,23 +441,19 @@ function buildPersonRow(
         const entryItemFrag = el.personRowTemplate.content.cloneNode(true) as DocumentFragment;
         const entryItem = entryItemFrag.querySelector("tr")!;
 
-        // The People roster shows both identifiers in their own labeled columns —
-        // "Legal Name" (the full legal name) and "Fair Name" (the handle) — so each
-        // cell shows exactly its own field, rather than the shared, fair-name-first
-        // personDisplayLabel used in the single-label contexts (involvement,
-        // @mentions, comboboxes).
+        // The roster shows one combined "Name" column: "Fair Name (Legal Name)" (via
+        // personDisplayLabel), which is unambiguous, so the separate Legal Name / Fair
+        // Name columns were merged. displayLabel is reused for the row's modal prompts
+        // ("Set a new password for …", "Remove … from event").
         const legalName = person.name ?? "";
         const fairName = person.handle ?? "";
-        // displayLabel is the single-label rendering (fair name preferred) used for
-        // the row's modal prompts ("Set a new password for …", "Remove … from event").
         const displayLabel = ims.personDisplayLabel(person);
         entryItem.dataset["personId"] = (person.person_id ?? "").toString();
-        // Lowercased haystack for the client-side search box.
+        // Lowercased haystack for the client-side search box (both identifiers).
         entryItem.dataset["search"] =
             `${legalName} ${fairName} ${person.wristband ?? ""}`.toLowerCase();
 
-        entryItem.getElementsByClassName("person-name")[0]!.textContent = legalName;
-        entryItem.getElementsByClassName("person-handle")[0]!.textContent = fairName;
+        entryItem.getElementsByClassName("person-name")[0]!.textContent = displayLabel;
 
         // Admin badge next to the name. is_admin is only sent to admin viewers (53d),
         // so a non-admin inviter never sees it (and it stays hidden).
@@ -797,7 +792,7 @@ function setAddPersonStep(step: "search" | "create"): void {
 // the user has decided they're adding someone new.
 function showCreatePersonForm(): void {
     setAddPersonStep("create");
-    el.addPersonName.focus();
+    el.addPersonHandle.focus();
 }
 
 function backToPersonSearch(): void {
@@ -820,16 +815,10 @@ function setAccessShown(shown: boolean): void {
     el.addPersonAccessSection.classList.toggle("hidden", !shown);
     el.addPersonAccessToggle.classList.toggle("active", shown);
     el.addPersonAccessToggle.textContent = shown ? "Don't provide IMS access" : "Provide Access to IMS";
-    // With access on, email is a login credential: move it up next to the handle
-    // and relabel it required. With access off it's back to optional contact info
-    // in its original spot (right after its home anchor).
-    if (shown) {
-        el.addPersonAccessSection.insertBefore(el.addPersonEmailWrap, el.addPersonHandle.parentElement);
-        el.addPersonEmailLabel.textContent = "Email (required for login)";
-    } else {
-        el.addPersonEmailHome.after(el.addPersonEmailWrap);
-        el.addPersonEmailLabel.textContent = "Email (optional)";
-    }
+    // The fair name and email are top-level identity/contact fields; when access is
+    // on they become login credentials (both required), so relabel them in place.
+    el.addPersonHandleLabel.textContent = shown ? "Fair Name (required for login)" : "Fair Name";
+    el.addPersonEmailLabel.textContent = shown ? "Email (required for login)" : "Email (optional)";
 }
 
 function toggleProvideAccess(): void {
@@ -837,12 +826,11 @@ function toggleProvideAccess(): void {
     setAccessShown(show);
     if (show) {
         // Send them to whichever required login field still needs filling first.
-        (el.addPersonEmail.value.trim() === "" ? el.addPersonEmail : el.addPersonHandle).focus();
+        (el.addPersonHandle.value.trim() === "" ? el.addPersonHandle : el.addPersonEmail).focus();
     } else {
-        // Collapsing discards any half-entered credentials so they aren't submitted.
-        // Email is left alone — it's contact info, not a credential, and stays even
-        // without access.
-        el.addPersonHandle.value = "";
+        // Collapsing discards any half-entered password so it isn't submitted. The
+        // fair name and email are left alone — they're identity/contact fields that
+        // stand on their own even without a login.
         el.addPersonPassword.value = "";
         el.addPersonPasswordConfirm.value = "";
         resetPasswordToggle(el.addPersonPassword, el.addPersonPasswordToggle);
@@ -852,14 +840,15 @@ function toggleProvideAccess(): void {
 
 async function submitCreatePerson(): Promise<void> {
     const name = el.addPersonName.value.trim();
-    if (!name) {
-        ims.controlHasError(el.addPersonName);
-        ims.setErrorMessage("A full legal name is required.");
+    const handle = el.addPersonHandle.value.trim();
+    // Identity: either a fair name or a full legal name is enough to record someone.
+    if (!name && !handle) {
+        ims.controlHasError(el.addPersonHandle);
+        ims.setErrorMessage("A fair name or full legal name is required.");
         return;
     }
     // Credentials are only collected (and required) when the access section is open.
     const wantAccess = !el.addPersonAccessSection.classList.contains("hidden");
-    const handle = el.addPersonHandle.value.trim();
     const password = el.addPersonPassword.value;
     if (wantAccess) {
         if (!handle) {
@@ -886,7 +875,8 @@ async function submitCreatePerson(): Promise<void> {
 
     const body: Record<string, unknown> = {
         "name": name,
-        "handle": wantAccess ? handle : "",
+        // The fair name is identity, sent whether or not access is granted.
+        "handle": handle,
         // Email and phone are contact info, sent whether or not access is granted.
         "email": el.addPersonEmail.value.trim(),
         "phone": el.addPersonPhone.value.trim(),
