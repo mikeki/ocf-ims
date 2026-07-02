@@ -79,9 +79,10 @@ func TestCrewLeaderInvite(t *testing.T) {
 	require.Positive(t, invitee.PersonID)
 	require.Equal(t, "reporter", invitee.ParticipationType)
 
-	// The invitee can actually log in with the initial password they were given.
+	// The invitee can actually log in (by email — the sole login identifier) with the
+	// initial password they were given.
 	statusCode, _, token := apisNoAuth.postAuth(ctx, api.PostAuthRequest{
-		Identification: inviteeHandle,
+		Identification: inviteeHandle + "@example.com",
 		Password:       inviteePassword,
 	})
 	require.Equal(t, http.StatusOK, statusCode)

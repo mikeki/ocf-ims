@@ -80,7 +80,7 @@ func TestLoginRateLimit(t *testing.T) {
 	var retryAfter string
 	for i := range 12 {
 		resp := client.imsPost(ctx, api.PostAuthRequest{
-			Identification: userAliceHandle,
+			Identification: userAliceEmail,
 			Password:       "definitely-not-the-password",
 		}, srvURL.JoinPath("/ims/api/auth").String())
 		status := resp.StatusCode

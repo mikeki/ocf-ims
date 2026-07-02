@@ -56,17 +56,18 @@ func TestPostAuthAPIAuthorization(t *testing.T) {
 	require.Equal(t, http.StatusOK, statusCode)
 	require.NotEmpty(t, token)
 
-	// That same valid user can also log in by handle
+	// Login is by EMAIL only: the fair name (handle) is no longer accepted as a login
+	// identifier, so logging in with it is rejected like any unknown user.
 	statusCode, _, token = apisNotAuthenticated.postAuth(ctx, api.PostAuthRequest{
 		Identification: userAliceHandle,
 		Password:       userAlicePassword,
 	})
-	require.Equal(t, http.StatusOK, statusCode)
-	require.NotEmpty(t, token)
+	require.Equal(t, http.StatusUnauthorized, statusCode)
+	require.Empty(t, token)
 
-	// A valid user with the wrong password gets denied entry
+	// A valid user (matched by email) with the wrong password gets denied entry
 	statusCode, body, token = apisNotAuthenticated.postAuth(ctx, api.PostAuthRequest{
-		Identification: userAliceHandle,
+		Identification: userAliceEmail,
 		Password:       "not my password",
 	})
 	require.Equal(t, http.StatusUnauthorized, statusCode)

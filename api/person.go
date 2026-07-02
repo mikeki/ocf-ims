@@ -112,9 +112,9 @@ func (action CreatePerson) createPerson(req *http.Request) (imsjson.Person, *her
 	phone := strings.TrimSpace(body.Phone)
 	wristband := strings.TrimSpace(body.Wristband)
 
-	// Identity: a registry person needs at least a handle or a name.
+	// Identity: a registry person needs at least a fair name or a full legal name.
 	if handle == "" && name == "" {
-		return empty, herr.BadRequest("A handle or name is required", nil)
+		return empty, herr.BadRequest("A fair name or full legal name is required", nil)
 	}
 	if len(handle) > maxHandleLength {
 		return empty, herr.BadRequest("Handle is too long", nil)
@@ -184,10 +184,10 @@ func (action CreatePerson) createPerson(req *http.Request) (imsjson.Person, *her
 		phoneNull = conv.StringToSql(&phone, maxPhoneLength)
 	}
 
-	// Identity alone (the handle-or-name invariant above) is enough to CREATE a
-	// person, but granting IMS access requires a fair name specifically (feedback
-	// round 9): a login-capable person must have one. (postAuth still matches the
-	// typed identification against HANDLE/EMAIL, never the legal name.)
+	// Identity alone (the fair-name-or-legal-name invariant above) is enough to
+	// CREATE a person, but granting IMS access requires a fair name specifically
+	// (feedback round 9): a login-capable person must have one. (Login itself now
+	// matches EMAIL only; the client also requires an email when access is on.)
 	if body.Password != "" && handle == "" {
 		return empty, herr.BadRequest("A fair name is required to provide IMS access", nil)
 	}

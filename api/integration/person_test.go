@@ -112,9 +112,10 @@ func TestCreateAndEditPerson(t *testing.T) {
 		return p.Handle == newHandle
 	}), "created person should appear in the admin listing")
 
-	// ...and can log in with the assigned password.
+	// ...and can log in (by email — the sole login identifier) with the assigned
+	// password.
 	statusCode, _, token := apisNoAuth.postAuth(ctx, api.PostAuthRequest{
-		Identification: newHandle,
+		Identification: "edithtestranger@example.com",
 		Password:       newPassword,
 	})
 	require.Equal(t, http.StatusOK, statusCode)

@@ -442,18 +442,21 @@ function buildPersonRow(
         const entryItemFrag = el.personRowTemplate.content.cloneNode(true) as DocumentFragment;
         const entryItem = entryItemFrag.querySelector("tr")!;
 
-        const label = ims.personDisplayLabel(person);
+        // The People roster shows both identifiers in their own columns — "Name" (the
+        // full legal name) and "Fair Name" (the handle) — so it uses a legal-name-first
+        // label here rather than the shared, fair-name-first personDisplayLabel used in
+        // the single-label contexts (involvement, @mentions, comboboxes).
+        const label = (person.name && person.name.trim() !== "") ? person.name : (person.handle ?? "");
         entryItem.dataset["personId"] = (person.person_id ?? "").toString();
         // Lowercased haystack for the client-side search box.
         entryItem.dataset["search"] =
             `${label} ${person.handle ?? ""} ${person.wristband ?? ""}`.toLowerCase();
 
         entryItem.getElementsByClassName("person-name")[0]!.textContent = label;
-        // The primary label now prefers the fair name (round 9), so show the full
-        // legal name as the secondary identifier when the person has both. A
-        // person with only one of the two already shows it as the primary label.
+        // Fair Name column: show the handle when the person also has a legal name in
+        // the Name column; a handle-only person already shows it as the label.
         entryItem.getElementsByClassName("person-handle")[0]!.textContent =
-            (person.name && person.handle) ? person.name : "";
+            (person.name && person.handle) ? person.handle : "";
 
         // Admin badge next to the name. is_admin is only sent to admin viewers (53d),
         // so a non-admin inviter never sees it (and it stays hidden).
