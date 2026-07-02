@@ -281,7 +281,7 @@ func TestAreaCreateAllowedForEventWriter(t *testing.T) {
 	eventName := makeEvent(ctx, t, admin)
 
 	// Grant Alice write access to the event, then re-auth so her JWT carries it.
-	resp := admin.addWriter(ctx, eventName, userAliceHandle)
+	resp := admin.addWriter(ctx, eventName, userAliceFairName)
 	require.Equal(t, http.StatusNoContent, resp.StatusCode)
 	require.NoError(t, resp.Body.Close())
 	alice := ApiHelper{t: t, serverURL: shared.serverURL, jwt: jwtForAlice(t, ctx)}
@@ -340,7 +340,7 @@ func TestWriterProposalIsUnapproved(t *testing.T) {
 	require.NoError(t, resp.Body.Close())
 
 	// Grant Alice write access, then have her propose an area on the fly.
-	resp = admin.addWriter(ctx, eventName, userAliceHandle)
+	resp = admin.addWriter(ctx, eventName, userAliceFairName)
 	require.Equal(t, http.StatusNoContent, resp.StatusCode)
 	require.NoError(t, resp.Body.Close())
 	alice := ApiHelper{t: t, serverURL: shared.serverURL, jwt: jwtForAlice(t, ctx)}
@@ -364,7 +364,7 @@ func TestWriterProposalIsUnapproved(t *testing.T) {
 	require.NotNil(t, proposal.Approved)
 	assert.False(t, *proposal.Approved, "a writer's area starts as an unapproved proposal")
 	require.NotNil(t, proposal.Proposer, "a proposal records who proposed it")
-	assert.Equal(t, userAliceHandle, proposal.Proposer.FairName)
+	assert.Equal(t, userAliceFairName, proposal.Proposer.FairName)
 }
 
 // TestApproveArea verifies an admin can approve a writer's proposal, and that a
@@ -375,7 +375,7 @@ func TestApproveArea(t *testing.T) {
 	admin := ApiHelper{t: t, serverURL: shared.serverURL, jwt: jwtForAdmin(ctx, t)}
 	eventName := makeEvent(ctx, t, admin)
 
-	resp := admin.addWriter(ctx, eventName, userAliceHandle)
+	resp := admin.addWriter(ctx, eventName, userAliceFairName)
 	require.Equal(t, http.StatusNoContent, resp.StatusCode)
 	require.NoError(t, resp.Body.Close())
 	alice := ApiHelper{t: t, serverURL: shared.serverURL, jwt: jwtForAlice(t, ctx)}
@@ -464,7 +464,7 @@ func TestMarkDuplicateRequiresAdmin(t *testing.T) {
 	require.Equal(t, http.StatusNoContent, resp.StatusCode)
 	require.NoError(t, resp.Body.Close())
 
-	resp = admin.addWriter(ctx, eventName, userAliceHandle)
+	resp = admin.addWriter(ctx, eventName, userAliceFairName)
 	require.Equal(t, http.StatusNoContent, resp.StatusCode)
 	require.NoError(t, resp.Body.Close())
 	alice := ApiHelper{t: t, serverURL: shared.serverURL, jwt: jwtForAlice(t, ctx)}

@@ -52,7 +52,7 @@ func TestManyEventPermissions_participationLadder(t *testing.T) {
 	for _, tc := range cases {
 		permissions, globalPermissions := ManyEventPermissions(
 			map[int32]imsdb.PersonEventParticipationType{123: tc.participation},
-			"SomeHandle",
+			"SomeFairName",
 			false,
 		)
 		require.Equalf(t, tc.want, permissions[123], "participation %q", tc.participation)
@@ -78,7 +78,7 @@ func TestManyEventPermissions_adminBypass(t *testing.T) {
 	require.Equal(t, authenticatedUserPerms|adminGlobalPerms, globalPermissions)
 }
 
-// TestManyEventPermissions_unauthenticated verifies an empty handle grants no global
+// TestManyEventPermissions_unauthenticated verifies an empty fair name grants no global
 // permissions (and no per-event ones).
 func TestManyEventPermissions_unauthenticated(t *testing.T) {
 	t.Parallel()
@@ -105,7 +105,7 @@ func TestManyEventPermissions_isAdminRules(t *testing.T) {
 	)
 	require.Equal(t, authenticatedUserPerms|adminGlobalPerms, globalPermissions)
 
-	// Same handle without the flag → ordinary authenticated user only.
+	// Same fair name without the flag → ordinary authenticated user only.
 	_, globalPermissions = ManyEventPermissions(
 		map[int32]imsdb.PersonEventParticipationType{},
 		"LocalAdmin",

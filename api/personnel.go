@@ -59,7 +59,7 @@ func (action GetPersonnel) getPersonnel(req *http.Request) (GetPersonnelResponse
 
 	// Typeahead search (?q=) backs the search-first person picker on the incident
 	// and visit attach flows and the admin People page. It returns a minimal shape
-	// (id, name, handle?, wristband?, participation_type?) over active people and is
+	// (id, legal name, fair name?, wristband?, participation_type?) over active people and is
 	// gated only on GlobalReadPersonnel (any logged-in user; see R4 in the plan).
 	if q := strings.TrimSpace(req.FormValue("q")); q != "" {
 		return action.searchPersonnel(req, q)

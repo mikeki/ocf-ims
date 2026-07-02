@@ -38,9 +38,9 @@ func findPerson(t *testing.T, people []imsjson.Person, personID int64) imsjson.P
 }
 
 // TestCreateAndEditPerson exercises in-app person creation: permission gating,
-// validation, the duplicate-handle guard, that a created person appears in the
+// validation, the duplicate-fair-name guard, that a created person appears in the
 // admin listing and can log in, and the 404 guard on editing an unknown person.
-// It uses dedicated handles so it doesn't disturb other parallel tests.
+// It uses dedicated fair names so it doesn't disturb other parallel tests.
 func TestCreateAndEditPerson(t *testing.T) {
 	t.Parallel()
 	ctx := t.Context()
@@ -49,24 +49,24 @@ func TestCreateAndEditPerson(t *testing.T) {
 	apisAlice := ApiHelper{t: t, serverURL: shared.serverURL, jwt: jwtForAlice(t, ctx)}
 	apisNoAuth := ApiHelper{t: t, serverURL: shared.serverURL}
 
-	const newHandle = "EdithTestRanger"
+	const newFairName = "EdithTestRanger"
 	const newPassword = "edith-password"
 
 	// A non-admin (no GlobalAdministratePersonnel) cannot create people.
-	resp := apisAlice.createPerson(ctx, api.CreatePersonRequest{FairName: newHandle, Password: newPassword})
+	resp := apisAlice.createPerson(ctx, api.CreatePersonRequest{FairName: newFairName, Password: newPassword})
 	require.Equal(t, http.StatusForbidden, resp.StatusCode)
 	require.NoError(t, resp.Body.Close())
 
-	// Validation: empty handle and too-short password are rejected.
+	// Validation: empty fair name and too-short password are rejected.
 	resp = apisAdmin.createPerson(ctx, api.CreatePersonRequest{FairName: ""})
 	require.Equal(t, http.StatusBadRequest, resp.StatusCode)
 	require.NoError(t, resp.Body.Close())
-	resp = apisAdmin.createPerson(ctx, api.CreatePersonRequest{FairName: newHandle, Password: "short"})
+	resp = apisAdmin.createPerson(ctx, api.CreatePersonRequest{FairName: newFairName, Password: "short"})
 	require.Equal(t, http.StatusBadRequest, resp.StatusCode)
 	require.NoError(t, resp.Body.Close())
 
-	// A password with neither a handle nor an email is rejected (the reported
-	// add-person bug): login matches HANDLE/EMAIL, never the name, so a name-only
+	// A password with neither a fair name nor an email is rejected (the reported
+	// add-person bug): login matches FAIR_NAME/EMAIL, never the name, so a name-only
 	// person with a password could never sign in. Don't mint that unusable login.
 	resp = apisAdmin.createPerson(ctx, api.CreatePersonRequest{LegalName: "No Login Person", Password: newPassword})
 	require.Equal(t, http.StatusBadRequest, resp.StatusCode)
@@ -78,7 +78,7 @@ func TestCreateAndEditPerson(t *testing.T) {
 
 	// The admin creates the person.
 	resp = apisAdmin.createPerson(ctx, api.CreatePersonRequest{
-		FairName: newHandle,
+		FairName: newFairName,
 		Email:    "edithtestranger@example.com",
 		Password: newPassword,
 	})
@@ -94,8 +94,8 @@ func TestCreateAndEditPerson(t *testing.T) {
 	require.NoError(t, resp.Body.Close())
 	require.Positive(t, created.PersonID)
 
-	// Creating the same handle again is a conflict.
-	resp = apisAdmin.createPerson(ctx, api.CreatePersonRequest{FairName: newHandle, Password: newPassword})
+	// Creating the same fair name again is a conflict.
+	resp = apisAdmin.createPerson(ctx, api.CreatePersonRequest{FairName: newFairName, Password: newPassword})
 	require.Equal(t, http.StatusConflict, resp.StatusCode)
 	require.NoError(t, resp.Body.Close())
 
@@ -104,12 +104,12 @@ func TestCreateAndEditPerson(t *testing.T) {
 	require.Equal(t, http.StatusOK, resp.StatusCode)
 	require.NoError(t, resp.Body.Close())
 	require.True(t, slices.ContainsFunc(people, func(p imsjson.Person) bool {
-		return p.FairName == newHandle
+		return p.FairName == newFairName
 	}), "created person should appear in the admin listing")
 
 	// ...and can log in with the assigned password.
 	statusCode, _, token := apisNoAuth.postAuth(ctx, api.PostAuthRequest{
-		Identification: newHandle,
+		Identification: newFairName,
 		Password:       newPassword,
 	})
 	require.Equal(t, http.StatusOK, statusCode)
@@ -124,8 +124,8 @@ func TestCreateAndEditPerson(t *testing.T) {
 // TestEditPersonProfileAndParticipation exercises the 5e.4 admin People editor:
 // editing name + email (the closed frozen-email gap), the per-event wristband +
 // participation-type upsert and its event scoping, the wristband-uniqueness
-// conflict, and the identity invariant for a handle-less registry person. It uses
-// a dedicated event and dedicated handles so it doesn't disturb parallel tests.
+// conflict, and the identity invariant for a fair-name-less registry person. It uses
+// a dedicated event and dedicated fair names so it doesn't disturb parallel tests.
 func TestEditPersonProfileAndParticipation(t *testing.T) {
 	t.Parallel()
 	ctx := t.Context()
@@ -203,7 +203,7 @@ func TestEditPersonProfileAndParticipation(t *testing.T) {
 	require.Equal(t, http.StatusConflict, resp.StatusCode)
 	require.NoError(t, resp.Body.Close())
 
-	// --- identity invariant: a handle-less registry person can't have name cleared. ---
+	// --- identity invariant: a fair-name-less registry person can't have name cleared. ---
 	resp = apisAdmin.createPerson(ctx, api.CreatePersonRequest{LegalName: "Registry Only", Event: eventName})
 	require.Equal(t, http.StatusCreated, resp.StatusCode)
 	var registry imsjson.Person
@@ -220,17 +220,17 @@ func TestEditPersonProfileAndParticipation(t *testing.T) {
 	require.NoError(t, resp.Body.Close())
 }
 
-// TestPersonPhoneAndEditableHandle covers the contact-phone field and the
-// now-editable handle: a login-less person can carry an email + phone as contact
-// info, and an admin can later change the handle, email, and phone (with the handle
+// TestPersonPhoneAndEditableFairName covers the contact-phone field and the
+// now-editable fair name: a login-less person can carry an email + phone as contact
+// info, and an admin can later change the fair name, email, and phone (with the fair name
 // unique key still rejecting a collision).
-func TestPersonPhoneAndEditableHandle(t *testing.T) {
+func TestPersonPhoneAndEditableFairName(t *testing.T) {
 	t.Parallel()
 	ctx := t.Context()
 
 	apisAdmin := ApiHelper{t: t, serverURL: shared.serverURL, jwt: jwtForAdmin(ctx, t)}
 
-	// A login-less contact: just a name, plus phone + email contact info (no handle,
+	// A login-less contact: just a name, plus phone + email contact info (no fair name,
 	// no password).
 	resp := apisAdmin.createPerson(ctx, api.CreatePersonRequest{
 		LegalName: "Contact Only Person",
@@ -249,11 +249,11 @@ func TestPersonPhoneAndEditableHandle(t *testing.T) {
 	require.Equal(t, "555-0100", got.Phone)
 	require.Empty(t, got.FairName)
 
-	// Give them a handle and change the phone in one edit.
-	newHandle := "NowHasAHandle"
+	// Give them a fair name and change the phone in one edit.
+	newFairName := "NowHasAFairName"
 	newPhone := "555-0199"
 	resp = apisAdmin.editPerson(ctx, contact.PersonID, api.EditPersonRequest{
-		FairName: &newHandle, Phone: &newPhone,
+		FairName: &newFairName, Phone: &newPhone,
 	})
 	require.Equal(t, http.StatusNoContent, resp.StatusCode)
 	require.NoError(t, resp.Body.Close())
@@ -261,17 +261,17 @@ func TestPersonPhoneAndEditableHandle(t *testing.T) {
 	people, resp = apisAdmin.getAllPersonnel(ctx)
 	require.NoError(t, resp.Body.Close())
 	got = findPerson(t, people, contact.PersonID)
-	require.Equal(t, newHandle, got.FairName)
+	require.Equal(t, newFairName, got.FairName)
 	require.Equal(t, newPhone, got.Phone)
 	require.Equal(t, "contact@example.com", got.Email)
 
-	// A second person can't take the same handle: the unique key surfaces as 409.
-	resp = apisAdmin.createPerson(ctx, api.CreatePersonRequest{FairName: "OtherHandle", Password: "other-password"})
+	// A second person can't take the same fair name: the unique key surfaces as 409.
+	resp = apisAdmin.createPerson(ctx, api.CreatePersonRequest{FairName: "OtherFairName", Password: "other-password"})
 	require.Equal(t, http.StatusCreated, resp.StatusCode)
 	var other imsjson.Person
 	require.NoError(t, json.NewDecoder(resp.Body).Decode(&other))
 	require.NoError(t, resp.Body.Close())
-	resp = apisAdmin.editPerson(ctx, other.PersonID, api.EditPersonRequest{FairName: &newHandle})
+	resp = apisAdmin.editPerson(ctx, other.PersonID, api.EditPersonRequest{FairName: &newFairName})
 	require.Equal(t, http.StatusConflict, resp.StatusCode)
 	require.NoError(t, resp.Body.Close())
 }
@@ -294,12 +294,12 @@ func TestEventRosterAddRemove(t *testing.T) {
 	require.NoError(t, resp.Body.Close())
 	// Being an admin confers only global permissions; the event-scoped incident write
 	// below still needs an explicit grant.
-	resp = apisAdmin.addWriter(ctx, eventName, userAdminHandle)
+	resp = apisAdmin.addWriter(ctx, eventName, userAdminFairName)
 	require.Equal(t, http.StatusNoContent, resp.StatusCode)
 	require.NoError(t, resp.Body.Close())
 
-	makePerson := func(handle string) int64 {
-		r := apisAdmin.createPerson(ctx, api.CreatePersonRequest{FairName: handle, Password: handle + "-pw-12345"})
+	makePerson := func(fairName string) int64 {
+		r := apisAdmin.createPerson(ctx, api.CreatePersonRequest{FairName: fairName, Password: fairName + "-pw-12345"})
 		require.Equal(t, http.StatusCreated, r.StatusCode)
 		var p imsjson.Person
 		require.NoError(t, json.NewDecoder(r.Body).Decode(&p))

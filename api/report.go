@@ -86,7 +86,7 @@ func (action GetReports) getReports(req *http.Request) (imsjson.Reports, *herr.H
 	for _, row := range journalEntries {
 		entriesByReport[row.ReportNumber] = append(entriesByReport[row.ReportNumber],
 			journalEntryToJSON(row.JournalEntry, row.Author.String,
-				onBehalfOfJSON(row.JournalEntry.OnBehalfOfPersonID, row.OnBehalfOfHandle, row.OnBehalfOfName),
+				onBehalfOfJSON(row.JournalEntry.OnBehalfOfPersonID, row.OnBehalfOfFairName, row.OnBehalfOfLegalName),
 				action.attachmentsEnabled))
 	}
 
@@ -220,7 +220,7 @@ func fetchReport(ctx context.Context, imsDBQ *store.DBQ, eventID, reportNumber i
 	var journalEntries []imsjson.JournalEntry
 	for _, rer := range journalEntryRows {
 		journalEntries = append(journalEntries, journalEntryToJSON(rer.JournalEntry, rer.Author.String,
-			onBehalfOfJSON(rer.JournalEntry.OnBehalfOfPersonID, rer.OnBehalfOfHandle, rer.OnBehalfOfName),
+			onBehalfOfJSON(rer.JournalEntry.OnBehalfOfPersonID, rer.OnBehalfOfFairName, rer.OnBehalfOfLegalName),
 			attachmentsEnabled))
 	}
 	// Attach @mention rows (plan 81) to their entries for rendering/linking.

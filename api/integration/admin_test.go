@@ -51,7 +51,7 @@ func TestSetPersonAdmin(t *testing.T) {
 
 	// Carol is not an admin to start with: a fresh login reports admin=false.
 	statusCode, _, carolToken := apisNoAuth.postAuth(ctx, api.PostAuthRequest{
-		Identification: userCarolHandle,
+		Identification: userCarolFairName,
 		Password:       userCarolPassword,
 	})
 	require.Equal(t, http.StatusOK, statusCode)
@@ -68,7 +68,7 @@ func TestSetPersonAdmin(t *testing.T) {
 	// The cache was invalidated, so a fresh login for Carol now carries admin in
 	// the token and getAuth reports admin=true.
 	statusCode, _, carolToken = apisNoAuth.postAuth(ctx, api.PostAuthRequest{
-		Identification: userCarolHandle,
+		Identification: userCarolFairName,
 		Password:       userCarolPassword,
 	})
 	require.Equal(t, http.StatusOK, statusCode)

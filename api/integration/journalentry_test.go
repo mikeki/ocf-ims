@@ -38,7 +38,7 @@ func TestEditIncidentJournalEntry(t *testing.T) {
 	_, resp := apisAdmin.createEvent(ctx, imsjson.Event{Name: &eventName})
 	require.Equal(t, http.StatusNoContent, resp.StatusCode)
 	require.NoError(t, resp.Body.Close())
-	resp = apisAdmin.addWriter(ctx, eventName, userAliceHandle)
+	resp = apisAdmin.addWriter(ctx, eventName, userAliceFairName)
 	require.Equal(t, http.StatusNoContent, resp.StatusCode)
 	require.NoError(t, resp.Body.Close())
 
@@ -105,7 +105,7 @@ func TestEditReportJournalEntry(t *testing.T) {
 	_, resp := apisAdmin.createEvent(ctx, imsjson.Event{Name: &eventName})
 	require.Equal(t, http.StatusNoContent, resp.StatusCode)
 	require.NoError(t, resp.Body.Close())
-	resp = apisAdmin.addWriter(ctx, eventName, userAliceHandle)
+	resp = apisAdmin.addWriter(ctx, eventName, userAliceFairName)
 	require.Equal(t, http.StatusNoContent, resp.StatusCode)
 	require.NoError(t, resp.Body.Close())
 
@@ -180,10 +180,10 @@ func TestReportJournalEntryStrikeOwnership(t *testing.T) {
 	_, resp := apisAdmin.createEvent(ctx, imsjson.Event{Name: &eventName})
 	require.Equal(t, http.StatusNoContent, resp.StatusCode)
 	require.NoError(t, resp.Body.Close())
-	resp = apisAdmin.addWriter(ctx, eventName, userAliceHandle)
+	resp = apisAdmin.addWriter(ctx, eventName, userAliceFairName)
 	require.Equal(t, http.StatusNoContent, resp.StatusCode)
 	require.NoError(t, resp.Body.Close())
-	resp = apisAdmin.addReporter(ctx, eventName, userDaveHandle)
+	resp = apisAdmin.addReporter(ctx, eventName, userDaveFairName)
 	require.Equal(t, http.StatusNoContent, resp.StatusCode)
 	require.NoError(t, resp.Body.Close())
 
@@ -214,7 +214,7 @@ func TestReportJournalEntryStrikeOwnership(t *testing.T) {
 	require.Equal(t, http.StatusOK, resp.StatusCode)
 	require.NoError(t, resp.Body.Close())
 	daveEntry := own.JournalEntries[1]
-	require.Equal(t, userDaveHandle, daveEntry.Author)
+	require.Equal(t, userDaveFairName, daveEntry.Author)
 	daveEntry.Stricken = new(true)
 	resp = apisDave.updateReportJournalEntry(ctx, eventName, daveReport, daveEntry)
 	require.Equal(t, http.StatusNoContent, resp.StatusCode)
@@ -241,7 +241,7 @@ func TestReportJournalEntryStrikeOwnership(t *testing.T) {
 	require.NoError(t, resp.Body.Close())
 	var aliceOnDave imsjson.JournalEntry
 	for _, e := range withAlice.JournalEntries {
-		if e.Author == userAliceHandle {
+		if e.Author == userAliceFairName {
 			aliceOnDave = e
 		}
 	}
@@ -255,7 +255,7 @@ func TestReportJournalEntryStrikeOwnership(t *testing.T) {
 
 // TestJournalEntryMentions verifies that the @mention person IDs sent on a
 // journal entry (plan 81) are persisted and round-trip on read, resolved to the
-// mentioned person's handle/name. It also covers the insert-ignore semantics:
+// mentioned person's fair name/legal name. It also covers the insert-ignore semantics:
 // a duplicate person in the list collapses to one mention, and a stale/unknown
 // person ID is silently dropped rather than failing the request.
 func TestJournalEntryMentions(t *testing.T) {
@@ -269,7 +269,7 @@ func TestJournalEntryMentions(t *testing.T) {
 	_, resp := apisAdmin.createEvent(ctx, imsjson.Event{Name: &eventName})
 	require.Equal(t, http.StatusNoContent, resp.StatusCode)
 	require.NoError(t, resp.Body.Close())
-	resp = apisAdmin.addWriter(ctx, eventName, userAliceHandle)
+	resp = apisAdmin.addWriter(ctx, eventName, userAliceFairName)
 	require.Equal(t, http.StatusNoContent, resp.StatusCode)
 	require.NoError(t, resp.Body.Close())
 
@@ -279,7 +279,7 @@ func TestJournalEntryMentions(t *testing.T) {
 	num := apisAlice.newIncidentSuccess(ctx, imsjson.Incident{
 		Event: eventName,
 		JournalEntries: []imsjson.JournalEntry{{
-			Text:               "Paging @" + userBobHandle + " and @" + userCarolHandle + " to assist.",
+			Text:               "Paging @" + userBobFairName + " and @" + userCarolFairName + " to assist.",
 			MentionedPersonIDs: []int32{userBobPersonID, userCarolPersonID, userBobPersonID, nonexistentPersonID},
 		}},
 	})
@@ -307,13 +307,13 @@ func TestJournalEntryMentions(t *testing.T) {
 	require.Contains(t, byID, int32(userBobPersonID))
 	require.Contains(t, byID, int32(userCarolPersonID))
 	require.NotContains(t, byID, int32(nonexistentPersonID))
-	require.Equal(t, userBobHandle, byID[userBobPersonID].FairName)
-	require.Equal(t, userCarolHandle, byID[userCarolPersonID].FairName)
+	require.Equal(t, userBobFairName, byID[userBobPersonID].FairName)
+	require.Equal(t, userCarolFairName, byID[userCarolPersonID].FairName)
 }
 
 // TestJournalEntryTypedMentions verifies the backend safety net: when an author
-// types "@handle" but does NOT pick from the "@" typeahead (so the client sends
-// no MentionedPersonIDs), the server still resolves the handle from the directory
+// types "@fairname" but does NOT pick from the "@" typeahead (so the client sends
+// no MentionedPersonIDs), the server still resolves the fair name from the directory
 // and records the mention. Without this, a fat-fingered or pasted mention would
 // notify nobody.
 func TestJournalEntryTypedMentions(t *testing.T) {
@@ -327,7 +327,7 @@ func TestJournalEntryTypedMentions(t *testing.T) {
 	_, resp := apisAdmin.createEvent(ctx, imsjson.Event{Name: &eventName})
 	require.Equal(t, http.StatusNoContent, resp.StatusCode)
 	require.NoError(t, resp.Body.Close())
-	resp = apisAdmin.addWriter(ctx, eventName, userAliceHandle)
+	resp = apisAdmin.addWriter(ctx, eventName, userAliceFairName)
 	require.Equal(t, http.StatusNoContent, resp.StatusCode)
 	require.NoError(t, resp.Body.Close())
 
@@ -335,7 +335,7 @@ func TestJournalEntryTypedMentions(t *testing.T) {
 	num := apisAlice.newIncidentSuccess(ctx, imsjson.Incident{
 		Event: eventName,
 		JournalEntries: []imsjson.JournalEntry{{
-			Text: "Please page @" + userBobHandle + " right away.",
+			Text: "Please page @" + userBobFairName + " right away.",
 		}},
 	})
 
@@ -351,11 +351,11 @@ func TestJournalEntryTypedMentions(t *testing.T) {
 	}
 	require.NotZero(t, entry.ID)
 
-	// Bob's mention is resolved from the typed handle even though the client sent
+	// Bob's mention is resolved from the typed fair name even though the client sent
 	// no person IDs.
 	require.Len(t, entry.Mentions, 1)
 	require.Equal(t, int32(userBobPersonID), entry.Mentions[0].PersonID)
-	require.Equal(t, userBobHandle, entry.Mentions[0].FairName)
+	require.Equal(t, userBobFairName, entry.Mentions[0].FairName)
 }
 
 // TestReportJournalEntryMentions is the field-report mirror of
@@ -373,7 +373,7 @@ func TestReportJournalEntryMentions(t *testing.T) {
 	_, resp := apisAdmin.createEvent(ctx, imsjson.Event{Name: &eventName})
 	require.Equal(t, http.StatusNoContent, resp.StatusCode)
 	require.NoError(t, resp.Body.Close())
-	resp = apisAdmin.addWriter(ctx, eventName, userAliceHandle)
+	resp = apisAdmin.addWriter(ctx, eventName, userAliceFairName)
 	require.Equal(t, http.StatusNoContent, resp.StatusCode)
 	require.NoError(t, resp.Body.Close())
 
@@ -382,7 +382,7 @@ func TestReportJournalEntryMentions(t *testing.T) {
 		Event:   eventName,
 		Summary: &summary,
 		JournalEntries: []imsjson.JournalEntry{{
-			Text:               "Looping in @" + userBobHandle + " and @" + userCarolHandle + ".",
+			Text:               "Looping in @" + userBobFairName + " and @" + userCarolFairName + ".",
 			MentionedPersonIDs: []int32{userBobPersonID, userCarolPersonID, userBobPersonID, nonexistentPersonID},
 		}},
 	})
@@ -406,5 +406,5 @@ func TestReportJournalEntryMentions(t *testing.T) {
 	require.Contains(t, byID, int32(userBobPersonID))
 	require.Contains(t, byID, int32(userCarolPersonID))
 	require.NotContains(t, byID, int32(nonexistentPersonID))
-	require.Equal(t, userBobHandle, byID[userBobPersonID].FairName)
+	require.Equal(t, userBobFairName, byID[userBobPersonID].FairName)
 }

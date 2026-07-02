@@ -81,7 +81,7 @@ func (action SetPersonPassword) setPersonPassword(req *http.Request) *herr.HTTPE
 	}
 
 	// The person is addressed by stable ID in the URL path (registry people may
-	// have no handle since 5e).
+	// have no fair name since 5e).
 	person, errHTTP := personByIDFromPath(req.Context(), action.imsDBQ, req)
 	if errHTTP != nil {
 		return errHTTP

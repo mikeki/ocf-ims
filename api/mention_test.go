@@ -33,10 +33,10 @@ type fakeUserStore struct {
 	users map[int64]*directory.User
 }
 
-func newFakeUserStore(handlesByID map[int64]string) *fakeUserStore {
-	users := make(map[int64]*directory.User, len(handlesByID))
-	for id, handle := range handlesByID {
-		users[id] = &directory.User{ID: id, FairName: handle}
+func newFakeUserStore(fairNamesByID map[int64]string) *fakeUserStore {
+	users := make(map[int64]*directory.User, len(fairNamesByID))
+	for id, fairName := range fairNamesByID {
+		users[id] = &directory.User{ID: id, FairName: fairName}
 	}
 	return &fakeUserStore{users: users}
 }
@@ -65,15 +65,15 @@ func TestResolveTypedMentionIDs(t *testing.T) {
 		want []int32
 	}{
 		{name: "no at-sign", text: "nothing to see here", want: nil},
-		{name: "plain handle", text: "paging @Hardware to gate 5", want: []int32{1}},
+		{name: "plain fair name", text: "paging @Hardware to gate 5", want: []int32{1}},
 		{name: "case-insensitive", text: "@hardware please respond", want: []int32{1}},
 		{name: "at start of text", text: "@Bob heads up", want: []int32{2}},
 		{name: "trailing punctuation", text: "thanks @Bob, and @Hardware.", want: []int32{2, 1}},
-		{name: "digits in handle", text: "send @k9 over", want: []int32{3}},
-		{name: "unknown handle ignored", text: "@nobody around", want: nil},
+		{name: "digits in fair name", text: "send @k9 over", want: []int32{3}},
+		{name: "unknown fair name ignored", text: "@nobody around", want: nil},
 		{name: "mid-word at is not a mention", text: "email bob@example.com", want: nil},
 		{name: "multiple mentions", text: "@Bob and @Hardware", want: []int32{2, 1}},
-		{name: "repeated handle resolves each time", text: "@Bob @Bob", want: []int32{2, 2}},
+		{name: "repeated fair name resolves each time", text: "@Bob @Bob", want: []int32{2, 2}},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {

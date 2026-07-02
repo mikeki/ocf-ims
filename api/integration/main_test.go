@@ -54,14 +54,14 @@ var shared struct {
 }
 
 // These values must align with those in imsPeopleTestSeed. Person IDs are the URL
-// key for personnel endpoints since 5e (registry people may have no handle).
+// key for personnel endpoints since 5e (registry people may have no fair name).
 const (
-	userAdminHandle   = "AdminTestRanger"
+	userAdminFairName = "AdminTestRanger"
 	userAdminEmail    = "admintestranger@example.com"
 	userAdminPassword = ")'("
 	userAdminPersonID = 6000
 
-	userAliceHandle   = "AliceTestRanger"
+	userAliceFairName = "AliceTestRanger"
 	userAliceEmail    = "alicetestranger@example.com"
 	userAlicePassword = "password"
 	userAlicePersonID = 6001
@@ -69,7 +69,7 @@ const (
 	// Bob is a dedicated non-admin user for the password-reset test, so that test
 	// can mutate his password without contaminating other (parallel) tests that log
 	// in as Admin/Alice. His seeded hash is Alice's, so his initial password matches.
-	userBobHandle          = "BobTestRanger"
+	userBobFairName        = "BobTestRanger"
 	userBobEmail           = "bobtestranger@example.com"
 	userBobInitialPassword = "password"
 	userBobPersonID        = 6002
@@ -77,7 +77,7 @@ const (
 	// Carol is dedicated to the IS_ADMIN toggle test, so it can flag/unflag her
 	// without touching admins that other parallel tests rely on. She shares Alice's
 	// seeded password hash.
-	userCarolHandle   = "CarolTestRanger"
+	userCarolFairName = "CarolTestRanger"
 	userCarolEmail    = "caroltestranger@example.com"
 	userCarolPassword = "password"
 	userCarolPersonID = 6003
@@ -85,7 +85,7 @@ const (
 	// Dave is dedicated to the 52f per-incident-grant test: a stable non-admin who is
 	// made a reporter in that test's own event, so other parallel tests don't perturb
 	// his role/password. He shares Alice's seeded password hash.
-	userDaveHandle   = "DaveTestRanger"
+	userDaveFairName = "DaveTestRanger"
 	userDaveEmail    = "davetestranger@example.com"
 	userDavePassword = "password"
 	userDavePersonID = 6004
@@ -93,7 +93,7 @@ const (
 	// Erin is dedicated to the 53b crew-leader invite test: a stable non-admin made a
 	// crew_leader in that test's own event, exercising the invite-reporters path
 	// without an admin. She shares Alice's seeded password hash.
-	userErinHandle   = "ErinTestRanger"
+	userErinFairName = "ErinTestRanger"
 	userErinEmail    = "erintestranger@example.com"
 	userErinPassword = "password"
 	userErinPersonID = 6005
@@ -106,7 +106,7 @@ const (
 // suite: the two login users (with argon2id password hashes for userAdminPassword /
 // userAlicePassword), plus a position and team so the positions/teams paths are
 // exercised. The person_id FKs (attachments, journal-entry author) resolve against
-// these rows and the author join renders the expected handle.
+// these rows and the author join renders the expected fair name.
 const imsPeopleTestSeed = `
 insert into PERSON (ID, FAIR_NAME, EMAIL, PASSWORD, CREATED, IS_ADMIN) values
     (6000, 'AdminTestRanger', 'admintestranger@example.com', '$argon2id$v=19$m=1,t=1,p=1$51uXrZoFRb6O4Tw4TsAJVQ$SedDwp+hPpIJc42QcnFJy6EOtE+b5kyYFpnuRHl/5qs', 0, true),

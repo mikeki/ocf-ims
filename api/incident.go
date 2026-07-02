@@ -397,7 +397,7 @@ func addIncidentJournalEntry(
 
 // addJournalEntryMentions records the @mention rows for a freshly-created
 // journal entry (plan 81). It records both the people the author picked via the
-// "@" typeahead (explicitPersonIDs) and any "@handle" they typed by hand without
+// "@" typeahead (explicitPersonIDs) and any "@fairname" they typed by hand without
 // picking — the latter resolved from the directory by resolveTypedMentionIDs, so
 // a fat-fingered or pasted mention still notifies the right person. The insert is
 // insert-ignore, so a person appearing in both lists, a duplicate, or a
@@ -435,11 +435,11 @@ func addJournalEntryMentions(
 // address) is not treated as a mention here either.
 var mentionTokenRe = regexp.MustCompile(`(?:^|\s)@(\S+)`)
 
-// resolveTypedMentionIDs scans journal text for "@handle" mentions and returns
-// the person IDs whose handle matches one (case-insensitively). It's the safety
-// net for when an author types "@handle" without picking from the "@" typeahead:
+// resolveTypedMentionIDs scans journal text for "@fairname" mentions and returns
+// the person IDs whose fair name matches one (case-insensitively). It's the safety
+// net for when an author types "@fairname" without picking from the "@" typeahead:
 // the frontend records no person ID in that case, so without this the mention
-// would notify nobody. Only exact handle matches resolve — display names (which
+// would notify nobody. Only exact fair-name matches resolve — display names (which
 // contain spaces and so are ambiguous in free text) are intentionally not
 // matched — and trailing punctuation is trimmed so "@bob." and "@bob," resolve.
 func resolveTypedMentionIDs(ctx context.Context, userStore directory.UserStore, text string) ([]int32, error) {
@@ -454,16 +454,16 @@ func resolveTypedMentionIDs(ctx context.Context, userStore directory.UserStore, 
 	if err != nil {
 		return nil, err
 	}
-	idByHandle := make(map[string]int32, len(users))
+	idByFairName := make(map[string]int32, len(users))
 	for _, u := range users {
 		if u.FairName != "" {
-			idByHandle[strings.ToLower(u.FairName)] = int32(u.ID)
+			idByFairName[strings.ToLower(u.FairName)] = int32(u.ID)
 		}
 	}
 	var ids []int32
 	for _, m := range matches {
 		token := strings.ToLower(strings.TrimRight(m[1], `.,;:!?)]}'"`))
-		if id, ok := idByHandle[token]; ok {
+		if id, ok := idByFairName[token]; ok {
 			ids = append(ids, id)
 		}
 	}

@@ -473,7 +473,7 @@ async function makeIncident(): Promise<void> {
     const {resp, err} = await ims.fetchNoThrow(incidentsURL, {
         body:JSON.stringify({
             "summary": report.summary,
-            "ranger_handles": authors,
+            "ranger_fair_names": authors,
         }),
     });
     if (err != null || resp == null) {

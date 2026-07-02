@@ -29,7 +29,7 @@ type JournalEntry struct {
 
 	// Mentions (plan 81). On write, the client sends MentionedPersonIDs — the
 	// people picked via the "@" typeahead while composing the entry. On read,
-	// Mentions is the resolved list (id + handle/name) for rendering and linking.
+	// Mentions is the resolved list (id + fair name/legal name) for rendering and linking.
 	MentionedPersonIDs []int32   `json:"mentioned_person_ids,omitempty"`
 	Mentions           []Mention `json:"mentions,omitempty"`
 

@@ -199,7 +199,7 @@ func TestEventEndpoints_ForNoEventPerms(t *testing.T) {
 	}
 
 	// make the user a reporter (per-event PERSON__EVENT role)
-	resp = apisAdmin.addReporter(ctx, eventName, userAliceHandle)
+	resp = apisAdmin.addReporter(ctx, eventName, userAliceFairName)
 	require.Equal(t, http.StatusNoContent, resp.StatusCode)
 	require.NoError(t, resp.Body.Close())
 
@@ -224,7 +224,7 @@ func TestEventEndpoints_ForNoEventPerms(t *testing.T) {
 	}
 
 	// finally, make the user a writer
-	resp = apisAdmin.addWriter(ctx, eventName, userAliceHandle)
+	resp = apisAdmin.addWriter(ctx, eventName, userAliceFairName)
 	require.Equal(t, http.StatusNoContent, resp.StatusCode)
 	require.NoError(t, resp.Body.Close())
 

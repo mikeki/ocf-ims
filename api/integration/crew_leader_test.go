@@ -32,7 +32,7 @@ import (
 // reporter participation on their event, but the anti-escalation ceiling is enforced
 // server-side — they can never assign (or modify a target who already holds) the
 // writer or crew_leader rung, and they have no power on an event they lack the bit
-// on. The admin path stays unrestricted. Uses a dedicated event + handles so it
+// on. The admin path stays unrestricted. Uses a dedicated event + fair names so it
 // doesn't disturb other parallel tests.
 func TestCrewLeaderInvite(t *testing.T) {
 	t.Parallel()
@@ -54,20 +54,20 @@ func TestCrewLeaderInvite(t *testing.T) {
 	require.NoError(t, resp.Body.Close())
 
 	// Make Erin a crew leader on eventName (an admin-only act).
-	resp = apisAdmin.addCrewLeader(ctx, eventName, userErinHandle)
+	resp = apisAdmin.addCrewLeader(ctx, eventName, userErinFairName)
 	require.Equal(t, http.StatusNoContent, resp.StatusCode)
 	require.NoError(t, resp.Body.Close())
 
-	// uniq builds a per-test-unique handle so the global PERSON.HANDLE unique key
+	// uniq builds a per-test-unique fair name so the global PERSON.FAIR_NAME unique key
 	// never collides with another parallel test.
 	uniq := func(prefix string) string { return prefix + rand.NonCryptoText() }
 
 	// --- 1) The crew leader invites a login-capable reporter on her event. ---
-	inviteeHandle := uniq("Invitee")
+	inviteeFairName := uniq("Invitee")
 	const inviteePassword = "invitee-password-123"
 	resp = apisErin.createPerson(ctx, api.CreatePersonRequest{
-		FairName:          inviteeHandle,
-		Email:             inviteeHandle + "@example.com",
+		FairName:          inviteeFairName,
+		Email:             inviteeFairName + "@example.com",
 		Password:          inviteePassword,
 		Event:             eventName,
 		ParticipationType: "reporter",
@@ -81,7 +81,7 @@ func TestCrewLeaderInvite(t *testing.T) {
 
 	// The invitee can actually log in with the initial password they were given.
 	statusCode, _, token := apisNoAuth.postAuth(ctx, api.PostAuthRequest{
-		Identification: inviteeHandle,
+		Identification: inviteeFairName,
 		Password:       inviteePassword,
 	})
 	require.Equal(t, http.StatusOK, statusCode)
@@ -171,7 +171,7 @@ func TestCrewLeaderInvite(t *testing.T) {
 	_, resp = apisAdmin.createEvent(ctx, imsjson.Event{Name: &writerEvent})
 	require.Equal(t, http.StatusNoContent, resp.StatusCode)
 	require.NoError(t, resp.Body.Close())
-	resp = apisAdmin.addWriter(ctx, writerEvent, userAliceHandle)
+	resp = apisAdmin.addWriter(ctx, writerEvent, userAliceFairName)
 	require.Equal(t, http.StatusNoContent, resp.StatusCode)
 	require.NoError(t, resp.Body.Close())
 	resp = apisAlice.createPerson(ctx, api.CreatePersonRequest{
@@ -210,15 +210,15 @@ func TestInviterRosterRead(t *testing.T) {
 	_, resp := apisAdmin.createEvent(ctx, imsjson.Event{Name: &eventName})
 	require.Equal(t, http.StatusNoContent, resp.StatusCode)
 	require.NoError(t, resp.Body.Close())
-	resp = apisAdmin.addCrewLeader(ctx, eventName, userErinHandle)
+	resp = apisAdmin.addCrewLeader(ctx, eventName, userErinFairName)
 	require.Equal(t, http.StatusNoContent, resp.StatusCode)
 	require.NoError(t, resp.Body.Close())
 
 	// Put a login-capable person (with an email) on the roster.
-	memberHandle := "RosterMember" + rand.NonCryptoText()
-	memberEmail := memberHandle + "@example.com"
+	memberFairName := "RosterMember" + rand.NonCryptoText()
+	memberEmail := memberFairName + "@example.com"
 	resp = apisAdmin.createPerson(ctx, api.CreatePersonRequest{
-		FairName:          memberHandle,
+		FairName:          memberFairName,
 		Email:             memberEmail,
 		Password:          "rostermember-password-123",
 		Event:             eventName,

@@ -229,7 +229,7 @@ func TestPushFanoutDelivery(t *testing.T) {
 	_, resp := admin.createEvent(ctx, imsjson.Event{Name: &eventName})
 	require.Equal(t, http.StatusNoContent, resp.StatusCode)
 	require.NoError(t, resp.Body.Close())
-	resp = admin.addWriter(ctx, eventName, userAliceHandle)
+	resp = admin.addWriter(ctx, eventName, userAliceFairName)
 	require.Equal(t, http.StatusNoContent, resp.StatusCode)
 	require.NoError(t, resp.Body.Close())
 
@@ -250,7 +250,7 @@ func TestPushFanoutDelivery(t *testing.T) {
 	num := alice.newIncidentSuccess(ctx, imsjson.Incident{
 		Event: eventName,
 		JournalEntries: []imsjson.JournalEntry{{
-			Text:               "Paging @" + userBobHandle + " here.",
+			Text:               "Paging @" + userBobFairName + " here.",
 			MentionedPersonIDs: []int32{userBobPersonID},
 		}},
 	})
@@ -274,7 +274,7 @@ func TestPushFanoutDelivery(t *testing.T) {
 	_ = alice.newIncidentSuccess(ctx, imsjson.Incident{
 		Event: eventName,
 		JournalEntries: []imsjson.JournalEntry{{
-			Text:               "Still need @" + userBobHandle + ".",
+			Text:               "Still need @" + userBobFairName + ".",
 			MentionedPersonIDs: []int32{userBobPersonID},
 		}},
 	})

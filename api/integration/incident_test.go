@@ -39,7 +39,7 @@ func sampleIncident1(eventName string) imsjson.Incident {
 		IncidentTypeIDs: &[]int32{1, 2},
 		Reports:         &[]int32{},
 		Visits:          &[]int32{},
-		People:          &[]imsjson.IncidentPerson{{PersonID: userAdminPersonID, FairName: userAdminHandle}, {PersonID: userAlicePersonID, FairName: userAliceHandle}},
+		People:          &[]imsjson.IncidentPerson{{PersonID: userAdminPersonID, FairName: userAdminFairName}, {PersonID: userAlicePersonID, FairName: userAliceFairName}},
 		JournalEntries: []imsjson.JournalEntry{
 			{Text: "This is some journal text lol"},
 			{Text: ""},
@@ -104,7 +104,7 @@ func TestIncidentAPIAuthorization(t *testing.T) {
 	require.NoError(t, resp.Body.Close())
 
 	// make Alice a writer
-	resp = adminUser.addWriter(ctx, eventName, userAliceHandle)
+	resp = adminUser.addWriter(ctx, eventName, userAliceFairName)
 	require.Equal(t, http.StatusNoContent, resp.StatusCode)
 	require.NoError(t, resp.Body.Close())
 
@@ -136,7 +136,7 @@ func TestCreateAndGetIncident(t *testing.T) {
 	_, resp := apisAdmin.createEvent(ctx, imsjson.Event{Name: &eventName})
 	require.Equal(t, http.StatusNoContent, resp.StatusCode)
 	require.NoError(t, resp.Body.Close())
-	resp = apisAdmin.addWriter(ctx, eventName, userAliceHandle)
+	resp = apisAdmin.addWriter(ctx, eventName, userAliceFairName)
 	require.Equal(t, http.StatusNoContent, resp.StatusCode)
 	require.NoError(t, resp.Body.Close())
 
@@ -167,7 +167,7 @@ func TestCreateAndGetIncident(t *testing.T) {
 		retrievedUserEntry.ID = 0
 		require.WithinDuration(t, time.Now(), retrievedUserEntry.Created, 5*time.Minute)
 		retrievedUserEntry.Created = time.Time{}
-		entryReq.Author = userAliceHandle
+		entryReq.Author = userAliceFairName
 		entryReq.Stricken = new(false)
 		require.Equal(t, entryReq, retrievedUserEntry)
 		requireEqualIncident(t, incidentReq, retrievedIncident)
@@ -185,7 +185,7 @@ func TestCreateAndGetIncident(t *testing.T) {
 		retrievedUserEntry.ID = 0
 		require.WithinDuration(t, time.Now(), retrievedUserEntry.Created, 5*time.Minute)
 		retrievedUserEntry.Created = time.Time{}
-		entryReq.Author = userAliceHandle
+		entryReq.Author = userAliceFairName
 		require.Equal(t, entryReq, retrievedUserEntry)
 		requireEqualIncident(t, incidentReq, retrievedIncidents[0])
 	}
@@ -204,7 +204,7 @@ func TestCreateAndUpdateIncident(t *testing.T) {
 	_, resp := apisAdmin.createEvent(ctx, imsjson.Event{Name: &eventName})
 	require.Equal(t, http.StatusNoContent, resp.StatusCode)
 	require.NoError(t, resp.Body.Close())
-	resp = apisAdmin.addWriter(ctx, eventName, userAliceHandle)
+	resp = apisAdmin.addWriter(ctx, eventName, userAliceFairName)
 	require.Equal(t, http.StatusNoContent, resp.StatusCode)
 	require.NoError(t, resp.Body.Close())
 
@@ -280,7 +280,7 @@ func TestCreateAndUpdateIncident(t *testing.T) {
 	require.Equal(t, http.StatusOK, resp.StatusCode)
 	require.NoError(t, resp.Body.Close())
 	require.Len(t, *retrievedIncidentAfterUpdate.People, 1)
-	require.Equal(t, userAliceHandle, (*retrievedIncidentAfterUpdate.People)[0].FairName)
+	require.Equal(t, userAliceFairName, (*retrievedIncidentAfterUpdate.People)[0].FairName)
 
 	// detach that person
 	resp = apisNonAdmin.detachPersonFromIncident(ctx, eventName, num, userAlicePersonID)
@@ -305,7 +305,7 @@ func TestCreateAndAttachFileToIncident(t *testing.T) {
 	_, resp := apisAdmin.createEvent(ctx, imsjson.Event{Name: &eventName})
 	require.Equal(t, http.StatusNoContent, resp.StatusCode)
 	require.NoError(t, resp.Body.Close())
-	resp = apisAdmin.addWriter(ctx, eventName, userAliceHandle)
+	resp = apisAdmin.addWriter(ctx, eventName, userAliceFairName)
 	require.Equal(t, http.StatusNoContent, resp.StatusCode)
 	require.NoError(t, resp.Body.Close())
 
@@ -346,7 +346,7 @@ func TestCreateAndLinkIncidents(t *testing.T) {
 	_, resp := apisAdmin.createEvent(ctx, imsjson.Event{Name: &eventName})
 	require.Equal(t, http.StatusNoContent, resp.StatusCode)
 	require.NoError(t, resp.Body.Close())
-	resp = apisAdmin.addWriter(ctx, eventName, userAliceHandle)
+	resp = apisAdmin.addWriter(ctx, eventName, userAliceFairName)
 	require.Equal(t, http.StatusNoContent, resp.StatusCode)
 	require.NoError(t, resp.Body.Close())
 
@@ -427,7 +427,7 @@ func TestIncidentLocationArea(t *testing.T) {
 	writer := ApiHelper{t: t, serverURL: shared.serverURL, jwt: jwtForAlice(t, ctx)}
 
 	eventName := makeEvent(ctx, t, admin)
-	resp := admin.addWriter(ctx, eventName, userAliceHandle)
+	resp := admin.addWriter(ctx, eventName, userAliceFairName)
 	require.Equal(t, http.StatusNoContent, resp.StatusCode)
 	require.NoError(t, resp.Body.Close())
 
@@ -508,7 +508,7 @@ func TestIncidentLocationBooth(t *testing.T) {
 	writer := ApiHelper{t: t, serverURL: shared.serverURL, jwt: jwtForAlice(t, ctx)}
 
 	eventName := makeEvent(ctx, t, admin)
-	resp := admin.addWriter(ctx, eventName, userAliceHandle)
+	resp := admin.addWriter(ctx, eventName, userAliceFairName)
 	require.Equal(t, http.StatusNoContent, resp.StatusCode)
 	require.NoError(t, resp.Body.Close())
 
@@ -575,7 +575,7 @@ func TestIncidentOutcome(t *testing.T) {
 	writer := ApiHelper{t: t, serverURL: shared.serverURL, jwt: jwtForAlice(t, ctx)}
 
 	eventName := makeEvent(ctx, t, admin)
-	resp := admin.addWriter(ctx, eventName, userAliceHandle)
+	resp := admin.addWriter(ctx, eventName, userAliceFairName)
 	require.Equal(t, http.StatusNoContent, resp.StatusCode)
 	require.NoError(t, resp.Body.Close())
 

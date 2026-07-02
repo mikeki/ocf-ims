@@ -165,13 +165,13 @@ func EventPermissions(
 // every event in the map.
 func ManyEventPermissions(
 	participationByEvent map[int32]imsdb.PersonEventParticipationType, // eventID as key
-	handle string,
+	fairName string,
 	isAdmin bool,
 ) (eventPermissions map[int32]EventPermissionMask, globalPermissions GlobalPermissionMask) {
 	eventPermissions = make(map[int32]EventPermissionMask)
 	globalPermissions = GlobalNoPermissions
 
-	if handle != "" {
+	if fairName != "" {
 		globalPermissions |= RolesToGlobalPerms[AnyAuthenticatedUser]
 	}
 

@@ -131,9 +131,9 @@ func generateAddedToIncidentNotification(
 
 // notificationToJSON maps a stored, enriched row to its API shape.
 func notificationToJSON(row imsdb.NotificationsForPersonRow) imsjson.Notification {
-	actor := row.ActorName.String
+	actor := row.ActorLegalName.String
 	if actor == "" {
-		actor = row.ActorHandle.String
+		actor = row.ActorFairName.String
 	}
 	return imsjson.Notification{
 		ID:              row.ID,

@@ -209,7 +209,7 @@ select sqlc.embed(it)
 from INCIDENT_TYPE it;
 
 -- name: IncidentTypesWithProposer :many
--- Like IncidentTypes but resolves the proposer's handle/name for display. The
+-- Like IncidentTypes but resolves the proposer's fair name/legal name for display. The
 -- admin Incident Types page and the incident-form combobox flag a still-unapproved
 -- type and show who proposed it. LEFT JOIN: seeded / admin-created / approved types
 -- have no proposer. Mirrors AreasWithProposer.
@@ -221,8 +221,8 @@ select
     it.`GROUP`,
     it.APPROVED,
     it.PROPOSED_BY_PERSON_ID,
-    p.FAIR_NAME as PROPOSER_HANDLE,
-    p.LEGAL_NAME as PROPOSER_NAME
+    p.FAIR_NAME as PROPOSER_FAIR_NAME,
+    p.LEGAL_NAME as PROPOSER_LEGAL_NAME
 from
     INCIDENT_TYPE it
     left join PERSON p on p.ID = it.PROPOSED_BY_PERSON_ID
@@ -256,8 +256,8 @@ select
     irre.REPORT_NUMBER,
     sqlc.embed(re),
     p.FAIR_NAME as AUTHOR,
-    obo.FAIR_NAME as ON_BEHALF_OF_HANDLE,
-    obo.LEGAL_NAME as ON_BEHALF_OF_NAME
+    obo.FAIR_NAME as ON_BEHALF_OF_FAIR_NAME,
+    obo.LEGAL_NAME as ON_BEHALF_OF_LEGAL_NAME
 from
     REPORT__JOURNAL_ENTRY irre
         join JOURNAL_ENTRY re
@@ -275,8 +275,8 @@ where
 select
     sqlc.embed(re),
     p.FAIR_NAME as AUTHOR,
-    obo.FAIR_NAME as ON_BEHALF_OF_HANDLE,
-    obo.LEGAL_NAME as ON_BEHALF_OF_NAME
+    obo.FAIR_NAME as ON_BEHALF_OF_FAIR_NAME,
+    obo.LEGAL_NAME as ON_BEHALF_OF_LEGAL_NAME
 from
     REPORT__JOURNAL_ENTRY irre
         join JOURNAL_ENTRY re
@@ -396,15 +396,15 @@ insert into NOTIFICATION (
 
 -- name: NotificationsForPerson :many
 -- A person's most recent notifications, enriched for display (event name,
--- incident or report summary, actor handle/name).
+-- incident or report summary, actor fair name/legal name).
 select
     n.ID, n.TYPE, n.EVENT, n.INCIDENT_NUMBER, n.REPORT_NUMBER, n.JOURNAL_ENTRY,
     n.ACTOR_PERSON_ID, n.CREATED, n.READ_AT,
     e.NAME as EVENT_NAME,
     i.SUMMARY as INCIDENT_SUMMARY,
     r.SUMMARY as REPORT_SUMMARY,
-    actor.FAIR_NAME as ACTOR_HANDLE,
-    actor.LEGAL_NAME as ACTOR_NAME
+    actor.FAIR_NAME as ACTOR_FAIR_NAME,
+    actor.LEGAL_NAME as ACTOR_LEGAL_NAME
 from NOTIFICATION n
     left join `EVENT` e on e.ID = n.EVENT
     left join INCIDENT i on i.EVENT = n.EVENT and i.NUMBER = n.INCIDENT_NUMBER
@@ -471,7 +471,7 @@ order by CREATED desc;
 
 -- name: Incident_JournalEntryMentions :many
 -- All mentions across the journal entries of one incident, with the mentioned
--- person's handle/name for display. Joined through INCIDENT__JOURNAL_ENTRY so
+-- person's fair name/legal name for display. Joined through INCIDENT__JOURNAL_ENTRY so
 -- the event+incident scope is enforced (an entry's mentions are only readable
 -- via the incident it belongs to).
 select
@@ -529,7 +529,7 @@ where ID IN (
 );
 
 -- name: ReportJournalEntryAuthor :one
--- Author handle of a single journal entry on a report, used to enforce that a
+-- Author fair name of a single journal entry on a report, used to enforce that a
 -- reporter may only strike their own entries. Returns no rows if the entry isn't
 -- on that report.
 select p.FAIR_NAME as AUTHOR
@@ -651,7 +651,7 @@ order by `SORT_ORDER`, `NAME`
 ;
 
 -- name: AreasWithProposer :many
--- Like Areas but resolves the proposer's handle/name for display (the Areas tab
+-- Like Areas but resolves the proposer's fair name/legal name for display (the Areas tab
 -- shows who proposed a still-unapproved area). LEFT JOIN: approved/canonical
 -- areas have no proposer.
 select
@@ -662,8 +662,8 @@ select
     a.`SORT_ORDER`,
     a.`APPROVED`,
     a.`PROPOSED_BY_PERSON_ID`,
-    p.FAIR_NAME as PROPOSER_HANDLE,
-    p.LEGAL_NAME as PROPOSER_NAME
+    p.FAIR_NAME as PROPOSER_FAIR_NAME,
+    p.LEGAL_NAME as PROPOSER_LEGAL_NAME
 from
     AREA a
     left join PERSON p on p.ID = a.`PROPOSED_BY_PERSON_ID`
@@ -785,13 +785,13 @@ where
 ;
 
 -- The Visit/Visits queries LEFT JOIN PERSON via GUEST_PERSON_ID so each visit
--- carries its linked guest's display name + handle (null when no guest is linked).
+-- carries its linked guest's display name + fair name (null when no guest is linked).
 -- The guest's preferred name lives on PERSON.NAME since slice 5e.3. Both queries
 -- select the same shape so api/visit.go can cast VisitsRow -> VisitRow.
 -- name: Visit :one
 select
     sqlc.embed(s),
-    gp.FAIR_NAME as GUEST_HANDLE,
+    gp.FAIR_NAME as GUEST_FAIR_NAME,
     gp.LEGAL_NAME as GUEST_NAME
 from
     VISIT s
@@ -803,7 +803,7 @@ where
 -- name: Visits :many
 select
     sqlc.embed(s),
-    gp.FAIR_NAME as GUEST_HANDLE,
+    gp.FAIR_NAME as GUEST_FAIR_NAME,
     gp.LEGAL_NAME as GUEST_NAME
 from
     VISIT s
@@ -921,7 +921,7 @@ from PERSON
 where FAIR_NAME = ?;
 
 -- PersonByID resolves a person by their stable primary key. Since 5e the web UI
--- addresses people by person_id (registry people may have no handle), so the
+-- addresses people by person_id (registry people may have no fair name), so the
 -- attach/detach and personnel-edit handlers look people up here.
 -- name: PersonByID :one
 select ID, FAIR_NAME, LEGAL_NAME, EMAIL, PHONE, IS_ADMIN
@@ -960,7 +960,7 @@ from PERSON
 where IS_ADMIN = true;
 
 -- SearchPeople backs the typeahead person picker (search-first attach + admin
--- search). It matches the query term against handle, display name, and — when an
+-- search). It matches the query term against fair name, display name, and — when an
 -- event is given — that event's wristband, LEFT JOINing PERSON__EVENT so each hit
 -- carries the event's wristband + participation type (null when the person has no
 -- row for the event yet). Pass event = 0 to search without per-event fields. Caller

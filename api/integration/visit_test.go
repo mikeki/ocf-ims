@@ -57,7 +57,7 @@ func sampleVisit1(eventName string) imsjson.Visit {
 		ResourcePogs:    new("no, wasn't hungry"),
 		ResourceFoodBev: new("ate a lot of our grass"),
 		ResourceOther:   new("nothing else"),
-		People:          &[]imsjson.VisitPerson{{PersonID: userAdminPersonID, FairName: userAdminHandle}, {PersonID: userAlicePersonID, FairName: userAliceHandle}},
+		People:          &[]imsjson.VisitPerson{{PersonID: userAdminPersonID, FairName: userAdminFairName}, {PersonID: userAlicePersonID, FairName: userAliceFairName}},
 		JournalEntries: []imsjson.JournalEntry{
 			{Text: "This is some visit journal text"},
 			{Text: ""},
@@ -121,7 +121,7 @@ func TestVisitAPIAuthorization(t *testing.T) {
 	require.NoError(t, resp.Body.Close())
 
 	// make Alice a writer
-	resp = adminUser.addWriter(ctx, eventName, userAliceHandle)
+	resp = adminUser.addWriter(ctx, eventName, userAliceFairName)
 	require.Equal(t, http.StatusNoContent, resp.StatusCode)
 	require.NoError(t, resp.Body.Close())
 
@@ -153,7 +153,7 @@ func TestCreateAndGetVisit(t *testing.T) {
 	_, resp := apisAdmin.createEvent(ctx, imsjson.Event{Name: &eventName})
 	require.Equal(t, http.StatusNoContent, resp.StatusCode)
 	require.NoError(t, resp.Body.Close())
-	resp = apisAdmin.addWriter(ctx, eventName, userAliceHandle)
+	resp = apisAdmin.addWriter(ctx, eventName, userAliceFairName)
 	require.Equal(t, http.StatusNoContent, resp.StatusCode)
 	require.NoError(t, resp.Body.Close())
 
@@ -183,7 +183,7 @@ func TestCreateAndGetVisit(t *testing.T) {
 		retrievedUserEntry.ID = 0
 		require.WithinDuration(t, time.Now(), retrievedUserEntry.Created, 5*time.Minute)
 		retrievedUserEntry.Created = time.Time{}
-		entryReq.Author = userAliceHandle
+		entryReq.Author = userAliceFairName
 		entryReq.Stricken = new(false)
 		require.Equal(t, entryReq, retrievedUserEntry)
 		requireEqualVisit(t, visitReq, retrievedVisit)
@@ -201,7 +201,7 @@ func TestCreateAndGetVisit(t *testing.T) {
 		retrievedUserEntry.ID = 0
 		require.WithinDuration(t, time.Now(), retrievedUserEntry.Created, 5*time.Minute)
 		retrievedUserEntry.Created = time.Time{}
-		entryReq.Author = userAliceHandle
+		entryReq.Author = userAliceFairName
 		require.Equal(t, entryReq, retrievedUserEntry)
 		requireEqualVisit(t, visitReq, retrievedVisits[0])
 	}
@@ -220,10 +220,10 @@ func TestCreateAndUpdateVisit(t *testing.T) {
 	_, resp := apisAdmin.createEvent(ctx, imsjson.Event{Name: &eventName})
 	require.Equal(t, http.StatusNoContent, resp.StatusCode)
 	require.NoError(t, resp.Body.Close())
-	resp = apisAdmin.addVisitWriter(ctx, eventName, userAliceHandle)
+	resp = apisAdmin.addVisitWriter(ctx, eventName, userAliceFairName)
 	require.Equal(t, http.StatusNoContent, resp.StatusCode)
 	require.NoError(t, resp.Body.Close())
-	resp = apisAdmin.addWriter(ctx, eventName, userAdminHandle)
+	resp = apisAdmin.addWriter(ctx, eventName, userAdminFairName)
 	require.Equal(t, http.StatusNoContent, resp.StatusCode)
 	require.NoError(t, resp.Body.Close())
 
@@ -335,7 +335,7 @@ func TestCreateAndUpdateVisit(t *testing.T) {
 	require.Equal(t, http.StatusOK, resp.StatusCode)
 	require.NoError(t, resp.Body.Close())
 	require.Len(t, *retrievedVisitAfterUpdate.People, 1)
-	require.Equal(t, userAliceHandle, (*retrievedVisitAfterUpdate.People)[0].FairName)
+	require.Equal(t, userAliceFairName, (*retrievedVisitAfterUpdate.People)[0].FairName)
 
 	// detach that person
 	resp = apisNonAdmin.detachPersonFromVisit(ctx, eventName, num, userAlicePersonID)
@@ -347,7 +347,7 @@ func TestCreateAndUpdateVisit(t *testing.T) {
 	require.Empty(t, *retrievedVisitAfterUpdate.People)
 
 	// link a guest person (registry identity) to the visit, then verify the link
-	// round-trips and the server resolves the linked person's handle for display.
+	// round-trips and the server resolves the linked person's fair name for display.
 	resp = apisNonAdmin.updateVisit(ctx, eventName, num, imsjson.Visit{
 		Event:         eventName,
 		Number:        num,
@@ -360,8 +360,8 @@ func TestCreateAndUpdateVisit(t *testing.T) {
 	require.NoError(t, resp.Body.Close())
 	require.NotNil(t, visitWithGuest.GuestPersonID)
 	require.Equal(t, int32(userAlicePersonID), *visitWithGuest.GuestPersonID)
-	require.NotNil(t, visitWithGuest.GuestHandle)
-	require.Equal(t, userAliceHandle, *visitWithGuest.GuestHandle)
+	require.NotNil(t, visitWithGuest.GuestFairName)
+	require.Equal(t, userAliceFairName, *visitWithGuest.GuestFairName)
 
 	// linking a nonexistent person is a not-found (the GUEST_PERSON_ID FK fails).
 	resp = apisNonAdmin.updateVisit(ctx, eventName, num, imsjson.Visit{
@@ -384,7 +384,7 @@ func TestCreateAndUpdateVisit(t *testing.T) {
 	require.Equal(t, http.StatusOK, resp.StatusCode)
 	require.NoError(t, resp.Body.Close())
 	require.Nil(t, visitNoGuest.GuestPersonID)
-	require.Nil(t, visitNoGuest.GuestHandle)
+	require.Nil(t, visitNoGuest.GuestFairName)
 }
 
 func TestCreateAndAttachFileToVisit(t *testing.T) {
@@ -400,7 +400,7 @@ func TestCreateAndAttachFileToVisit(t *testing.T) {
 	_, resp := apisAdmin.createEvent(ctx, imsjson.Event{Name: &eventName})
 	require.Equal(t, http.StatusNoContent, resp.StatusCode)
 	require.NoError(t, resp.Body.Close())
-	resp = apisAdmin.addVisitWriter(ctx, eventName, userAliceHandle)
+	resp = apisAdmin.addVisitWriter(ctx, eventName, userAliceFairName)
 	require.Equal(t, http.StatusNoContent, resp.StatusCode)
 	require.NoError(t, resp.Body.Close())
 

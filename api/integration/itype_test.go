@@ -142,7 +142,7 @@ func TestProposeAndApproveIncidentType(t *testing.T) {
 	_, resp := apisAdmin.createEvent(ctx, imsjson.Event{Name: &eventName})
 	require.Equal(t, http.StatusNoContent, resp.StatusCode)
 	require.NoError(t, resp.Body.Close())
-	resp = apisAdmin.addWriter(ctx, eventName, userAliceHandle)
+	resp = apisAdmin.addWriter(ctx, eventName, userAliceFairName)
 	require.Equal(t, http.StatusNoContent, resp.StatusCode)
 	require.NoError(t, resp.Body.Close())
 
@@ -161,7 +161,7 @@ func TestProposeAndApproveIncidentType(t *testing.T) {
 	require.NotNil(t, proposed.Approved)
 	require.False(t, *proposed.Approved)
 	require.NotNil(t, proposed.Proposer)
-	require.Equal(t, userAliceHandle, proposed.Proposer.FairName)
+	require.Equal(t, userAliceFairName, proposed.Proposer.FairName)
 
 	// An admin approves it.
 	_, resp = apisAdmin.editType(ctx, imsjson.IncidentType{ID: *id, Approved: new(true)})
@@ -187,7 +187,7 @@ func TestProposeAndApproveIncidentType(t *testing.T) {
 	_, resp = apisAdmin.createEvent(ctx, imsjson.Event{Name: &reporterEvent})
 	require.Equal(t, http.StatusNoContent, resp.StatusCode)
 	require.NoError(t, resp.Body.Close())
-	resp = apisAdmin.addReporter(ctx, reporterEvent, userAliceHandle)
+	resp = apisAdmin.addReporter(ctx, reporterEvent, userAliceFairName)
 	require.Equal(t, http.StatusNoContent, resp.StatusCode)
 	require.NoError(t, resp.Body.Close())
 	otherName := rand.NonCryptoText()

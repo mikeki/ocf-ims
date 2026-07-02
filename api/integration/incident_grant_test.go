@@ -41,10 +41,10 @@ func TestIncidentGrant_ReporterPerIncidentAccess(t *testing.T) {
 	_, resp := admin.createEvent(ctx, imsjson.Event{Name: &eventName})
 	require.Equal(t, http.StatusNoContent, resp.StatusCode)
 	require.NoError(t, resp.Body.Close())
-	resp = admin.addWriter(ctx, eventName, userAliceHandle)
+	resp = admin.addWriter(ctx, eventName, userAliceFairName)
 	require.Equal(t, http.StatusNoContent, resp.StatusCode)
 	require.NoError(t, resp.Body.Close())
-	resp = admin.addReporter(ctx, eventName, userDaveHandle)
+	resp = admin.addReporter(ctx, eventName, userDaveFairName)
 	require.Equal(t, http.StatusNoContent, resp.StatusCode)
 	require.NoError(t, resp.Body.Close())
 

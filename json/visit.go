@@ -30,12 +30,12 @@ type Visit struct {
 
 	// Guest identity links to a PERSON in the unified registry (slice 5e.3).
 	// GuestPersonID is read+write: nil leaves the link unchanged, a positive id
-	// links that person, and <= 0 clears the link. GuestName/GuestHandle are
+	// links that person, and <= 0 clears the link. GuestName/GuestFairName are
 	// read-only — the server resolves them from the linked PERSON for display
-	// (preferred name now lives on PERSON.NAME); they are ignored on write.
+	// (preferred name now lives on PERSON.LEGAL_NAME); they are ignored on write.
 	GuestPersonID *int32  `json:"guest_person_id,omitzero"`
 	GuestName     *string `json:"guest_name,omitzero"`
-	GuestHandle   *string `json:"guest_handle,omitzero"`
+	GuestFairName *string `json:"guest_fair_name,omitzero"`
 
 	GuestLegalName       *string `json:"guest_legal_name,omitzero"`
 	GuestDescription     *string `json:"guest_description,omitzero"`

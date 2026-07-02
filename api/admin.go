@@ -69,7 +69,7 @@ func (action SetPersonAdmin) setPersonAdmin(req *http.Request) *herr.HTTPError {
 	}
 
 	// The person is addressed by stable ID in the URL path (registry people may
-	// have no handle since 5e).
+	// have no fair name since 5e).
 	target, errHTTP := personByIDFromPath(req.Context(), action.imsDBQ, req)
 	if errHTTP != nil {
 		return errHTTP

@@ -1156,7 +1156,7 @@ export async function createRegistryPerson(name: string, eventName: string): Pro
 export function openQuickAddPersonModal(prefillName: string, eventName: string): Promise<PersonSearchResult|null> {
     const modalEl = typedElement("quickAddPersonModal", HTMLElement);
     const nameEl = typedElement("quick_add_person_legal_name", HTMLInputElement);
-    const handleEl = typedElement("quick_add_person_fair_name", HTMLInputElement);
+    const fairNameEl = typedElement("quick_add_person_fair_name", HTMLInputElement);
     const emailEl = typedElement("quick_add_person_email", HTMLInputElement);
     const passwordEl = typedElement("quick_add_person_password", HTMLInputElement);
     const eventSectionEl = typedElement("quick_add_person_event_section", HTMLElement);
@@ -1173,7 +1173,7 @@ export function openQuickAddPersonModal(prefillName: string, eventName: string):
 
     // Reset the form to a clean state, seeded with the typed text.
     nameEl.value = prefillName;
-    handleEl.value = "";
+    fairNameEl.value = "";
     emailEl.value = "";
     passwordEl.value = "";
     passwordConfirmEl.value = "";
@@ -1219,9 +1219,9 @@ export function openQuickAddPersonModal(prefillName: string, eventName: string):
             accessToggleEl.classList.toggle("active", nowShown);
             accessToggleEl.textContent = nowShown ? "Don't provide IMS access" : "Provide Access to IMS";
             if (nowShown) {
-                handleEl.focus();
+                fairNameEl.focus();
             } else {
-                handleEl.value = "";
+                fairNameEl.value = "";
                 emailEl.value = "";
                 passwordEl.value = "";
                 passwordConfirmEl.value = "";
@@ -1251,9 +1251,9 @@ export function openQuickAddPersonModal(prefillName: string, eventName: string):
                 return;
             }
             const wantAccess = !accessSectionEl.classList.contains("hidden");
-            const handle = handleEl.value.trim();
+            const fairName = fairNameEl.value.trim();
             if (wantAccess) {
-                if (!handle) {
+                if (!fairName) {
                     showError("A fair name is required to provide IMS access.");
                     return;
                 }
@@ -1272,7 +1272,7 @@ export function openQuickAddPersonModal(prefillName: string, eventName: string):
             }
             const body: Record<string, unknown> = {
                 legal_name: name,
-                fair_name: wantAccess ? handle : "",
+                fair_name: wantAccess ? fairName : "",
                 email: wantAccess ? emailEl.value.trim() : "",
                 password: wantAccess ? passwordEl.value : "",
             };
@@ -1543,7 +1543,7 @@ export function visitAsString(s: Visit): string {
     if (s.number == null) {
         return "New Visit";
     }
-    const guest = personDisplayLabel({legal_name: s.guest_name, fair_name: s.guest_handle}) || s.guest_legal_name || "";
+    const guest = personDisplayLabel({legal_name: s.guest_name, fair_name: s.guest_fair_name}) || s.guest_legal_name || "";
     return `VS #${s.number}: ${guest}`;
 }
 
@@ -1862,20 +1862,20 @@ export function renderLocation(data: EventLocation|null, type: RenderType, _inci
     }
 }
 
-export function renderPersonHandles(data: IncidentPerson[]|null, type: RenderType, _incident: Incident): RenderValue {
+export function renderPersonFairNames(data: IncidentPerson[]|null, type: RenderType, _incident: Incident): RenderValue {
     if (data == null) {
         return undefined;
     }
     // Display name is COALESCE(legal_name, fair_name) so fair-name-less registry people still show.
-    const handles = data.map(r=>personDisplayLabel(r)).filter(r=>r!=="");
+    const fairNames = data.map(r=>personDisplayLabel(r)).filter(r=>r!=="");
     switch (type) {
         case "display":
-            return renderSortedSpan(handles);
+            return renderSortedSpan(fairNames);
         case "filter":
         case "sort":
         case "type":
         case undefined:
-            return handles.toSorted((a, b) => a.localeCompare(b)).join(", ");
+            return fairNames.toSorted((a, b) => a.localeCompare(b)).join(", ");
         default:
             return undefined;
     }
@@ -3278,11 +3278,11 @@ export type Visit = {
     incident?: number|null;
 
     // Guest identity links to a registry PERSON (slice 5e.3). guest_person_id is
-    // read+write (<= 0 clears the link); guest_name/guest_handle are read-only,
+    // read+write (<= 0 clears the link); guest_name/guest_fair_name are read-only,
     // resolved by the server from the linked PERSON for display.
     guest_person_id?: number|null;
     guest_name?: string|null;
-    guest_handle?: string|null;
+    guest_fair_name?: string|null;
     guest_legal_name?: string|null;
     guest_description?: string|null;
     guest_action_plan?: string|null;

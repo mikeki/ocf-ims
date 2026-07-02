@@ -330,7 +330,7 @@ function initDataTables() {
 }
 
 function renderName(_data: string|null, type: string, visit: ims.Visit): ims.RenderValue {
-    const guestName = ims.personDisplayLabel({legal_name: visit.guest_name, fair_name: visit.guest_handle}) || visit.guest_legal_name || "";
+    const guestName = ims.personDisplayLabel({legal_name: visit.guest_name, fair_name: visit.guest_fair_name}) || visit.guest_legal_name || "";
     switch (type) {
         case "display":
             const sp = document.createElement("span");

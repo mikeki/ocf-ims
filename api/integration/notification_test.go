@@ -42,7 +42,7 @@ func TestNotifications(t *testing.T) {
 	_, resp := admin.createEvent(ctx, imsjson.Event{Name: &eventName})
 	require.Equal(t, http.StatusNoContent, resp.StatusCode)
 	require.NoError(t, resp.Body.Close())
-	resp = admin.addWriter(ctx, eventName, userAliceHandle)
+	resp = admin.addWriter(ctx, eventName, userAliceFairName)
 	require.Equal(t, http.StatusNoContent, resp.StatusCode)
 	require.NoError(t, resp.Body.Close())
 
@@ -52,7 +52,7 @@ func TestNotifications(t *testing.T) {
 	num := alice.newIncidentSuccess(ctx, imsjson.Incident{
 		Event: eventName,
 		JournalEntries: []imsjson.JournalEntry{{
-			Text:               "Paging @" + userDaveHandle + " for this one.",
+			Text:               "Paging @" + userDaveFairName + " for this one.",
 			MentionedPersonIDs: []int32{userDavePersonID, userAlicePersonID},
 		}},
 	})
@@ -118,7 +118,7 @@ func TestReportMentionNotification(t *testing.T) {
 	_, resp := admin.createEvent(ctx, imsjson.Event{Name: &eventName})
 	require.Equal(t, http.StatusNoContent, resp.StatusCode)
 	require.NoError(t, resp.Body.Close())
-	resp = admin.addWriter(ctx, eventName, userAliceHandle)
+	resp = admin.addWriter(ctx, eventName, userAliceFairName)
 	require.Equal(t, http.StatusNoContent, resp.StatusCode)
 	require.NoError(t, resp.Body.Close())
 
@@ -127,7 +127,7 @@ func TestReportMentionNotification(t *testing.T) {
 		Event:   eventName,
 		Summary: &summary,
 		JournalEntries: []imsjson.JournalEntry{{
-			Text:               "Hey @" + userAdminHandle + ", please review.",
+			Text:               "Hey @" + userAdminFairName + ", please review.",
 			MentionedPersonIDs: []int32{userAdminPersonID},
 		}},
 	})

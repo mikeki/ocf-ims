@@ -56,9 +56,9 @@ func TestPostAuthAPIAuthorization(t *testing.T) {
 	require.Equal(t, http.StatusOK, statusCode)
 	require.NotEmpty(t, token)
 
-	// That same valid user can also log in by handle
+	// That same valid user can also log in by fair name
 	statusCode, _, token = apisNotAuthenticated.postAuth(ctx, api.PostAuthRequest{
-		Identification: userAliceHandle,
+		Identification: userAliceFairName,
 		Password:       userAlicePassword,
 	})
 	require.Equal(t, http.StatusOK, statusCode)
@@ -66,7 +66,7 @@ func TestPostAuthAPIAuthorization(t *testing.T) {
 
 	// A valid user with the wrong password gets denied entry
 	statusCode, body, token = apisNotAuthenticated.postAuth(ctx, api.PostAuthRequest{
-		Identification: userAliceHandle,
+		Identification: userAliceFairName,
 		Password:       "not my password",
 	})
 	require.Equal(t, http.StatusUnauthorized, statusCode)
@@ -88,7 +88,7 @@ func TestGetAuthAPIAuthorization(t *testing.T) {
 	require.Equal(t, http.StatusOK, resp.StatusCode)
 	require.Equal(t, api.GetAuthResponse{
 		Authenticated: true,
-		User:          userAliceHandle,
+		User:          userAliceFairName,
 		Admin:         false,
 	}, getAuth)
 	require.NoError(t, resp.Body.Close())
@@ -99,7 +99,7 @@ func TestGetAuthAPIAuthorization(t *testing.T) {
 	require.Equal(t, http.StatusOK, resp.StatusCode)
 	require.Equal(t, api.GetAuthResponse{
 		Authenticated:      true,
-		User:               userAdminHandle,
+		User:               userAdminFairName,
 		Admin:              true,
 		CanManagePersonnel: true,
 	}, getAuth)
@@ -136,7 +136,7 @@ func TestGetAuthWithEvent(t *testing.T) {
 	require.NotZero(t, eventID)
 	require.Equal(t, api.GetAuthResponse{
 		Authenticated:      true,
-		User:               userAdminHandle,
+		User:               userAdminFairName,
 		Admin:              true,
 		CanManagePersonnel: true,
 		EventAccess: map[string]api.AccessForEvent{
@@ -207,7 +207,7 @@ func TestPostAuthMakesRefreshCookie(t *testing.T) {
 	jwter := authz.JWTer{SecretKey: shared.cfg.Core.JWTSecret}
 	claims, err := jwter.AuthenticateJWT(response.Token)
 	require.NoError(t, err)
-	require.Equal(t, userAliceHandle, claims.PersonFairName())
+	require.Equal(t, userAliceFairName, claims.PersonFairName())
 	require.Greater(t, response.ExpiresUnixMs, time.Now().UnixMilli())
 
 	// check that the refresh token was shipped over by cookie
@@ -218,7 +218,7 @@ func TestPostAuthMakesRefreshCookie(t *testing.T) {
 	// and that it's valid
 	claims, err = jwter.AuthenticateRefreshToken(cookie.Value)
 	require.NoError(t, err)
-	require.Equal(t, userAliceHandle, claims.PersonFairName())
+	require.Equal(t, userAliceFairName, claims.PersonFairName())
 
 	// now use the refresh token to get a fresh access token
 	code, refreshResp := apisNotAuthenticated.refreshAccessToken(ctx, cookie)
@@ -226,7 +226,7 @@ func TestPostAuthMakesRefreshCookie(t *testing.T) {
 	// and confirm the new access token's validity
 	claims, err = jwter.AuthenticateJWT(refreshResp.Token)
 	require.NoError(t, err)
-	require.Equal(t, userAliceHandle, claims.PersonFairName())
+	require.Equal(t, userAliceFairName, claims.PersonFairName())
 	// this new token should expire no earlier than the old one
 	require.GreaterOrEqual(t, refreshResp.ExpiresUnixMs, response.ExpiresUnixMs)
 }

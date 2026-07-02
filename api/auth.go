@@ -240,7 +240,7 @@ func (action GetAuth) getAuth(req *http.Request) (GetAuthResponse, *herr.HTTPErr
 		return resp, nil //lint:ignore nilerr since the jwtCtx.Error is irrelevant
 	}
 	claims := jwtCtx.Claims
-	handle := claims.PersonFairName()
+	fairName := claims.PersonFairName()
 	// Compute global permissions via the shared path so UI-gating flags stay in step
 	// with the authoritative endpoint checks (and with any future non-admin grants).
 	_, globalPermissions, err := authz.EventPermissions(req.Context(), nil, action.imsDBQ, *claims)
@@ -249,7 +249,7 @@ func (action GetAuth) getAuth(req *http.Request) (GetAuthResponse, *herr.HTTPErr
 	}
 	resp = GetAuthResponse{
 		Authenticated:      true,
-		User:               handle,
+		User:               fairName,
 		Admin:              claims.PersonAdmin(),
 		CanManagePersonnel: globalPermissions&authz.GlobalAdministratePersonnel != 0,
 		PushVAPIDPublicKey: action.pushVAPIDPublicKey,

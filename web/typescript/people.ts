@@ -119,7 +119,7 @@ const el = {
     peopleWithoutAccess: ims.typedElement("people_without_access", HTMLTableSectionElement),
     personRowTemplate: ims.typedElement("person_row_template", HTMLTemplateElement),
     setPasswordModal: ims.typedElement("setPasswordModal", HTMLElement),
-    setPasswordHandle: ims.typedElement("set_password_fair_name", HTMLElement),
+    setPasswordFairName: ims.typedElement("set_password_fair_name", HTMLElement),
     setPasswordInput: ims.typedElement("set_password_input", HTMLInputElement),
     setPasswordConfirm: ims.typedElement("set_password_confirm", HTMLInputElement),
     setPasswordToggle: ims.typedElement("set_password_toggle", HTMLButtonElement),
@@ -131,8 +131,8 @@ const el = {
     addPersonInviteNote: ims.typedElement("add_person_invite_note", HTMLElement),
     addPersonWristbandWrap: ims.typedElement("add_person_wristband_wrap", HTMLElement),
     addPersonParticipationWrap: ims.typedElement("add_person_participation_wrap", HTMLElement),
-    addPersonName: ims.typedElement("add_person_legal_name", HTMLInputElement),
-    addPersonHandle: ims.typedElement("add_person_fair_name", HTMLInputElement),
+    addPersonLegalName: ims.typedElement("add_person_legal_name", HTMLInputElement),
+    addPersonFairName: ims.typedElement("add_person_fair_name", HTMLInputElement),
     addPersonEmail: ims.typedElement("add_person_email", HTMLInputElement),
     addPersonEmailWrap: ims.typedElement("add_person_email_wrap", HTMLElement),
     addPersonEmailLabel: ims.typedElement("add_person_email_label", HTMLElement),
@@ -151,8 +151,8 @@ const el = {
     addPersonWristband: ims.typedElement("add_person_wristband", HTMLInputElement),
     addPersonParticipation: ims.typedElement("add_person_participation", HTMLSelectElement),
     editPersonModal: ims.typedElement("editPersonModal", HTMLElement),
-    editPersonHandle: ims.typedElement("edit_person_fair_name", HTMLInputElement),
-    editPersonName: ims.typedElement("edit_person_legal_name", HTMLInputElement),
+    editPersonFairName: ims.typedElement("edit_person_fair_name", HTMLInputElement),
+    editPersonLegalName: ims.typedElement("edit_person_legal_name", HTMLInputElement),
     editPersonEmail: ims.typedElement("edit_person_email", HTMLInputElement),
     editPersonPhone: ims.typedElement("edit_person_phone", HTMLInputElement),
     editPersonEventSection: ims.typedElement("edit_person_event_section", HTMLElement),
@@ -452,7 +452,7 @@ function buildPersonRow(
         // Show the fair name as a secondary identifier only when it's distinct from the
         // primary label (i.e. the person has a legal name); fair-name-only people already
         // show their fair name as the label.
-        entryItem.getElementsByClassName("person-handle")[0]!.textContent =
+        entryItem.getElementsByClassName("person-fair-name")[0]!.textContent =
             (person.legal_name && person.fair_name) ? person.fair_name : "";
 
         // Admin badge next to the name. is_admin is only sent to admin viewers (53d),
@@ -490,8 +490,8 @@ function buildPersonRow(
             showEdit.addEventListener("click",
                 function (_e: MouseEvent): void {
                     el.editPersonModal.dataset["personId"] = (person.person_id ?? "").toString();
-                    el.editPersonHandle.value = person.fair_name ?? "";
-                    el.editPersonName.value = person.legal_name ?? "";
+                    el.editPersonFairName.value = person.fair_name ?? "";
+                    el.editPersonLegalName.value = person.legal_name ?? "";
                     el.editPersonEmail.value = person.email ?? "";
                     el.editPersonPhone.value = person.phone ?? "";
                     el.editPersonWristband.value = person.wristband ?? "";
@@ -509,7 +509,7 @@ function buildPersonRow(
                 showPassword.addEventListener("click",
                     function (_e: MouseEvent): void {
                         el.setPasswordModal.dataset["personId"] = (person.person_id ?? "").toString();
-                        el.setPasswordHandle.textContent = label;
+                        el.setPasswordFairName.textContent = label;
                         el.setPasswordInput.value = "";
                         el.setPasswordConfirm.value = "";
                         setPasswordModal.show();
@@ -757,8 +757,8 @@ function showAddPersonModal(): void {
 // default (masked inputs; hidden for an admin, forced-open for an inviter).
 function resetAddPersonForm(): void {
     el.addPersonSearch.value = "";
-    el.addPersonName.value = "";
-    el.addPersonHandle.value = "";
+    el.addPersonLegalName.value = "";
+    el.addPersonFairName.value = "";
     el.addPersonEmail.value = "";
     el.addPersonPassword.value = "";
     el.addPersonPasswordConfirm.value = "";
@@ -792,7 +792,7 @@ function setAddPersonStep(step: "search" | "create"): void {
 // the user has decided they're adding someone new.
 function showCreatePersonForm(): void {
     setAddPersonStep("create");
-    el.addPersonName.focus();
+    el.addPersonLegalName.focus();
 }
 
 function backToPersonSearch(): void {
@@ -819,7 +819,7 @@ function setAccessShown(shown: boolean): void {
     // and relabel it required. With access off it's back to optional contact info
     // in its original spot (right after its home anchor).
     if (shown) {
-        el.addPersonAccessSection.insertBefore(el.addPersonEmailWrap, el.addPersonHandle.parentElement);
+        el.addPersonAccessSection.insertBefore(el.addPersonEmailWrap, el.addPersonFairName.parentElement);
         el.addPersonEmailLabel.textContent = "Email (required for login)";
     } else {
         el.addPersonEmailHome.after(el.addPersonEmailWrap);
@@ -832,12 +832,12 @@ function toggleProvideAccess(): void {
     setAccessShown(show);
     if (show) {
         // Send them to whichever required login field still needs filling first.
-        (el.addPersonEmail.value.trim() === "" ? el.addPersonEmail : el.addPersonHandle).focus();
+        (el.addPersonEmail.value.trim() === "" ? el.addPersonEmail : el.addPersonFairName).focus();
     } else {
         // Collapsing discards any half-entered credentials so they aren't submitted.
         // Email is left alone — it's contact info, not a credential, and stays even
         // without access.
-        el.addPersonHandle.value = "";
+        el.addPersonFairName.value = "";
         el.addPersonPassword.value = "";
         el.addPersonPasswordConfirm.value = "";
         resetPasswordToggle(el.addPersonPassword, el.addPersonPasswordToggle);
@@ -846,19 +846,19 @@ function toggleProvideAccess(): void {
 }
 
 async function submitCreatePerson(): Promise<void> {
-    const name = el.addPersonName.value.trim();
+    const name = el.addPersonLegalName.value.trim();
     if (!name) {
-        ims.controlHasError(el.addPersonName);
+        ims.controlHasError(el.addPersonLegalName);
         ims.setErrorMessage("A full legal name is required.");
         return;
     }
     // Credentials are only collected (and required) when the access section is open.
     const wantAccess = !el.addPersonAccessSection.classList.contains("hidden");
-    const handle = el.addPersonHandle.value.trim();
+    const fairName = el.addPersonFairName.value.trim();
     const password = el.addPersonPassword.value;
     if (wantAccess) {
-        if (!handle) {
-            ims.controlHasError(el.addPersonHandle);
+        if (!fairName) {
+            ims.controlHasError(el.addPersonFairName);
             ims.setErrorMessage("A fair name is required to provide IMS access.");
             return;
         }
@@ -881,7 +881,7 @@ async function submitCreatePerson(): Promise<void> {
 
     const body: Record<string, unknown> = {
         "legal_name": name,
-        "fair_name": wantAccess ? handle : "",
+        "fair_name": wantAccess ? fairName : "",
         // Email and phone are contact info, sent whether or not access is granted.
         "email": el.addPersonEmail.value.trim(),
         "phone": el.addPersonPhone.value.trim(),
@@ -902,7 +902,7 @@ async function submitCreatePerson(): Promise<void> {
         body: JSON.stringify(body),
     });
     if (err != null) {
-        ims.controlHasError(el.addPersonName);
+        ims.controlHasError(el.addPersonLegalName);
         const message = `Failed to create person:\n${err}`;
         console.error(message);
         ims.setErrorMessage(message);
@@ -919,8 +919,8 @@ async function submitEditPerson(): Promise<void> {
         return;
     }
     const body: Record<string, unknown> = {
-        "fair_name": el.editPersonHandle.value.trim(),
-        "legal_name": el.editPersonName.value.trim(),
+        "fair_name": el.editPersonFairName.value.trim(),
+        "legal_name": el.editPersonLegalName.value.trim(),
         "email": el.editPersonEmail.value.trim(),
         "phone": el.editPersonPhone.value.trim(),
     };

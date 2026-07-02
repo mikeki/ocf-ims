@@ -59,7 +59,7 @@ func TestMetricsAccess(t *testing.T) {
 	require.NoError(t, resp.Body.Close())
 
 	// A mere reporter (no incident write) is still refused.
-	resp = adminUser.addReporter(ctx, eventName, userAliceHandle)
+	resp = adminUser.addReporter(ctx, eventName, userAliceFairName)
 	require.Equal(t, http.StatusNoContent, resp.StatusCode)
 	require.NoError(t, resp.Body.Close())
 	_, resp = aliceUser.getMetrics(ctx, eventName)
@@ -67,7 +67,7 @@ func TestMetricsAccess(t *testing.T) {
 	require.NoError(t, resp.Body.Close())
 
 	// Promoted to writer of the event, she may now open the dashboard (52d).
-	resp = adminUser.addWriter(ctx, eventName, userAliceHandle)
+	resp = adminUser.addWriter(ctx, eventName, userAliceFairName)
 	require.Equal(t, http.StatusNoContent, resp.StatusCode)
 	require.NoError(t, resp.Body.Close())
 	_, resp = aliceUser.getMetrics(ctx, eventName)
@@ -89,7 +89,7 @@ func TestMetricsAggregation(t *testing.T) {
 
 	// Being an admin confers only global permissions; event-scoped writes still
 	// need an explicit grant, so give the admin write access before seeding.
-	resp := adminUser.addWriter(ctx, eventName, userAdminHandle)
+	resp := adminUser.addWriter(ctx, eventName, userAdminFairName)
 	require.Equal(t, http.StatusNoContent, resp.StatusCode)
 	require.NoError(t, resp.Body.Close())
 
@@ -218,7 +218,7 @@ func TestMetricsCacheInvalidation(t *testing.T) {
 
 	admin := ApiHelper{t: t, serverURL: shared.serverURL, jwt: jwtForAdmin(ctx, t)}
 	eventName := makeEvent(ctx, t, admin)
-	resp := admin.addWriter(ctx, eventName, userAdminHandle)
+	resp := admin.addWriter(ctx, eventName, userAdminFairName)
 	require.Equal(t, http.StatusNoContent, resp.StatusCode)
 	require.NoError(t, resp.Body.Close())
 

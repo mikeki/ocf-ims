@@ -354,8 +354,8 @@ func areaRowToJSON(a imsdb.AreasWithProposerRow) imsjson.Area {
 	if a.ProposedByPersonID.Valid {
 		out.Proposer = &imsjson.Mention{
 			PersonID:  a.ProposedByPersonID.Int32,
-			FairName:  a.ProposerHandle.String,
-			LegalName: a.ProposerName.String,
+			FairName:  a.ProposerFairName.String,
+			LegalName: a.ProposerLegalName.String,
 		}
 	}
 	return out

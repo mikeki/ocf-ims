@@ -246,7 +246,7 @@ func visitToJSON(storedRow imsdb.VisitRow, visitPeople []imsjson.VisitPerson,
 
 		GuestPersonID:        conv.SqlToInt32(storedRow.Visit.GuestPersonID),
 		GuestName:            conv.SqlToString(storedRow.GuestName),
-		GuestHandle:          conv.SqlToString(storedRow.GuestHandle),
+		GuestFairName:        conv.SqlToString(storedRow.GuestFairName),
 		GuestLegalName:       conv.SqlToString(storedRow.Visit.GuestLegalName),
 		GuestDescription:     conv.SqlToString(storedRow.Visit.GuestDescription),
 		GuestActionPlan:      conv.SqlToString(storedRow.Visit.GuestActionPlan),

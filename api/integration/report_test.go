@@ -51,7 +51,7 @@ func TestCreateAndGetReport(t *testing.T) {
 	_, resp := apisAdmin.createEvent(ctx, imsjson.Event{Name: &eventName})
 	require.Equal(t, http.StatusNoContent, resp.StatusCode)
 	require.NoError(t, resp.Body.Close())
-	resp = apisAdmin.addReporter(ctx, eventName, userAliceHandle)
+	resp = apisAdmin.addReporter(ctx, eventName, userAliceFairName)
 	require.Equal(t, http.StatusNoContent, resp.StatusCode)
 	require.NoError(t, resp.Body.Close())
 
@@ -75,7 +75,7 @@ func TestCreateAndGetReport(t *testing.T) {
 		retrievedUserEntry.ID = 0
 		require.WithinDuration(t, time.Now(), retrievedUserEntry.Created, 5*time.Minute)
 		retrievedUserEntry.Created = time.Time{}
-		entryReq.Author = userAliceHandle
+		entryReq.Author = userAliceFairName
 		entryReq.Stricken = new(false)
 		require.Equal(t, entryReq, retrievedUserEntry)
 	}
@@ -95,7 +95,7 @@ func TestCreateAndGetReport(t *testing.T) {
 		retrievedUserEntry.ID = 0
 		require.WithinDuration(t, time.Now(), retrievedUserEntry.Created, 5*time.Minute)
 		retrievedUserEntry.Created = time.Time{}
-		entryReq.Author = userAliceHandle
+		entryReq.Author = userAliceFairName
 		require.Equal(t, entryReq, retrievedUserEntry)
 	}
 }
@@ -114,10 +114,10 @@ func TestCreateAndUpdateReport(t *testing.T) {
 	_, resp := apisAdmin.createEvent(ctx, imsjson.Event{Name: &eventName})
 	require.Equal(t, http.StatusNoContent, resp.StatusCode)
 	require.NoError(t, resp.Body.Close())
-	resp = apisAdmin.addWriter(ctx, eventName, userAdminHandle)
+	resp = apisAdmin.addWriter(ctx, eventName, userAdminFairName)
 	require.Equal(t, http.StatusNoContent, resp.StatusCode)
 	require.NoError(t, resp.Body.Close())
-	resp = apisAdmin.addReporter(ctx, eventName, userAliceHandle)
+	resp = apisAdmin.addReporter(ctx, eventName, userAliceFairName)
 	require.Equal(t, http.StatusNoContent, resp.StatusCode)
 	require.NoError(t, resp.Body.Close())
 
@@ -245,7 +245,7 @@ func TestCreateAndAttachFileToReport(t *testing.T) {
 	_, resp := apisAdmin.createEvent(ctx, imsjson.Event{Name: &eventName})
 	require.Equal(t, http.StatusNoContent, resp.StatusCode)
 	require.NoError(t, resp.Body.Close())
-	resp = apisAdmin.addReporter(ctx, eventName, userAliceHandle)
+	resp = apisAdmin.addReporter(ctx, eventName, userAliceFairName)
 	require.Equal(t, http.StatusNoContent, resp.StatusCode)
 	require.NoError(t, resp.Body.Close())
 
@@ -309,7 +309,7 @@ func TestJournalEntryOnBehalfOf(t *testing.T) {
 	_, resp := apisAdmin.createEvent(ctx, imsjson.Event{Name: &eventName})
 	require.Equal(t, http.StatusNoContent, resp.StatusCode)
 	require.NoError(t, resp.Body.Close())
-	resp = apisAdmin.addReporter(ctx, eventName, userAliceHandle)
+	resp = apisAdmin.addReporter(ctx, eventName, userAliceFairName)
 	require.Equal(t, http.StatusNoContent, resp.StatusCode)
 	require.NoError(t, resp.Body.Close())
 

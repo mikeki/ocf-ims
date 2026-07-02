@@ -441,11 +441,11 @@ function initDataTables(tablePrereqs: Promise<void>): void {
                 "responsivePriority": 5,
             },
             {   // 6
-                "name": "incident_person_handles",
-                "className": "incident_person_handles",
+                "name": "incident_person_fair_names",
+                "className": "incident_person_fair_names",
                 "data": "people",
                 "defaultContent": "",
-                "render": ims.renderPersonHandles,
+                "render": ims.renderPersonFairNames,
                 "responsivePriority": 6,
             },
             {   // 7

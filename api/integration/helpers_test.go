@@ -418,47 +418,47 @@ func (a ApiHelper) getEvents(ctx context.Context) (imsjson.Events, *http.Respons
 // addWriter / addReporter grant a per-event role by setting the person's
 // PERSON__EVENT participation tier (plan 52b: access derives from participation).
 // They return 204.
-func (a ApiHelper) addWriter(ctx context.Context, eventName, handle string) *http.Response {
+func (a ApiHelper) addWriter(ctx context.Context, eventName, fairName string) *http.Response {
 	a.t.Helper()
-	return a.setParticipation(ctx, personIDForHandle(a.t, handle), eventName,
+	return a.setParticipation(ctx, personIDForFairName(a.t, fairName), eventName,
 		api.SetParticipationRequest{ParticipationType: "writer"})
 }
 
-func (a ApiHelper) addReporter(ctx context.Context, eventName, handle string) *http.Response {
+func (a ApiHelper) addReporter(ctx context.Context, eventName, fairName string) *http.Response {
 	a.t.Helper()
-	return a.setParticipation(ctx, personIDForHandle(a.t, handle), eventName,
+	return a.setParticipation(ctx, personIDForFairName(a.t, fairName), eventName,
 		api.SetParticipationRequest{ParticipationType: "reporter"})
 }
 
 // addVisitWriter grants the writer tier. The 52b ladder has no visit-only rung
 // (writer already covers visits), so this is a thin alias kept for the existing
 // visit tests; visits themselves are disabled for the beta.
-func (a ApiHelper) addVisitWriter(ctx context.Context, eventName, handle string) *http.Response {
+func (a ApiHelper) addVisitWriter(ctx context.Context, eventName, fairName string) *http.Response {
 	a.t.Helper()
-	return a.setParticipation(ctx, personIDForHandle(a.t, handle), eventName,
+	return a.setParticipation(ctx, personIDForFairName(a.t, fairName), eventName,
 		api.SetParticipationRequest{ParticipationType: "writer"})
 }
 
-// personIDForHandle maps the suite's fixed login handles to their seeded PERSON.ID
+// personIDForFairName maps the suite's fixed login fair names to their seeded PERSON.ID
 // so role-granting helpers can target the per-event participation endpoint (which
 // is keyed by person id).
-func personIDForHandle(t *testing.T, handle string) int64 {
+func personIDForFairName(t *testing.T, fairName string) int64 {
 	t.Helper()
-	switch handle {
-	case userAdminHandle:
+	switch fairName {
+	case userAdminFairName:
 		return userAdminPersonID
-	case userAliceHandle:
+	case userAliceFairName:
 		return userAlicePersonID
-	case userBobHandle:
+	case userBobFairName:
 		return userBobPersonID
-	case userCarolHandle:
+	case userCarolFairName:
 		return userCarolPersonID
-	case userDaveHandle:
+	case userDaveFairName:
 		return userDavePersonID
-	case userErinHandle:
+	case userErinFairName:
 		return userErinPersonID
 	}
-	t.Fatalf("personIDForHandle: unknown handle %q", handle)
+	t.Fatalf("personIDForFairName: unknown fairName %q", fairName)
 	return 0
 }
 
@@ -690,9 +690,9 @@ func jwtForErin(t *testing.T, ctx context.Context) string {
 
 // addCrewLeader grants the crew_leader tier (plan 53b: reporter-level access plus
 // the invite-reporters power) by setting the person's PERSON__EVENT participation.
-func (a ApiHelper) addCrewLeader(ctx context.Context, eventName, handle string) *http.Response {
+func (a ApiHelper) addCrewLeader(ctx context.Context, eventName, fairName string) *http.Response {
 	a.t.Helper()
-	return a.setParticipation(ctx, personIDForHandle(a.t, handle), eventName,
+	return a.setParticipation(ctx, personIDForFairName(a.t, fairName), eventName,
 		api.SetParticipationRequest{ParticipationType: "crew_leader"})
 }
 
