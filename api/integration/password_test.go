@@ -57,7 +57,7 @@ func TestSetPersonPassword(t *testing.T) {
 	// Bob can now log in with the new password (cache was invalidated, so this is
 	// effective immediately)...
 	statusCode, _, token := apisNoAuth.postAuth(ctx, api.PostAuthRequest{
-		Identification: userBobFairName,
+		Identification: userBobEmail,
 		Password:       newPassword,
 	})
 	require.Equal(t, http.StatusOK, statusCode)
@@ -65,7 +65,7 @@ func TestSetPersonPassword(t *testing.T) {
 
 	// ...and the old password no longer works.
 	statusCode, _, _ = apisNoAuth.postAuth(ctx, api.PostAuthRequest{
-		Identification: userBobFairName,
+		Identification: userBobEmail,
 		Password:       userBobInitialPassword,
 	})
 	require.Equal(t, http.StatusUnauthorized, statusCode)

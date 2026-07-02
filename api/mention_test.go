@@ -57,6 +57,10 @@ func TestResolveTypedMentionIDs(t *testing.T) {
 		1: "Hardware",
 		2: "Bob",
 		3: "k9",
+		// 4 and 5 share a fair name: fair names are non-unique, and an ambiguous
+		// typed mention notifies every match rather than silently picking one.
+		4: "Echo",
+		5: "echo",
 	})
 
 	cases := []struct {
@@ -74,6 +78,7 @@ func TestResolveTypedMentionIDs(t *testing.T) {
 		{name: "mid-word at is not a mention", text: "email bob@example.com", want: nil},
 		{name: "multiple mentions", text: "@Bob and @Hardware", want: []int32{2, 1}},
 		{name: "repeated fair name resolves each time", text: "@Bob @Bob", want: []int32{2, 2}},
+		{name: "ambiguous fair name notifies all matches", text: "@Echo to the front", want: []int32{4, 5}},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {

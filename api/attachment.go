@@ -285,7 +285,7 @@ func (action GetReportAttachment) getReportAttachment(
 	}
 
 	if limitedAccess {
-		if !containsAuthor(journalEntries, jwtCtx.Claims.PersonFairName()) {
+		if !containsAuthor(journalEntries, jwtCtx.Claims.PersonID()) {
 			return nil, "", herr.Forbidden("The requestor does not have permission to read this particular Report", nil)
 		}
 	}
@@ -454,7 +454,7 @@ func (action AttachToReport) attachToReport(req *http.Request) (int32, *herr.HTT
 		return 0, errHTTP.From("[fetchReport]")
 	}
 	if limitedAccess {
-		if !containsAuthor(entries, jwtCtx.Claims.PersonFairName()) {
+		if !containsAuthor(entries, jwtCtx.Claims.PersonID()) {
 			return 0, herr.Forbidden("The requestor does not have permission to read this particular Report", nil)
 		}
 	}

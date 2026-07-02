@@ -276,10 +276,12 @@ JWT-based authentication with separate access and refresh tokens:
 - Tokens signed with `IMS_JWT_SECRET`
 
 Passwords are stored locally (argon2id hash in `PERSON.PASSWORD`); there is no
-external credential provider (Clubhouse was retired). There is no self-service /
+external credential provider (Clubhouse was retired). Login identifies a person
+by EMAIL only (the sole unique identifier besides the row ID) — fair names are
+non-unique display callsigns and are never matched at login. There is no self-service /
 emailed password reset yet — a locked-out user asks a crew leader or an admin to
 reset it. A privileged user resets a password from **Admin → People & Passwords**
-(`/ims/app/admin/people`), which calls `POST /ims/api/personnel/{handle}/password`.
+(`/ims/app/admin/people`), which calls `POST /ims/api/personnel/{personId}/password`.
 For seeding/scripts, the `hash_password` CLI prints an argon2id hash to write into
 `PERSON.PASSWORD` directly.
 
@@ -290,7 +292,7 @@ Event-based access control defined in `lib/authz/`:
 - Admins have unrestricted access. A user is an admin solely if their local
   `PERSON.IS_ADMIN` flag is set — there is no admin env list. The flag is managed
   in-app from **Admin → People & Passwords** via
-  `POST /ims/api/personnel/{handle}/admin`, and rides in the JWT, so a change takes
+  `POST /ims/api/personnel/{personId}/admin`, and rides in the JWT, so a change takes
   effect on the next access-token refresh. The endpoint refuses to clear the last
   remaining admin (409). **Only admins may change admin status**: the toggle is
   gated on the caller actually being an admin (`claims.PersonAdmin()`), *not* on the

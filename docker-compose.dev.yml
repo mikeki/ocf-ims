@@ -42,8 +42,8 @@ services:
     environment:
       # The user directory is the local IMS-DB PERSON table. IMS_SEED=demo makes
       # the app load store/fakeimsdb/seed.sql into an empty DB on boot (idempotent
-      # — see store.Seed). Demo logins: Miguel / ShadowDancer / TeamMember
-      # (password == handle). See docs/plans/32-retire-clubhouse.md and
+      # — see store.Seed). Demo logins (by email, password == fair name):
+      # miguel@ / shadowdancer@ / teammember@ example.com. See docs/plans/32-retire-clubhouse.md and
       # docs/plans/08-db-migration-tooling.md.
       IMS_SEED: "demo"
       #

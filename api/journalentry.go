@@ -93,8 +93,8 @@ func (action EditReportJournalEntry) editJournalEntry(req *http.Request) *herr.H
 	// entry. A report is a collection of entries owned by their individual authors,
 	// so this is a per-entry check, not per-report.
 	if eventPermissions&authz.EventWriteAllReports == 0 {
-		author, err := action.imsDBQ.ReportJournalEntryAuthor(ctx, action.imsDBQ,
-			imsdb.ReportJournalEntryAuthorParams{
+		entryAuthorID, err := action.imsDBQ.ReportJournalEntryAuthorID(ctx, action.imsDBQ,
+			imsdb.ReportJournalEntryAuthorIDParams{
 				Event:        event.ID,
 				ReportNumber: reportNumber,
 				JournalEntry: journalEntryId,
@@ -104,9 +104,9 @@ func (action EditReportJournalEntry) editJournalEntry(req *http.Request) *herr.H
 			return herr.NotFound("There is no such JournalEntry on this Report", err)
 		}
 		if err != nil {
-			return herr.InternalServerError("Failed to fetch JournalEntry author", err).From("[ReportJournalEntryAuthor]")
+			return herr.InternalServerError("Failed to fetch JournalEntry author", err).From("[ReportJournalEntryAuthorID]")
 		}
-		if author.String != jwtCtx.Claims.PersonFairName() {
+		if entryAuthorID != jwtCtx.Claims.PersonID() {
 			return herr.Forbidden("The requestor may only strike their own journal entries", nil)
 		}
 	}
@@ -327,14 +327,15 @@ func journalEntryToJSON(
 		attachment.Previewable = previewableContentType(re.AttachedFileMediaType.String)
 	}
 	return imsjson.JournalEntry{
-		ID:          re.ID,
-		Created:     time.Unix(int64(re.Created), 0),
-		Author:      author,
-		SystemEntry: re.Generated,
-		Text:        re.Text,
-		Stricken:    new(re.Stricken),
-		Attachment:  attachment,
-		OnBehalfOf:  onBehalfOf,
+		ID:             re.ID,
+		Created:        time.Unix(int64(re.Created), 0),
+		Author:         author,
+		AuthorPersonID: re.AuthorPersonID,
+		SystemEntry:    re.Generated,
+		Text:           re.Text,
+		Stricken:       new(re.Stricken),
+		Attachment:     attachment,
+		OnBehalfOf:     onBehalfOf,
 	}
 }
 

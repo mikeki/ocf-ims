@@ -153,7 +153,7 @@ func EventPermissions(
 	}
 	eventPermissions, globalPermissions = ManyEventPermissions(
 		participationByEvent,
-		claims.PersonFairName(),
+		claims.PersonID(),
 		claims.PersonAdmin(),
 	)
 	return eventPermissions, globalPermissions, nil
@@ -165,13 +165,15 @@ func EventPermissions(
 // every event in the map.
 func ManyEventPermissions(
 	participationByEvent map[int32]imsdb.PersonEventParticipationType, // eventID as key
-	fairName string,
+	personID int32,
 	isAdmin bool,
 ) (eventPermissions map[int32]EventPermissionMask, globalPermissions GlobalPermissionMask) {
 	eventPermissions = make(map[int32]EventPermissionMask)
 	globalPermissions = GlobalNoPermissions
 
-	if fairName != "" {
+	// The person ID is the caller's identity — a zero ID means no authenticated
+	// person (fair names are non-unique display values, never identifiers).
+	if personID != 0 {
 		globalPermissions |= RolesToGlobalPerms[AnyAuthenticatedUser]
 	}
 

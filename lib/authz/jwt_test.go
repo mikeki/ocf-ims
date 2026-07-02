@@ -83,8 +83,25 @@ func TestCreateAndGetInvalidJWTs(t *testing.T) {
 		require.Contains(t, err.Error(), "signature is invalid")
 	}
 	{
-		hasNoPersonFairNameJWT, err := jwter.CreateAccessToken(
-			// empty PersonFairName
+		// The person ID is the identity claim; a token without one is invalid.
+		hasNoPersonIDJWT, err := jwter.CreateAccessToken(
+			"Hardware",
+			0,
+			nil,
+			nil,
+			false,
+			new(int64(20)),
+			time.Now().Add(1*time.Hour),
+		)
+		require.NoError(t, err)
+		_, err = jwter.AuthenticateJWT(hasNoPersonIDJWT)
+		require.Error(t, err)
+		require.Contains(t, err.Error(), "person id is required")
+	}
+	{
+		// A fair name is display-only and may legitimately be empty — such a
+		// token authenticates fine as long as the person ID is present.
+		hasNoFairNameJWT, err := jwter.CreateAccessToken(
 			"",
 			12345,
 			nil,
@@ -94,9 +111,8 @@ func TestCreateAndGetInvalidJWTs(t *testing.T) {
 			time.Now().Add(1*time.Hour),
 		)
 		require.NoError(t, err)
-		_, err = jwter.AuthenticateJWT(hasNoPersonFairNameJWT)
-		require.Error(t, err)
-		require.Contains(t, err.Error(), "person fair name is required")
+		_, err = jwter.AuthenticateJWT(hasNoFairNameJWT)
+		require.NoError(t, err)
 	}
 }
 

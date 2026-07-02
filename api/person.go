@@ -114,13 +114,13 @@ func (action CreatePerson) createPerson(req *http.Request) (imsjson.Person, *her
 
 	// Identity: a registry person needs at least a fair name or a legal name.
 	if fairName == "" && legalName == "" {
-		return empty, herr.BadRequest("A fair legalName or legal legalName is required", nil)
+		return empty, herr.BadRequest("A fair name or legal name is required", nil)
 	}
 	if len(fairName) > maxFairNameLength {
-		return empty, herr.BadRequest("Fair legalName is too long", nil)
+		return empty, herr.BadRequest("Fair name is too long", nil)
 	}
 	if len(legalName) > maxLegalNameLength {
-		return empty, herr.BadRequest("Legal legalName is too long", nil)
+		return empty, herr.BadRequest("Legal name is too long", nil)
 	}
 	if len(email) > maxEmailLength {
 		return empty, herr.BadRequest("Email is too long", nil)
@@ -184,11 +184,12 @@ func (action CreatePerson) createPerson(req *http.Request) (imsjson.Person, *her
 		phoneNull = conv.StringToSql(&phone, maxPhoneLength)
 	}
 
-	// A password only enables login alongside a fair name or email to match it against
-	// — postAuth checks the identification against FAIR_NAME/EMAIL, never the legal name. Reject
-	// a password with neither, so we never mint a login no one can actually use.
-	if body.Password != "" && fairName == "" && email == "" {
-		return empty, herr.BadRequest("A fair legalName or email is required to set a password", nil)
+	// A password only enables login alongside an email to match it against —
+	// postAuth checks the identification against EMAIL only (fair names are
+	// non-unique display values, so they can't identify a login). Reject a
+	// password without one, so we never mint a login no one can actually use.
+	if body.Password != "" && email == "" {
+		return empty, herr.BadRequest("An email is required to set a password", nil)
 	}
 
 	// A password is optional, but if given it must satisfy the same bounds as the
@@ -205,18 +206,6 @@ func (action CreatePerson) createPerson(req *http.Request) (imsjson.Person, *her
 		passwordNull = conv.StringToSql(&hashed, 255)
 	}
 
-	// Friendly pre-check on the fair name (the unique constraint is the backstop below,
-	// and also catches a concurrent insert and the EMAIL uniqueness).
-	if fairName != "" {
-		_, err := action.imsDBQ.PersonByFairName(req.Context(), action.imsDBQ, fairNameNull)
-		if err == nil {
-			return empty, herr.Conflict("A person with that fair legalName already exists", nil)
-		}
-		if !errors.Is(err, sql.ErrNoRows) {
-			return empty, herr.InternalServerError("Failed to check fair legalName", err).From("[PersonByFairName]")
-		}
-	}
-
 	newID, err := action.imsDBQ.CreatePerson(req.Context(), action.imsDBQ, imsdb.CreatePersonParams{
 		FairName:  fairNameNull,
 		LegalName: legalNameNull,
@@ -226,9 +215,10 @@ func (action CreatePerson) createPerson(req *http.Request) (imsjson.Person, *her
 		Created:   conv.TimeToFloat(time.Now()),
 	})
 	if err != nil {
+		// EMAIL is the only unique key on PERSON (fair names are non-unique).
 		var mysqlErr *mysql.MySQLError
 		if errors.As(err, &mysqlErr) && mysqlErr.Number == dupEntryError {
-			return empty, herr.Conflict("That fair legalName or email is already in use", nil)
+			return empty, herr.Conflict("That email is already in use", nil)
 		}
 		return empty, herr.InternalServerError("Failed to create person", err).From("[CreatePerson]")
 	}
@@ -409,7 +399,7 @@ func (action EditPerson) editPerson(req *http.Request) *herr.HTTPError {
 	if body.FairName != nil {
 		trimmed := strings.TrimSpace(*body.FairName)
 		if len(trimmed) > maxFairNameLength {
-			return herr.BadRequest("Fair legalName is too long", nil)
+			return herr.BadRequest("Fair name is too long", nil)
 		}
 		fairName = conv.StringToSql(&trimmed, maxFairNameLength) // null when empty
 	}
@@ -417,12 +407,12 @@ func (action EditPerson) editPerson(req *http.Request) *herr.HTTPError {
 	if body.LegalName != nil {
 		trimmed := strings.TrimSpace(*body.LegalName)
 		if len(trimmed) > maxLegalNameLength {
-			return herr.BadRequest("Legal legalName is too long", nil)
+			return herr.BadRequest("Legal name is too long", nil)
 		}
 		legalName = conv.StringToSql(&trimmed, maxLegalNameLength) // null when empty
 	}
 	if fairName.String == "" && legalName.String == "" {
-		return herr.BadRequest("A fair legalName or legal legalName is required", nil)
+		return herr.BadRequest("A fair name or legal name is required", nil)
 	}
 	email := person.Email
 	if body.Email != nil {
@@ -431,6 +421,12 @@ func (action EditPerson) editPerson(req *http.Request) *herr.HTTPError {
 			return herr.BadRequest("Email is too long", nil)
 		}
 		email = conv.StringToSql(&trimmed, maxEmailLength) // null when empty
+	}
+	// Email is the login identifier: clearing it on a person who holds a password
+	// would lock them out silently. Make that a deliberate two-step (clear the
+	// password first) rather than a side effect of a profile edit.
+	if person.HasPassword && email.String == "" {
+		return herr.BadRequest("This person logs in by email; an email is required while they have a password", nil)
 	}
 	phone := person.Phone
 	if body.Phone != nil {
@@ -449,9 +445,10 @@ func (action EditPerson) editPerson(req *http.Request) *herr.HTTPError {
 		ID:        person.ID,
 	})
 	if err != nil {
+		// EMAIL is the only unique key on PERSON (fair names are non-unique).
 		var mysqlErr *mysql.MySQLError
 		if errors.As(err, &mysqlErr) && mysqlErr.Number == dupEntryError {
-			return herr.Conflict("That fair legalName or email is already in use", nil)
+			return herr.Conflict("That email is already in use", nil)
 		}
 		return herr.InternalServerError("Failed to edit person", err).From("[EditPerson]")
 	}

@@ -69,7 +69,7 @@ function roleRungsForViewer(): RoleRung[] {
 const noLoginRoleValues = new Set(["volunteer", "public"]);
 
 // roleRungsForPerson narrows the viewer's assignable rungs to those that make sense
-// for this person: a name-only person (no fair name/email) can only be a volunteer or
+// for this person: a login-less person (no email) can only be a volunteer or
 // public, since the higher rungs imply a login they don't have.
 function roleRungsForPerson(person: ims.Personnel): RoleRung[] {
     const rungs = roleRungsForViewer();
@@ -369,8 +369,8 @@ function drawPeople(): void {
     const setPasswordModal = ims.bsModal(el.setPasswordModal);
 
     const all = people ?? [];
-    // Split into people who can sign in to the IMS (a fair name/email set, or admin) and
-    // name-only people tracked at the fair; sort each group by role (most access
+    // Split into people who can sign in to the IMS (an email set, or admin) and
+    // login-less people tracked at the fair; sort each group by role (most access
     // first), then by name. Each is rendered as its own labelled section.
     const withAccess = all.filter(hasImsAccess).sort(comparePeopleByRole);
     const withoutAccess = all.filter((p: ims.Personnel): boolean => !hasImsAccess(p)).sort(comparePeopleByRole);
@@ -381,11 +381,11 @@ function drawPeople(): void {
     applyFilter();
 }
 
-// hasImsAccess reports whether a person can sign in — they have a fair name or email to
-// authenticate with, or they're an admin. Name-only people (neither) are tracked at
-// the fair but have no login.
+// hasImsAccess reports whether a person can sign in — email is the login
+// identifier, so it takes an email (or the admin flag). People without one are
+// tracked at the fair but have no login.
 function hasImsAccess(person: ims.Personnel): boolean {
-    return Boolean(person.is_admin) || Boolean(person.fair_name?.trim()) || Boolean(person.email?.trim());
+    return Boolean(person.is_admin) || Boolean(person.email?.trim());
 }
 
 // Role ladder, most access first, used to sort each people group. Admins sort ahead
@@ -499,10 +499,10 @@ function buildPersonRow(
                     ims.bsModal(el.editPersonModal).show();
                 },
             );
-            if (!person.fair_name && !person.email) {
+            if (!person.email) {
                 // Login-only actions apply only to someone who can log in. Login is by
-                // email OR fair name, so a registry person with neither (no way to sign
-                // in) gets no password/admin controls.
+                // email only, so a registry person without one (no way to sign in)
+                // gets no password/admin controls.
                 showPassword.classList.add("hidden");
                 adminToggle.classList.add("hidden");
             } else {

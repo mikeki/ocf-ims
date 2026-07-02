@@ -52,7 +52,7 @@ func TestManyEventPermissions_participationLadder(t *testing.T) {
 	for _, tc := range cases {
 		permissions, globalPermissions := ManyEventPermissions(
 			map[int32]imsdb.PersonEventParticipationType{123: tc.participation},
-			"SomeFairName",
+			12345,
 			false,
 		)
 		require.Equalf(t, tc.want, permissions[123], "participation %q", tc.participation)
@@ -70,7 +70,7 @@ func TestManyEventPermissions_adminBypass(t *testing.T) {
 			123: imsdb.PersonEventParticipationTypePublic,
 			999: imsdb.PersonEventParticipationTypeVolunteer,
 		},
-		"FlaggedAdmin",
+		12345,
 		true,
 	)
 	require.Equal(t, EventAllPermissions, permissions[123])
@@ -78,13 +78,13 @@ func TestManyEventPermissions_adminBypass(t *testing.T) {
 	require.Equal(t, authenticatedUserPerms|adminGlobalPerms, globalPermissions)
 }
 
-// TestManyEventPermissions_unauthenticated verifies an empty fair name grants no global
+// TestManyEventPermissions_unauthenticated verifies a zero person ID grants no global
 // permissions (and no per-event ones).
 func TestManyEventPermissions_unauthenticated(t *testing.T) {
 	t.Parallel()
 	permissions, globalPermissions := ManyEventPermissions(
 		map[int32]imsdb.PersonEventParticipationType{123: imsdb.PersonEventParticipationTypeWriter},
-		"",
+		0,
 		false,
 	)
 	require.Equal(t, writerPerm, permissions[123])
@@ -100,15 +100,15 @@ func TestManyEventPermissions_isAdminRules(t *testing.T) {
 	// Flagged local admin → gets admin global perms.
 	_, globalPermissions := ManyEventPermissions(
 		map[int32]imsdb.PersonEventParticipationType{},
-		"LocalAdmin",
+		12345,
 		true,
 	)
 	require.Equal(t, authenticatedUserPerms|adminGlobalPerms, globalPermissions)
 
-	// Same fair name without the flag → ordinary authenticated user only.
+	// Same person without the flag → ordinary authenticated user only.
 	_, globalPermissions = ManyEventPermissions(
 		map[int32]imsdb.PersonEventParticipationType{},
-		"LocalAdmin",
+		12345,
 		false,
 	)
 	require.Equal(t, authenticatedUserPerms, globalPermissions)

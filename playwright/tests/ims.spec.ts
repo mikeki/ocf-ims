@@ -14,7 +14,12 @@
 
 import {test, expect, Page} from "@playwright/test";
 
-const username = "Hardware";
+// Log in as the seeded dev admin: email is the login identifier
+// (see store/fakeimsdb/seed.sql; password == fair name).
+const loginEmail = "miguel@example.com";
+const loginPassword = "Miguel";
+// The fair name the UI displays for that account (nav button, person pickers).
+const username = "Miguel";
 
 function randomName(prefix: string): string {
   return `${prefix}-${crypto.randomUUID()}`;
@@ -27,8 +32,8 @@ async function login(page: Page): Promise<void> {
   if (await page.getByRole("button", { name: "Log In" }).isVisible()) {
     await page.getByRole("button", { name: "Log In" }).click();
     await page.getByPlaceholder("name@example.com").click();
-    await page.getByPlaceholder("name@example.com").fill(username);
-    await page.getByPlaceholder("Password").fill(username);
+    await page.getByPlaceholder("name@example.com").fill(loginEmail);
+    await page.getByPlaceholder("Password").fill(loginPassword);
     await page.getByPlaceholder("Password").press("Enter");
   }
   await expect(page.getByRole("button", { name: "Log Out" })).toBeVisible();

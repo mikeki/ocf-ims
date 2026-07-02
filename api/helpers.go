@@ -223,7 +223,7 @@ func permissionsByEvent(ctx context.Context, jwtCtx JWTContext, imsDBQ *store.DB
 	}
 	permissionsByEvent, _ := authz.ManyEventPermissions(
 		participationByEvent,
-		claims.PersonFairName(),
+		claims.PersonID(),
 		false,
 	)
 	return permissionsByEvent, nil

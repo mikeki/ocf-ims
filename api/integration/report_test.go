@@ -76,6 +76,7 @@ func TestCreateAndGetReport(t *testing.T) {
 		require.WithinDuration(t, time.Now(), retrievedUserEntry.Created, 5*time.Minute)
 		retrievedUserEntry.Created = time.Time{}
 		entryReq.Author = userAliceFairName
+		entryReq.AuthorPersonID = userAlicePersonID
 		entryReq.Stricken = new(false)
 		require.Equal(t, entryReq, retrievedUserEntry)
 	}
@@ -96,6 +97,7 @@ func TestCreateAndGetReport(t *testing.T) {
 		require.WithinDuration(t, time.Now(), retrievedUserEntry.Created, 5*time.Minute)
 		retrievedUserEntry.Created = time.Time{}
 		entryReq.Author = userAliceFairName
+		entryReq.AuthorPersonID = userAlicePersonID
 		require.Equal(t, entryReq, retrievedUserEntry)
 	}
 }

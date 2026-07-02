@@ -19,13 +19,17 @@ package json
 import "time"
 
 type JournalEntry struct {
-	ID          int32      `json:"id"`
-	Created     time.Time  `json:"created,omitzero"`
-	Author      string     `json:"author"`
-	SystemEntry bool       `json:"system_entry"`
-	Text        string     `json:"text"`
-	Stricken    *bool      `json:"stricken"`
-	Attachment  Attachment `json:"attachment,omitzero"`
+	ID      int32     `json:"id"`
+	Created time.Time `json:"created,omitzero"`
+	// Author is the fair name of the account that wrote the entry, for display.
+	// AuthorPersonID is the authoritative identity (fair names are non-unique) —
+	// ownership checks (own-report access, strike-own-entry) compare it.
+	Author         string     `json:"author"`
+	AuthorPersonID int32      `json:"author_person_id,omitzero"`
+	SystemEntry    bool       `json:"system_entry"`
+	Text           string     `json:"text"`
+	Stricken       *bool      `json:"stricken"`
+	Attachment     Attachment `json:"attachment,omitzero"`
 
 	// Mentions (plan 81). On write, the client sends MentionedPersonIDs — the
 	// people picked via the "@" typeahead while composing the entry. On read,

@@ -38,9 +38,11 @@ func findPerson(t *testing.T, people []imsjson.Person, personID int64) imsjson.P
 }
 
 // TestCreateAndEditPerson exercises in-app person creation: permission gating,
-// validation, the duplicate-fair-name guard, that a created person appears in the
-// admin listing and can log in, and the 404 guard on editing an unknown person.
-// It uses dedicated fair names so it doesn't disturb other parallel tests.
+// validation, the email-required-for-password guard, email uniqueness (fair
+// names are deliberately non-unique), that a created person appears in the
+// admin listing and can log in by email, and the 404 guard on editing an
+// unknown person. It uses dedicated fair names/emails so it doesn't disturb
+// other parallel tests.
 func TestCreateAndEditPerson(t *testing.T) {
 	t.Parallel()
 	ctx := t.Context()
@@ -61,14 +63,19 @@ func TestCreateAndEditPerson(t *testing.T) {
 	resp = apisAdmin.createPerson(ctx, api.CreatePersonRequest{FairName: ""})
 	require.Equal(t, http.StatusBadRequest, resp.StatusCode)
 	require.NoError(t, resp.Body.Close())
-	resp = apisAdmin.createPerson(ctx, api.CreatePersonRequest{FairName: newFairName, Password: "short"})
+	resp = apisAdmin.createPerson(ctx, api.CreatePersonRequest{
+		FairName: newFairName, Email: "edithtestranger@example.com", Password: "short",
+	})
 	require.Equal(t, http.StatusBadRequest, resp.StatusCode)
 	require.NoError(t, resp.Body.Close())
 
-	// A password with neither a fair name nor an email is rejected (the reported
-	// add-person bug): login matches FAIR_NAME/EMAIL, never the name, so a name-only
-	// person with a password could never sign in. Don't mint that unusable login.
+	// A password without an email is rejected: email is the sole login
+	// identifier, so a person with a password but no email could never sign in.
+	// Don't mint that unusable login — not even with a fair name present.
 	resp = apisAdmin.createPerson(ctx, api.CreatePersonRequest{LegalName: "No Login Person", Password: newPassword})
+	require.Equal(t, http.StatusBadRequest, resp.StatusCode)
+	require.NoError(t, resp.Body.Close())
+	resp = apisAdmin.createPerson(ctx, api.CreatePersonRequest{FairName: "NoEmailPerson", Password: newPassword})
 	require.Equal(t, http.StatusBadRequest, resp.StatusCode)
 	require.NoError(t, resp.Body.Close())
 	// The same name-only person without a password is a fine registry entry, though.
@@ -94,8 +101,17 @@ func TestCreateAndEditPerson(t *testing.T) {
 	require.NoError(t, resp.Body.Close())
 	require.Positive(t, created.PersonID)
 
-	// Creating the same fair name again is a conflict.
-	resp = apisAdmin.createPerson(ctx, api.CreatePersonRequest{FairName: newFairName, Password: newPassword})
+	// Fair names are not unique — a second person may go by the same one (email
+	// is the identifier)...
+	resp = apisAdmin.createPerson(ctx, api.CreatePersonRequest{
+		FairName: newFairName, Email: "edithtestranger2@example.com", Password: newPassword,
+	})
+	require.Equal(t, http.StatusCreated, resp.StatusCode)
+	require.NoError(t, resp.Body.Close())
+	// ...but reusing an email is a conflict (EMAIL carries the unique key).
+	resp = apisAdmin.createPerson(ctx, api.CreatePersonRequest{
+		FairName: "SomeoneElseEntirely", Email: "edithtestranger@example.com", Password: newPassword,
+	})
 	require.Equal(t, http.StatusConflict, resp.StatusCode)
 	require.NoError(t, resp.Body.Close())
 
@@ -107,13 +123,19 @@ func TestCreateAndEditPerson(t *testing.T) {
 		return p.FairName == newFairName
 	}), "created person should appear in the admin listing")
 
-	// ...and can log in with the assigned password.
+	// ...and can log in with their email and the assigned password. The fair
+	// name is not a login identifier (it isn't unique).
 	statusCode, _, token := apisNoAuth.postAuth(ctx, api.PostAuthRequest{
-		Identification: newFairName,
+		Identification: "edithtestranger@example.com",
 		Password:       newPassword,
 	})
 	require.Equal(t, http.StatusOK, statusCode)
 	require.NotEmpty(t, token)
+	statusCode, _, _ = apisNoAuth.postAuth(ctx, api.PostAuthRequest{
+		Identification: newFairName,
+		Password:       newPassword,
+	})
+	require.Equal(t, http.StatusUnauthorized, statusCode)
 
 	// Editing an unknown person is a 404.
 	resp = apisAdmin.editPerson(ctx, nonexistentPersonID, api.EditPersonRequest{})
@@ -192,7 +214,9 @@ func TestEditPersonProfileAndParticipation(t *testing.T) {
 	require.Empty(t, gotNoEvent.ParticipationType)
 
 	// --- wristband uniqueness within an event is a conflict. ---
-	resp = apisAdmin.createPerson(ctx, api.CreatePersonRequest{FairName: "GraceTestRanger", Password: "grace-password"})
+	resp = apisAdmin.createPerson(ctx, api.CreatePersonRequest{
+		FairName: "GraceTestRanger", Email: "grace@example.com", Password: "grace-password",
+	})
 	require.Equal(t, http.StatusCreated, resp.StatusCode)
 	var grace imsjson.Person
 	require.NoError(t, json.NewDecoder(resp.Body).Decode(&grace))
@@ -265,14 +289,29 @@ func TestPersonPhoneAndEditableFairName(t *testing.T) {
 	require.Equal(t, newPhone, got.Phone)
 	require.Equal(t, "contact@example.com", got.Email)
 
-	// A second person can't take the same fair name: the unique key surfaces as 409.
-	resp = apisAdmin.createPerson(ctx, api.CreatePersonRequest{FairName: "OtherFairName", Password: "other-password"})
+	// Fair names are not unique, so a second person may be edited onto the same
+	// one — but reusing another person's email is a conflict (EMAIL is the login
+	// identifier and carries the unique key).
+	resp = apisAdmin.createPerson(ctx, api.CreatePersonRequest{
+		FairName: "OtherFairName", Email: "other@example.com", Password: "other-password",
+	})
 	require.Equal(t, http.StatusCreated, resp.StatusCode)
 	var other imsjson.Person
 	require.NoError(t, json.NewDecoder(resp.Body).Decode(&other))
 	require.NoError(t, resp.Body.Close())
 	resp = apisAdmin.editPerson(ctx, other.PersonID, api.EditPersonRequest{FairName: &newFairName})
+	require.Equal(t, http.StatusNoContent, resp.StatusCode)
+	require.NoError(t, resp.Body.Close())
+	contactEmail := "contact@example.com"
+	resp = apisAdmin.editPerson(ctx, other.PersonID, api.EditPersonRequest{Email: &contactEmail})
 	require.Equal(t, http.StatusConflict, resp.StatusCode)
+	require.NoError(t, resp.Body.Close())
+
+	// A person with a password logs in by email, so their email can't be cleared
+	// out from under them — clear the password first.
+	emptyEmail := ""
+	resp = apisAdmin.editPerson(ctx, other.PersonID, api.EditPersonRequest{Email: &emptyEmail})
+	require.Equal(t, http.StatusBadRequest, resp.StatusCode)
 	require.NoError(t, resp.Body.Close())
 }
 
@@ -299,7 +338,9 @@ func TestEventRosterAddRemove(t *testing.T) {
 	require.NoError(t, resp.Body.Close())
 
 	makePerson := func(fairName string) int64 {
-		r := apisAdmin.createPerson(ctx, api.CreatePersonRequest{FairName: fairName, Password: fairName + "-pw-12345"})
+		r := apisAdmin.createPerson(ctx, api.CreatePersonRequest{
+			FairName: fairName, Email: fairName + "@example.com", Password: fairName + "-pw-12345",
+		})
 		require.Equal(t, http.StatusCreated, r.StatusCode)
 		var p imsjson.Person
 		require.NoError(t, json.NewDecoder(r.Body).Decode(&p))

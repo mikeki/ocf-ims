@@ -168,6 +168,7 @@ func TestCreateAndGetIncident(t *testing.T) {
 		require.WithinDuration(t, time.Now(), retrievedUserEntry.Created, 5*time.Minute)
 		retrievedUserEntry.Created = time.Time{}
 		entryReq.Author = userAliceFairName
+		entryReq.AuthorPersonID = userAlicePersonID
 		entryReq.Stricken = new(false)
 		require.Equal(t, entryReq, retrievedUserEntry)
 		requireEqualIncident(t, incidentReq, retrievedIncident)
@@ -186,6 +187,7 @@ func TestCreateAndGetIncident(t *testing.T) {
 		require.WithinDuration(t, time.Now(), retrievedUserEntry.Created, 5*time.Minute)
 		retrievedUserEntry.Created = time.Time{}
 		entryReq.Author = userAliceFairName
+		entryReq.AuthorPersonID = userAlicePersonID
 		require.Equal(t, entryReq, retrievedUserEntry)
 		requireEqualIncident(t, incidentReq, retrievedIncidents[0])
 	}

@@ -454,18 +454,20 @@ func resolveTypedMentionIDs(ctx context.Context, userStore directory.UserStore, 
 	if err != nil {
 		return nil, err
 	}
-	idByFairName := make(map[string]int32, len(users))
+	// Fair names are non-unique, so a typed token can match several people; an
+	// ambiguous mention notifies all of them (the insert is insert-ignore, so
+	// duplicates collapse) rather than silently picking one.
+	idsByFairName := make(map[string][]int32, len(users))
 	for _, u := range users {
 		if u.FairName != "" {
-			idByFairName[strings.ToLower(u.FairName)] = int32(u.ID)
+			key := strings.ToLower(u.FairName)
+			idsByFairName[key] = append(idsByFairName[key], int32(u.ID))
 		}
 	}
 	var ids []int32
 	for _, m := range matches {
 		token := strings.ToLower(strings.TrimRight(m[1], `.,;:!?)]}'"`))
-		if id, ok := idByFairName[token]; ok {
-			ids = append(ids, id)
-		}
+		ids = append(ids, idsByFairName[token]...)
 	}
 	return ids, nil
 }

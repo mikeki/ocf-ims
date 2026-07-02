@@ -93,7 +93,7 @@ admin by hand, then manage everyone else in-app (Admin → People & Passwords):
 # this is a deliberately one-off local bootstrap — clear it afterward (run it
 # with a leading space, or `history -d`).
 docker exec ocf-ims /opt/ims/bin/ims hash_password --password 'choose-a-strong-one'
-# insert the admin (FAIR_NAME + EMAIL are required to log in; see the login note).
+# insert the admin (EMAIL is required to log in; see the login note).
 # CREATED is NOT NULL with no default, so it must be set. The DB password lives
 # only in .env (compose reads it) — load it into this shell first, then pass it
 # via MYSQL_PWD so it never lands in the process list.
@@ -104,8 +104,9 @@ VALUES ('YourFairName', 'you@ocf.example.org', 'Your Legal Name', '<argon2id-has
 SQL
 ```
 
-Log in matches FAIR_NAME (the fair name / callsign) or EMAIL, never the legal
-name, so the admin row needs at least one of those plus the password.
+Log in matches EMAIL only — the fair name is a non-unique display callsign and
+the legal name is never matched — so the admin row needs an email plus the
+password.
 
 ## How the image is built
 

@@ -58,16 +58,17 @@ func TestCrewLeaderInvite(t *testing.T) {
 	require.Equal(t, http.StatusNoContent, resp.StatusCode)
 	require.NoError(t, resp.Body.Close())
 
-	// uniq builds a per-test-unique fair name so the global PERSON.FAIR_NAME unique key
-	// never collides with another parallel test.
+	// uniq builds a per-test-unique fair name; the emails derived from it keep the
+	// global PERSON.EMAIL unique key from colliding with another parallel test.
 	uniq := func(prefix string) string { return prefix + rand.NonCryptoText() }
 
 	// --- 1) The crew leader invites a login-capable reporter on her event. ---
 	inviteeFairName := uniq("Invitee")
+	inviteeEmail := inviteeFairName + "@example.com"
 	const inviteePassword = "invitee-password-123"
 	resp = apisErin.createPerson(ctx, api.CreatePersonRequest{
 		FairName:          inviteeFairName,
-		Email:             inviteeFairName + "@example.com",
+		Email:             inviteeEmail,
 		Password:          inviteePassword,
 		Event:             eventName,
 		ParticipationType: "reporter",
@@ -79,9 +80,10 @@ func TestCrewLeaderInvite(t *testing.T) {
 	require.Positive(t, invitee.PersonID)
 	require.Equal(t, "reporter", invitee.ParticipationType)
 
-	// The invitee can actually log in with the initial password they were given.
+	// The invitee can actually log in (by email) with the initial password they
+	// were given.
 	statusCode, _, token := apisNoAuth.postAuth(ctx, api.PostAuthRequest{
-		Identification: inviteeFairName,
+		Identification: inviteeEmail,
 		Password:       inviteePassword,
 	})
 	require.Equal(t, http.StatusOK, statusCode)
@@ -128,7 +130,10 @@ func TestCrewLeaderInvite(t *testing.T) {
 
 	// --- SetPersonParticipation path (enroll an existing person). ---
 	// An existing registry person with no event role, created by the admin.
-	resp = apisAdmin.createPerson(ctx, api.CreatePersonRequest{FairName: uniq("Target"), Password: "target-password-123"})
+	targetFairName := uniq("Target")
+	resp = apisAdmin.createPerson(ctx, api.CreatePersonRequest{
+		FairName: targetFairName, Email: targetFairName + "@example.com", Password: "target-password-123",
+	})
 	require.Equal(t, http.StatusCreated, resp.StatusCode)
 	var target imsjson.Person
 	require.NoError(t, json.NewDecoder(resp.Body).Decode(&target))
@@ -152,7 +157,10 @@ func TestCrewLeaderInvite(t *testing.T) {
 	require.NoError(t, resp.Body.Close())
 
 	// --- 5) She cannot modify a target who already outranks her ceiling. ---
-	resp = apisAdmin.createPerson(ctx, api.CreatePersonRequest{FairName: uniq("Bigshot"), Password: "bigshot-password-123"})
+	bigshotFairName := uniq("Bigshot")
+	resp = apisAdmin.createPerson(ctx, api.CreatePersonRequest{
+		FairName: bigshotFairName, Email: bigshotFairName + "@example.com", Password: "bigshot-password-123",
+	})
 	require.Equal(t, http.StatusCreated, resp.StatusCode)
 	var bigshot imsjson.Person
 	require.NoError(t, json.NewDecoder(resp.Body).Decode(&bigshot))
@@ -174,8 +182,10 @@ func TestCrewLeaderInvite(t *testing.T) {
 	resp = apisAdmin.addWriter(ctx, writerEvent, userAliceFairName)
 	require.Equal(t, http.StatusNoContent, resp.StatusCode)
 	require.NoError(t, resp.Body.Close())
+	writermadeFairName := uniq("Writermade")
 	resp = apisAlice.createPerson(ctx, api.CreatePersonRequest{
-		FairName:          uniq("Writermade"),
+		FairName:          writermadeFairName,
+		Email:             writermadeFairName + "@example.com",
 		Password:          "writermade-password-123",
 		Event:             writerEvent,
 		ParticipationType: "reporter",
@@ -184,8 +194,10 @@ func TestCrewLeaderInvite(t *testing.T) {
 	require.NoError(t, resp.Body.Close())
 
 	// --- 7) The admin path is unchanged: an admin may still mint a writer. ---
+	adminmadeFairName := uniq("Adminmade")
 	resp = apisAdmin.createPerson(ctx, api.CreatePersonRequest{
-		FairName:          uniq("Adminmade"),
+		FairName:          adminmadeFairName,
+		Email:             adminmadeFairName + "@example.com",
 		Password:          "adminmade-password-123",
 		Event:             eventName,
 		ParticipationType: "writer",

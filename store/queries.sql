@@ -528,16 +528,15 @@ where ID IN (
       and JOURNAL_ENTRY = ?
 );
 
--- name: ReportJournalEntryAuthor :one
--- Author fair name of a single journal entry on a report, used to enforce that a
+-- name: ReportJournalEntryAuthorID :one
+-- Author person ID of a single journal entry on a report, used to enforce that a
 -- reporter may only strike their own entries. Returns no rows if the entry isn't
--- on that report.
-select p.FAIR_NAME as AUTHOR
+-- on that report. Ownership compares person IDs, never fair names — fair names
+-- are non-unique display values.
+select je.AUTHOR_PERSON_ID
 from REPORT__JOURNAL_ENTRY rje
     join JOURNAL_ENTRY je
         on rje.JOURNAL_ENTRY = je.ID
-    join PERSON p
-        on p.ID = je.AUTHOR_PERSON_ID
 where rje.EVENT = ?
     and rje.REPORT_NUMBER = ?
     and rje.JOURNAL_ENTRY = ?
@@ -915,16 +914,14 @@ from PERSON p
     left join PERSON__EVENT pe on pe.PERSON_ID = p.ID and pe.EVENT = sqlc.arg(event)
 order by coalesce(p.LEGAL_NAME, p.FAIR_NAME);
 
--- name: PersonByFairName :one
-select ID, FAIR_NAME, EMAIL, IS_ADMIN
-from PERSON
-where FAIR_NAME = ?;
-
 -- PersonByID resolves a person by their stable primary key. Since 5e the web UI
 -- addresses people by person_id (registry people may have no fair name), so the
--- attach/detach and personnel-edit handlers look people up here.
+-- attach/detach and personnel-edit handlers look people up here. HAS_PASSWORD
+-- flags a login-capable person without exposing the hash — the edit handler uses
+-- it to refuse clearing the email (the login identifier) out from under a login.
 -- name: PersonByID :one
-select ID, FAIR_NAME, LEGAL_NAME, EMAIL, PHONE, IS_ADMIN
+select ID, FAIR_NAME, LEGAL_NAME, EMAIL, PHONE, IS_ADMIN,
+    PASSWORD is not null as HAS_PASSWORD
 from PERSON
 where ID = ?;
 

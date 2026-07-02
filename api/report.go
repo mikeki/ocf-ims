@@ -99,7 +99,7 @@ func (action GetReports) getReports(req *http.Request) (imsjson.Reports, *herr.H
 	if limitedAccess {
 		for _, storedReport := range storedReports {
 			entries := entriesByReport[storedReport.Report.Number]
-			if containsAuthor(entries, jwtCtx.Claims.PersonFairName()) {
+			if containsAuthor(entries, jwtCtx.Claims.PersonID()) {
 				authorizedReports = append(authorizedReports, storedReport)
 			}
 		}
@@ -123,9 +123,11 @@ func (action GetReports) getReports(req *http.Request) (imsjson.Reports, *herr.H
 	return resp, nil
 }
 
-func containsAuthor(entries []imsjson.JournalEntry, author string) bool {
+// containsAuthor reports whether any entry was authored by the given person.
+// Ownership compares person IDs — fair names are non-unique display values.
+func containsAuthor(entries []imsjson.JournalEntry, authorPersonID int32) bool {
 	for _, e := range entries {
-		if e.Author == author {
+		if e.AuthorPersonID == authorPersonID {
 			return true
 		}
 	}
@@ -173,7 +175,7 @@ func (action GetReport) getReport(req *http.Request) (imsjson.Report, *herr.HTTP
 	}
 
 	if limitedAccess {
-		if !containsAuthor(journalEntries, jwtCtx.Claims.PersonFairName()) {
+		if !containsAuthor(journalEntries, jwtCtx.Claims.PersonID()) {
 			return response, herr.Forbidden("The requestor does not have permission to access this particular Report", nil)
 		}
 	}
@@ -284,10 +286,9 @@ func (action EditReport) editReport(req *http.Request) *herr.HTTPError {
 	if err != nil {
 		return herr.BadRequest("Invalid report number", err).From("[ParseInt32]")
 	}
-	author := jwt.Claims.PersonFairName()
 	authorPersonID := jwt.Claims.PersonID()
 	if limitedAccess {
-		isPrevAuthor, errHTTP := action.isPreviousAuthor(req, event.ID, reportNumber, author)
+		isPrevAuthor, errHTTP := action.isPreviousAuthor(req, event.ID, reportNumber, authorPersonID)
 		if errHTTP != nil {
 			return errHTTP.From("[isPreviousAuthor]")
 		}
@@ -446,7 +447,7 @@ func (action EditReport) isPreviousAuthor(
 	req *http.Request,
 	eventID int32,
 	reportNumber int32,
-	author string,
+	authorPersonID int32,
 ) (isPreviousAuthor bool, errHTTP *herr.HTTPError) {
 	entries, err := action.imsDBQ.Report_JournalEntries(req.Context(), action.imsDBQ,
 		imsdb.Report_JournalEntriesParams{
@@ -459,7 +460,7 @@ func (action EditReport) isPreviousAuthor(
 	}
 	authorMatch := false
 	for _, entry := range entries {
-		if entry.Author.String == author {
+		if entry.JournalEntry.AuthorPersonID == authorPersonID {
 			authorMatch = true
 			break
 		}

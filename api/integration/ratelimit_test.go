@@ -71,7 +71,7 @@ func TestLoginRateLimit(t *testing.T) {
 	require.NoError(t, err)
 	require.NoError(t, loginResp.Body.Close())
 
-	// Hammer the endpoint with wrong-password attempts for a valid fair name. The first
+	// Hammer the endpoint with wrong-password attempts for a valid email. The first
 	// few return 401 (bad credentials); once backoff/lockout engages the endpoint
 	// sheds with 429 + Retry-After, before ever reaching the password verify.
 	// Rapid consecutive failures hit the exponential backoff well before the hard
@@ -80,7 +80,7 @@ func TestLoginRateLimit(t *testing.T) {
 	var retryAfter string
 	for i := range 12 {
 		resp := client.imsPost(ctx, api.PostAuthRequest{
-			Identification: userAliceFairName,
+			Identification: userAliceEmail,
 			Password:       "definitely-not-the-password",
 		}, srvURL.JoinPath("/ims/api/auth").String())
 		status := resp.StatusCode

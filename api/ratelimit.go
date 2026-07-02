@@ -34,14 +34,14 @@ import (
 
 // Login rate-limiting (plan 90, finding H1 + M4).
 //
-// POST /ims/api/auth is unauthenticated and takes a fair name/email + password, so
+// POST /ims/api/auth is unauthenticated and takes an email + password, so
 // without throttling it is an open door to online credential stuffing; a cracked
 // admin password is full access. Separately, every password verify serialises on
 // a process-wide argon2 mutex (lib/authn.argonLocker, bounding memory), so a login
 // flood starves legitimate logins. Both are mitigated here by shedding failed and
 // excess attempts *before* the verify runs, rather than queueing them.
 //
-// The limiter tracks failures per client IP AND per identification (fair name/email),
+// The limiter tracks failures per client IP AND per identification (email),
 // so a single host hammering many accounts trips the IP key while a distributed
 // guess against one account trips the identification key. Counters live in memory:
 // this is a single-instance deployment, and a process restart clearing the counters
@@ -106,7 +106,7 @@ type attemptState struct {
 type loginRateLimiter struct {
 	cfg loginRateLimiterConfig
 	mu  sync.Mutex
-	// attempts maps a namespaced key ("ip:1.2.3.4" / "id:fairname") to its state.
+	// attempts maps a namespaced key ("ip:1.2.3.4" / "id:email") to its state.
 	attempts map[string]*attemptState
 }
 

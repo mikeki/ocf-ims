@@ -56,17 +56,19 @@ func TestPostAuthAPIAuthorization(t *testing.T) {
 	require.Equal(t, http.StatusOK, statusCode)
 	require.NotEmpty(t, token)
 
-	// That same valid user can also log in by fair name
-	statusCode, _, token = apisNotAuthenticated.postAuth(ctx, api.PostAuthRequest{
+	// The fair name is NOT a login identifier (fair names aren't unique): the
+	// same user with the correct password but fair-name identification is denied.
+	statusCode, body, token = apisNotAuthenticated.postAuth(ctx, api.PostAuthRequest{
 		Identification: userAliceFairName,
 		Password:       userAlicePassword,
 	})
-	require.Equal(t, http.StatusOK, statusCode)
-	require.NotEmpty(t, token)
+	require.Equal(t, http.StatusUnauthorized, statusCode)
+	require.Contains(t, body, "bad credentials")
+	require.Empty(t, token)
 
 	// A valid user with the wrong password gets denied entry
 	statusCode, body, token = apisNotAuthenticated.postAuth(ctx, api.PostAuthRequest{
-		Identification: userAliceFairName,
+		Identification: userAliceEmail,
 		Password:       "not my password",
 	})
 	require.Equal(t, http.StatusUnauthorized, statusCode)

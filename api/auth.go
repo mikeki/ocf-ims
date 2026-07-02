@@ -83,15 +83,12 @@ func (action PostAuth) postAuth(req *http.Request) (PostAuthResponse, *http.Cook
 	if err != nil {
 		return empty, nil, herr.InternalServerError("Failed to fetch personnel", err).From("[GetPeople]")
 	}
+	// Email is the sole login identifier: fair names are non-unique display
+	// values, so matching them would be ambiguous (and legal names were never
+	// matched). EMAIL carries a unique key, so at most one person matches.
 	var matchedPerson *directory.User
 	for _, person := range people {
-		callsignMatch := person.FairName != "" && strings.EqualFold(person.FairName, vals.Identification)
-		if callsignMatch {
-			matchedPerson = person
-			break
-		}
-		emailMatch := person.Email != "" && strings.EqualFold(person.Email, vals.Identification)
-		if emailMatch {
+		if person.Email != "" && strings.EqualFold(person.Email, vals.Identification) {
 			matchedPerson = person
 			break
 		}
@@ -128,7 +125,7 @@ func (action PostAuth) postAuth(req *http.Request) (PostAuthResponse, *http.Cook
 		)
 	}
 
-	slog.Info("Successful login for person", "identification", matchedPerson.FairName)
+	slog.Info("Successful login for person", "person_id", matchedPerson.ID, "email", matchedPerson.Email)
 
 	accessTokenExpiration := time.Now().Add(action.accessTokenDuration)
 	jwt, err := authz.JWTer{SecretKey: action.jwtSecret}.
@@ -354,9 +351,11 @@ func (action RefreshAccessToken) refreshAccessToken(req *http.Request) (RefreshA
 	if err != nil {
 		return empty, herr.InternalServerError("Failed to fetch personnel", err).From("[GetPeople]")
 	}
+	// Match on the stable person ID only: the fair name in the claim is a display
+	// value and may have been edited (or be empty) since the token was minted.
 	var matchedPerson *directory.User
 	for _, person := range people {
-		if person.FairName == jwt.PersonFairName() && person.ID == int64(jwt.PersonID()) {
+		if person.ID == int64(jwt.PersonID()) {
 			matchedPerson = person
 			break
 		}
@@ -367,7 +366,7 @@ func (action RefreshAccessToken) refreshAccessToken(req *http.Request) (RefreshA
 	accessTokenExpiration := time.Now().Add(action.accessTokenDuration)
 	accessToken, err := authz.JWTer{SecretKey: action.jwtSecret}.
 		CreateAccessToken(
-			jwt.PersonFairName(),
+			matchedPerson.FairName,
 			matchedPerson.ID,
 			matchedPerson.PositionIDs,
 			matchedPerson.TeamIDs,
