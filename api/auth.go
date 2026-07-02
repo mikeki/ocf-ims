@@ -83,15 +83,11 @@ func (action PostAuth) postAuth(req *http.Request) (PostAuthResponse, *http.Cook
 	if err != nil {
 		return empty, nil, herr.InternalServerError("Failed to fetch personnel", err).From("[GetPeople]")
 	}
+	// Login matches EMAIL only. The fair name (handle) is a non-unique display
+	// callsign and is never accepted as a login identifier (feedback round 9).
 	var matchedPerson *directory.User
 	for _, person := range people {
-		callsignMatch := person.Handle != "" && strings.EqualFold(person.Handle, vals.Identification)
-		if callsignMatch {
-			matchedPerson = person
-			break
-		}
-		emailMatch := person.Email != "" && strings.EqualFold(person.Email, vals.Identification)
-		if emailMatch {
+		if person.Email != "" && strings.EqualFold(person.Email, vals.Identification) {
 			matchedPerson = person
 			break
 		}

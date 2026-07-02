@@ -74,7 +74,7 @@ templ People(deployment, versionName, versionRef, eventName string) {
             <div id="add_person_search_section" class="hidden">
               <label for="add_person_search" class="form-label fw-semibold">Search existing people</label>
               <div class="position-relative">
-                <input id="add_person_search" type="search" class="form-control" autocomplete="off" placeholder="Name, handle, or wristband…" />
+                <input id="add_person_search" type="search" class="form-control" autocomplete="off" placeholder="Legal name, fair name, or wristband…" />
                 <div id="add_person_search_results"
                      class="list-group position-absolute w-100 shadow-sm hidden"
                      style="z-index: 1100; max-height: 16rem; overflow-y: auto;"></div>
@@ -93,8 +93,8 @@ templ People(deployment, versionName, versionRef, eventName string) {
                 ← Back to search
               </button>
               <div class="form-floating mb-2">
-                <input id="add_person_name" type="text" class="form-control" autocomplete="off" placeholder="Full name" />
-                <label for="add_person_name">Full name</label>
+                <input id="add_person_name" type="text" class="form-control" autocomplete="off" placeholder="Full Legal Name" />
+                <label for="add_person_name">Full Legal Name</label>
               </div>
               <!-- Email and phone are contact info, collectable for anyone at the fair
                    (with or without a login). Email doubles as a login identifier when
@@ -119,12 +119,12 @@ templ People(deployment, versionName, versionRef, eventName string) {
                 Provide Access to IMS
               </button>
               <div id="add_person_access_section" class="hidden">
-                <div class="form-text mb-2">Signing in needs an email, a handle, and a password.</div>
+                <div class="form-text mb-2">Signing in needs an email, a fair name, and a password.</div>
                 <!-- toggleProvideAccess() moves #add_person_email_wrap in here (before
                      the handle) while access is on, so the login fields sit together. -->
                 <div class="form-floating mb-3">
-                  <input id="add_person_handle" type="text" class="form-control" autocomplete="off" placeholder="Handle" />
-                  <label for="add_person_handle">Handle (required for login)</label>
+                  <input id="add_person_handle" type="text" class="form-control" autocomplete="off" placeholder="Fair Name" />
+                  <label for="add_person_handle">Fair Name (required for login)</label>
                 </div>
                 <div class="input-group mb-3">
                   <div class="form-floating">
@@ -185,8 +185,8 @@ templ People(deployment, versionName, versionRef, eventName string) {
           </div>
           <div class="modal-body row">
             <div class="form-floating mb-3">
-              <input id="edit_person_handle" type="text" class="form-control" autocomplete="off" placeholder="Handle" />
-              <label for="edit_person_handle">Handle</label>
+              <input id="edit_person_handle" type="text" class="form-control" autocomplete="off" placeholder="Fair Name" />
+              <label for="edit_person_handle">Fair Name</label>
             </div>
             <div class="form-floating mb-3">
               <input id="edit_person_name" type="text" class="form-control" autocomplete="off" placeholder="Name" />
@@ -275,7 +275,7 @@ templ People(deployment, versionName, versionRef, eventName string) {
     </div>
     <div class="col-sm-6 col-md-4 mb-2">
       <label for="people-search" class="form-label">Search</label>
-      <input id="people-search" type="search" class="form-control" autocomplete="off" placeholder="Name, handle, or wristband" oninput="filterPeople();" />
+      <input id="people-search" type="search" class="form-control" autocomplete="off" placeholder="Legal name, fair name, or wristband" oninput="filterPeople();" />
     </div>
     <div class="col-sm-6 col-md-4 mb-2 align-self-end">
       <div id="show_all_people_wrap" class="form-check hidden">
@@ -300,9 +300,9 @@ templ People(deployment, versionName, versionRef, eventName string) {
           <table class="table table-sm table-striped table-hover align-middle mb-0">
             <thead>
               <tr>
-                <th scope="col">Name</th>
+                <th scope="col">Legal Name</th>
                 <th scope="col">Role</th>
-                <th scope="col">Handle</th>
+                <th scope="col">Fair Name</th>
                 <th scope="col">Wristband</th>
                 <th scope="col" class="text-end">Actions</th>
               </tr>

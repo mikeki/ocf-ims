@@ -112,9 +112,9 @@ func (action CreatePerson) createPerson(req *http.Request) (imsjson.Person, *her
 	phone := strings.TrimSpace(body.Phone)
 	wristband := strings.TrimSpace(body.Wristband)
 
-	// Identity: a registry person needs at least a handle or a name.
+	// Identity: a registry person needs at least a fair name or a full legal name.
 	if handle == "" && name == "" {
-		return empty, herr.BadRequest("A handle or name is required", nil)
+		return empty, herr.BadRequest("A fair name or full legal name is required", nil)
 	}
 	if len(handle) > maxHandleLength {
 		return empty, herr.BadRequest("Handle is too long", nil)
@@ -184,11 +184,12 @@ func (action CreatePerson) createPerson(req *http.Request) (imsjson.Person, *her
 		phoneNull = conv.StringToSql(&phone, maxPhoneLength)
 	}
 
-	// A password only enables login alongside a handle or email to match it against
-	// — postAuth checks the identification against HANDLE/EMAIL, never the name. Reject
-	// a password with neither, so we never mint a login no one can actually use.
-	if body.Password != "" && handle == "" && email == "" {
-		return empty, herr.BadRequest("A handle or email is required to set a password", nil)
+	// Identity alone (the fair-name-or-legal-name invariant above) is enough to
+	// CREATE a person, but granting IMS access requires a fair name specifically
+	// (feedback round 9): a login-capable person must have one. (Login itself now
+	// matches EMAIL only; the client also requires an email when access is on.)
+	if body.Password != "" && handle == "" {
+		return empty, herr.BadRequest("A fair name is required to provide IMS access", nil)
 	}
 
 	// A password is optional, but if given it must satisfy the same bounds as the

@@ -104,8 +104,8 @@ VALUES ('YourHandle', 'you@ocf.example.org', 'Your Name', '<argon2id-hash>', tru
 SQL
 ```
 
-Log in matches HANDLE or EMAIL (never Name), so the admin row needs at least one
-of those plus the password.
+Log in matches EMAIL only (never the fair name / handle or the legal name), so the
+admin row needs an email plus the password.
 
 ## How the image is built
 

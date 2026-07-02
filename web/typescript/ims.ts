@@ -1095,12 +1095,14 @@ export async function fetchPersonnel(): Promise<{personnel: PersonnelMap|null, e
 // findable and a "create new person" fallback can be offered inline.
 //
 
-// personDisplayLabel resolves a person's display label as COALESCE(name, handle).
+// personDisplayLabel resolves a person's display label, preferring the fair name
+// (handle) and falling back to the full legal name (feedback round 9: prefer the
+// fair name over the legal name wherever a single person label is shown).
 export function personDisplayLabel(p: {name?: string|null|undefined, handle?: string|null|undefined}): string {
-    if (p.name != null && p.name.trim() !== "") {
-        return p.name;
+    if (p.handle != null && p.handle.trim() !== "") {
+        return p.handle;
     }
-    return p.handle ?? "";
+    return p.name ?? "";
 }
 
 // flipPasswordVisibility toggles a single password input between masked and plain
@@ -1247,14 +1249,14 @@ export function openQuickAddPersonModal(prefillName: string, eventName: string):
         async function onSubmit(): Promise<void> {
             const name = nameEl.value.trim();
             if (!name) {
-                showError("A full name is required.");
+                showError("A full legal name is required.");
                 return;
             }
             const wantAccess = !accessSectionEl.classList.contains("hidden");
             const handle = handleEl.value.trim();
             if (wantAccess) {
                 if (!handle) {
-                    showError("A handle is required to provide IMS access.");
+                    showError("A fair name is required to provide IMS access.");
                     return;
                 }
                 if (!emailEl.value.trim()) {
