@@ -65,10 +65,15 @@ func TestCreateAndEditPerson(t *testing.T) {
 	require.Equal(t, http.StatusBadRequest, resp.StatusCode)
 	require.NoError(t, resp.Body.Close())
 
-	// A password with neither a handle nor an email is rejected (the reported
-	// add-person bug): login matches HANDLE/EMAIL, never the name, so a name-only
-	// person with a password could never sign in. Don't mint that unusable login.
+	// Granting IMS access (a password) requires a fair name specifically (feedback
+	// round 9): the fair name is the identity the UI keys on, so a password without
+	// one is rejected — even when an email is present. A name-only person with a
+	// password is rejected...
 	resp = apisAdmin.createPerson(ctx, api.CreatePersonRequest{Name: "No Login Person", Password: newPassword})
+	require.Equal(t, http.StatusBadRequest, resp.StatusCode)
+	require.NoError(t, resp.Body.Close())
+	// ...and so is a legal-name + email person with a password but no fair name.
+	resp = apisAdmin.createPerson(ctx, api.CreatePersonRequest{Name: "No Fair Name", Email: "nofairname@example.com", Password: newPassword})
 	require.Equal(t, http.StatusBadRequest, resp.StatusCode)
 	require.NoError(t, resp.Body.Close())
 	// The same name-only person without a password is a fine registry entry, though.

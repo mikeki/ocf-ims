@@ -56,13 +56,15 @@ func personByIDFromPath(ctx context.Context, imsDBQ *store.DBQ, req *http.Reques
 	return person, nil
 }
 
-// personDisplayName resolves a person's display label as COALESCE(NAME, HANDLE) —
-// the preferred name if set, otherwise the handle — for logs and journal entries.
+// personDisplayName resolves a person's display label for logs and generated
+// journal-entry text — the fair name (handle) if set, otherwise the full legal name.
+// Feedback round 9 prefers the fair name over the legal name wherever a single
+// person label is shown.
 func personDisplayName(p imsdb.PersonByIDRow) string {
-	if p.Name.Valid && strings.TrimSpace(p.Name.String) != "" {
-		return p.Name.String
+	if p.Handle.Valid && strings.TrimSpace(p.Handle.String) != "" {
+		return p.Handle.String
 	}
-	return p.Handle.String
+	return p.Name.String
 }
 
 func readBodyAs[T any](req *http.Request) (T, *herr.HTTPError) {

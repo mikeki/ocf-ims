@@ -34,8 +34,8 @@ templ QuickAddPersonModal() {
         <div class="modal-body">
           <p class="text-body-secondary small mb-3">This person isn't in the system yet — fill in their details to add them.</p>
           <div class="form-floating mb-2">
-            <input id="quick_add_person_name" type="text" class="form-control" autocomplete="off" placeholder="Full name" />
-            <label for="quick_add_person_name">Full name</label>
+            <input id="quick_add_person_name" type="text" class="form-control" autocomplete="off" placeholder="Full Legal Name" />
+            <label for="quick_add_person_name">Full Legal Name</label>
           </div>
           <div class="form-text mb-3">Just a name records the person. They get no login unless you add one below.</div>
           <!-- Access is opt-in: a person attached to an incident usually needs no login.
@@ -49,8 +49,8 @@ templ QuickAddPersonModal() {
               <label for="quick_add_person_email">Email (required for login)</label>
             </div>
             <div class="form-floating mb-3">
-              <input id="quick_add_person_handle" type="text" class="form-control" autocomplete="off" placeholder="Handle" />
-              <label for="quick_add_person_handle">Handle (required for login)</label>
+              <input id="quick_add_person_handle" type="text" class="form-control" autocomplete="off" placeholder="Fair Name" />
+              <label for="quick_add_person_handle">Fair Name (required for login)</label>
             </div>
             <div class="input-group mb-3">
               <div class="form-floating">

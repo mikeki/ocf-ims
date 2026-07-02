@@ -449,11 +449,11 @@ function buildPersonRow(
             `${label} ${person.handle ?? ""} ${person.wristband ?? ""}`.toLowerCase();
 
         entryItem.getElementsByClassName("person-name")[0]!.textContent = label;
-        // Show the handle as a secondary identifier only when it's distinct from the
-        // primary label (i.e. the person has a name); handle-only people already show
-        // their handle as the label.
+        // The primary label now prefers the fair name (round 9), so show the full
+        // legal name as the secondary identifier when the person has both. A
+        // person with only one of the two already shows it as the primary label.
         entryItem.getElementsByClassName("person-handle")[0]!.textContent =
-            (person.name && person.handle) ? person.handle : "";
+            (person.name && person.handle) ? person.name : "";
 
         // Admin badge next to the name. is_admin is only sent to admin viewers (53d),
         // so a non-admin inviter never sees it (and it stays hidden).
@@ -849,7 +849,7 @@ async function submitCreatePerson(): Promise<void> {
     const name = el.addPersonName.value.trim();
     if (!name) {
         ims.controlHasError(el.addPersonName);
-        ims.setErrorMessage("A full name is required.");
+        ims.setErrorMessage("A full legal name is required.");
         return;
     }
     // Credentials are only collected (and required) when the access section is open.
@@ -859,7 +859,7 @@ async function submitCreatePerson(): Promise<void> {
     if (wantAccess) {
         if (!handle) {
             ims.controlHasError(el.addPersonHandle);
-            ims.setErrorMessage("A handle is required to provide IMS access.");
+            ims.setErrorMessage("A fair name is required to provide IMS access.");
             return;
         }
         if (!el.addPersonEmail.value.trim()) {

@@ -184,11 +184,12 @@ func (action CreatePerson) createPerson(req *http.Request) (imsjson.Person, *her
 		phoneNull = conv.StringToSql(&phone, maxPhoneLength)
 	}
 
-	// A password only enables login alongside a handle or email to match it against
-	// — postAuth checks the identification against HANDLE/EMAIL, never the name. Reject
-	// a password with neither, so we never mint a login no one can actually use.
-	if body.Password != "" && handle == "" && email == "" {
-		return empty, herr.BadRequest("A handle or email is required to set a password", nil)
+	// Identity alone (the handle-or-name invariant above) is enough to CREATE a
+	// person, but granting IMS access requires a fair name specifically (feedback
+	// round 9): a login-capable person must have one. (postAuth still matches the
+	// typed identification against HANDLE/EMAIL, never the legal name.)
+	if body.Password != "" && handle == "" {
+		return empty, herr.BadRequest("A fair name is required to provide IMS access", nil)
 	}
 
 	// A password is optional, but if given it must satisfy the same bounds as the
