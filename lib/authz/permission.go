@@ -153,7 +153,7 @@ func EventPermissions(
 	}
 	eventPermissions, globalPermissions = ManyEventPermissions(
 		participationByEvent,
-		claims.PersonHandle(),
+		claims.PersonFairName(),
 		claims.PersonAdmin(),
 	)
 	return eventPermissions, globalPermissions, nil

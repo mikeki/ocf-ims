@@ -101,6 +101,6 @@ func (action SetPersonAdmin) setPersonAdmin(req *http.Request) *herr.HTTPError {
 	action.userStore.InvalidateUsers()
 
 	// #nosec G706 // log injection
-	slog.Info("Admin flag set for person", "person_id", target.ID, "handle", target.Handle.String, "is_admin", body.IsAdmin)
+	slog.Info("Admin flag set for person", "person_id", target.ID, "fair_name", target.FairName.String, "is_admin", body.IsAdmin)
 	return nil
 }

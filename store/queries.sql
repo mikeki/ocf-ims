@@ -105,8 +105,8 @@ group by
 -- name: Incidents_People :many
 select
     sqlc.embed(ip),
-    p.HANDLE,
-    p.NAME,
+    p.FAIR_NAME,
+    p.LEGAL_NAME,
     -- HAS_EVENT_ACCESS: the involved person already has event-wide incident access
     -- (admin, or a 'writer' PERSON__EVENT role), so a per-incident grant (52f) is
     -- moot for them. The People editor uses this to show "has access" vs offer a grant.
@@ -121,8 +121,8 @@ where
 -- name: Incident_People :many
 select
     sqlc.embed(ip),
-    p.HANDLE,
-    p.NAME,
+    p.FAIR_NAME,
+    p.LEGAL_NAME,
     (p.IS_ADMIN or coalesce(pe.PARTICIPATION_TYPE = 'writer', false)) as HAS_EVENT_ACCESS
 from
     INCIDENT__PERSON ip
@@ -176,7 +176,7 @@ where
 select
     ire.INCIDENT_NUMBER,
     sqlc.embed(re),
-    p.HANDLE as AUTHOR
+    p.FAIR_NAME as AUTHOR
 from
     INCIDENT__JOURNAL_ENTRY ire
         join JOURNAL_ENTRY re
@@ -192,7 +192,7 @@ where
 select
     ire.INCIDENT_NUMBER,
     sqlc.embed(re),
-    p.HANDLE as AUTHOR
+    p.FAIR_NAME as AUTHOR
 from
     INCIDENT__JOURNAL_ENTRY ire
         join JOURNAL_ENTRY re
@@ -221,8 +221,8 @@ select
     it.`GROUP`,
     it.APPROVED,
     it.PROPOSED_BY_PERSON_ID,
-    p.HANDLE as PROPOSER_HANDLE,
-    p.NAME as PROPOSER_NAME
+    p.FAIR_NAME as PROPOSER_HANDLE,
+    p.LEGAL_NAME as PROPOSER_NAME
 from
     INCIDENT_TYPE it
     left join PERSON p on p.ID = it.PROPOSED_BY_PERSON_ID
@@ -255,9 +255,9 @@ where fr.EVENT = ?
 select
     irre.REPORT_NUMBER,
     sqlc.embed(re),
-    p.HANDLE as AUTHOR,
-    obo.HANDLE as ON_BEHALF_OF_HANDLE,
-    obo.NAME as ON_BEHALF_OF_NAME
+    p.FAIR_NAME as AUTHOR,
+    obo.FAIR_NAME as ON_BEHALF_OF_HANDLE,
+    obo.LEGAL_NAME as ON_BEHALF_OF_NAME
 from
     REPORT__JOURNAL_ENTRY irre
         join JOURNAL_ENTRY re
@@ -274,9 +274,9 @@ where
 -- name: Report_JournalEntries :many
 select
     sqlc.embed(re),
-    p.HANDLE as AUTHOR,
-    obo.HANDLE as ON_BEHALF_OF_HANDLE,
-    obo.NAME as ON_BEHALF_OF_NAME
+    p.FAIR_NAME as AUTHOR,
+    obo.FAIR_NAME as ON_BEHALF_OF_HANDLE,
+    obo.LEGAL_NAME as ON_BEHALF_OF_NAME
 from
     REPORT__JOURNAL_ENTRY irre
         join JOURNAL_ENTRY re
@@ -403,8 +403,8 @@ select
     e.NAME as EVENT_NAME,
     i.SUMMARY as INCIDENT_SUMMARY,
     r.SUMMARY as REPORT_SUMMARY,
-    actor.HANDLE as ACTOR_HANDLE,
-    actor.NAME as ACTOR_NAME
+    actor.FAIR_NAME as ACTOR_HANDLE,
+    actor.LEGAL_NAME as ACTOR_NAME
 from NOTIFICATION n
     left join `EVENT` e on e.ID = n.EVENT
     left join INCIDENT i on i.EVENT = n.EVENT and i.NUMBER = n.INCIDENT_NUMBER
@@ -477,8 +477,8 @@ order by CREATED desc;
 select
     jem.JOURNAL_ENTRY,
     jem.PERSON_ID,
-    p.HANDLE,
-    p.NAME
+    p.FAIR_NAME,
+    p.LEGAL_NAME
 from INCIDENT__JOURNAL_ENTRY ije
     join JOURNAL_ENTRY__MENTION jem on jem.JOURNAL_ENTRY = ije.JOURNAL_ENTRY
     join PERSON p on p.ID = jem.PERSON_ID
@@ -491,8 +491,8 @@ where ije.EVENT = ? and ije.INCIDENT_NUMBER = ?
 select
     jem.JOURNAL_ENTRY,
     jem.PERSON_ID,
-    p.HANDLE,
-    p.NAME
+    p.FAIR_NAME,
+    p.LEGAL_NAME
 from REPORT__JOURNAL_ENTRY rje
     join JOURNAL_ENTRY__MENTION jem on jem.JOURNAL_ENTRY = rje.JOURNAL_ENTRY
     join PERSON p on p.ID = jem.PERSON_ID
@@ -532,7 +532,7 @@ where ID IN (
 -- Author handle of a single journal entry on a report, used to enforce that a
 -- reporter may only strike their own entries. Returns no rows if the entry isn't
 -- on that report.
-select p.HANDLE as AUTHOR
+select p.FAIR_NAME as AUTHOR
 from REPORT__JOURNAL_ENTRY rje
     join JOURNAL_ENTRY je
         on rje.JOURNAL_ENTRY = je.ID
@@ -662,8 +662,8 @@ select
     a.`SORT_ORDER`,
     a.`APPROVED`,
     a.`PROPOSED_BY_PERSON_ID`,
-    p.HANDLE as PROPOSER_HANDLE,
-    p.NAME as PROPOSER_NAME
+    p.FAIR_NAME as PROPOSER_HANDLE,
+    p.LEGAL_NAME as PROPOSER_NAME
 from
     AREA a
     left join PERSON p on p.ID = a.`PROPOSED_BY_PERSON_ID`
@@ -791,8 +791,8 @@ where
 -- name: Visit :one
 select
     sqlc.embed(s),
-    gp.HANDLE as GUEST_HANDLE,
-    gp.NAME as GUEST_NAME
+    gp.FAIR_NAME as GUEST_HANDLE,
+    gp.LEGAL_NAME as GUEST_NAME
 from
     VISIT s
     left join PERSON gp on gp.ID = s.GUEST_PERSON_ID
@@ -803,8 +803,8 @@ where
 -- name: Visits :many
 select
     sqlc.embed(s),
-    gp.HANDLE as GUEST_HANDLE,
-    gp.NAME as GUEST_NAME
+    gp.FAIR_NAME as GUEST_HANDLE,
+    gp.LEGAL_NAME as GUEST_NAME
 from
     VISIT s
     left join PERSON gp on gp.ID = s.GUEST_PERSON_ID
@@ -816,8 +816,8 @@ group by
 -- name: Visits_People :many
 select
     sqlc.embed(vp),
-    p.HANDLE,
-    p.NAME
+    p.FAIR_NAME,
+    p.LEGAL_NAME
 from
     VISIT__PERSON vp
     join PERSON p on p.ID = vp.PERSON_ID
@@ -827,8 +827,8 @@ where
 -- name: Visit_People :many
 select
     sqlc.embed(vp),
-    p.HANDLE,
-    p.NAME
+    p.FAIR_NAME,
+    p.LEGAL_NAME
 from
     VISIT__PERSON vp
     join PERSON p on p.ID = vp.PERSON_ID
@@ -852,7 +852,7 @@ where
 select
     sre.VISIT_NUMBER,
     sqlc.embed(re),
-    p.HANDLE as AUTHOR
+    p.FAIR_NAME as AUTHOR
 from
     VISIT__JOURNAL_ENTRY sre
         join JOURNAL_ENTRY re
@@ -868,7 +868,7 @@ where
 select
     sre.VISIT_NUMBER,
     sqlc.embed(re),
-    p.HANDLE as AUTHOR
+    p.FAIR_NAME as AUTHOR
 from
     VISIT__JOURNAL_ENTRY sre
         join JOURNAL_ENTRY re
@@ -899,7 +899,7 @@ limit 1;
 --
 
 -- name: People :many
-select ID, HANDLE, EMAIL, PASSWORD, IS_ADMIN
+select ID, FAIR_NAME, EMAIL, PASSWORD, IS_ADMIN
 from PERSON;
 
 -- AllPeople returns every person, for the admin People page. It LEFT JOINs
@@ -909,39 +909,39 @@ from PERSON;
 -- attach-person autocompletes use the People query instead.
 -- name: AllPeople :many
 select
-    p.ID, p.HANDLE, p.NAME, p.EMAIL, p.PHONE, p.IS_ADMIN,
+    p.ID, p.FAIR_NAME, p.LEGAL_NAME, p.EMAIL, p.PHONE, p.IS_ADMIN,
     pe.WRISTBAND, pe.PARTICIPATION_TYPE
 from PERSON p
     left join PERSON__EVENT pe on pe.PERSON_ID = p.ID and pe.EVENT = sqlc.arg(event)
-order by coalesce(p.NAME, p.HANDLE);
+order by coalesce(p.LEGAL_NAME, p.FAIR_NAME);
 
--- name: PersonByHandle :one
-select ID, HANDLE, EMAIL, IS_ADMIN
+-- name: PersonByFairName :one
+select ID, FAIR_NAME, EMAIL, IS_ADMIN
 from PERSON
-where HANDLE = ?;
+where FAIR_NAME = ?;
 
 -- PersonByID resolves a person by their stable primary key. Since 5e the web UI
 -- addresses people by person_id (registry people may have no handle), so the
 -- attach/detach and personnel-edit handlers look people up here.
 -- name: PersonByID :one
-select ID, HANDLE, NAME, EMAIL, PHONE, IS_ADMIN
+select ID, FAIR_NAME, LEGAL_NAME, EMAIL, PHONE, IS_ADMIN
 from PERSON
 where ID = ?;
 
 -- name: CreatePerson :execlastid
-insert into PERSON (HANDLE, NAME, EMAIL, PHONE, PASSWORD, CREATED)
+insert into PERSON (FAIR_NAME, LEGAL_NAME, EMAIL, PHONE, PASSWORD, CREATED)
 values (?, ?, ?, ?, ?, ?);
 
--- EditPerson updates a person's editable profile fields, all nullable: HANDLE,
--- NAME, EMAIL, and PHONE. Authorization no longer keys off HANDLE (it derives from
--- PERSON__EVENT + IS_ADMIN since EVENT_ACCESS was retired), so the handle is now
--- editable from the admin People page; its unique key still rejects collisions.
--- EMAIL and PHONE are contact fields collectable for login-less people too.
--- Per-event wristband/participation live on PERSON__EVENT via UpsertPersonEvent,
+-- EditPerson updates a person's editable profile fields, all nullable: FAIR_NAME,
+-- LEGAL_NAME, EMAIL, and PHONE. Authorization no longer keys off the fair name (it
+-- derives from PERSON__EVENT + IS_ADMIN since EVENT_ACCESS was retired), so the fair
+-- name is now editable from the admin People page; its unique key still rejects
+-- collisions. EMAIL and PHONE are contact fields collectable for login-less people
+-- too. Per-event wristband/participation live on PERSON__EVENT via UpsertPersonEvent,
 -- not here.
 -- name: EditPerson :exec
 update PERSON
-set HANDLE = ?, NAME = ?, EMAIL = ?, PHONE = ?
+set FAIR_NAME = ?, LEGAL_NAME = ?, EMAIL = ?, PHONE = ?
 where ID = ?;
 
 -- name: SetPersonPassword :exec
@@ -968,17 +968,17 @@ where IS_ADMIN = true;
 -- name: SearchPeople :many
 select
     p.ID,
-    p.HANDLE,
-    p.NAME,
+    p.FAIR_NAME,
+    p.LEGAL_NAME,
     pe.WRISTBAND,
     pe.PARTICIPATION_TYPE
 from PERSON p
     left join PERSON__EVENT pe on pe.PERSON_ID = p.ID and pe.EVENT = sqlc.arg(event)
 where
-    coalesce(p.HANDLE, '') like sqlc.arg(query)
-    or coalesce(p.NAME, '') like sqlc.arg(query)
+    coalesce(p.FAIR_NAME, '') like sqlc.arg(query)
+    or coalesce(p.LEGAL_NAME, '') like sqlc.arg(query)
     or coalesce(pe.WRISTBAND, '') like sqlc.arg(query)
-order by coalesce(p.NAME, p.HANDLE)
+order by coalesce(p.LEGAL_NAME, p.FAIR_NAME)
 limit 25;
 
 -- PersonEvent reads how a person relates to one event (their wristband +
@@ -1022,11 +1022,11 @@ where PERSON_ID = ? and EVENT = ?;
 -- stays visible in the roster rather than disappearing.
 -- name: EventRoster :many
 select
-    p.ID, p.HANDLE, p.NAME, p.EMAIL, p.PHONE, p.IS_ADMIN,
+    p.ID, p.FAIR_NAME, p.LEGAL_NAME, p.EMAIL, p.PHONE, p.IS_ADMIN,
     pe.WRISTBAND, pe.PARTICIPATION_TYPE
 from PERSON p
     join PERSON__EVENT pe on pe.PERSON_ID = p.ID and pe.EVENT = sqlc.arg(event)
-order by coalesce(p.NAME, p.HANDLE);
+order by coalesce(p.LEGAL_NAME, p.FAIR_NAME);
 
 -- DeletePersonEvent removes a person's participation row for an event entirely —
 -- the "added by mistake" removal. The global PERSON and any incident/visit links

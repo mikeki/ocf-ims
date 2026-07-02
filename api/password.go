@@ -101,6 +101,6 @@ func (action SetPersonPassword) setPersonPassword(req *http.Request) *herr.HTTPE
 	action.userStore.InvalidateUsers()
 
 	// #nosec G706 // log injection
-	slog.Info("Password set for person", "person_id", person.ID, "handle", person.Handle.String)
+	slog.Info("Password set for person", "person_id", person.ID, "fair_name", person.FairName.String)
 	return nil
 }

@@ -37,7 +37,7 @@ const (
 type IMSClaims struct {
 	jwt.RegisteredClaims
 
-	Handle         string `json:"han"`
+	FairName       string `json:"fair_name"`
 	Positions      string `json:"pos"`
 	Teams          string `json:"tea"`
 	Admin          bool   `json:"adm,omitempty"`
@@ -102,8 +102,8 @@ func (c IMSClaims) WithSubject(s string) IMSClaims {
 	return c
 }
 
-func (c IMSClaims) WithPersonHandle(s string) IMSClaims {
-	c.Handle = s
+func (c IMSClaims) WithPersonFairName(s string) IMSClaims {
+	c.FairName = s
 	return c
 }
 
@@ -132,8 +132,8 @@ func (c IMSClaims) WithTokenType(tokenType string) IMSClaims {
 	return c
 }
 
-func (c IMSClaims) PersonHandle() string {
-	return c.Handle
+func (c IMSClaims) PersonFairName() string {
+	return c.FairName
 }
 
 func (c IMSClaims) PersonAdmin() bool {

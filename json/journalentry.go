@@ -43,12 +43,12 @@ type JournalEntry struct {
 }
 
 // Mention is a person referenced by an "@mention" in a journal entry, resolved
-// for display. PersonID is the authoritative registry key; Handle/Name are for
-// rendering and may be empty (a login-less person has no handle).
+// for display. PersonID is the authoritative registry key; FairName/LegalName are
+// for rendering and may be empty (a login-less person may have no fair name).
 type Mention struct {
-	PersonID int32  `json:"person_id"`
-	Handle   string `json:"handle,omitempty"`
-	Name     string `json:"name,omitempty"`
+	PersonID  int32  `json:"person_id"`
+	FairName  string `json:"fair_name,omitempty"`
+	LegalName string `json:"legal_name,omitempty"`
 }
 
 type Attachment struct {

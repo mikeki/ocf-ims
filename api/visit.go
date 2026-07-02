@@ -101,7 +101,7 @@ func (action GetVisits) getVisits(req *http.Request) (imsjson.Visits, *herr.HTTP
 		}
 		for _, row := range peopleRows {
 			peopleByVisit[row.VisitPerson.VisitNumber] = append(peopleByVisit[row.VisitPerson.VisitNumber],
-				imsjson.VisitPerson{PersonID: int64(row.VisitPerson.PersonID), Handle: row.Handle.String, Name: row.Name.String, Involvement: conv.SqlToString(row.VisitPerson.Involvement)})
+				imsjson.VisitPerson{PersonID: int64(row.VisitPerson.PersonID), FairName: row.FairName.String, LegalName: row.LegalName.String, Involvement: conv.SqlToString(row.VisitPerson.Involvement)})
 		}
 		return nil
 	})
@@ -181,7 +181,7 @@ func (action GetVisit) getVisit(req *http.Request) (imsjson.Visit, *herr.HTTPErr
 	}
 	people := make([]imsjson.VisitPerson, len(peopleRows))
 	for i, row := range peopleRows {
-		people[i] = imsjson.VisitPerson{PersonID: int64(row.VisitPerson.PersonID), Handle: row.Handle.String, Name: row.Name.String, Involvement: conv.SqlToString(row.VisitPerson.Involvement)}
+		people[i] = imsjson.VisitPerson{PersonID: int64(row.VisitPerson.PersonID), FairName: row.FairName.String, LegalName: row.LegalName.String, Involvement: conv.SqlToString(row.VisitPerson.Involvement)}
 	}
 
 	resp, errHTTP = visitToJSON(storedRow, people, journalEntries, event, action.attachmentsEnabled)

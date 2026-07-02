@@ -99,7 +99,7 @@ func (action GetReports) getReports(req *http.Request) (imsjson.Reports, *herr.H
 	if limitedAccess {
 		for _, storedReport := range storedReports {
 			entries := entriesByReport[storedReport.Report.Number]
-			if containsAuthor(entries, jwtCtx.Claims.PersonHandle()) {
+			if containsAuthor(entries, jwtCtx.Claims.PersonFairName()) {
 				authorizedReports = append(authorizedReports, storedReport)
 			}
 		}
@@ -173,7 +173,7 @@ func (action GetReport) getReport(req *http.Request) (imsjson.Report, *herr.HTTP
 	}
 
 	if limitedAccess {
-		if !containsAuthor(journalEntries, jwtCtx.Claims.PersonHandle()) {
+		if !containsAuthor(journalEntries, jwtCtx.Claims.PersonFairName()) {
 			return response, herr.Forbidden("The requestor does not have permission to access this particular Report", nil)
 		}
 	}
@@ -236,9 +236,9 @@ func fetchReport(ctx context.Context, imsDBQ *store.DBQ, eventID, reportNumber i
 	mentionsByEntry := make(map[int32][]imsjson.Mention, len(mentionRows))
 	for _, m := range mentionRows {
 		mentionsByEntry[m.JournalEntry] = append(mentionsByEntry[m.JournalEntry], imsjson.Mention{
-			PersonID: m.PersonID,
-			Handle:   m.Handle.String,
-			Name:     m.Name.String,
+			PersonID:  m.PersonID,
+			FairName:  m.FairName.String,
+			LegalName: m.LegalName.String,
 		})
 	}
 	for i := range journalEntries {
@@ -284,7 +284,7 @@ func (action EditReport) editReport(req *http.Request) *herr.HTTPError {
 	if err != nil {
 		return herr.BadRequest("Invalid report number", err).From("[ParseInt32]")
 	}
-	author := jwt.Claims.PersonHandle()
+	author := jwt.Claims.PersonFairName()
 	authorPersonID := jwt.Claims.PersonID()
 	if limitedAccess {
 		isPrevAuthor, errHTTP := action.isPreviousAuthor(req, event.ID, reportNumber, author)

@@ -57,7 +57,7 @@ func sampleVisit1(eventName string) imsjson.Visit {
 		ResourcePogs:    new("no, wasn't hungry"),
 		ResourceFoodBev: new("ate a lot of our grass"),
 		ResourceOther:   new("nothing else"),
-		People:          &[]imsjson.VisitPerson{{PersonID: userAdminPersonID, Handle: userAdminHandle}, {PersonID: userAlicePersonID, Handle: userAliceHandle}},
+		People:          &[]imsjson.VisitPerson{{PersonID: userAdminPersonID, FairName: userAdminHandle}, {PersonID: userAlicePersonID, FairName: userAliceHandle}},
 		JournalEntries: []imsjson.JournalEntry{
 			{Text: "This is some visit journal text"},
 			{Text: ""},
@@ -335,7 +335,7 @@ func TestCreateAndUpdateVisit(t *testing.T) {
 	require.Equal(t, http.StatusOK, resp.StatusCode)
 	require.NoError(t, resp.Body.Close())
 	require.Len(t, *retrievedVisitAfterUpdate.People, 1)
-	require.Equal(t, userAliceHandle, (*retrievedVisitAfterUpdate.People)[0].Handle)
+	require.Equal(t, userAliceHandle, (*retrievedVisitAfterUpdate.People)[0].FairName)
 
 	// detach that person
 	resp = apisNonAdmin.detachPersonFromVisit(ctx, eventName, num, userAlicePersonID)

@@ -339,7 +339,7 @@ function drawVisitFields(): void {
     } else {
         docTitle = `Current ${docTitle}`;
     }
-    const guestLabel = ims.personDisplayLabel({name: visit?.guest_name, handle: visit?.guest_handle});
+    const guestLabel = ims.personDisplayLabel({legal_name: visit?.guest_name, fair_name: visit?.guest_handle});
     if (guestLabel) {
         docTitle = `${docTitle} (${guestLabel})`;
     } else if (visit?.guest_legal_name) {
@@ -399,7 +399,7 @@ function drawVisitFields(): void {
 function drawVisitTitle(mode: "for_display"|"for_print_to_pdf"): void {
     let newTitle: string = "";
     if (mode === "for_print_to_pdf" && visit?.number) {
-        const guestLabel = ims.personDisplayLabel({name: visit.guest_name, handle: visit.guest_handle});
+        const guestLabel = ims.personDisplayLabel({legal_name: visit.guest_name, fair_name: visit.guest_handle});
         newTitle = `Visit-${ims.pathIds.eventName}-${visit.number}_${guestLabel}`;
     } else {
         const eventSuffix: string = ims.pathIds.eventName != null ? ` | ${ims.pathIds.eventName}` : "";
@@ -498,7 +498,7 @@ function setupGuestPicker(): void {
 // drawGuest renders the currently-linked guest person (the preferred name now lives
 // on PERSON.NAME) and shows the Clear button only when a guest is linked.
 function drawGuest(): void {
-    const label = ims.personDisplayLabel({name: visit?.guest_name, handle: visit?.guest_handle});
+    const label = ims.personDisplayLabel({legal_name: visit?.guest_name, fair_name: visit?.guest_handle});
     el.guestPersonName.textContent = label || "(no guest linked)";
     el.guestClear.classList.toggle("hidden", visit?.guest_person_id == null);
 }
@@ -758,7 +758,7 @@ async function setPersonInvolvement(sender: HTMLInputElement): Promise<void> {
 
 function drawPeople() {
     const people: ims.VisitPerson[] = visit?.people??[];
-    people.sort((a: ims.VisitPerson, b: ims.VisitPerson) => (a.handle??"").localeCompare(b.handle??""));
+    people.sort((a: ims.VisitPerson, b: ims.VisitPerson) => (a.fair_name??"").localeCompare(b.fair_name??""));
 
     const personItemTemplate = document.getElementById("visit_people_li_template") as HTMLTemplateElement;
 

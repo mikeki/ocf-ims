@@ -1070,7 +1070,7 @@ export function outcomeNameFromID(outcomeID: IncidentOutcome): string {
     }
 }
 
-// key is person handle
+// key is person fair name
 export type PersonnelMap = Record<string, Personnel>;
 
 export async function fetchPersonnel(): Promise<{personnel: PersonnelMap|null, err: string|null}> {
@@ -1083,7 +1083,7 @@ export async function fetchPersonnel(): Promise<{personnel: PersonnelMap|null, e
     }
     const personnel: PersonnelMap = {};
     for (const record of json!) {
-        personnel[record.handle] = record;
+        personnel[record.fair_name] = record;
     }
     return {personnel: personnel, err: null};
 }
@@ -1091,16 +1091,16 @@ export async function fetchPersonnel(): Promise<{personnel: PersonnelMap|null, e
 
 //
 // Person search + search-first combobox (see docs/plans/51-people-registry.md).
-// Replaces the native <datalist> person picker so handle-less registry people are
+// Replaces the native <datalist> person picker so fair-name-less registry people are
 // findable and a "create new person" fallback can be offered inline.
 //
 
-// personDisplayLabel resolves a person's display label as COALESCE(name, handle).
-export function personDisplayLabel(p: {name?: string|null|undefined, handle?: string|null|undefined}): string {
-    if (p.name != null && p.name.trim() !== "") {
-        return p.name;
+// personDisplayLabel resolves a person's display label as COALESCE(legal_name, fair_name).
+export function personDisplayLabel(p: {legal_name?: string|null|undefined, fair_name?: string|null|undefined}): string {
+    if (p.legal_name != null && p.legal_name.trim() !== "") {
+        return p.legal_name;
     }
-    return p.handle ?? "";
+    return p.fair_name ?? "";
 }
 
 // flipPasswordVisibility toggles a single password input between masked and plain
@@ -1139,7 +1139,7 @@ export async function searchPersonnel(query: string, eventName: string): Promise
 export async function createRegistryPerson(name: string, eventName: string): Promise<PersonSearchResult|null> {
     const {json, err} = await fetchNoThrow<PersonSearchResult>(urlReplace(url_personnel), {
         method: "POST",
-        body: JSON.stringify({name: name, event: eventName}),
+        body: JSON.stringify({legal_name: name, event: eventName}),
     });
     if (err != null || json == null) {
         setErrorMessage(`Failed to create person: ${err}`);
@@ -1149,14 +1149,14 @@ export async function createRegistryPerson(name: string, eventName: string): Pro
 }
 
 // openQuickAddPersonModal shows the shared QuickAddPersonModal (web/template/quickaddperson.templ)
-// pre-filled with the typed text, lets the user supply handle/email/password and
+// pre-filled with the typed text, lets the user supply fair name/email/password and
 // (when an event is named) wristband/participation, then creates the person and resolves
 // with it. Resolves null if the user cancels or creation fails (the error is shown inline
 // in the modal, which stays open so they can retry). Pages must include @QuickAddPersonModal().
 export function openQuickAddPersonModal(prefillName: string, eventName: string): Promise<PersonSearchResult|null> {
     const modalEl = typedElement("quickAddPersonModal", HTMLElement);
-    const nameEl = typedElement("quick_add_person_name", HTMLInputElement);
-    const handleEl = typedElement("quick_add_person_handle", HTMLInputElement);
+    const nameEl = typedElement("quick_add_person_legal_name", HTMLInputElement);
+    const handleEl = typedElement("quick_add_person_fair_name", HTMLInputElement);
     const emailEl = typedElement("quick_add_person_email", HTMLInputElement);
     const passwordEl = typedElement("quick_add_person_password", HTMLInputElement);
     const eventSectionEl = typedElement("quick_add_person_event_section", HTMLElement);
@@ -1247,14 +1247,14 @@ export function openQuickAddPersonModal(prefillName: string, eventName: string):
         async function onSubmit(): Promise<void> {
             const name = nameEl.value.trim();
             if (!name) {
-                showError("A full name is required.");
+                showError("A full legal name is required.");
                 return;
             }
             const wantAccess = !accessSectionEl.classList.contains("hidden");
             const handle = handleEl.value.trim();
             if (wantAccess) {
                 if (!handle) {
-                    showError("A handle is required to provide IMS access.");
+                    showError("A fair name is required to provide IMS access.");
                     return;
                 }
                 if (!emailEl.value.trim()) {
@@ -1271,8 +1271,8 @@ export function openQuickAddPersonModal(prefillName: string, eventName: string):
                 }
             }
             const body: Record<string, unknown> = {
-                name: name,
-                handle: wantAccess ? handle : "",
+                legal_name: name,
+                fair_name: wantAccess ? handle : "",
                 email: wantAccess ? emailEl.value.trim() : "",
                 password: wantAccess ? passwordEl.value : "",
             };
@@ -1319,7 +1319,7 @@ export type PersonComboboxConfig = {
     // Optional override for the "create new person" path. When set, it's called
     // with the typed text and must resolve to the created person (or null if the
     // user cancelled / it failed). Pages that include the QuickAddPersonModal pass
-    // openQuickAddPersonModal here so the user can fill in handle/email/wristband
+    // openQuickAddPersonModal here so the user can fill in fair name/email/wristband
     // before creating. When omitted, a name-only inline create is used.
     onCreate?: (typedName: string) => Promise<PersonSearchResult|null>;
 };
@@ -1353,7 +1353,7 @@ export function setupPersonCombobox(cfg: PersonComboboxConfig): void {
     function renderRows(matches: PersonSearchResult[], typed: string): void {
         const lowerTyped = typed.toLowerCase();
         const exact = matches.some((m: PersonSearchResult): boolean =>
-            personDisplayLabel(m).toLowerCase() === lowerTyped || (m.handle??"").toLowerCase() === lowerTyped);
+            personDisplayLabel(m).toLowerCase() === lowerTyped || (m.fair_name??"").toLowerCase() === lowerTyped);
         rows = matches.map((p: PersonSearchResult): Row => ({person: p}));
         if (cfg.allowCreate && !exact) {
             rows.push({createName: typed});
@@ -1543,7 +1543,7 @@ export function visitAsString(s: Visit): string {
     if (s.number == null) {
         return "New Visit";
     }
-    const guest = personDisplayLabel({name: s.guest_name, handle: s.guest_handle}) || s.guest_legal_name || "";
+    const guest = personDisplayLabel({legal_name: s.guest_name, fair_name: s.guest_handle}) || s.guest_legal_name || "";
     return `VS #${s.number}: ${guest}`;
 }
 
@@ -1866,7 +1866,7 @@ export function renderPersonHandles(data: IncidentPerson[]|null, type: RenderTyp
     if (data == null) {
         return undefined;
     }
-    // Display name is COALESCE(name, handle) so handle-less registry people still show.
+    // Display name is COALESCE(legal_name, fair_name) so fair-name-less registry people still show.
     const handles = data.map(r=>personDisplayLabel(r)).filter(r=>r!=="");
     switch (type) {
         case "display":
@@ -1970,7 +1970,7 @@ function journalEntryElement(entry: JournalEntry): HTMLDivElement {
     const onBehalfOf = entry.on_behalf_of;
     if (onBehalfOf) {
         const obo: HTMLSpanElement = document.createElement("span");
-        obo.textContent = personDisplayLabel({name: onBehalfOf.name, handle: onBehalfOf.handle});
+        obo.textContent = personDisplayLabel({legal_name: onBehalfOf.legal_name, fair_name: onBehalfOf.fair_name});
         obo.classList.add("journal_entry_on_behalf_of");
         metaDataContainer.append(" on behalf of ", obo);
     }
@@ -2116,11 +2116,11 @@ function regexEscape(s: string): string {
 function appendJournalParagraph(container: HTMLElement, paragraph: string, mentions: Mention[]|null): void {
     const tokens: string[] = [];
     for (const m of mentions ?? []) {
-        if (m.handle) {
-            tokens.push("@" + m.handle);
+        if (m.fair_name) {
+            tokens.push("@" + m.fair_name);
         }
-        if (m.name) {
-            tokens.push("@" + m.name);
+        if (m.legal_name) {
+            tokens.push("@" + m.legal_name);
         }
     }
     if (tokens.length === 0) {
@@ -2466,10 +2466,10 @@ export function setupJournalSubmitMode(): void {
 type PendingMention = {personId: number; token: string};
 let pendingJournalMentions: PendingMention[] = [];
 
-// mentionTokenFor returns the "@label" token inserted for a person — the handle
+// mentionTokenFor returns the "@label" token inserted for a person — the fair name
 // when present (a stable single word), otherwise the display name.
 function mentionTokenFor(p: PersonSearchResult): string {
-    const label: string = (p.handle != null && p.handle.trim() !== "") ? p.handle : personDisplayLabel(p);
+    const label: string = (p.fair_name != null && p.fair_name.trim() !== "") ? p.fair_name : personDisplayLabel(p);
     return "@" + label;
 }
 
@@ -2555,10 +2555,10 @@ export function setupJournalMentionAutocomplete(eventName: string): void {
             const label: HTMLSpanElement = document.createElement("span");
             label.textContent = personDisplayLabel(p);
             item.append(label);
-            if (p.handle) {
+            if (p.fair_name) {
                 const h: HTMLSpanElement = document.createElement("span");
                 h.classList.add("text-body-secondary", "font-monospace", "small", "ms-2");
-                h.textContent = "@" + p.handle;
+                h.textContent = "@" + p.fair_name;
                 item.append(h);
             }
             if (p.wristband) {
@@ -3198,8 +3198,8 @@ export type LinkedIncident = {
 
 export type IncidentPerson = {
     person_id?: number|null;
-    handle?: string|null;
-    name?: string|null;
+    fair_name?: string|null;
+    legal_name?: string|null;
     involvement?: string|null;
     // 52f: per-incident access grant for an involved reporter (read + add journal
     // entries). granted_access is writable; has_event_access is read-only and true
@@ -3210,8 +3210,8 @@ export type IncidentPerson = {
 
 export type VisitPerson = {
     person_id?: number|null;
-    handle?: string|null;
-    name?: string|null;
+    fair_name?: string|null;
+    legal_name?: string|null;
     involvement?: string|null;
 }
 
@@ -3219,8 +3219,8 @@ export type VisitPerson = {
 // GET /ims/api/personnel?q=&event= (see docs/plans/51-people-registry.md).
 export type PersonSearchResult = {
     person_id?: number|null;
-    handle?: string|null;
-    name?: string|null;
+    fair_name?: string|null;
+    legal_name?: string|null;
     wristband?: string|null;
     participation_type?: string|null;
 }
@@ -3347,11 +3347,11 @@ export interface JournalEntry {
 }
 
 // Mention is a person referenced by an "@mention" in a journal entry, resolved
-// for display. handle/name may be empty (a login-less person has no handle).
+// for display. fair_name/legal_name may be empty (a login-less person has no fair name).
 export interface Mention {
     person_id?: number|null;
-    handle?: string|null;
-    name?: string|null;
+    fair_name?: string|null;
+    legal_name?: string|null;
 }
 
 export interface IncidentType {
@@ -3462,8 +3462,8 @@ export type AuthInfoEventAccess = {
 }
 
 export type Personnel = {
-    handle: string;
-    name?: string|null;
+    fair_name: string;
+    legal_name?: string|null;
     // email is sent only by the admin People listing (?all=true) so it can be edited.
     email?: string|null;
     // phone is a contact number, sent only by the admin People listing so it can be

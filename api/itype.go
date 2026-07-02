@@ -94,9 +94,9 @@ func loadIncidentTypesJSON(ctx context.Context, imsDBQ *store.DBQ) (imsjson.Inci
 		}
 		if t.ProposedByPersonID.Valid {
 			it.Proposer = &imsjson.Mention{
-				PersonID: t.ProposedByPersonID.Int32,
-				Handle:   t.ProposerHandle.String,
-				Name:     t.ProposerName.String,
+				PersonID:  t.ProposedByPersonID.Int32,
+				FairName:  t.ProposerHandle.String,
+				LegalName: t.ProposerName.String,
 			}
 		}
 		response = append(response, it)

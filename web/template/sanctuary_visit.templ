@@ -107,7 +107,7 @@ templ SanctuaryVisit(deployment, versionName, versionRef, eventName string) {
               <div class="input-group row align-items-center">
                 <label for="guest_person_add"
                      class="col-sm-2 col-form-label control-label">Preferred name:</label>
-                <div title="The registry person this guest is. Search the registry by name, handle, or wristband, or create a new person from the name you type." class="col-sm-10">
+                <div title="The registry person this guest is. Search the registry by name, fair name, or wristband, or create a new person from the name you type." class="col-sm-10">
                   <div class="d-flex align-items-center gap-2 mb-1">
                     <span id="guest_person_name" class="fw-semibold"></span>
                     <button type="button" id="guest_clear"
@@ -119,7 +119,7 @@ templ SanctuaryVisit(deployment, versionName, versionRef, eventName string) {
                         id="guest_person_add" type="text"
                         class="form-control form-control-sm"
                         inputmode="latin-prose" autocomplete="off"
-                        placeholder="Search name, handle, or wristband…"
+                        placeholder="Search name, fair name, or wristband…"
                     />
                     <div id="guest_person_results"
                          class="list-group position-absolute w-100 shadow-sm hidden"
@@ -475,7 +475,7 @@ templ SanctuaryVisit(deployment, versionName, versionRef, eventName string) {
                           id="person_add"
                           aria-label="Add Person"
                           autocomplete="off"
-                          placeholder="Search name, handle, or wristband…"
+                          placeholder="Search name, fair name, or wristband…"
                           class="form-control form-control-sm w-100"
                   />
                   <div id="person_add_results"

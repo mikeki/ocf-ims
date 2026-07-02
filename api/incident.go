@@ -120,7 +120,7 @@ func (action GetIncidents) getIncidents(req *http.Request) (imsjson.Incidents, *
 		}
 		for _, row := range peopleRows {
 			peopleByIncident[row.IncidentPerson.IncidentNumber] = append(peopleByIncident[row.IncidentPerson.IncidentNumber],
-				imsjson.IncidentPerson{PersonID: int64(row.IncidentPerson.PersonID), Handle: row.Handle.String, Name: row.Name.String, Involvement: conv.SqlToString(row.IncidentPerson.Involvement), GrantedAccess: row.IncidentPerson.GrantedAccess, HasEventAccess: row.HasEventAccess.Bool})
+				imsjson.IncidentPerson{PersonID: int64(row.IncidentPerson.PersonID), FairName: row.FairName.String, LegalName: row.LegalName.String, Involvement: conv.SqlToString(row.IncidentPerson.Involvement), GrantedAccess: row.IncidentPerson.GrantedAccess, HasEventAccess: row.HasEventAccess.Bool})
 		}
 		return nil
 	})
@@ -227,7 +227,7 @@ func (action GetIncident) getIncident(req *http.Request) (imsjson.Incident, *her
 	}
 	people := make([]imsjson.IncidentPerson, len(peopleRows))
 	for i, row := range peopleRows {
-		people[i] = imsjson.IncidentPerson{PersonID: int64(row.IncidentPerson.PersonID), Handle: row.Handle.String, Name: row.Name.String, Involvement: conv.SqlToString(row.IncidentPerson.Involvement), GrantedAccess: row.IncidentPerson.GrantedAccess, HasEventAccess: row.HasEventAccess.Bool}
+		people[i] = imsjson.IncidentPerson{PersonID: int64(row.IncidentPerson.PersonID), FairName: row.FairName.String, LegalName: row.LegalName.String, Involvement: conv.SqlToString(row.IncidentPerson.Involvement), GrantedAccess: row.IncidentPerson.GrantedAccess, HasEventAccess: row.HasEventAccess.Bool}
 	}
 
 	linkedIncidents, err := action.imsDBQ.Incident_LinkedIncidents(ctx, action.imsDBQ, imsdb.Incident_LinkedIncidentsParams{
@@ -351,9 +351,9 @@ func fetchIncident(ctx context.Context, imsDBQ *store.DBQ, eventID, incidentNumb
 	mentionsByEntry := make(map[int32][]imsjson.Mention, len(mentionRows))
 	for _, m := range mentionRows {
 		mentionsByEntry[m.JournalEntry] = append(mentionsByEntry[m.JournalEntry], imsjson.Mention{
-			PersonID: m.PersonID,
-			Handle:   m.Handle.String,
-			Name:     m.Name.String,
+			PersonID:  m.PersonID,
+			FairName:  m.FairName.String,
+			LegalName: m.LegalName.String,
 		})
 	}
 	for i := range journalEntries {
@@ -456,8 +456,8 @@ func resolveTypedMentionIDs(ctx context.Context, userStore directory.UserStore, 
 	}
 	idByHandle := make(map[string]int32, len(users))
 	for _, u := range users {
-		if u.Handle != "" {
-			idByHandle[strings.ToLower(u.Handle)] = int32(u.ID)
+		if u.FairName != "" {
+			idByHandle[strings.ToLower(u.FairName)] = int32(u.ID)
 		}
 	}
 	var ids []int32

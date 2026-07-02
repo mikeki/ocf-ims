@@ -285,7 +285,7 @@ func (action GetReportAttachment) getReportAttachment(
 	}
 
 	if limitedAccess {
-		if !containsAuthor(journalEntries, jwtCtx.Claims.PersonHandle()) {
+		if !containsAuthor(journalEntries, jwtCtx.Claims.PersonFairName()) {
 			return nil, "", herr.Forbidden("The requestor does not have permission to read this particular Report", nil)
 		}
 	}
@@ -366,7 +366,7 @@ func (action AttachToIncident) attachToIncident(req *http.Request) (int32, *herr
 	newFileName := fmt.Sprintf("event_%05d_incident_%05d_%v%v", event.ID, incidentNumber, rand.Text(), mtype.Extension())
 	// #nosec G706 // log injection
 	slog.Info("User uploaded an incident attachment",
-		"user", jwtCtx.Claims.PersonHandle(),
+		"user", jwtCtx.Claims.PersonFairName(),
 		"eventName", event.Name,
 		"incidentNumber", incidentNumber,
 		"originalName", fiHead.Filename,
@@ -454,7 +454,7 @@ func (action AttachToReport) attachToReport(req *http.Request) (int32, *herr.HTT
 		return 0, errHTTP.From("[fetchReport]")
 	}
 	if limitedAccess {
-		if !containsAuthor(entries, jwtCtx.Claims.PersonHandle()) {
+		if !containsAuthor(entries, jwtCtx.Claims.PersonFairName()) {
 			return 0, herr.Forbidden("The requestor does not have permission to read this particular Report", nil)
 		}
 	}
@@ -478,7 +478,7 @@ func (action AttachToReport) attachToReport(req *http.Request) (int32, *herr.HTT
 	newFileName := fmt.Sprintf("event_%05d_report_%05d_%v%v", event.ID, reportNumber, rand.Text(), mtype.Extension())
 	// #nosec G706 // log injection
 	slog.Info("User uploaded a Report attachment",
-		"user", jwtCtx.Claims.PersonHandle(),
+		"user", jwtCtx.Claims.PersonFairName(),
 		"eventName", event.Name,
 		"reportNumber", reportNumber,
 		"originalName", fiHead.Filename,
@@ -625,7 +625,7 @@ func (action AttachToVisit) attachToVisit(req *http.Request) (int32, *herr.HTTPE
 	newFileName := fmt.Sprintf("event_%05d_visit_%05d_%v%v", event.ID, visitNumber, rand.Text(), mtype.Extension())
 	// #nosec G706 // log injection
 	slog.Info("User uploaded a visit attachment",
-		"user", jwtCtx.Claims.PersonHandle(),
+		"user", jwtCtx.Claims.PersonFairName(),
 		"eventName", event.Name,
 		"visitNumber", visitNumber,
 		"originalName", fiHead.Filename,

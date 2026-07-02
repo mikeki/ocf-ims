@@ -1,7 +1,7 @@
 -- Local people for demo/dev. The 600-602 accounts are loginable (each password
--- equals the case-sensitive handle); 603-606 are referenced by the historical
+-- equals the case-sensitive fair name); 603-606 are referenced by the historical
 -- incident/report seed data below and need no login.
-insert into PERSON (ID, HANDLE, EMAIL, PASSWORD, CREATED)
+insert into PERSON (ID, FAIR_NAME, EMAIL, PASSWORD, CREATED)
 values  (600, 'Miguel',       'miguel@example.com',       '$argon2id$v=19$m=8192,t=4,p=1$tL68tr5BXPSUKD+2m4fx5A$h+JZLy1t+Ch1NnM+xro0REQrSAfq7Egtc/RgfOfzWYo', 0),
         (601, 'ShadowDancer', 'shadowdancer@example.com', '$argon2id$v=19$m=8192,t=4,p=1$pZevNxeYuILQUIzHBHmEcQ$1tUEWKGlpmEHakHQXoz3UYQ5EyL01qHmlVfBfuq5oj0', 0),
         (602, 'TeamMember',   'teammember@example.com',   '$argon2id$v=19$m=8192,t=4,p=1$aeRknlIpDHICmM6mD7DyUA$nGvCg3AIwmWAiT1M2HBqlScDS0cEHEIoE93w71DzqlI', 0),
@@ -13,12 +13,12 @@ values  (600, 'Miguel',       'miguel@example.com',       '$argon2id$v=19$m=8192
 -- Miguel is a local (in-app) administrator, exercising the PERSON.IS_ADMIN path.
 update PERSON set IS_ADMIN = true where ID = 600;
 
--- 5e unified people registry. Backfill preferred/display names for the existing
--- people (display resolves to COALESCE(NAME, HANDLE)), and add a registry-only
--- person (607): someone met at the fair who has no handle and no login — the new
--- capability the nullable HANDLE enables. Per-event participation is seeded below
--- (PERSON__EVENT), after the EVENT rows exist.
-update PERSON set NAME = case ID
+-- 5e unified people registry. Backfill legal/display names for the existing
+-- people (display resolves to COALESCE(LEGAL_NAME, FAIR_NAME)), and add a
+-- registry-only person (607): someone met at the fair who has no fair name and no
+-- login — the new capability the nullable FAIR_NAME enables. Per-event
+-- participation is seeded below (PERSON__EVENT), after the EVENT rows exist.
+update PERSON set LEGAL_NAME = case ID
     when 600 then 'Miguel Cervera'
     when 601 then 'Sasha Dane'
     when 602 then 'Terry Mason'
@@ -29,7 +29,7 @@ update PERSON set NAME = case ID
 end
 where ID between 600 and 606;
 
-insert into PERSON (ID, HANDLE, NAME, CREATED)
+insert into PERSON (ID, FAIR_NAME, LEGAL_NAME, CREATED)
 values (607, null, 'River Quinn', 0);
 
 insert into `POSITION` (ID, NAME) values (701, 'Driver'), (702, 'Dancer');
@@ -629,11 +629,11 @@ values
 
 
 -- 5e.3 demo: a few visit guests linked to registry PERSON rows. Their preferred
--- name now lives on PERSON.NAME (GUEST_PREFERRED_NAME was dropped in migration 43);
--- the visit points at the guest via GUEST_PERSON_ID. Two are handle-less people met
+-- name now lives on PERSON.LEGAL_NAME (GUEST_PREFERRED_NAME was dropped in migration 43);
+-- the visit points at the guest via GUEST_PERSON_ID. Two are fair-name-less people met
 -- at the fair (a volunteer with a wristband, a public guest); the third reuses the
 -- registry-only person 607 seeded above.
-insert into PERSON (ID, HANDLE, NAME, CREATED)
+insert into PERSON (ID, FAIR_NAME, LEGAL_NAME, CREATED)
 values  (6100, null, 'Cedar',      0),
         (6101, null, 'Dust Devil', 0);
 

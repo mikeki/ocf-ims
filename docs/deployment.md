@@ -93,19 +93,19 @@ admin by hand, then manage everyone else in-app (Admin → People & Passwords):
 # this is a deliberately one-off local bootstrap — clear it afterward (run it
 # with a leading space, or `history -d`).
 docker exec ocf-ims /opt/ims/bin/ims hash_password --password 'choose-a-strong-one'
-# insert the admin (HANDLE + EMAIL are required to log in; see the login note).
+# insert the admin (FAIR_NAME + EMAIL are required to log in; see the login note).
 # CREATED is NOT NULL with no default, so it must be set. The DB password lives
 # only in .env (compose reads it) — load it into this shell first, then pass it
 # via MYSQL_PWD so it never lands in the process list.
 set -a; source .env; set +a
 MYSQL_PWD="$IMS_DB_PASSWORD" docker exec -e MYSQL_PWD -i ocf-ims-db mariadb -uims ims <<'SQL'
-INSERT INTO PERSON (HANDLE, EMAIL, NAME, PASSWORD, IS_ADMIN, CREATED)
-VALUES ('YourHandle', 'you@ocf.example.org', 'Your Name', '<argon2id-hash>', true, UNIX_TIMESTAMP());
+INSERT INTO PERSON (FAIR_NAME, EMAIL, LEGAL_NAME, PASSWORD, IS_ADMIN, CREATED)
+VALUES ('YourFairName', 'you@ocf.example.org', 'Your Legal Name', '<argon2id-hash>', true, UNIX_TIMESTAMP());
 SQL
 ```
 
-Log in matches HANDLE or EMAIL (never Name), so the admin row needs at least one
-of those plus the password.
+Log in matches FAIR_NAME (the fair name / callsign) or EMAIL, never the legal
+name, so the admin row needs at least one of those plus the password.
 
 ## How the image is built
 
@@ -139,6 +139,14 @@ docker compose -f docker-compose.prod.yml logs -f ims-go # watch boot/migrations
 Roll back by setting `IMAGE_TAG` to the previous SHA and re-running `pull` + `up
 -d`. Migrations are append-only and run automatically on boot — take a DB
 backup (below) before deploying anything that adds a migration.
+
+> **One-time re-login on the fair-name rename deploy.** The build that renames a
+> person's `HANDLE`→`FAIR_NAME` also renames the JWT claim's wire key, so every
+> access **and** refresh token issued before the deploy becomes unreadable. On
+> that one upgrade, all logged-in users are signed out and must log in again
+> (their credentials are unchanged). This is expected and one-time; later deploys
+> don't repeat it. Hard-refresh the browser tab if the UI looks stale
+> afterward.
 
 ## Monitoring
 

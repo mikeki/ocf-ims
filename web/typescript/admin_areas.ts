@@ -244,7 +244,7 @@ function appendAreaRow(
     if (area.approved === false) {
         const proposed: HTMLElement = li.querySelector(".area-proposed")!;
         proposed.classList.remove("hidden");
-        const who = area.proposer?.handle || area.proposer?.name;
+        const who = area.proposer?.fair_name || area.proposer?.legal_name;
         if (who) {
             proposed.title = `Proposed by ${who}`;
         }

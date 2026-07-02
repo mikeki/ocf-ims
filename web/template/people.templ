@@ -37,7 +37,7 @@ templ People(deployment, versionName, versionRef, eventName string) {
             <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close" />
           </div>
           <div class="modal-body row">
-            <p>Set a new password for <strong id="set_password_handle"></strong>.</p>
+            <p>Set a new password for <strong id="set_password_fair_name"></strong>.</p>
             <div class="input-group mb-3">
               <div class="form-floating">
                 <input id="set_password_input" type="password" class="form-control" autocomplete="new-password" placeholder="New password" />
@@ -74,7 +74,7 @@ templ People(deployment, versionName, versionRef, eventName string) {
             <div id="add_person_search_section" class="hidden">
               <label for="add_person_search" class="form-label fw-semibold">Search existing people</label>
               <div class="position-relative">
-                <input id="add_person_search" type="search" class="form-control" autocomplete="off" placeholder="Name, handle, or wristband…" />
+                <input id="add_person_search" type="search" class="form-control" autocomplete="off" placeholder="Name, fair name, or wristband…" />
                 <div id="add_person_search_results"
                      class="list-group position-absolute w-100 shadow-sm hidden"
                      style="z-index: 1100; max-height: 16rem; overflow-y: auto;"></div>
@@ -93,13 +93,13 @@ templ People(deployment, versionName, versionRef, eventName string) {
                 ← Back to search
               </button>
               <div class="form-floating mb-2">
-                <input id="add_person_name" type="text" class="form-control" autocomplete="off" placeholder="Full name" />
-                <label for="add_person_name">Full name</label>
+                <input id="add_person_legal_name" type="text" class="form-control" autocomplete="off" placeholder="Full Legal Name" />
+                <label for="add_person_legal_name">Full Legal Name</label>
               </div>
               <!-- Email and phone are contact info, collectable for anyone at the fair
                    (with or without a login). Email doubles as a login identifier when
                    access is provided, so toggleProvideAccess() moves this field up next
-                   to the handle and relabels it required. add_person_email_home marks
+                   to the fair name and relabels it required. add_person_email_home marks
                    where it returns to when access is turned back off. -->
               <span id="add_person_email_home" class="d-none"></span>
               <div class="form-floating mb-2" id="add_person_email_wrap">
@@ -113,18 +113,18 @@ templ People(deployment, versionName, versionRef, eventName string) {
               <div class="form-text mb-3">A name (plus optional email/phone) records someone at the fair as a contact. They get no login unless you add one below.</div>
 
               <!-- Access is opt-in: only staff who actually sign in to the IMS need an
-                   account. The button reveals the credential fields; a handle and the
+                   account. The button reveals the credential fields; a fair name and the
                    email above are required so we never mint a password no one can use. -->
               <button type="button" class="btn btn-outline-primary w-100 mb-3" id="add_person_access_toggle" onclick="toggleProvideAccess()">
                 Provide Access to IMS
               </button>
               <div id="add_person_access_section" class="hidden">
-                <div class="form-text mb-2">Signing in needs an email, a handle, and a password.</div>
+                <div class="form-text mb-2">Signing in needs an email, a fair name, and a password.</div>
                 <!-- toggleProvideAccess() moves #add_person_email_wrap in here (before
-                     the handle) while access is on, so the login fields sit together. -->
+                     the fair name) while access is on, so the login fields sit together. -->
                 <div class="form-floating mb-3">
-                  <input id="add_person_handle" type="text" class="form-control" autocomplete="off" placeholder="Handle" />
-                  <label for="add_person_handle">Handle (required for login)</label>
+                  <input id="add_person_fair_name" type="text" class="form-control" autocomplete="off" placeholder="Fair Name" />
+                  <label for="add_person_fair_name">Fair Name (required for login)</label>
                 </div>
                 <div class="input-group mb-3">
                   <div class="form-floating">
@@ -185,12 +185,12 @@ templ People(deployment, versionName, versionRef, eventName string) {
           </div>
           <div class="modal-body row">
             <div class="form-floating mb-3">
-              <input id="edit_person_handle" type="text" class="form-control" autocomplete="off" placeholder="Handle" />
-              <label for="edit_person_handle">Handle</label>
+              <input id="edit_person_fair_name" type="text" class="form-control" autocomplete="off" placeholder="Fair Name" />
+              <label for="edit_person_fair_name">Fair Name</label>
             </div>
             <div class="form-floating mb-3">
-              <input id="edit_person_name" type="text" class="form-control" autocomplete="off" placeholder="Name" />
-              <label for="edit_person_name">Name</label>
+              <input id="edit_person_legal_name" type="text" class="form-control" autocomplete="off" placeholder="Full Legal Name" />
+              <label for="edit_person_legal_name">Full Legal Name</label>
             </div>
             <div class="form-floating mb-3">
               <input id="edit_person_email" type="email" class="form-control" autocomplete="off" placeholder="Email" />
@@ -275,7 +275,7 @@ templ People(deployment, versionName, versionRef, eventName string) {
     </div>
     <div class="col-sm-6 col-md-4 mb-2">
       <label for="people-search" class="form-label">Search</label>
-      <input id="people-search" type="search" class="form-control" autocomplete="off" placeholder="Name, handle, or wristband" oninput="filterPeople();" />
+      <input id="people-search" type="search" class="form-control" autocomplete="off" placeholder="Name, fair name, or wristband" oninput="filterPeople();" />
     </div>
     <div class="col-sm-6 col-md-4 mb-2 align-self-end">
       <div id="show_all_people_wrap" class="form-check hidden">
@@ -302,7 +302,7 @@ templ People(deployment, versionName, versionRef, eventName string) {
               <tr>
                 <th scope="col">Name</th>
                 <th scope="col">Role</th>
-                <th scope="col">Handle</th>
+                <th scope="col">Fair Name</th>
                 <th scope="col">Wristband</th>
                 <th scope="col" class="text-end">Actions</th>
               </tr>
@@ -341,7 +341,7 @@ templ People(deployment, versionName, versionRef, eventName string) {
             </td>
             <td class="text-end">
               <!-- Per-row actions kebab. people.ts shows/hides individual items per row
-                   (e.g. login-only actions for handle-less people; "Remove from event"
+                   (e.g. login-only actions for fair-name-less people; "Remove from event"
                    only for someone on the selected event's roster). -->
               <div class="dropdown">
                 <button type="button" class="btn btn-sm btn-outline-secondary border-0 person-actions-toggle" data-bs-toggle="dropdown" aria-expanded="false" aria-label="Actions">⋯</button>

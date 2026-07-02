@@ -364,7 +364,7 @@ func TestWriterProposalIsUnapproved(t *testing.T) {
 	require.NotNil(t, proposal.Approved)
 	assert.False(t, *proposal.Approved, "a writer's area starts as an unapproved proposal")
 	require.NotNil(t, proposal.Proposer, "a proposal records who proposed it")
-	assert.Equal(t, userAliceHandle, proposal.Proposer.Handle)
+	assert.Equal(t, userAliceHandle, proposal.Proposer.FairName)
 }
 
 // TestApproveArea verifies an admin can approve a writer's proposal, and that a

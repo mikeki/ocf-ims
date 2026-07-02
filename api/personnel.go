@@ -114,8 +114,8 @@ func (action GetPersonnel) getPersonnel(req *http.Request) (GetPersonnelResponse
 			}
 			for _, person := range rows {
 				p := imsjson.Person{
-					Handle:            person.Handle.String,
-					Name:              person.Name.String,
+					FairName:          person.FairName.String,
+					LegalName:         person.LegalName.String,
 					PersonID:          int64(person.ID),
 					Wristband:         person.Wristband.String,
 					ParticipationType: string(person.ParticipationType),
@@ -138,8 +138,8 @@ func (action GetPersonnel) getPersonnel(req *http.Request) (GetPersonnelResponse
 		}
 		for _, person := range rows {
 			p := imsjson.Person{
-				Handle: person.Handle.String,
-				Name:   person.Name.String,
+				FairName:  person.FairName.String,
+				LegalName: person.LegalName.String,
 				// Email + phone go only to this admin-gated listing so they can be edited.
 				Email:     person.Email.String,
 				Phone:     person.Phone.String,
@@ -162,7 +162,7 @@ func (action GetPersonnel) getPersonnel(req *http.Request) (GetPersonnelResponse
 
 	for _, person := range people {
 		response = append(response, imsjson.Person{
-			Handle: person.Handle,
+			FairName: person.FairName,
 			// Don't send email addresses in the API.
 			// This is also done as a backstop in imsjson.Person itself, with `json:"-"`
 			Email: "",
@@ -206,8 +206,8 @@ func (action GetPersonnel) searchPersonnel(req *http.Request, q string) (GetPers
 	for _, row := range rows {
 		person := imsjson.Person{
 			PersonID:  int64(row.ID),
-			Handle:    row.Handle.String,
-			Name:      row.Name.String,
+			FairName:  row.FairName.String,
+			LegalName: row.LegalName.String,
 			Wristband: row.Wristband.String,
 		}
 		if row.ParticipationType.Valid {

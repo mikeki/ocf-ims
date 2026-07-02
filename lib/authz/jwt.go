@@ -52,8 +52,8 @@ func (j JWTer) authenticateJWT(jwtStr, wantTokenType string) (*IMSClaims, error)
 	if !tok.Valid {
 		return nil, errors.New("token is invalid")
 	}
-	if claims.PersonHandle() == "" {
-		return nil, errors.New("person handle is required")
+	if claims.PersonFairName() == "" {
+		return nil, errors.New("person fair name is required")
 	}
 	// Access and refresh tokens are both JWTs signed by the same key, so this
 	// check is what stops a refresh token from being used as a bearer access

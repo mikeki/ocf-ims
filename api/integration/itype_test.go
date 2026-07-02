@@ -161,7 +161,7 @@ func TestProposeAndApproveIncidentType(t *testing.T) {
 	require.NotNil(t, proposed.Approved)
 	require.False(t, *proposed.Approved)
 	require.NotNil(t, proposed.Proposer)
-	require.Equal(t, userAliceHandle, proposed.Proposer.Handle)
+	require.Equal(t, userAliceHandle, proposed.Proposer.FairName)
 
 	// An admin approves it.
 	_, resp = apisAdmin.editType(ctx, imsjson.IncidentType{ID: *id, Approved: new(true)})

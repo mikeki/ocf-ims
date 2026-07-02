@@ -108,7 +108,7 @@ const (
 // exercised. The person_id FKs (attachments, journal-entry author) resolve against
 // these rows and the author join renders the expected handle.
 const imsPeopleTestSeed = `
-insert into PERSON (ID, HANDLE, EMAIL, PASSWORD, CREATED, IS_ADMIN) values
+insert into PERSON (ID, FAIR_NAME, EMAIL, PASSWORD, CREATED, IS_ADMIN) values
     (6000, 'AdminTestRanger', 'admintestranger@example.com', '$argon2id$v=19$m=1,t=1,p=1$51uXrZoFRb6O4Tw4TsAJVQ$SedDwp+hPpIJc42QcnFJy6EOtE+b5kyYFpnuRHl/5qs', 0, true),
     (6001, 'AliceTestRanger', 'alicetestranger@example.com', '$argon2id$v=19$m=1,t=1,p=1$eg9U8hLotCSmyCph1BQroA$KFfy0uDDpP+cXPnkSQRXt3z0Shd7M39tsrwJZuDrOdU', 0, false),
     (6002, 'BobTestRanger', 'bobtestranger@example.com', '$argon2id$v=19$m=1,t=1,p=1$eg9U8hLotCSmyCph1BQroA$KFfy0uDDpP+cXPnkSQRXt3z0Shd7M39tsrwJZuDrOdU', 0, false),

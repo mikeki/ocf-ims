@@ -35,14 +35,14 @@ const RefreshTokenCookieName = "refresh_token"
 // Ideally a refresh token is supposed to be persisted, so that it can be
 // invalidated from the server side. As a stopgap before we have such a per-user persistence component,
 // we instead rely on the security of JWT signing.
-func (j JWTer) CreateRefreshToken(personHandle string, personID int64, expiration time.Time) (string, error) {
+func (j JWTer) CreateRefreshToken(personFairName string, personID int64, expiration time.Time) (string, error) {
 	return j.createJWT(
 		IMSClaims{}.
 			WithIssuedAt(time.Now()).
 			WithExpiration(expiration).
 			WithIssuer("ims").
 			WithTokenType(TokenTypeRefresh).
-			WithPersonHandle(personHandle).
+			WithPersonFairName(personFairName).
 			WithSubject(strconv.FormatInt(personID, 10)),
 	)
 }

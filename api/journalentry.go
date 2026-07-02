@@ -106,7 +106,7 @@ func (action EditReportJournalEntry) editJournalEntry(req *http.Request) *herr.H
 		if err != nil {
 			return herr.InternalServerError("Failed to fetch JournalEntry author", err).From("[ReportJournalEntryAuthor]")
 		}
-		if author.String != jwtCtx.Claims.PersonHandle() {
+		if author.String != jwtCtx.Claims.PersonFairName() {
 			return herr.Forbidden("The requestor may only strike their own journal entries", nil)
 		}
 	}
@@ -349,14 +349,14 @@ func onBehalfOfParam(id *int32) sql.NullInt32 {
 
 // onBehalfOfJSON resolves a journal entry's "on behalf of" person for display,
 // or nil when the entry has none (the author is reporting for themselves). The
-// id comes from the entry row; handle/name from a left join on PERSON.
-func onBehalfOfJSON(id sql.NullInt32, handle, name sql.NullString) *imsjson.Mention {
+// id comes from the entry row; fair name/legal name from a left join on PERSON.
+func onBehalfOfJSON(id sql.NullInt32, fairName, legalName sql.NullString) *imsjson.Mention {
 	if !id.Valid {
 		return nil
 	}
 	return &imsjson.Mention{
-		PersonID: id.Int32,
-		Handle:   handle.String,
-		Name:     name.String,
+		PersonID:  id.Int32,
+		FairName:  fairName.String,
+		LegalName: legalName.String,
 	}
 }

@@ -138,7 +138,7 @@ function updateIncidentTypes(): void {
             if (incidentType.approved === false) {
                 const proposed: HTMLElement = entryItem.querySelector(".type-proposed")!;
                 proposed.classList.remove("hidden");
-                const who = incidentType.proposer?.handle || incidentType.proposer?.name;
+                const who = incidentType.proposer?.fair_name || incidentType.proposer?.legal_name;
                 if (who) {
                     proposed.title = `Proposed by ${who}`;
                 }

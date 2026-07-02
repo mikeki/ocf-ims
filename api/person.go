@@ -37,8 +37,8 @@ import (
 )
 
 const (
-	maxHandleLength    = 64
-	maxNameLength      = 255
+	maxFairNameLength  = 64
+	maxLegalNameLength = 255
 	maxEmailLength     = 128
 	maxPhoneLength     = 32
 	maxWristbandLength = 32
@@ -68,9 +68,9 @@ type CreatePerson struct {
 }
 
 type CreatePersonRequest struct {
-	Handle string `json:"handle"`
-	Name   string `json:"name"`
-	Email  string `json:"email"`
+	FairName  string `json:"fair_name"`
+	LegalName string `json:"legal_name"`
+	Email     string `json:"email"`
 	// Phone is an optional contact number, collectable even for a login-less person.
 	Phone string `json:"phone"`
 	// #nosec G117 // Exported secret field
@@ -106,21 +106,21 @@ func (action CreatePerson) createPerson(req *http.Request) (imsjson.Person, *her
 		return empty, errHTTP.From("[readBodyAs]")
 	}
 
-	handle := strings.TrimSpace(body.Handle)
-	name := strings.TrimSpace(body.Name)
+	handle := strings.TrimSpace(body.FairName)
+	name := strings.TrimSpace(body.LegalName)
 	email := strings.TrimSpace(body.Email)
 	phone := strings.TrimSpace(body.Phone)
 	wristband := strings.TrimSpace(body.Wristband)
 
 	// Identity: a registry person needs at least a handle or a name.
 	if handle == "" && name == "" {
-		return empty, herr.BadRequest("A handle or name is required", nil)
+		return empty, herr.BadRequest("A fair name or legal name is required", nil)
 	}
-	if len(handle) > maxHandleLength {
-		return empty, herr.BadRequest("Handle is too long", nil)
+	if len(handle) > maxFairNameLength {
+		return empty, herr.BadRequest("Fair name is too long", nil)
 	}
-	if len(name) > maxNameLength {
-		return empty, herr.BadRequest("Name is too long", nil)
+	if len(name) > maxLegalNameLength {
+		return empty, herr.BadRequest("Legal name is too long", nil)
 	}
 	if len(email) > maxEmailLength {
 		return empty, herr.BadRequest("Email is too long", nil)
@@ -171,8 +171,8 @@ func (action CreatePerson) createPerson(req *http.Request) (imsjson.Person, *her
 		participation = pt
 	}
 
-	handleNull := conv.StringToSql(&handle, maxHandleLength) // null when empty
-	nameNull := conv.StringToSql(&name, maxNameLength)
+	handleNull := conv.StringToSql(&handle, maxFairNameLength) // null when empty
+	nameNull := conv.StringToSql(&name, maxLegalNameLength)
 
 	var emailNull sql.NullString
 	if email != "" {
@@ -188,7 +188,7 @@ func (action CreatePerson) createPerson(req *http.Request) (imsjson.Person, *her
 	// — postAuth checks the identification against HANDLE/EMAIL, never the name. Reject
 	// a password with neither, so we never mint a login no one can actually use.
 	if body.Password != "" && handle == "" && email == "" {
-		return empty, herr.BadRequest("A handle or email is required to set a password", nil)
+		return empty, herr.BadRequest("A fair name or email is required to set a password", nil)
 	}
 
 	// A password is optional, but if given it must satisfy the same bounds as the
@@ -208,37 +208,37 @@ func (action CreatePerson) createPerson(req *http.Request) (imsjson.Person, *her
 	// Friendly pre-check on the handle (the unique constraint is the backstop below,
 	// and also catches a concurrent insert and the EMAIL uniqueness).
 	if handle != "" {
-		_, err := action.imsDBQ.PersonByHandle(req.Context(), action.imsDBQ, handleNull)
+		_, err := action.imsDBQ.PersonByFairName(req.Context(), action.imsDBQ, handleNull)
 		if err == nil {
-			return empty, herr.Conflict("A person with that handle already exists", nil)
+			return empty, herr.Conflict("A person with that fair name already exists", nil)
 		}
 		if !errors.Is(err, sql.ErrNoRows) {
-			return empty, herr.InternalServerError("Failed to check handle", err).From("[PersonByHandle]")
+			return empty, herr.InternalServerError("Failed to check fair name", err).From("[PersonByFairName]")
 		}
 	}
 
 	newID, err := action.imsDBQ.CreatePerson(req.Context(), action.imsDBQ, imsdb.CreatePersonParams{
-		Handle:   handleNull,
-		Name:     nameNull,
-		Email:    emailNull,
-		Phone:    phoneNull,
-		Password: passwordNull,
-		Created:  conv.TimeToFloat(time.Now()),
+		FairName:  handleNull,
+		LegalName: nameNull,
+		Email:     emailNull,
+		Phone:     phoneNull,
+		Password:  passwordNull,
+		Created:   conv.TimeToFloat(time.Now()),
 	})
 	if err != nil {
 		var mysqlErr *mysql.MySQLError
 		if errors.As(err, &mysqlErr) && mysqlErr.Number == dupEntryError {
-			return empty, herr.Conflict("That handle or email is already in use", nil)
+			return empty, herr.Conflict("That fair name or email is already in use", nil)
 		}
 		return empty, herr.InternalServerError("Failed to create person", err).From("[CreatePerson]")
 	}
 
 	resp := imsjson.Person{
-		PersonID: newID,
-		Handle:   handle,
-		Name:     name,
-		Email:    email,
-		Phone:    phone,
+		PersonID:  newID,
+		FairName:  handle,
+		LegalName: name,
+		Email:     email,
+		Phone:     phone,
 	}
 
 	// Write the per-event participation row when an event was named. The person is
@@ -266,7 +266,7 @@ func (action CreatePerson) createPerson(req *http.Request) (imsjson.Person, *her
 	action.userStore.InvalidateUsers()
 
 	// #nosec G706 // log injection
-	slog.Info("Created person", "person_id", newID, "handle", handle, "name", name)
+	slog.Info("Created person", "person_id", newID, "fair_name", handle, "legal_name", name)
 	return resp, nil
 }
 
@@ -362,8 +362,8 @@ type EditPerson struct {
 // People page scopes it to the selected event); Wristband/ParticipationType then
 // upsert that person's PERSON__EVENT row.
 type EditPersonRequest struct {
-	Handle            *string `json:"handle"`
-	Name              *string `json:"name"`
+	FairName          *string `json:"fair_name"`
+	LegalName         *string `json:"legal_name"`
 	Email             *string `json:"email"`
 	Phone             *string `json:"phone"`
 	Event             string  `json:"event"`
@@ -405,24 +405,24 @@ func (action EditPerson) editPerson(req *http.Request) *herr.HTTPError {
 	// overrides (empty clears). Compute handle and name first, then enforce the
 	// identity invariant on the *resulting* pair: a person must keep at least a
 	// handle or a name, else they'd have no human identifier left.
-	handle := person.Handle
-	if body.Handle != nil {
-		trimmed := strings.TrimSpace(*body.Handle)
-		if len(trimmed) > maxHandleLength {
-			return herr.BadRequest("Handle is too long", nil)
+	handle := person.FairName
+	if body.FairName != nil {
+		trimmed := strings.TrimSpace(*body.FairName)
+		if len(trimmed) > maxFairNameLength {
+			return herr.BadRequest("Fair name is too long", nil)
 		}
-		handle = conv.StringToSql(&trimmed, maxHandleLength) // null when empty
+		handle = conv.StringToSql(&trimmed, maxFairNameLength) // null when empty
 	}
-	name := person.Name
-	if body.Name != nil {
-		trimmed := strings.TrimSpace(*body.Name)
-		if len(trimmed) > maxNameLength {
-			return herr.BadRequest("Name is too long", nil)
+	name := person.LegalName
+	if body.LegalName != nil {
+		trimmed := strings.TrimSpace(*body.LegalName)
+		if len(trimmed) > maxLegalNameLength {
+			return herr.BadRequest("Legal name is too long", nil)
 		}
-		name = conv.StringToSql(&trimmed, maxNameLength) // null when empty
+		name = conv.StringToSql(&trimmed, maxLegalNameLength) // null when empty
 	}
 	if handle.String == "" && name.String == "" {
-		return herr.BadRequest("A handle or name is required", nil)
+		return herr.BadRequest("A fair name or legal name is required", nil)
 	}
 	email := person.Email
 	if body.Email != nil {
@@ -442,16 +442,16 @@ func (action EditPerson) editPerson(req *http.Request) *herr.HTTPError {
 	}
 
 	err := action.imsDBQ.EditPerson(req.Context(), action.imsDBQ, imsdb.EditPersonParams{
-		Handle: handle,
-		Name:   name,
-		Email:  email,
-		Phone:  phone,
-		ID:     person.ID,
+		FairName:  handle,
+		LegalName: name,
+		Email:     email,
+		Phone:     phone,
+		ID:        person.ID,
 	})
 	if err != nil {
 		var mysqlErr *mysql.MySQLError
 		if errors.As(err, &mysqlErr) && mysqlErr.Number == dupEntryError {
-			return herr.Conflict("That handle or email is already in use", nil)
+			return herr.Conflict("That fair name or email is already in use", nil)
 		}
 		return herr.InternalServerError("Failed to edit person", err).From("[EditPerson]")
 	}
@@ -468,7 +468,7 @@ func (action EditPerson) editPerson(req *http.Request) *herr.HTTPError {
 	action.userStore.InvalidateUsers()
 
 	// #nosec G706 // log injection
-	slog.Info("Edited person", "person_id", person.ID, "handle", person.Handle.String)
+	slog.Info("Edited person", "person_id", person.ID, "fair_name", person.FairName.String)
 	return nil
 }
 
@@ -664,7 +664,7 @@ func (action SetPersonParticipation) setParticipation(req *http.Request) *herr.H
 	action.userStore.InvalidateUsers()
 
 	// #nosec G706 // log injection
-	slog.Info("Set participation", "person_id", person.ID, "handle", person.Handle.String, "event", eventName, "participation", string(participation))
+	slog.Info("Set participation", "person_id", person.ID, "fair_name", person.FairName.String, "event", eventName, "participation", string(participation))
 	return nil
 }
 
@@ -723,6 +723,6 @@ func (action RemovePersonEvent) removePersonEvent(req *http.Request) *herr.HTTPE
 	action.userStore.InvalidateUsers()
 
 	// #nosec G706 // log injection
-	slog.Info("Removed person from event", "person_id", person.ID, "handle", person.Handle.String, "event", eventName)
+	slog.Info("Removed person from event", "person_id", person.ID, "fair_name", person.FairName.String, "event", eventName)
 	return nil
 }

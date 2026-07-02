@@ -85,7 +85,7 @@ func (action PostAuth) postAuth(req *http.Request) (PostAuthResponse, *http.Cook
 	}
 	var matchedPerson *directory.User
 	for _, person := range people {
-		callsignMatch := person.Handle != "" && strings.EqualFold(person.Handle, vals.Identification)
+		callsignMatch := person.FairName != "" && strings.EqualFold(person.FairName, vals.Identification)
 		if callsignMatch {
 			matchedPerson = person
 			break
@@ -128,12 +128,12 @@ func (action PostAuth) postAuth(req *http.Request) (PostAuthResponse, *http.Cook
 		)
 	}
 
-	slog.Info("Successful login for person", "identification", matchedPerson.Handle)
+	slog.Info("Successful login for person", "identification", matchedPerson.FairName)
 
 	accessTokenExpiration := time.Now().Add(action.accessTokenDuration)
 	jwt, err := authz.JWTer{SecretKey: action.jwtSecret}.
 		CreateAccessToken(
-			matchedPerson.Handle,
+			matchedPerson.FairName,
 			matchedPerson.ID,
 			matchedPerson.PositionIDs,
 			matchedPerson.TeamIDs,
@@ -151,7 +151,7 @@ func (action PostAuth) postAuth(req *http.Request) (PostAuthResponse, *http.Cook
 	// The refresh token should be valid much longer than the access token.
 	refreshTokenExpiration := time.Now().Add(action.refreshTokenDuration)
 	refreshToken, err := authz.JWTer{SecretKey: action.jwtSecret}.
-		CreateRefreshToken(matchedPerson.Handle, matchedPerson.ID, refreshTokenExpiration)
+		CreateRefreshToken(matchedPerson.FairName, matchedPerson.ID, refreshTokenExpiration)
 	if err != nil {
 		return empty, nil, herr.InternalServerError("Failed to create refresh token", err).From("[CreateRefreshToken]")
 	}
@@ -240,7 +240,7 @@ func (action GetAuth) getAuth(req *http.Request) (GetAuthResponse, *herr.HTTPErr
 		return resp, nil //lint:ignore nilerr since the jwtCtx.Error is irrelevant
 	}
 	claims := jwtCtx.Claims
-	handle := claims.PersonHandle()
+	handle := claims.PersonFairName()
 	// Compute global permissions via the shared path so UI-gating flags stay in step
 	// with the authoritative endpoint checks (and with any future non-admin grants).
 	_, globalPermissions, err := authz.EventPermissions(req.Context(), nil, action.imsDBQ, *claims)
@@ -349,14 +349,14 @@ func (action RefreshAccessToken) refreshAccessToken(req *http.Request) (RefreshA
 	}
 
 	// #nosec G706 // log injection
-	slog.Info("Refreshing access token", "person", jwt.PersonHandle())
+	slog.Info("Refreshing access token", "person", jwt.PersonFairName())
 	people, err := action.userStore.GetAllUsers(req.Context())
 	if err != nil {
 		return empty, herr.InternalServerError("Failed to fetch personnel", err).From("[GetPeople]")
 	}
 	var matchedPerson *directory.User
 	for _, person := range people {
-		if person.Handle == jwt.PersonHandle() && person.ID == int64(jwt.PersonID()) {
+		if person.FairName == jwt.PersonFairName() && person.ID == int64(jwt.PersonID()) {
 			matchedPerson = person
 			break
 		}
@@ -367,7 +367,7 @@ func (action RefreshAccessToken) refreshAccessToken(req *http.Request) (RefreshA
 	accessTokenExpiration := time.Now().Add(action.accessTokenDuration)
 	accessToken, err := authz.JWTer{SecretKey: action.jwtSecret}.
 		CreateAccessToken(
-			jwt.PersonHandle(),
+			jwt.PersonFairName(),
 			matchedPerson.ID,
 			matchedPerson.PositionIDs,
 			matchedPerson.TeamIDs,

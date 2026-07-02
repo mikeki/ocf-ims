@@ -307,8 +307,8 @@ func TestJournalEntryMentions(t *testing.T) {
 	require.Contains(t, byID, int32(userBobPersonID))
 	require.Contains(t, byID, int32(userCarolPersonID))
 	require.NotContains(t, byID, int32(nonexistentPersonID))
-	require.Equal(t, userBobHandle, byID[userBobPersonID].Handle)
-	require.Equal(t, userCarolHandle, byID[userCarolPersonID].Handle)
+	require.Equal(t, userBobHandle, byID[userBobPersonID].FairName)
+	require.Equal(t, userCarolHandle, byID[userCarolPersonID].FairName)
 }
 
 // TestJournalEntryTypedMentions verifies the backend safety net: when an author
@@ -355,7 +355,7 @@ func TestJournalEntryTypedMentions(t *testing.T) {
 	// no person IDs.
 	require.Len(t, entry.Mentions, 1)
 	require.Equal(t, int32(userBobPersonID), entry.Mentions[0].PersonID)
-	require.Equal(t, userBobHandle, entry.Mentions[0].Handle)
+	require.Equal(t, userBobHandle, entry.Mentions[0].FairName)
 }
 
 // TestReportJournalEntryMentions is the field-report mirror of
@@ -406,5 +406,5 @@ func TestReportJournalEntryMentions(t *testing.T) {
 	require.Contains(t, byID, int32(userBobPersonID))
 	require.Contains(t, byID, int32(userCarolPersonID))
 	require.NotContains(t, byID, int32(nonexistentPersonID))
-	require.Equal(t, userBobHandle, byID[userBobPersonID].Handle)
+	require.Equal(t, userBobHandle, byID[userBobPersonID].FairName)
 }

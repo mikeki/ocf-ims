@@ -39,7 +39,7 @@ func sampleIncident1(eventName string) imsjson.Incident {
 		IncidentTypeIDs: &[]int32{1, 2},
 		Reports:         &[]int32{},
 		Visits:          &[]int32{},
-		People:          &[]imsjson.IncidentPerson{{PersonID: userAdminPersonID, Handle: userAdminHandle}, {PersonID: userAlicePersonID, Handle: userAliceHandle}},
+		People:          &[]imsjson.IncidentPerson{{PersonID: userAdminPersonID, FairName: userAdminHandle}, {PersonID: userAlicePersonID, FairName: userAliceHandle}},
 		JournalEntries: []imsjson.JournalEntry{
 			{Text: "This is some journal text lol"},
 			{Text: ""},
@@ -280,7 +280,7 @@ func TestCreateAndUpdateIncident(t *testing.T) {
 	require.Equal(t, http.StatusOK, resp.StatusCode)
 	require.NoError(t, resp.Body.Close())
 	require.Len(t, *retrievedIncidentAfterUpdate.People, 1)
-	require.Equal(t, userAliceHandle, (*retrievedIncidentAfterUpdate.People)[0].Handle)
+	require.Equal(t, userAliceHandle, (*retrievedIncidentAfterUpdate.People)[0].FairName)
 
 	// detach that person
 	resp = apisNonAdmin.detachPersonFromIncident(ctx, eventName, num, userAlicePersonID)

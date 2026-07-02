@@ -771,10 +771,10 @@ function drawPeople() {
 
         // 52f: per-incident access. Track the current grant on the row so editing
         // involvement (a full-replace on the server) doesn't clobber it. Grant
-        // controls are writer-only; for an involved *user* (has a handle) we either
+        // controls are writer-only; for an involved *user* (has a fair name) we either
         // show the toggle (if they lack event access) or a "has access" hint.
         personLi.dataset["grantedAccess"] = person.granted_access ? "true" : "";
-        if (person.handle && ims.eventAccess?.writeIncidents) {
+        if (person.fair_name && ims.eventAccess?.writeIncidents) {
             if (person.has_event_access) {
                 personLi.querySelector(".person-has-access")!.classList.remove("hidden");
             } else {

@@ -69,7 +69,7 @@ function roleRungsForViewer(): RoleRung[] {
 const noLoginRoleValues = new Set(["volunteer", "public"]);
 
 // roleRungsForPerson narrows the viewer's assignable rungs to those that make sense
-// for this person: a name-only person (no handle/email) can only be a volunteer or
+// for this person: a name-only person (no fair name/email) can only be a volunteer or
 // public, since the higher rungs imply a login they don't have.
 function roleRungsForPerson(person: ims.Personnel): RoleRung[] {
     const rungs = roleRungsForViewer();
@@ -119,7 +119,7 @@ const el = {
     peopleWithoutAccess: ims.typedElement("people_without_access", HTMLTableSectionElement),
     personRowTemplate: ims.typedElement("person_row_template", HTMLTemplateElement),
     setPasswordModal: ims.typedElement("setPasswordModal", HTMLElement),
-    setPasswordHandle: ims.typedElement("set_password_handle", HTMLElement),
+    setPasswordHandle: ims.typedElement("set_password_fair_name", HTMLElement),
     setPasswordInput: ims.typedElement("set_password_input", HTMLInputElement),
     setPasswordConfirm: ims.typedElement("set_password_confirm", HTMLInputElement),
     setPasswordToggle: ims.typedElement("set_password_toggle", HTMLButtonElement),
@@ -131,8 +131,8 @@ const el = {
     addPersonInviteNote: ims.typedElement("add_person_invite_note", HTMLElement),
     addPersonWristbandWrap: ims.typedElement("add_person_wristband_wrap", HTMLElement),
     addPersonParticipationWrap: ims.typedElement("add_person_participation_wrap", HTMLElement),
-    addPersonName: ims.typedElement("add_person_name", HTMLInputElement),
-    addPersonHandle: ims.typedElement("add_person_handle", HTMLInputElement),
+    addPersonName: ims.typedElement("add_person_legal_name", HTMLInputElement),
+    addPersonHandle: ims.typedElement("add_person_fair_name", HTMLInputElement),
     addPersonEmail: ims.typedElement("add_person_email", HTMLInputElement),
     addPersonEmailWrap: ims.typedElement("add_person_email_wrap", HTMLElement),
     addPersonEmailLabel: ims.typedElement("add_person_email_label", HTMLElement),
@@ -151,8 +151,8 @@ const el = {
     addPersonWristband: ims.typedElement("add_person_wristband", HTMLInputElement),
     addPersonParticipation: ims.typedElement("add_person_participation", HTMLSelectElement),
     editPersonModal: ims.typedElement("editPersonModal", HTMLElement),
-    editPersonHandle: ims.typedElement("edit_person_handle", HTMLInputElement),
-    editPersonName: ims.typedElement("edit_person_name", HTMLInputElement),
+    editPersonHandle: ims.typedElement("edit_person_fair_name", HTMLInputElement),
+    editPersonName: ims.typedElement("edit_person_legal_name", HTMLInputElement),
     editPersonEmail: ims.typedElement("edit_person_email", HTMLInputElement),
     editPersonPhone: ims.typedElement("edit_person_phone", HTMLInputElement),
     editPersonEventSection: ims.typedElement("edit_person_event_section", HTMLElement),
@@ -369,7 +369,7 @@ function drawPeople(): void {
     const setPasswordModal = ims.bsModal(el.setPasswordModal);
 
     const all = people ?? [];
-    // Split into people who can sign in to the IMS (a handle/email set, or admin) and
+    // Split into people who can sign in to the IMS (a fair name/email set, or admin) and
     // name-only people tracked at the fair; sort each group by role (most access
     // first), then by name. Each is rendered as its own labelled section.
     const withAccess = all.filter(hasImsAccess).sort(comparePeopleByRole);
@@ -381,11 +381,11 @@ function drawPeople(): void {
     applyFilter();
 }
 
-// hasImsAccess reports whether a person can sign in — they have a handle or email to
+// hasImsAccess reports whether a person can sign in — they have a fair name or email to
 // authenticate with, or they're an admin. Name-only people (neither) are tracked at
 // the fair but have no login.
 function hasImsAccess(person: ims.Personnel): boolean {
-    return Boolean(person.is_admin) || Boolean(person.handle?.trim()) || Boolean(person.email?.trim());
+    return Boolean(person.is_admin) || Boolean(person.fair_name?.trim()) || Boolean(person.email?.trim());
 }
 
 // Role ladder, most access first, used to sort each people group. Admins sort ahead
@@ -446,14 +446,14 @@ function buildPersonRow(
         entryItem.dataset["personId"] = (person.person_id ?? "").toString();
         // Lowercased haystack for the client-side search box.
         entryItem.dataset["search"] =
-            `${label} ${person.handle ?? ""} ${person.wristband ?? ""}`.toLowerCase();
+            `${label} ${person.fair_name ?? ""} ${person.wristband ?? ""}`.toLowerCase();
 
         entryItem.getElementsByClassName("person-name")[0]!.textContent = label;
-        // Show the handle as a secondary identifier only when it's distinct from the
-        // primary label (i.e. the person has a name); handle-only people already show
-        // their handle as the label.
+        // Show the fair name as a secondary identifier only when it's distinct from the
+        // primary label (i.e. the person has a legal name); fair-name-only people already
+        // show their fair name as the label.
         entryItem.getElementsByClassName("person-handle")[0]!.textContent =
-            (person.name && person.handle) ? person.handle : "";
+            (person.legal_name && person.fair_name) ? person.fair_name : "";
 
         // Admin badge next to the name. is_admin is only sent to admin viewers (53d),
         // so a non-admin inviter never sees it (and it stays hidden).
@@ -490,8 +490,8 @@ function buildPersonRow(
             showEdit.addEventListener("click",
                 function (_e: MouseEvent): void {
                     el.editPersonModal.dataset["personId"] = (person.person_id ?? "").toString();
-                    el.editPersonHandle.value = person.handle ?? "";
-                    el.editPersonName.value = person.name ?? "";
+                    el.editPersonHandle.value = person.fair_name ?? "";
+                    el.editPersonName.value = person.legal_name ?? "";
                     el.editPersonEmail.value = person.email ?? "";
                     el.editPersonPhone.value = person.phone ?? "";
                     el.editPersonWristband.value = person.wristband ?? "";
@@ -499,9 +499,9 @@ function buildPersonRow(
                     ims.bsModal(el.editPersonModal).show();
                 },
             );
-            if (!person.handle && !person.email) {
+            if (!person.fair_name && !person.email) {
                 // Login-only actions apply only to someone who can log in. Login is by
-                // email OR handle, so a registry person with neither (no way to sign
+                // email OR fair name, so a registry person with neither (no way to sign
                 // in) gets no password/admin controls.
                 showPassword.classList.add("hidden");
                 adminToggle.classList.add("hidden");
@@ -815,7 +815,7 @@ function setAccessShown(shown: boolean): void {
     el.addPersonAccessSection.classList.toggle("hidden", !shown);
     el.addPersonAccessToggle.classList.toggle("active", shown);
     el.addPersonAccessToggle.textContent = shown ? "Don't provide IMS access" : "Provide Access to IMS";
-    // With access on, email is a login credential: move it up next to the handle
+    // With access on, email is a login credential: move it up next to the fair name
     // and relabel it required. With access off it's back to optional contact info
     // in its original spot (right after its home anchor).
     if (shown) {
@@ -849,7 +849,7 @@ async function submitCreatePerson(): Promise<void> {
     const name = el.addPersonName.value.trim();
     if (!name) {
         ims.controlHasError(el.addPersonName);
-        ims.setErrorMessage("A full name is required.");
+        ims.setErrorMessage("A full legal name is required.");
         return;
     }
     // Credentials are only collected (and required) when the access section is open.
@@ -859,7 +859,7 @@ async function submitCreatePerson(): Promise<void> {
     if (wantAccess) {
         if (!handle) {
             ims.controlHasError(el.addPersonHandle);
-            ims.setErrorMessage("A handle is required to provide IMS access.");
+            ims.setErrorMessage("A fair name is required to provide IMS access.");
             return;
         }
         if (!el.addPersonEmail.value.trim()) {
@@ -880,8 +880,8 @@ async function submitCreatePerson(): Promise<void> {
     }
 
     const body: Record<string, unknown> = {
-        "name": name,
-        "handle": wantAccess ? handle : "",
+        "legal_name": name,
+        "fair_name": wantAccess ? handle : "",
         // Email and phone are contact info, sent whether or not access is granted.
         "email": el.addPersonEmail.value.trim(),
         "phone": el.addPersonPhone.value.trim(),
@@ -919,8 +919,8 @@ async function submitEditPerson(): Promise<void> {
         return;
     }
     const body: Record<string, unknown> = {
-        "handle": el.editPersonHandle.value.trim(),
-        "name": el.editPersonName.value.trim(),
+        "fair_name": el.editPersonHandle.value.trim(),
+        "legal_name": el.editPersonName.value.trim(),
         "email": el.editPersonEmail.value.trim(),
         "phone": el.editPersonPhone.value.trim(),
     };

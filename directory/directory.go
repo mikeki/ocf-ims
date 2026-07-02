@@ -61,9 +61,9 @@ type cachedUserStore struct {
 var _ UserStore = (*cachedUserStore)(nil)
 
 type User struct {
-	ID     int64
-	Handle string
-	Email  string
+	ID       int64
+	FairName string
+	Email    string
 	// #nosec G117 // Exported secret struct field
 	Password           string
 	IsAdmin            bool
@@ -113,7 +113,7 @@ func (store *cachedUserStore) GetPeople(ctx context.Context) ([]imsjson.Person, 
 	response := make([]imsjson.Person, 0, len(users))
 	for _, r := range users {
 		response = append(response, imsjson.Person{
-			Handle:   r.Handle,
+			FairName: r.FairName,
 			Email:    r.Email,
 			Password: r.Password,
 			IsAdmin:  r.IsAdmin,

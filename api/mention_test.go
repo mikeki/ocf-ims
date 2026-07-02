@@ -36,7 +36,7 @@ type fakeUserStore struct {
 func newFakeUserStore(handlesByID map[int64]string) *fakeUserStore {
 	users := make(map[int64]*directory.User, len(handlesByID))
 	for id, handle := range handlesByID {
-		users[id] = &directory.User{ID: id, Handle: handle}
+		users[id] = &directory.User{ID: id, FairName: handle}
 	}
 	return &fakeUserStore{users: users}
 }

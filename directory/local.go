@@ -64,7 +64,7 @@ func (s *localPersonSource) users(ctx context.Context) (map[int64]*User, error) 
 	for _, person := range people {
 		m[int64(person.ID)] = &User{
 			ID:       int64(person.ID),
-			Handle:   person.Handle.String,
+			FairName: person.FairName.String,
 			Email:    person.Email.String,
 			Password: person.Password.String,
 			IsAdmin:  person.IsAdmin,

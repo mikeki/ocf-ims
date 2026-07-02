@@ -66,7 +66,7 @@ func TestCrewLeaderInvite(t *testing.T) {
 	inviteeHandle := uniq("Invitee")
 	const inviteePassword = "invitee-password-123"
 	resp = apisErin.createPerson(ctx, api.CreatePersonRequest{
-		Handle:            inviteeHandle,
+		FairName:            inviteeHandle,
 		Email:             inviteeHandle + "@example.com",
 		Password:          inviteePassword,
 		Event:             eventName,
@@ -97,7 +97,7 @@ func TestCrewLeaderInvite(t *testing.T) {
 	// --- 2) Anti-escalation: she cannot mint a writer or another crew leader. ---
 	for _, rung := range []string{"writer", "crew_leader"} {
 		resp = apisErin.createPerson(ctx, api.CreatePersonRequest{
-			Handle:            uniq("Escalate"),
+			FairName:            uniq("Escalate"),
 			Password:          "escalate-password-123",
 			Event:             eventName,
 			ParticipationType: rung,
@@ -108,7 +108,7 @@ func TestCrewLeaderInvite(t *testing.T) {
 
 	// --- 3) She has no invite power on an event she lacks the bit on. ---
 	resp = apisErin.createPerson(ctx, api.CreatePersonRequest{
-		Handle:            uniq("Wrongevent"),
+		FairName:            uniq("Wrongevent"),
 		Password:          "wrongevent-password-123",
 		Event:             otherEvent,
 		ParticipationType: "reporter",
@@ -118,7 +118,7 @@ func TestCrewLeaderInvite(t *testing.T) {
 
 	// --- 4) A plain non-participant (Alice, no role on eventName) cannot invite. ---
 	resp = apisAlice.createPerson(ctx, api.CreatePersonRequest{
-		Handle:            uniq("Alicemade"),
+		FairName:            uniq("Alicemade"),
 		Password:          "alicemade-password-123",
 		Event:             eventName,
 		ParticipationType: "reporter",
@@ -128,7 +128,7 @@ func TestCrewLeaderInvite(t *testing.T) {
 
 	// --- SetPersonParticipation path (enroll an existing person). ---
 	// An existing registry person with no event role, created by the admin.
-	resp = apisAdmin.createPerson(ctx, api.CreatePersonRequest{Handle: uniq("Target"), Password: "target-password-123"})
+	resp = apisAdmin.createPerson(ctx, api.CreatePersonRequest{FairName: uniq("Target"), Password: "target-password-123"})
 	require.Equal(t, http.StatusCreated, resp.StatusCode)
 	var target imsjson.Person
 	require.NoError(t, json.NewDecoder(resp.Body).Decode(&target))
@@ -152,7 +152,7 @@ func TestCrewLeaderInvite(t *testing.T) {
 	require.NoError(t, resp.Body.Close())
 
 	// --- 5) She cannot modify a target who already outranks her ceiling. ---
-	resp = apisAdmin.createPerson(ctx, api.CreatePersonRequest{Handle: uniq("Bigshot"), Password: "bigshot-password-123"})
+	resp = apisAdmin.createPerson(ctx, api.CreatePersonRequest{FairName: uniq("Bigshot"), Password: "bigshot-password-123"})
 	require.Equal(t, http.StatusCreated, resp.StatusCode)
 	var bigshot imsjson.Person
 	require.NoError(t, json.NewDecoder(resp.Body).Decode(&bigshot))
@@ -175,7 +175,7 @@ func TestCrewLeaderInvite(t *testing.T) {
 	require.Equal(t, http.StatusNoContent, resp.StatusCode)
 	require.NoError(t, resp.Body.Close())
 	resp = apisAlice.createPerson(ctx, api.CreatePersonRequest{
-		Handle:            uniq("Writermade"),
+		FairName:            uniq("Writermade"),
 		Password:          "writermade-password-123",
 		Event:             writerEvent,
 		ParticipationType: "reporter",
@@ -185,7 +185,7 @@ func TestCrewLeaderInvite(t *testing.T) {
 
 	// --- 7) The admin path is unchanged: an admin may still mint a writer. ---
 	resp = apisAdmin.createPerson(ctx, api.CreatePersonRequest{
-		Handle:            uniq("Adminmade"),
+		FairName:            uniq("Adminmade"),
 		Password:          "adminmade-password-123",
 		Event:             eventName,
 		ParticipationType: "writer",
@@ -218,7 +218,7 @@ func TestInviterRosterRead(t *testing.T) {
 	memberHandle := "RosterMember" + rand.NonCryptoText()
 	memberEmail := memberHandle + "@example.com"
 	resp = apisAdmin.createPerson(ctx, api.CreatePersonRequest{
-		Handle:            memberHandle,
+		FairName:            memberHandle,
 		Email:             memberEmail,
 		Password:          "rostermember-password-123",
 		Event:             eventName,

@@ -72,8 +72,8 @@ type Incident struct {
 
 type IncidentPerson struct {
 	PersonID    int64   `json:"person_id,omitempty"`
-	Handle      string  `json:"handle,omitempty"`
-	Name        string  `json:"name,omitempty"`
+	FairName    string  `json:"fair_name,omitempty"`
+	LegalName   string  `json:"legal_name,omitempty"`
 	Involvement *string `json:"involvement,omitempty"`
 
 	// GrantedAccess (52f) records whether this involved person has been granted
