@@ -148,6 +148,11 @@ backup (below) before deploying anything that adds a migration.
 > (their credentials are unchanged). This is expected and one-time; later deploys
 > don't repeat it. Hard-refresh the browser tab if the UI looks stale
 > afterward.
+>
+> The same build also makes **email the sole login identifier**: anyone who used
+> to sign in with their fair name must use their email address from now on (the
+> password is unchanged). A login user without an email on file needs an admin
+> to add one (Admin → People & Passwords) before they can sign in again.
 
 ## Monitoring
 
