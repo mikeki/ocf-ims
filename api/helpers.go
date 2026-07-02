@@ -56,15 +56,21 @@ func personByIDFromPath(ctx context.Context, imsDBQ *store.DBQ, req *http.Reques
 	return person, nil
 }
 
-// personDisplayName resolves a person's display label for logs and generated
-// journal-entry text — the fair name (handle) if set, otherwise the full legal name.
-// Feedback round 9 prefers the fair name over the legal name wherever a single
-// person label is shown.
+// personDisplayName renders a person for logs and generated journal-entry text as
+// "Fair Name (Legal Name)" so the entry shows both the radio callsign and who the
+// person actually is. It degrades to "(Legal Name)" or "Fair Name" when only one is
+// present (feedback round 9 — mirrors the client's personDisplayLabel).
 func personDisplayName(p imsdb.PersonByIDRow) string {
-	if p.Handle.Valid && strings.TrimSpace(p.Handle.String) != "" {
-		return p.Handle.String
+	fair := strings.TrimSpace(p.Handle.String)
+	legal := strings.TrimSpace(p.Name.String)
+	switch {
+	case fair != "" && legal != "":
+		return fmt.Sprintf("%s (%s)", fair, legal)
+	case legal != "":
+		return fmt.Sprintf("(%s)", legal)
+	default:
+		return fair
 	}
-	return p.Name.String
 }
 
 func readBodyAs[T any](req *http.Request) (T, *herr.HTTPError) {
