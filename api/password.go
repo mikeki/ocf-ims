@@ -87,6 +87,13 @@ func (action SetPersonPassword) setPersonPassword(req *http.Request) *herr.HTTPE
 		return errHTTP
 	}
 
+	// Login matches EMAIL only, so a password is useless without one. Refuse to set a
+	// password for a person with no email — the email must be added first, otherwise
+	// we'd store a credential the person could never actually use to sign in.
+	if person.Email.String == "" {
+		return herr.BadRequest("This person has no email; an email is the login identifier, so add one before setting a password", nil)
+	}
+
 	hashed := argon2id.CreateHash(body.Password, argon2id.DefaultParams)
 	err := action.imsDBQ.SetPersonPassword(req.Context(), action.imsDBQ, imsdb.SetPersonPasswordParams{
 		Password: conv.StringToSql(&hashed, 255),

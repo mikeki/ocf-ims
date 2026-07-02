@@ -17,10 +17,13 @@
 package integration_test
 
 import (
+	"encoding/json"
 	"net/http"
 	"testing"
 
 	"github.com/mikeki/ocf-ims/api"
+	imsjson "github.com/mikeki/ocf-ims/json"
+	"github.com/mikeki/ocf-ims/lib/rand"
 	"github.com/stretchr/testify/require"
 )
 
@@ -46,6 +49,17 @@ func TestSetPersonPassword(t *testing.T) {
 
 	// A too-short password is rejected.
 	resp = apisAdmin.setPersonPassword(ctx, userBobPersonID, "short")
+	require.Equal(t, http.StatusBadRequest, resp.StatusCode)
+	require.NoError(t, resp.Body.Close())
+
+	// A person with no email can't be given a password: login matches EMAIL only, so
+	// the credential would be unusable. Create an email-less registry person and try.
+	resp = apisAdmin.createPerson(ctx, api.CreatePersonRequest{Handle: "NoEmailForPw" + rand.NonCryptoText()})
+	require.Equal(t, http.StatusCreated, resp.StatusCode)
+	var noEmail imsjson.Person
+	require.NoError(t, json.NewDecoder(resp.Body).Decode(&noEmail))
+	require.NoError(t, resp.Body.Close())
+	resp = apisAdmin.setPersonPassword(ctx, noEmail.PersonID, newPassword)
 	require.Equal(t, http.StatusBadRequest, resp.StatusCode)
 	require.NoError(t, resp.Body.Close())
 
