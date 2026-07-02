@@ -1328,6 +1328,74 @@ export function openQuickAddPersonModal(prefillName: string, eventName: string):
     });
 }
 
+// openPersonProfileModal fetches one person by id
+// (GET /ims/api/personnel?person_id=&event=) and shows the read-only
+// PersonProfileModal (web/template/personprofile.templ). It renders whichever fields
+// the viewer's role is allowed to see: the server sends fair name + full legal name +
+// this event's role/wristband to any authenticated viewer, and email/phone only to a
+// personnel admin — so a non-admin simply gets no contact rows. Rows with no value
+// are hidden. Requires the PersonProfileModal to be present on the page.
+export async function openPersonProfileModal(personId: number, eventName: string): Promise<void> {
+    const modalEl = typedElement("personProfileModal", HTMLElement);
+    const titleEl = typedElement("personProfileModalLabel", HTMLElement);
+    const loadingEl = typedElement("person_profile_loading", HTMLElement);
+    const errorEl = typedElement("person_profile_error", HTMLElement);
+    const fieldsEl = typedElement("person_profile_fields", HTMLElement);
+
+    // A row is a <dt>/<dd> pair sharing a suffix; set the value and reveal the pair
+    // when there's a value, hide both when empty. The fair name / legal name rows
+    // always show (the title carries the combined label; one of the two is present).
+    function setRow(key: string, value: string, hideWhenEmpty: boolean): void {
+        const valueEl = typedElement("person_profile_" + key, HTMLElement);
+        valueEl.textContent = value;
+        if (!hideWhenEmpty) {
+            return;
+        }
+        const labelEl = typedElement("person_profile_" + key + "_row", HTMLElement);
+        const hide = value.trim() === "";
+        valueEl.classList.toggle("hidden", hide);
+        labelEl.classList.toggle("hidden", hide);
+    }
+
+    // Reset to the loading state on each open.
+    titleEl.textContent = "Person";
+    loadingEl.classList.remove("hidden");
+    errorEl.classList.add("hidden");
+    errorEl.textContent = "";
+    fieldsEl.classList.add("hidden");
+
+    const modal = bsModal(modalEl);
+    modal.show();
+
+    const params = new URLSearchParams({person_id: personId.toString()});
+    if (eventName) {
+        params.set("event", eventName);
+    }
+    const {json, err} = await fetchNoThrow<Personnel[]>(
+        urlReplace(url_personnel) + "?" + params.toString(), null);
+
+    loadingEl.classList.add("hidden");
+    const person = json?.[0];
+    if (err != null || person == null) {
+        errorEl.textContent = err != null ? `Failed to load person: ${err}` : "Person not found.";
+        errorEl.classList.remove("hidden");
+        return;
+    }
+
+    // Head the card with the combined "Fair Name (Legal Name)" label (feedback
+    // round 9), then still list each identifier on its own row below.
+    titleEl.textContent = personDisplayLabel(person) || "Person";
+    setRow("fair_name", person.handle ?? "—", false);
+    setRow("legal_name", person.name ?? "—", false);
+    // Per-event + contact rows only render when populated (the server withholds
+    // contact info from non-admins, so those rows just stay hidden for them).
+    setRow("role", person.participation_type ?? "", true);
+    setRow("wristband", person.wristband ?? "", true);
+    setRow("email", person.email ?? "", true);
+    setRow("phone", person.phone ?? "", true);
+    fieldsEl.classList.remove("hidden");
+}
+
 export type PersonComboboxConfig = {
     // The text input the user types into.
     input: HTMLInputElement;

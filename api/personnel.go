@@ -18,6 +18,7 @@ package api
 
 import (
 	"database/sql"
+	"errors"
 	"fmt"
 	"github.com/mikeki/ocf-ims/directory"
 	imsjson "github.com/mikeki/ocf-ims/json"
@@ -26,6 +27,7 @@ import (
 	"github.com/mikeki/ocf-ims/store"
 	"github.com/mikeki/ocf-ims/store/imsdb"
 	"net/http"
+	"strconv"
 	"strings"
 	"time"
 )
@@ -63,6 +65,17 @@ func (action GetPersonnel) getPersonnel(req *http.Request) (GetPersonnelResponse
 	// gated only on GlobalReadPersonnel (any logged-in user; see R4 in the plan).
 	if q := strings.TrimSpace(req.FormValue("q")); q != "" {
 		return action.searchPersonnel(req, q)
+	}
+
+	// A ?person_id= lookup backs the person profile card: clicking a person in an
+	// incident's People list opens a card showing their details. It returns that one
+	// person's identity (fair name + legal name) and — when ?event= is given — their
+	// participation in that event, with email/phone included only for a personnel
+	// admin, mirroring the ?all= listing's contact gate. Any logged-in user
+	// (GlobalReadPersonnel, checked above) may see identity + participation, the same
+	// fields the ?q= typeahead already returns; only an admin sees contact info.
+	if pid := strings.TrimSpace(req.FormValue("person_id")); pid != "" {
+		return action.personnelByID(req, pid, globalPermissions)
 	}
 
 	// The admin People page requests ?all=true to manage every person, including
@@ -174,6 +187,64 @@ func (action GetPersonnel) getPersonnel(req *http.Request) (GetPersonnelResponse
 		})
 	}
 
+	return response, nil
+}
+
+// personnelByID returns a single person for the profile card. Identity (fair name
+// + legal name) goes to any authenticated viewer; email/phone are gated on
+// GlobalAdministratePersonnel, exactly like the ?all= admin listing. With an event
+// named (?event=), the person's wristband + participation type for that event are
+// included (empty if they have no row for it).
+func (action GetPersonnel) personnelByID(req *http.Request, pidStr string, globalPermissions authz.GlobalPermissionMask) (GetPersonnelResponse, *herr.HTTPError) {
+	response := make(GetPersonnelResponse, 0)
+	pid, err := strconv.ParseInt(pidStr, 10, 32)
+	if err != nil || pid <= 0 {
+		return response, herr.BadRequest("Invalid person_id", err)
+	}
+
+	person, err := action.imsDBQ.PersonByID(req.Context(), action.imsDBQ, int32(pid))
+	if errors.Is(err, sql.ErrNoRows) {
+		return response, herr.NotFound("No such person", err)
+	}
+	if err != nil {
+		return response, herr.InternalServerError("Failed to get person", err).From("[PersonByID]")
+	}
+
+	p := imsjson.Person{
+		PersonID: int64(person.ID),
+		Handle:   person.Handle.String,
+		Name:     person.Name.String,
+	}
+	// Contact info + admin flag are admin-only, exactly like the ?all= listing.
+	if globalPermissions&authz.GlobalAdministratePersonnel != 0 {
+		p.Email = person.Email.String
+		p.Phone = person.Phone.String
+		p.IsAdmin = person.IsAdmin
+	}
+
+	// With an event scoped, include that event's participation + wristband — the same
+	// per-event fields the roster/typeahead carry. A missing row is not an error.
+	if eventName := strings.TrimSpace(req.FormValue("event")); eventName != "" {
+		event, errHTTP := getEvent(req, eventName, action.imsDBQ)
+		if errHTTP != nil {
+			return response, errHTTP.From("[getEvent]")
+		}
+		pe, err := action.imsDBQ.PersonEvent(req.Context(), action.imsDBQ, imsdb.PersonEventParams{
+			PersonID: person.ID,
+			Event:    event.ID,
+		})
+		switch {
+		case err == nil:
+			p.Wristband = pe.Wristband.String
+			p.ParticipationType = string(pe.ParticipationType)
+		case errors.Is(err, sql.ErrNoRows):
+			// No participation row for this event — leave the fields empty.
+		default:
+			return response, herr.InternalServerError("Failed to get participation", err).From("[PersonEvent]")
+		}
+	}
+
+	response = append(response, p)
 	return response, nil
 }
 
