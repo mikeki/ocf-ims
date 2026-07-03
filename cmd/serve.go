@@ -36,6 +36,7 @@ import (
 	"github.com/mikeki/ocf-ims/lib/attachment"
 	"github.com/mikeki/ocf-ims/lib/conv"
 	"github.com/mikeki/ocf-ims/lib/push"
+	"github.com/mikeki/ocf-ims/lib/securityheaders"
 	"github.com/mikeki/ocf-ims/store"
 	"github.com/mikeki/ocf-ims/store/actionlog"
 	"github.com/mikeki/ocf-ims/store/imsdb"
@@ -145,7 +146,9 @@ func mustStartServer(ctx context.Context, unvalidatedCfg *conf.IMSConfig, printC
 	web.AddToMux(mux, imsCfg)
 
 	s := &http.Server{
-		Handler:     mux,
+		// Wrap the combined API+web mux so every response carries the hardening
+		// headers (plan 90 finding L2). HSTS is set by Caddy, not here.
+		Handler:     securityheaders.Handler(mux),
 		ReadTimeout: 1 * time.Minute,
 		// This needs to be long to support long-lived EventSource calls.
 		// After this duration, a client will be disconnected and forced

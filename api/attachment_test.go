@@ -29,6 +29,20 @@ import (
 	"testing"
 )
 
+func TestContentDisposition(t *testing.T) {
+	t.Parallel()
+	// Safe-to-preview types render inline; anything downgraded to octet-stream
+	// (unknown / HTML / SVG uploads) is forced to download (plan 90 L4).
+	inline := []string{"image/png", "image/jpeg", "application/pdf", "text/plain", "video/mp4"}
+	for _, ct := range inline {
+		assert.Equal(t, "inline", contentDisposition(ct), ct)
+	}
+	download := []string{octetStream, "application/zip", "image/svg+xml"}
+	for _, ct := range download {
+		assert.Equal(t, "attachment", contentDisposition(ct), ct)
+	}
+}
+
 func TestSaveAndRetrieveS3File(t *testing.T) {
 	t.Parallel()
 	ctx := t.Context()

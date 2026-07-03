@@ -155,6 +155,13 @@ enforcing), `X-Content-Type-Options: nosniff`, `X-Frame-Options: DENY` /
 synchronous inline-ish `theme.js`. Ship CSP **report-only first**, or scope it carefully, so
 we don't white-screen the SPA. nosniff/XFO/HSTS/Referrer-Policy are safe to add immediately.
 
+**CSP-enforcement follow-up (before flipping report-only → enforcing):** migrate the inline
+`on*=` handlers + inline importmap to satisfy `script-src 'self'`, **and** account for the
+attachment preview — it renders fetched files from `blob:` URLs in an `<img>`/`<iframe>`
+(`ims.ts showAttachmentPreview`), so the enforcing policy needs `blob:` added to `img-src`
+and a `frame-src` (or `child-src`) `blob:`. The report-only policy shipped in PR 5 omits both,
+which is harmless while report-only but would block preview once enforcing.
+
 ---
 
 ## PR 6 — LOW: production compose hardening  *(batch)*

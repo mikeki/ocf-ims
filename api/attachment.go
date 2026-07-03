@@ -101,6 +101,7 @@ func (action GetIncidentAttachment) ServeHTTP(w http.ResponseWriter, req *http.R
 		return
 	}
 	w.Header().Set("Content-Type", contentType)
+	w.Header().Set("Content-Disposition", contentDisposition(contentType))
 	http.ServeContent(w, req, "Attached File", time.Now(), file)
 }
 
@@ -207,6 +208,21 @@ func previewableContentType(contentType string) bool {
 	return safeToPreviewContentType(contentType) != octetStream
 }
 
+// contentDisposition decides whether an attachment renders inline or is forced to
+// download (plan 90 finding L4). Only the types we deem safe to preview render
+// inline; everything else — including the octet-stream we downgrade unknown / HTML
+// / SVG uploads to — is served as an "attachment" so the browser downloads it
+// rather than rendering an untrusted file in our origin. Paired with the global
+// X-Content-Type-Options: nosniff, this keeps a browser from sniffing a downgraded
+// type back into something renderable. contentType here is the already-sanitized
+// type from safeToPreviewContentType.
+func contentDisposition(contentType string) string {
+	if previewableContentType(contentType) {
+		return "inline"
+	}
+	return "attachment"
+}
+
 func retrieveFile(
 	ctx context.Context, attachmentsStore conf.AttachmentsStore,
 	s3Client *attachment.S3Client, filename string,
@@ -252,6 +268,7 @@ func (action GetReportAttachment) ServeHTTP(w http.ResponseWriter, req *http.Req
 		return
 	}
 	w.Header().Set("Content-Type", contentType)
+	w.Header().Set("Content-Disposition", contentDisposition(contentType))
 	http.ServeContent(w, req, "Attached File", time.Now(), file)
 }
 
@@ -519,6 +536,7 @@ func (action GetVisitAttachment) ServeHTTP(w http.ResponseWriter, req *http.Requ
 		return
 	}
 	w.Header().Set("Content-Type", contentType)
+	w.Header().Set("Content-Disposition", contentDisposition(contentType))
 	http.ServeContent(w, req, "Attached File", time.Now(), file)
 }
 

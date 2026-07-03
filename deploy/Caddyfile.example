@@ -17,6 +17,18 @@
 # another proxy/CDN ahead of Caddy, revisit clientIPForRateLimit's one-hop
 # assumption in api/ratelimit.go.)
 ims.ocf.example.org {
+	# HSTS belongs at the TLS terminator, and Caddy owns HTTPS here — so it's set
+	# on this side, not in the app. It tells browsers to refuse plaintext HTTP to
+	# this host for max-age seconds (~1 year). Enable it only once you're confident
+	# the site is reliably HTTPS (Caddy auto-provisions certs, so it is). The app
+	# already emits the content security headers (X-Content-Type-Options,
+	# X-Frame-Options, Referrer-Policy, and a report-only Content-Security-Policy),
+	# so don't duplicate those here.
+	#
+	# Do NOT add `preload` until you've verified everything and are ready to commit
+	# to HTTPS-only permanently — preload is slow to undo.
+	header Strict-Transport-Security "max-age=31536000; includeSubDomains"
+
 	reverse_proxy ocf-ims:80
 }
 
