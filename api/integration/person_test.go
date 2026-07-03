@@ -412,3 +412,87 @@ func TestEventRosterAddRemove(t *testing.T) {
 	require.Equal(t, http.StatusForbidden, resp.StatusCode)
 	require.NoError(t, resp.Body.Close())
 }
+
+// TestPersonProfileCard exercises the by-id lookup that backs the person profile
+// card (GET /ims/api/personnel?person_id=&event=). It asserts the role-gated shape:
+// identity (fair name + full legal name) and the event's participation go to any
+// authenticated viewer, while email/phone are withheld from a non-admin and included
+// for a personnel admin. It also covers the not-found and invalid-id guards.
+func TestPersonProfileCard(t *testing.T) {
+	t.Parallel()
+	ctx := t.Context()
+
+	apisAdmin := ApiHelper{t: t, serverURL: shared.serverURL, jwt: jwtForAdmin(ctx, t)}
+	apisAlice := ApiHelper{t: t, serverURL: shared.serverURL, jwt: jwtForAlice(t, ctx)}
+
+	eventName := rand.NonCryptoText()
+	_, resp := apisAdmin.createEvent(ctx, imsjson.Event{Name: &eventName})
+	require.Equal(t, http.StatusNoContent, resp.StatusCode)
+	require.NoError(t, resp.Body.Close())
+
+	// A person with a full profile, enrolled in the event as a volunteer with a
+	// wristband, so every profile-card field is populated.
+	handle := "ProfileCardSubject"
+	r := apisAdmin.createPerson(ctx, api.CreatePersonRequest{
+		Handle:            handle,
+		Name:              "Percy Card",
+		Email:             "percy-card@example.com",
+		Phone:             "555-0100",
+		Password:          handle + "-pw-12345",
+		Event:             eventName,
+		Wristband:         "WB-42",
+		ParticipationType: "volunteer",
+	})
+	require.Equal(t, http.StatusCreated, r.StatusCode)
+	var created imsjson.Person
+	require.NoError(t, json.NewDecoder(r.Body).Decode(&created))
+	require.NoError(t, r.Body.Close())
+	subjectID := created.PersonID
+
+	// Admin sees everything, including contact info + the event's participation.
+	people, resp := apisAdmin.getPersonnelByID(ctx, subjectID, eventName)
+	require.Equal(t, http.StatusOK, resp.StatusCode)
+	require.NoError(t, resp.Body.Close())
+	require.Len(t, people, 1)
+	adminView := people[0]
+	require.Equal(t, subjectID, adminView.PersonID)
+	require.Equal(t, handle, adminView.Handle)
+	require.Equal(t, "Percy Card", adminView.Name)
+	require.Equal(t, "percy-card@example.com", adminView.Email)
+	require.Equal(t, "555-0100", adminView.Phone)
+	require.Equal(t, "volunteer", adminView.ParticipationType)
+	require.Equal(t, "WB-42", adminView.Wristband)
+
+	// A non-admin viewer sees identity + participation, but NOT contact info.
+	people, resp = apisAlice.getPersonnelByID(ctx, subjectID, eventName)
+	require.Equal(t, http.StatusOK, resp.StatusCode)
+	require.NoError(t, resp.Body.Close())
+	require.Len(t, people, 1)
+	aliceView := people[0]
+	require.Equal(t, handle, aliceView.Handle)
+	require.Equal(t, "Percy Card", aliceView.Name, "full legal name is visible to any viewer")
+	require.Equal(t, "volunteer", aliceView.ParticipationType)
+	require.Equal(t, "WB-42", aliceView.Wristband)
+	require.Empty(t, aliceView.Email, "email is admin-only")
+	require.Empty(t, aliceView.Phone, "phone is admin-only")
+
+	// Without an event scope the per-event fields are simply absent.
+	people, resp = apisAlice.getPersonnelByID(ctx, subjectID, "")
+	require.Equal(t, http.StatusOK, resp.StatusCode)
+	require.NoError(t, resp.Body.Close())
+	require.Len(t, people, 1)
+	require.Empty(t, people[0].ParticipationType)
+	require.Empty(t, people[0].Wristband)
+	require.Equal(t, handle, people[0].Handle)
+
+	// A nonexistent person id is a 404.
+	_, resp = apisAlice.getPersonnelByID(ctx, 999999999, eventName)
+	require.Equal(t, http.StatusNotFound, resp.StatusCode)
+	require.NoError(t, resp.Body.Close())
+
+	// A non-numeric person_id is a 400.
+	badPath := shared.serverURL.JoinPath("/ims/api/personnel").String() + "?person_id=notanumber"
+	_, resp = apisAlice.imsGet(ctx, badPath, nil)
+	require.Equal(t, http.StatusBadRequest, resp.StatusCode)
+	require.NoError(t, resp.Body.Close())
+}

@@ -762,6 +762,14 @@ function drawPeople() {
 
         const personLink = personLi.querySelector("span")!.querySelector("a")!;
         personLink.textContent = label;
+        // Click a person to open their role-gated profile card (fair/legal name +
+        // this event's role; email/phone only for admins). The server enforces the
+        // gating; this link is just the trigger.
+        const clickedPersonId = person.person_id;
+        personLink.addEventListener("click", (e: MouseEvent): void => {
+            e.preventDefault();
+            void ims.openPersonProfileModal(clickedPersonId, ims.pathIds.eventName ?? "");
+        });
 
         const involvementInput = personLi.querySelector("input")!;
         involvementInput.ariaLabel = `Involvement for ${label}`;

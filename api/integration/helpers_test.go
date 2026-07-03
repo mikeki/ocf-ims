@@ -152,6 +152,20 @@ func (a ApiHelper) getEventRoster(ctx context.Context, eventName string) ([]imsj
 	return *bod.(*[]imsjson.Person), resp
 }
 
+// getPersonnelByID fetches one person's profile-card view (GET ?person_id=&event=),
+// scoped to an event so the row carries that event's participation. Backs the person
+// profile card.
+func (a ApiHelper) getPersonnelByID(ctx context.Context, personID int64, eventName string) ([]imsjson.Person, *http.Response) {
+	a.t.Helper()
+	path := a.serverURL.JoinPath("/ims/api/personnel").String() +
+		"?person_id=" + strconv.FormatInt(personID, 10)
+	if eventName != "" {
+		path += "&event=" + url.QueryEscape(eventName)
+	}
+	bod, resp := a.imsGet(ctx, path, &[]imsjson.Person{})
+	return *bod.(*[]imsjson.Person), resp
+}
+
 // setParticipation upserts a person's per-event participation via the dedicated
 // endpoint (enroll / mark not-present / eject), without touching their profile.
 func (a ApiHelper) setParticipation(ctx context.Context, personID int64, eventName string, body api.SetParticipationRequest) *http.Response {

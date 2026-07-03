@@ -1,0 +1,65 @@
+//
+// See the file COPYRIGHT for copyright information.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+//
+
+package template
+
+// PersonProfileModal is a read-only "who is this person" card, opened by clicking
+// a person in an incident's People list (ims.ts openPersonProfileModal). It fetches
+// GET /ims/api/personnel?person_id=&event= and shows the fields the viewer's role is
+// allowed to see: fair name + full legal name + this event's role/wristband for
+// anyone, and email/phone only for a personnel admin (the server withholds contact
+// info for everyone else, so hiding the rows here just avoids blank labels). IDs are
+// namespaced "person_profile_*". Fields with no value have their row hidden by the
+// client.
+templ PersonProfileModal() {
+  <div class="modal no-print" id="personProfileModal" tabindex="-1" aria-labelledby="personProfileModalLabel" aria-hidden="true">
+    <div class="modal-dialog">
+      <div class="modal-content">
+        <div class="modal-header">
+          <p class="modal-title fs-5" id="personProfileModalLabel">Person</p>
+          <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close" />
+        </div>
+        <div class="modal-body">
+          <div id="person_profile_loading" class="text-body-secondary small">Loading…</div>
+          <div id="person_profile_error" class="text-danger small hidden"></div>
+          <dl id="person_profile_fields" class="row mb-0 hidden">
+            <dt class="col-sm-4 text-body-secondary" id="person_profile_fair_name_row">Fair Name</dt>
+            <dd class="col-sm-8" id="person_profile_fair_name"></dd>
+
+            <dt class="col-sm-4 text-body-secondary" id="person_profile_legal_name_row">Full Legal Name</dt>
+            <dd class="col-sm-8" id="person_profile_legal_name"></dd>
+
+            <dt class="col-sm-4 text-body-secondary hidden" id="person_profile_role_row">Role</dt>
+            <dd class="col-sm-8 hidden" id="person_profile_role"></dd>
+
+            <dt class="col-sm-4 text-body-secondary hidden" id="person_profile_wristband_row">Wristband</dt>
+            <dd class="col-sm-8 hidden" id="person_profile_wristband"></dd>
+
+            <!-- Contact info: only sent to (and shown for) a personnel admin. -->
+            <dt class="col-sm-4 text-body-secondary hidden" id="person_profile_email_row">Email</dt>
+            <dd class="col-sm-8 hidden" id="person_profile_email"></dd>
+
+            <dt class="col-sm-4 text-body-secondary hidden" id="person_profile_phone_row">Phone</dt>
+            <dd class="col-sm-8 hidden" id="person_profile_phone"></dd>
+          </dl>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+        </div>
+      </div>
+    </div>
+  </div>
+}
