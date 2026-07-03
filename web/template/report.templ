@@ -170,7 +170,7 @@ templ Report(deployment, versionName, versionRef, eventName string) {
           <div class="journal_filter_toggles no-print mb-1" id="history_toggle">
             <label class="control-label me-3">
               <input id="show_history_checkbox" type="checkbox" onchange="applyJournalFilters()"/>
-              Changes History
+              Change History
             </label>
             <label class="control-label me-3">
               <input id="show_stricken_checkbox" type="checkbox" onchange="applyJournalFilters()"/>
@@ -183,7 +183,7 @@ templ Report(deployment, versionName, versionRef, eventName string) {
                  an existing person or create one inline; blank = yourself. -->
             <div class="flex-input-container no-print mb-1">
               <label for="on_behalf_of_add" class="control-label">On behalf of:</label>
-              <div class="position-relative auto-width">
+              <div class="position-relative flex-grow-1">
                 <input
                         type="text" id="on_behalf_of_add" aria-label="On behalf of"
                         autocomplete="off"
