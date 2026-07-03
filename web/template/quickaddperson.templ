@@ -33,9 +33,12 @@ templ QuickAddPersonModal() {
         </div>
         <div class="modal-body">
           <p class="text-body-secondary small mb-3">This person isn't in the system yet — fill in their details to add them.</p>
-          <!-- Fair Name (the radio callsign) on top: it's what you typed to search
-               and the identity most people are known by. openQuickAddPersonModal
-               seeds it with the typed text; the access toggle relabels it required. -->
+          <!-- These identity/contact fields mirror the People page's Add-Person create
+               form (web/template/people.templ) field-for-field so the two forms stay
+               consistent; keep them in sync. Fair Name (the radio callsign) sits on
+               top: it's what you typed to search and the identity most people are known
+               by. openQuickAddPersonModal seeds it with the typed text; the access
+               toggle relabels the fair name and email required. -->
           <div class="form-floating mb-2">
             <input id="quick_add_person_handle" type="text" class="form-control" autocomplete="off" placeholder="Fair Name" />
             <label id="quick_add_person_handle_label" for="quick_add_person_handle">Fair Name</label>
@@ -44,18 +47,26 @@ templ QuickAddPersonModal() {
             <input id="quick_add_person_name" type="text" class="form-control" autocomplete="off" placeholder="Full Legal Name" />
             <label for="quick_add_person_name">Full Legal Name</label>
           </div>
-          <div class="form-text mb-3">A fair name or full legal name records the person. They get no login unless you add one below.</div>
+          <!-- Email and phone are contact info, collectable for anyone at the fair
+               (with or without a login). Email doubles as the login identifier when
+               access is provided, so the access toggle relabels it required. -->
+          <div class="form-floating mb-2">
+            <input id="quick_add_person_email" type="email" class="form-control" autocomplete="off" placeholder="Email" />
+            <label id="quick_add_person_email_label" for="quick_add_person_email">Email (optional)</label>
+          </div>
+          <div class="form-floating mb-2">
+            <input id="quick_add_person_phone" type="tel" class="form-control" autocomplete="off" placeholder="Phone" />
+            <label for="quick_add_person_phone">Phone (optional)</label>
+          </div>
+          <div class="form-text mb-3">A fair name or full legal name (plus optional email/phone) records someone at the fair as a contact. They get no login unless you add one below.</div>
           <!-- Access is opt-in: a person attached to an incident usually needs no login.
-               The button reveals the credential fields and makes a handle + email required. -->
+               The button reveals the credential fields and makes the fair name + email
+               above required. -->
           <button type="button" class="btn btn-outline-primary w-100 mb-3" id="quick_add_person_access_toggle">
             Provide Access to IMS
           </button>
           <div id="quick_add_person_access_section" class="hidden">
-            <div class="form-text mb-2">Signing in needs the fair name above, an email, and a password.</div>
-            <div class="form-floating mb-3">
-              <input id="quick_add_person_email" type="email" class="form-control" autocomplete="off" placeholder="Email" />
-              <label for="quick_add_person_email">Email (required for login)</label>
-            </div>
+            <div class="form-text mb-2">Signing in needs an email, a fair name (both above), and a password.</div>
             <div class="input-group mb-3">
               <div class="form-floating">
                 <input id="quick_add_person_password" type="password" class="form-control" autocomplete="new-password" placeholder="Password" />
