@@ -38,6 +38,13 @@ import "net/http"
 // style-src keeps 'unsafe-inline' (Bootstrap + inline style attributes; style
 // injection is far lower risk than script injection). img-src allows data: URIs,
 // which Bootstrap uses for inline SVG icons in CSS.
+//
+// Before flipping to enforcing, besides migrating the inline handlers/importmap
+// above, the attachment preview must be accounted for: it renders fetched files
+// from blob: URLs in an <img>/<iframe> (ims.ts showAttachmentPreview), which this
+// img-src (no blob:) and the missing frame-src (so default-src 'self') would then
+// block. The enforcing policy will need blob: in img-src and a frame-src (or
+// child-src) blob:. Harmless under report-only today; noted so it isn't missed.
 const ContentSecurityPolicy = "default-src 'self'; " +
 	"base-uri 'self'; " +
 	"object-src 'none'; " +
