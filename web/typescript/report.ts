@@ -369,7 +369,7 @@ function drawIncident(): void {
 //
 
 function drawSummary(): void {
-    el.reportSummary.placeholder = "One-line summary. **Pretty-please include an IMS# here**";
+    el.reportSummary.placeholder = "One-line summary of the report";
     if (report!.summary) {
         el.reportSummary.value = report!.summary;
         el.reportSummary.placeholder = "";
