@@ -2024,7 +2024,7 @@ function appendIncidentRef(parent: HTMLElement, num: number): void {
     const summary = journalRenderContext.incidentSummaries.get(num);
     if (summary) {
         const s: HTMLSpanElement = document.createElement("span");
-        s.classList.add("journal_entry_meta_detail");
+        s.classList.add("text-body-secondary");
         s.textContent = ` (${summary})`;
         parent.append(s);
     }
@@ -2139,11 +2139,9 @@ function journalEntryElement(entry: JournalEntry): HTMLDivElement {
         entryContainer.classList.add("journal_entry_from_report");
     }
 
-    // Multiline header: the author on its own line, then a muted detail line
-    // (timestamp · via report/VS #N · on behalf of), with the Strike/Unstrike
-    // button floated to the right.
+    // Add the timestamp and author, with a Strike/Unstrike button
 
-    const metaDataContainer: HTMLDivElement = document.createElement("div");
+    const metaDataContainer: HTMLParagraphElement = document.createElement("p");
     metaDataContainer.classList.add("journal_entry_metadata");
 
     if (strikable) {
@@ -2190,40 +2188,16 @@ function journalEntryElement(entry: JournalEntry): HTMLDivElement {
         metaDataContainer.append(strikeContainer);
     }
 
-    // First line: author.
+    const timeStampContainer = timeElement(new Date(entry.created!));
+    timeStampContainer.classList.add("journal_entry_timestamp");
+
+    metaDataContainer.append(timeStampContainer, ", ");
+
     const authorContainer: HTMLSpanElement = document.createElement("span");
     authorContainer.textContent = entry.author??"(unknown)";
     authorContainer.classList.add("journal_entry_author");
+
     metaDataContainer.append(authorContainer);
-
-    // Second line: timestamp, then any source / on-behalf-of legends, each set off
-    // with a "·" separator.
-    const detailContainer: HTMLSpanElement = document.createElement("span");
-    detailContainer.classList.add("journal_entry_meta_detail");
-
-    const sep = (): HTMLSpanElement => {
-        const s: HTMLSpanElement = document.createElement("span");
-        s.classList.add("journal_entry_meta_sep");
-        s.textContent = "·";
-        return s;
-    };
-
-    const timeStampContainer = timeElement(new Date(entry.created!));
-    timeStampContainer.classList.add("journal_entry_timestamp");
-    detailContainer.append(timeStampContainer);
-
-    // Source: an entry merged in from an attached report or visit links back to it.
-    if (entry.reportNum) {
-        const link: HTMLAnchorElement = document.createElement("a");
-        link.textContent = "report #" + entry.reportNum;
-        link.href = `${urlReplace(url_viewReports)}/${entry.reportNum}`;
-        detailContainer.append(sep(), "via ", link);
-    } else if (entry.visitNum) {
-        const link: HTMLAnchorElement = document.createElement("a");
-        link.textContent = "VS #" + entry.visitNum;
-        link.href = `${urlReplace(url_viewVisits)}/${entry.visitNum}`;
-        detailContainer.append(sep(), "via ", link);
-    }
 
     // "On behalf of" legend (6m): when an entry was filed for someone else, show
     // who. Works here for the report page and the incident merged view alike.
@@ -2232,10 +2206,31 @@ function journalEntryElement(entry: JournalEntry): HTMLDivElement {
         const obo: HTMLSpanElement = document.createElement("span");
         obo.textContent = personDisplayLabel({name: onBehalfOf.name, handle: onBehalfOf.handle});
         obo.classList.add("journal_entry_on_behalf_of");
-        detailContainer.append(sep(), "on behalf of ", obo);
+        metaDataContainer.append(" on behalf of ", obo);
     }
 
-    metaDataContainer.append(detailContainer);
+    if (entry.reportNum) {
+        metaDataContainer.append(" ");
+
+        const link: HTMLAnchorElement = document.createElement("a");
+        link.textContent = "report #" + entry.reportNum;
+        link.href = `${urlReplace(url_viewReports)}/${entry.reportNum}`;
+
+        metaDataContainer.append("(via ", link, ")");
+        metaDataContainer.classList.add("journal_entry_source");
+    } else if (entry.visitNum) {
+        metaDataContainer.append(" ");
+
+        const link: HTMLAnchorElement = document.createElement("a");
+        link.textContent = "VS #" + entry.visitNum;
+        link.href = `${urlReplace(url_viewVisits)}/${entry.visitNum}`;
+
+        metaDataContainer.append("(via ", link, ")");
+        metaDataContainer.classList.add("journal_entry_source");
+    }
+
+    metaDataContainer.append(":");
+
     entryContainer.append(metaDataContainer);
 
     // Add journal text. System ("Changes History") entries get the enriched,
