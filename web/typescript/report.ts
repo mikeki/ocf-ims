@@ -22,7 +22,7 @@ declare global {
     interface Window {
         makeIncident: ()=>Promise<void>;
         editSummary: ()=>Promise<void>;
-        toggleShowHistory: ()=>void;
+        applyJournalFilters: ()=>void;
         journalEntryEdited: ()=>void;
         submitJournalEntry: ()=>void;
         attachFile: ()=>void;
@@ -74,7 +74,7 @@ async function initReportPage(): Promise<void> {
 
     window.makeIncident = makeIncident;
     window.editSummary = editSummary;
-    window.toggleShowHistory = ims.toggleShowHistory;
+    window.applyJournalFilters = ims.applyJournalFilters;
     window.journalEntryEdited = ims.journalEntryEdited;
     window.submitJournalEntry = ims.submitJournalEntry;
     ims.setJournalDraftPageType("report");
@@ -247,7 +247,7 @@ async function loadAndDisplayReport(): Promise<void> {
     drawNumber();
     drawIncident();
     drawSummary();
-    ims.toggleShowHistory();
+    ims.applyJournalFilters();
     ims.drawJournalEntries(report.journal_entries??[]);
     ims.clearErrorMessage();
 

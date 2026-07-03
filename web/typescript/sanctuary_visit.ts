@@ -50,7 +50,7 @@ declare global {
         removePerson: (el: HTMLElement)=>void;
         setPersonInvolvement: (el: HTMLInputElement)=>void;
 
-        toggleShowHistory: () => void;
+        applyJournalFilters: () => void;
         journalEntryEdited: ()=>void;
         submitJournalEntry: ()=>void;
         attachFile: () => void;
@@ -154,7 +154,7 @@ async function initSanctuaryVisitPage(): Promise<void> {
     window.removePerson = removePerson;
     window.setPersonInvolvement = setPersonInvolvement;
 
-    window.toggleShowHistory = ims.toggleShowHistory;
+    window.applyJournalFilters = ims.applyJournalFilters;
     window.journalEntryEdited = ims.journalEntryEdited;
     window.submitJournalEntry = ims.submitJournalEntry;
     window.attachFile = attachFile;
@@ -310,7 +310,7 @@ function displayVisit(): void {
     }
 
     drawVisitFields();
-    ims.toggleShowHistory();
+    ims.applyJournalFilters();
     ims.drawJournalEntries(visit.journal_entries??[]);
     ims.clearErrorMessage();
 

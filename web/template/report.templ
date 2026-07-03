@@ -167,10 +167,16 @@ templ Report(deployment, versionName, versionRef, eventName string) {
       <div class="card">
         <label class="control-label card-header">Details</label>
         <div id="journal_entry_well" class="card-body">
-          <label class="control-label" id="history_toggle">
-            <input id="history_checkbox" type="checkbox" onchange="toggleShowHistory()"/>
-            Show history and stricken
-          </label>
+          <div class="journal_filter_toggles no-print mb-1" id="history_toggle">
+            <label class="control-label me-3">
+              <input id="show_history_checkbox" type="checkbox" onchange="applyJournalFilters()"/>
+              Changes History
+            </label>
+            <label class="control-label me-3">
+              <input id="show_stricken_checkbox" type="checkbox" onchange="applyJournalFilters()"/>
+              Stricken
+            </label>
+          </div>
           <div id="journal_entries"></div>
           <div class="card-footer">
             <!-- "On behalf of" (6m): file the next entry for someone else. Search

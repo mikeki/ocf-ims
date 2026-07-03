@@ -21,6 +21,7 @@ import * as ims from "./ims.ts";
 declare global {
     interface Window {
         editState: ()=>Promise<void>;
+        editPriority: ()=>Promise<void>;
         editOutcome: ()=>Promise<void>;
         editIncidentSummary: ()=>Promise<void>;
         editLocationArea: ()=>Promise<void>;
@@ -39,7 +40,7 @@ declare global {
         linkIncident: (el: HTMLInputElement)=>Promise<void>;
         attachFile: ()=>void;
         drawMergedJournalEntries: ()=>void;
-        toggleShowHistory: ()=>void;
+        applyJournalFilters: ()=>void;
         journalEntryEdited: ()=>void;
         submitJournalEntry: ()=>void;
     }
@@ -67,6 +68,7 @@ const el = {
     incidentNumber: ims.typedElement("incident_number", HTMLInputElement),
     incidentSummary: ims.typedElement("incident_summary", HTMLInputElement),
     incidentState: ims.typedElement("incident_state", HTMLSelectElement),
+    incidentPriority: ims.typedElement("incident_priority", HTMLSelectElement),
     incidentOutcome: ims.typedElement("incident_outcome", HTMLSelectElement),
     startedDatetime: ims.typedElement("started_datetime", HTMLInputElement) as ims.FlatpickrHTMLInputElement,
     startedDatetimeTz: ims.typedElement("started_datetime_tz", HTMLSpanElement),
@@ -101,7 +103,7 @@ const el = {
 
     linkedIncidents: ims.typedElement("linked_incidents", HTMLElement),
 
-    historyCheckbox: ims.typedElement("history_checkbox", HTMLInputElement),
+    historyCheckbox: ims.typedElement("show_history_checkbox", HTMLInputElement),
     journalEntryAdd: ims.typedElement("journal_entry_add", HTMLTextAreaElement),
     journalEntrySubmit: ims.typedElement("journal_entry_submit", HTMLElement),
     attachFile: ims.typedElement("attach_file", HTMLInputElement),
@@ -129,6 +131,7 @@ async function initIncidentPage(): Promise<void> {
     }
 
     window.editState = editState;
+    window.editPriority = editPriority;
     window.editOutcome = editOutcome;
     window.editIncidentSummary = editIncidentSummary;
     window.editLocationArea = editLocationArea;
@@ -147,7 +150,7 @@ async function initIncidentPage(): Promise<void> {
     window.linkIncident = linkIncident;
     window.attachFile = attachFile;
     window.drawMergedJournalEntries = drawMergedJournalEntries;
-    window.toggleShowHistory = ims.toggleShowHistory;
+    window.applyJournalFilters = ims.applyJournalFilters;
     window.journalEntryEdited= ims.journalEntryEdited;
     window.submitJournalEntry = ims.submitJournalEntry;
     ims.setJournalDraftPageType("incident");
@@ -613,7 +616,7 @@ function drawIncidentFields() {
     drawLocationArea();
     drawLocationBooth();
     drawLocationDescription();
-    ims.toggleShowHistory();
+    ims.applyJournalFilters();
     drawMergedJournalEntries();
 
     el.journalEntryAdd.addEventListener("input", ims.journalEntryEdited);
@@ -710,13 +713,8 @@ function drawStarted(): void {
 //
 
 function drawPriority(): void {
-    const priorityElement = document.getElementById("incident_priority");
-    // priority is currently hidden from the incident page, so we should expect this early return
-    if (priorityElement == null) {
-        return;
-    }
     ims.selectOptionWithValue(
-        priorityElement as HTMLSelectElement,
+        el.incidentPriority,
         (incident!.priority??"").toString(),
     )
 }
@@ -1122,6 +1120,22 @@ function drawMergedJournalEntries(): void {
 
     entries.sort(ims.compareJournalEntries);
 
+    // Give the shared renderer what it needs to enrich Changes History entries:
+    // area slugs -> names, and linked-incident numbers -> summaries.
+    const areaSlugToName = new Map<string, string>();
+    for (const area of eventAreas) {
+        if (area.slug) {
+            areaSlugToName.set(area.slug, area.name??area.slug);
+        }
+    }
+    const incidentSummaries = new Map<number, string>();
+    for (const linked of (incident!.linked_incidents??[])) {
+        if (linked.number != null && linked.summary) {
+            incidentSummaries.set(linked.number, linked.summary);
+        }
+    }
+    ims.setJournalRenderContext({areaSlugToName, incidentSummaries});
+
     ims.drawJournalEntries(entries);
 }
 
@@ -1365,6 +1379,10 @@ async function editState(): Promise<void> {
     }
 
     await ims.editFromElement(el.incidentState, "state");
+}
+
+async function editPriority(): Promise<void> {
+    await ims.editFromElement(el.incidentPriority, "priority", (v: string): number|null => ims.parseInt10(v));
 }
 
 async function editOutcome(): Promise<void> {

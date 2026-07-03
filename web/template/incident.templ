@@ -139,6 +139,20 @@ templ Incident(deployment, versionName, versionRef, eventName string) {
           </select>
         </div>
       </div>
+      <div class="col-sm-6 py-1">
+        <div class="input-group">
+          <label for="incident_priority" class="control-label input-group-text">Priority</label>
+          <select
+                  id="incident_priority"
+                  class="form-control form-select form-select-sm auto-width"
+                  onchange="editPriority()"
+          >
+            <option value="5">High</option>
+            <option value="3">Normal</option>
+            <option value="1">Low</option>
+          </select>
+        </div>
+      </div>
     </div>
 
     <!-- Summary -->
@@ -340,10 +354,20 @@ templ Incident(deployment, versionName, versionRef, eventName string) {
         <div class="card">
           <label class="control-label card-header">Entries from Incident and attached Reports</label>
           <div id="journal_entry_well" class="card-body">
-            <label class="control-label">
-              <input id="history_checkbox" type="checkbox" onchange="toggleShowHistory()"/>
-              Show history and stricken
-            </label>
+            <div class="journal_filter_toggles no-print mb-1">
+              <label class="control-label me-3">
+                <input id="show_reports_checkbox" type="checkbox" checked onchange="applyJournalFilters()"/>
+                Attached Reports
+              </label>
+              <label class="control-label me-3">
+                <input id="show_history_checkbox" type="checkbox" onchange="applyJournalFilters()"/>
+                Changes History
+              </label>
+              <label class="control-label me-3">
+                <input id="show_stricken_checkbox" type="checkbox" onchange="applyJournalFilters()"/>
+                Stricken
+              </label>
+            </div>
             <div id="journal_entries"></div>
           </div>
           <div class="card-footer">

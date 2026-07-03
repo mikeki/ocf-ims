@@ -1979,6 +1979,141 @@ export function renderPersonHandles(data: IncidentPerson[]|null, type: RenderTyp
 // Populate journal entry text
 //
 
+// Context the incident page supplies so rendered Changes History (system) entries
+// can be enriched: area slugs shown as their names, and referenced incident numbers
+// linkified with a summary. Other pages (report/visit) leave this empty; their
+// system entries simply render without the incident-specific enrichment.
+interface JournalRenderContext {
+    areaSlugToName: Map<string, string>;
+    incidentSummaries: Map<number, string>; // incident number -> summary (this event)
+}
+
+let journalRenderContext: JournalRenderContext = {
+    areaSlugToName: new Map(),
+    incidentSummaries: new Map(),
+};
+
+export function setJournalRenderContext(ctx: Partial<JournalRenderContext>): void {
+    journalRenderContext = {
+        areaSlugToName: ctx.areaSlugToName ?? new Map(),
+        incidentSummaries: ctx.incidentSummaries ?? new Map(),
+    };
+}
+
+// priorityLabel maps a stored numeric priority to its named tier. Priority runs
+// High=5 .. Low=1 (see json.IncidentPriority*); 4-5 read as High, 3 as Normal,
+// 1-2 as Low.
+export function priorityLabel(priority: number): string {
+    if (priority >= 4) {
+        return "High";
+    }
+    if (priority <= 2) {
+        return "Low";
+    }
+    return "Normal";
+}
+
+// appendIncidentRef renders "#N" as a link to that incident's page, followed by
+// the incident's summary in muted text when it's known to this page.
+function appendIncidentRef(parent: HTMLElement, num: number): void {
+    const link: HTMLAnchorElement = document.createElement("a");
+    link.textContent = `#${num}`;
+    link.href = `${urlReplace(url_viewIncidents)}/${num}`;
+    parent.append(link);
+
+    const summary = journalRenderContext.incidentSummaries.get(num);
+    if (summary) {
+        const s: HTMLSpanElement = document.createElement("span");
+        s.classList.add("journal_entry_meta_detail");
+        s.textContent = ` (${summary})`;
+        parent.append(s);
+    }
+}
+
+// appendLinkedIncidentRefs renders a comma-separated "EventName #N" list (as
+// produced server-side for "Incident linked/unlinked" lines), linkifying each #N.
+function appendLinkedIncidentRefs(parent: HTMLElement, value: string): void {
+    value.split(", ").forEach((part: string, i: number): void => {
+        if (i > 0) {
+            parent.append(", ");
+        }
+        const m = /#(\d+)/.exec(part);
+        if (m == null) {
+            parent.append(part);
+            return;
+        }
+        const prefix = part.slice(0, m.index);
+        if (prefix) {
+            parent.append(prefix);
+        }
+        appendIncidentRef(parent, parseInt(m[1]!, 10));
+    });
+}
+
+// renderSystemLine renders one line of a Changes History (system) entry into p,
+// bolding the changed value and enriching a few line types: area slugs become
+// names, outcome/state/priority codes become labels, and incident references
+// become links.
+function renderSystemLine(p: HTMLElement, line: string): void {
+    const sep = line.indexOf(": ");
+    if (sep < 0) {
+        // No value part, e.g. "Cleared outcome" / "Cleared location area".
+        p.textContent = line;
+        return;
+    }
+    const label = line.slice(0, sep);
+    let value = line.slice(sep + 2);
+
+    p.append(`${label}: `);
+
+    // Incident-reference lines get linkified rather than bolded.
+    if (label === "Attached to incident" || label === "Detached from incident") {
+        const n = parseInt(value, 10);
+        if (Number.isFinite(n)) {
+            appendIncidentRef(p, n);
+            return;
+        }
+    }
+    if (label === "Incident linked" || label === "Incident unlinked") {
+        appendLinkedIncidentRefs(p, value);
+        return;
+    }
+
+    // Translate stored codes to the labels the rest of the UI shows.
+    if (label === "Changed location area") {
+        value = journalRenderContext.areaSlugToName.get(value) ?? value;
+    } else if (label === "Changed outcome") {
+        value = outcomeNameFromID(value as IncidentOutcome);
+    } else if (label === "Changed state") {
+        value = stateNameFromID(value as IncidentState);
+    } else if (label === "Changed priority") {
+        const n = parseInt(value, 10);
+        if (Number.isFinite(n)) {
+            value = priorityLabel(n);
+        }
+    }
+
+    const strong: HTMLElement = document.createElement("strong");
+    strong.classList.add("journal_change_value");
+    strong.textContent = value;
+    p.append(strong);
+}
+
+// appendSystemEntryText renders a Changes History (system) entry, one <p> per
+// change line, via renderSystemLine.
+function appendSystemEntryText(container: HTMLElement, text: string): void {
+    for (const raw of text.split("\n")) {
+        const line = raw.trim();
+        if (line === "") {
+            continue;
+        }
+        const p: HTMLParagraphElement = document.createElement("p");
+        p.classList.add("journal_entry_text");
+        renderSystemLine(p, line);
+        container.append(p);
+    }
+}
+
 function journalEntryElement(entry: JournalEntry): HTMLDivElement {
     // Build a container for the entry
 
@@ -1998,10 +2133,17 @@ function journalEntryElement(entry: JournalEntry): HTMLDivElement {
     if (entry.reportNum || entry.visitNum) {
         entryContainer.classList.add("journal_entry_merged");
     }
+    // The "Attached Reports" toggle hides only report-sourced entries; visit-sourced
+    // entries are not covered by it.
+    if (entry.reportNum) {
+        entryContainer.classList.add("journal_entry_from_report");
+    }
 
-    // Add the timestamp and author, with a Strike/Unstrike button
+    // Multiline header: the author on its own line, then a muted detail line
+    // (timestamp · via report/VS #N · on behalf of), with the Strike/Unstrike
+    // button floated to the right.
 
-    const metaDataContainer: HTMLParagraphElement = document.createElement("p");
+    const metaDataContainer: HTMLDivElement = document.createElement("div");
     metaDataContainer.classList.add("journal_entry_metadata");
 
     if (strikable) {
@@ -2048,16 +2190,40 @@ function journalEntryElement(entry: JournalEntry): HTMLDivElement {
         metaDataContainer.append(strikeContainer);
     }
 
-    const timeStampContainer = timeElement(new Date(entry.created!));
-    timeStampContainer.classList.add("journal_entry_timestamp");
-
-    metaDataContainer.append(timeStampContainer, ", ");
-
+    // First line: author.
     const authorContainer: HTMLSpanElement = document.createElement("span");
     authorContainer.textContent = entry.author??"(unknown)";
     authorContainer.classList.add("journal_entry_author");
-
     metaDataContainer.append(authorContainer);
+
+    // Second line: timestamp, then any source / on-behalf-of legends, each set off
+    // with a "·" separator.
+    const detailContainer: HTMLSpanElement = document.createElement("span");
+    detailContainer.classList.add("journal_entry_meta_detail");
+
+    const sep = (): HTMLSpanElement => {
+        const s: HTMLSpanElement = document.createElement("span");
+        s.classList.add("journal_entry_meta_sep");
+        s.textContent = "·";
+        return s;
+    };
+
+    const timeStampContainer = timeElement(new Date(entry.created!));
+    timeStampContainer.classList.add("journal_entry_timestamp");
+    detailContainer.append(timeStampContainer);
+
+    // Source: an entry merged in from an attached report or visit links back to it.
+    if (entry.reportNum) {
+        const link: HTMLAnchorElement = document.createElement("a");
+        link.textContent = "report #" + entry.reportNum;
+        link.href = `${urlReplace(url_viewReports)}/${entry.reportNum}`;
+        detailContainer.append(sep(), "via ", link);
+    } else if (entry.visitNum) {
+        const link: HTMLAnchorElement = document.createElement("a");
+        link.textContent = "VS #" + entry.visitNum;
+        link.href = `${urlReplace(url_viewVisits)}/${entry.visitNum}`;
+        detailContainer.append(sep(), "via ", link);
+    }
 
     // "On behalf of" legend (6m): when an entry was filed for someone else, show
     // who. Works here for the report page and the incident merged view alike.
@@ -2066,42 +2232,27 @@ function journalEntryElement(entry: JournalEntry): HTMLDivElement {
         const obo: HTMLSpanElement = document.createElement("span");
         obo.textContent = personDisplayLabel({name: onBehalfOf.name, handle: onBehalfOf.handle});
         obo.classList.add("journal_entry_on_behalf_of");
-        metaDataContainer.append(" on behalf of ", obo);
+        detailContainer.append(sep(), "on behalf of ", obo);
     }
 
-    if (entry.reportNum) {
-        metaDataContainer.append(" ");
-
-        const link: HTMLAnchorElement = document.createElement("a");
-        link.textContent = "report #" + entry.reportNum;
-        link.href = `${urlReplace(url_viewReports)}/${entry.reportNum}`;
-
-        metaDataContainer.append("(via ", link, ")");
-        metaDataContainer.classList.add("journal_entry_source");
-    } else if (entry.visitNum) {
-        metaDataContainer.append(" ");
-
-        const link: HTMLAnchorElement = document.createElement("a");
-        link.textContent = "VS #" + entry.visitNum;
-        link.href = `${urlReplace(url_viewVisits)}/${entry.visitNum}`;
-
-        metaDataContainer.append("(via ", link, ")");
-        metaDataContainer.classList.add("journal_entry_source");
-    }
-
-    metaDataContainer.append(":");
-
+    metaDataContainer.append(detailContainer);
     entryContainer.append(metaDataContainer);
 
-    // Add journal text
-    const paragraphs: string[] = entry.text!.split(/\n\s*\n/);
-    for (const paragraph of paragraphs) {
-        const textContainer: HTMLParagraphElement = document.createElement("p");
-        // Don't collapse whitespace; leave it how the user entered it.
-        textContainer.style.whiteSpace = "pre-wrap";
-        textContainer.classList.add("journal_entry_text");
-        appendJournalParagraph(textContainer, paragraph, entry.mentions ?? null);
-        entryContainer.append(textContainer);
+    // Add journal text. System ("Changes History") entries get the enriched,
+    // per-line rendering (bolded values, area names, linkified incidents); user
+    // entries keep the verbatim, @mention-aware paragraph rendering.
+    if (entry.system_entry) {
+        appendSystemEntryText(entryContainer, entry.text!);
+    } else {
+        const paragraphs: string[] = entry.text!.split(/\n\s*\n/);
+        for (const paragraph of paragraphs) {
+            const textContainer: HTMLParagraphElement = document.createElement("p");
+            // Don't collapse whitespace; leave it how the user entered it.
+            textContainer.style.whiteSpace = "pre-wrap";
+            textContainer.classList.add("journal_entry_text");
+            appendJournalParagraph(textContainer, paragraph, entry.mentions ?? null);
+            entryContainer.append(textContainer);
+        }
     }
     if (entry.attachment?.name && (pathIds.incidentNumber || pathIds.reportNumber || pathIds.visitNumber)) {
 
@@ -2788,12 +2939,24 @@ export async function submitJournalEntry(): Promise<void> {
 // Generated history display
 //
 
-export function toggleShowHistory(): void {
-    if ((document.getElementById("history_checkbox") as HTMLInputElement).checked) {
-        document.getElementById("journal_entries")!.classList.remove("hide-history");
-    } else {
-        document.getElementById("journal_entries")!.classList.add("hide-history");
+// applyJournalFilters reads the three independent journal-view toggles and shows
+// or hides each category of entry accordingly: Changes History (system entries),
+// stricken entries, and entries merged in from attached reports. A page that lacks
+// a given checkbox (e.g. the report/visit pages have no "attached reports" toggle)
+// leaves that category visible. Call this on load and from each toggle's onchange.
+export function applyJournalFilters(): void {
+    const container = document.getElementById("journal_entries");
+    if (container == null) {
+        return;
     }
+    const apply = (checkboxId: string, hideClass: string): void => {
+        const cb = document.getElementById(checkboxId) as HTMLInputElement|null;
+        const shown = cb == null ? true : cb.checked;
+        container.classList.toggle(hideClass, !shown);
+    };
+    apply("show_history_checkbox", "hide-history");
+    apply("show_stricken_checkbox", "hide-stricken");
+    apply("show_reports_checkbox", "hide-reports");
 }
 
 export async function editFromElement(
