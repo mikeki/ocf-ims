@@ -416,6 +416,14 @@ function initDataTables(tablePrereqs: Promise<void>): void {
                 "responsivePriority": 3,
             },
             {   // 3
+                "name": "incident_priority",
+                "className": "incident_priority text-center",
+                "data": "priority",
+                "defaultContent": null,
+                "render": renderPriority,
+                "responsivePriority": 9,
+            },
+            {   // 4
                 "name": "incident_summary",
                 "className": "incident_summary all",
                 "data": "summary",
@@ -424,7 +432,7 @@ function initDataTables(tablePrereqs: Promise<void>): void {
                 "width": "40%",
                 // "all" class --> very high responsivePriority
             },
-            {   // 4
+            {   // 5
                 "name": "incident_types",
                 "className": "incident_types",
                 "data": "incident_type_ids",
@@ -432,7 +440,7 @@ function initDataTables(tablePrereqs: Promise<void>): void {
                 "render": renderIncidentTypes,
                 "responsivePriority": 4,
             },
-            {   // 5
+            {   // 6
                 "name": "incident_location",
                 "className": "incident_location",
                 "data": "location",
@@ -440,7 +448,7 @@ function initDataTables(tablePrereqs: Promise<void>): void {
                 "render": ims.renderLocation,
                 "responsivePriority": 5,
             },
-            {   // 6
+            {   // 7
                 "name": "incident_person_handles",
                 "className": "incident_person_handles",
                 "data": "people",
@@ -448,7 +456,7 @@ function initDataTables(tablePrereqs: Promise<void>): void {
                 "render": ims.renderPersonHandles,
                 "responsivePriority": 6,
             },
-            {   // 7
+            {   // 8
                 "name": "incident_last_modified",
                 "className": "incident_last_modified text-center",
                 "data": "last_modified",
@@ -486,6 +494,23 @@ function initDataTables(tablePrereqs: Promise<void>): void {
             row.addEventListener("auxclick", openLink);
         },
     });
+}
+
+// renderPriority shows the named priority tier and sorts by the raw numeric value
+// (High=5 sorts above Low=1). Priority defaults to Normal when unset.
+function renderPriority(priority: number|null, type: string, _incident: ims.Incident): ims.RenderValue {
+    const p = priority??3;
+    switch (type) {
+        case "display":
+        case "filter":
+        case "type":
+        case undefined:
+            return ims.priorityLabel(p);
+        case "sort":
+            return p;
+        default:
+            return undefined;
+    }
 }
 
 function renderSummary(_data: string|null, type: ims.RenderType, incident: ims.Incident): ims.RenderValue {
