@@ -1165,8 +1165,8 @@ export async function createRegistryPerson(name: string, eventName: string): Pro
 
 // openQuickAddPersonModal shows the shared QuickAddPersonModal (web/template/quickaddperson.templ)
 // pre-filled with the typed text as the FAIR NAME (the search-first picker is usually
-// fed a callsign), lets the user supply legal name/email/password and (when an event is
-// named) wristband/participation, then creates the person and resolves with it. Resolves
+// fed a callsign), lets the user supply legal name/email/phone/password and (when an event
+// is named) wristband/participation, then creates the person and resolves with it. Resolves
 // null if the user cancels or creation fails (the error is shown inline in the modal,
 // which stays open so they can retry). Pages must include @QuickAddPersonModal().
 export function openQuickAddPersonModal(prefillName: string, eventName: string): Promise<PersonSearchResult|null> {
@@ -1175,6 +1175,8 @@ export function openQuickAddPersonModal(prefillName: string, eventName: string):
     const handleEl = typedElement("quick_add_person_handle", HTMLInputElement);
     const handleLabelEl = typedElement("quick_add_person_handle_label", HTMLElement);
     const emailEl = typedElement("quick_add_person_email", HTMLInputElement);
+    const emailLabelEl = typedElement("quick_add_person_email_label", HTMLElement);
+    const phoneEl = typedElement("quick_add_person_phone", HTMLInputElement);
     const passwordEl = typedElement("quick_add_person_password", HTMLInputElement);
     const eventSectionEl = typedElement("quick_add_person_event_section", HTMLElement);
     const eventNameEl = typedElement("quick_add_person_event_name", HTMLElement);
@@ -1194,6 +1196,8 @@ export function openQuickAddPersonModal(prefillName: string, eventName: string):
     handleLabelEl.textContent = "Fair Name";
     nameEl.value = "";
     emailEl.value = "";
+    emailLabelEl.textContent = "Email (optional)";
+    phoneEl.value = "";
     passwordEl.value = "";
     passwordConfirmEl.value = "";
     wristbandEl.value = "";
@@ -1237,13 +1241,15 @@ export function openQuickAddPersonModal(prefillName: string, eventName: string):
             const nowShown = accessSectionEl.classList.toggle("hidden") === false;
             accessToggleEl.classList.toggle("active", nowShown);
             accessToggleEl.textContent = nowShown ? "Don't provide IMS access" : "Provide Access to IMS";
-            // The fair name is a top-level identity field; access just makes it (and
-            // the email) required for login. Relabel it, but never clear it.
+            // Fair name and email are top-level identity/contact fields; access just
+            // makes them required for login. Relabel them, but never clear them.
             handleLabelEl.textContent = nowShown ? "Fair Name (required for login)" : "Fair Name";
+            emailLabelEl.textContent = nowShown ? "Email (required for login)" : "Email (optional)";
             if (nowShown) {
                 (handleEl.value.trim() === "" ? handleEl : emailEl).focus();
             } else {
-                emailEl.value = "";
+                // Collapsing discards only the password; the email is contact info that
+                // stands on its own, so it's left in place.
                 passwordEl.value = "";
                 passwordConfirmEl.value = "";
                 passwordEl.type = "password";
@@ -1296,7 +1302,9 @@ export function openQuickAddPersonModal(prefillName: string, eventName: string):
                 name: name,
                 // The fair name is identity, sent whether or not access is granted.
                 handle: handle,
-                email: wantAccess ? emailEl.value.trim() : "",
+                // Email and phone are contact info, sent whether or not access is granted.
+                email: emailEl.value.trim(),
+                phone: phoneEl.value.trim(),
                 password: wantAccess ? passwordEl.value : "",
             };
             if (eventName) {
