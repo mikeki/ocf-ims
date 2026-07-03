@@ -44,7 +44,7 @@ const el = {
     createIncident: ims.typedElement("create_incident", HTMLElement),
 
     historyToggle: ims.typedElement("history_toggle", HTMLElement),
-    historyCheckbox: ims.typedElement("history_checkbox", HTMLInputElement),
+    historyCheckbox: ims.typedElement("show_history_checkbox", HTMLInputElement),
     journalEntryAdd: ims.typedElement("journal_entry_add", HTMLTextAreaElement),
     journalEntrySubmit: ims.typedElement("journal_entry_submit", HTMLElement),
     onBehalfOfAdd: ims.typedElement("on_behalf_of_add", HTMLInputElement),

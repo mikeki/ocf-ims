@@ -101,7 +101,7 @@ const el = {
     personAdd: ims.typedElement("person_add", HTMLInputElement),
     personAddResults: ims.typedElement("person_add_results", HTMLElement),
 
-    historyCheckbox: ims.typedElement("history_checkbox", HTMLInputElement),
+    historyCheckbox: ims.typedElement("show_history_checkbox", HTMLInputElement),
     journalEntryAdd: ims.typedElement("journal_entry_add", HTMLTextAreaElement),
     attachFile: ims.typedElement("attach_file", HTMLInputElement),
     attachFileInput: ims.typedElement("attach_file_input", HTMLInputElement),

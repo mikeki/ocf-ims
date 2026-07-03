@@ -189,28 +189,6 @@ h1, h2, h3, h4, h5, h6 {
   font-size: var(--font-size-smaller);
 }
 
-/* Multiline journal-entry header: the author stands alone on the first line, then
-   a muted detail line carries the timestamp, source ("via report #N") and any
-   "on behalf of" legend. The Strike/Unstrike button floats to the right. */
-.journal_entry_metadata {
-  margin-bottom: 0.25rem;
-}
-
-.journal_entry_author {
-  font-weight: 600;
-}
-
-.journal_entry_meta_detail {
-  display: block;
-  font-size: var(--font-size-smaller);
-  filter: opacity(75%);
-}
-
-.journal_entry_meta_sep {
-  margin: 0 0.35rem;
-  opacity: 0.5;
-}
-
 /* The changed value inside a rendered Changes History (system) entry line. */
 .journal_change_value {
   font-weight: 600;
