@@ -224,7 +224,14 @@ Key configuration concepts:
   `prod` bootstrap) plug into `conf.SeedProfile` + `store.Seed`.
 - **Attachments stores**: `local` (filesystem) or `s3` (AWS S3)
 
-To add demo/test users to the local directory, use the `add-demo-user` repo skill at `.claude/skills/add-demo-user/SKILL.md` — it covers password hashing, the seed file edit, applying inserts to a live `ims-db` container, and the 5-min user-cache TTL.
+Demo/test users live in the IMS-DB `PERSON` table, seeded from
+`store/fakeimsdb/seed.sql` (loaded into the `ims-db` container **only on first
+init**). To add one: hash the password with `./ocf-ims hash_password
+--password='…'` (argon2id), append a `PERSON` row with `STATUS = 'active'` to
+`seed.sql`, and — if the dev stack is already running — also `insert` the row into
+the live container (`docker exec -i ranger-ims-db mariadb -uims -pims ims`). New
+users become loginable after the in-memory directory cache TTL (default 5 min, see
+`conf.InMemoryCacheTTL`) or an immediate `docker restart ocf-ims`.
 
 ### API Structure
 
