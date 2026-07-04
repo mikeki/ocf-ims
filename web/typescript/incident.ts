@@ -1548,6 +1548,17 @@ async function setPersonGrant(sender: HTMLInputElement): Promise<void> {
     if (!personId || !li) {
         return;
     }
+
+    const personName = li.querySelector(".person-name a")?.textContent ?? "this person";
+    const granting = sender.checked;
+    const confirmMsg = granting
+        ? `Grant incident access to ${personName}? They will be able to view this incident and add journal entries.`
+        : `Revoke incident access from ${personName}? They will no longer be able to view this incident.`;
+    if (!confirm(confirmMsg)) {
+        sender.checked = !sender.checked;
+        return;
+    }
+
     const involvementInput = li.querySelector("input.form-control") as HTMLInputElement|null;
     const url = (
         ims.urlReplace(url_incidentPerson)
@@ -1561,7 +1572,6 @@ async function setPersonGrant(sender: HTMLInputElement): Promise<void> {
         }),
     });
     if (err !== null) {
-        // Revert the checkbox to its prior state on failure.
         sender.checked = !sender.checked;
         ims.setErrorMessage(`Failed to update incident access:\n${err}`);
         return;
