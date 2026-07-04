@@ -110,21 +110,21 @@ func TestMetricsAggregation(t *testing.T) {
 		Location:        imsjson.Location{AreaSlug: &areaSlug},
 	})
 
-	// Incident B: new, safety (Medical=1) + conduct (Personal Violation=8), no
+	// Incident B: open, safety (Medical=1) + conduct (Personal Violation=8), no
 	// area (-> Unassigned), normal priority.
 	adminUser.newIncidentSuccess(ctx, imsjson.Incident{
 		Event:           eventName,
-		State:           "new",
+		State:           "open",
 		Priority:        3,
 		Summary:         new("open incident, two categories"),
 		IncidentTypeIDs: &[]int32{1, 8},
 	})
 
-	// Incident C: on_scene, operations (Construction Issue=14), in Main Camp,
+	// Incident C: open, operations (Construction Issue=14), in Main Camp,
 	// low priority, needs follow-up.
 	adminUser.newIncidentSuccess(ctx, imsjson.Incident{
 		Event:           eventName,
-		State:           "on_scene",
+		State:           "open",
 		Priority:        1,
 		Summary:         new("follow up please"),
 		Outcome:         new("follow_up_required"),
@@ -146,13 +146,10 @@ func TestMetricsAggregation(t *testing.T) {
 	require.NotNil(t, m.AvgTimeToCloseSeconds)
 	assert.GreaterOrEqual(t, *m.AvgTimeToCloseSeconds, 0.0)
 
-	// By state (zero-filled, all five present).
-	assert.Len(t, m.ByState, 5)
-	assert.Equal(t, int64(1), countFor(m.ByState, "new"))
-	assert.Equal(t, int64(1), countFor(m.ByState, "on_scene"))
+	// By state (zero-filled, both present). B and C are open, A is closed.
+	assert.Len(t, m.ByState, 2)
+	assert.Equal(t, int64(2), countFor(m.ByState, "open"))
 	assert.Equal(t, int64(1), countFor(m.ByState, "closed"))
-	assert.Equal(t, int64(0), countFor(m.ByState, "on_hold"))
-	assert.Equal(t, int64(0), countFor(m.ByState, "dispatched"))
 
 	// By priority (three named buckets).
 	assert.Equal(t, int64(1), countFor(m.ByPriority, "high"))
@@ -231,14 +228,14 @@ func TestMetricsCacheInvalidation(t *testing.T) {
 	// Creating an incident must be reflected on the very next read.
 	num := admin.newIncidentSuccess(ctx, imsjson.Incident{
 		Event:   eventName,
-		State:   "new",
+		State:   "open",
 		Summary: new("cache buster"),
 	})
 	m, resp = admin.getMetrics(ctx, eventName)
 	require.Equal(t, http.StatusOK, resp.StatusCode)
 	require.NoError(t, resp.Body.Close())
 	require.Equal(t, int64(1), m.Total, "incident create should invalidate the dashboard cache")
-	assert.Equal(t, int64(1), countFor(m.ByState, "new"))
+	assert.Equal(t, int64(1), countFor(m.ByState, "open"))
 
 	// Editing that incident (closing it) must also invalidate immediately.
 	resp = admin.updateIncident(ctx, eventName, num, imsjson.Incident{

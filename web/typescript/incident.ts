@@ -20,7 +20,8 @@ import * as ims from "./ims.ts";
 
 declare global {
     interface Window {
-        editState: ()=>Promise<void>;
+        markClosed: ()=>Promise<void>;
+        reopenIncident: ()=>Promise<void>;
         editPriority: ()=>Promise<void>;
         editOutcome: ()=>Promise<void>;
         editIncidentSummary: ()=>Promise<void>;
@@ -67,7 +68,9 @@ const OTHER_OPTION_LABEL = "Other";
 const el = {
     incidentNumber: ims.typedElement("incident_number", HTMLInputElement),
     incidentSummary: ims.typedElement("incident_summary", HTMLInputElement),
-    incidentState: ims.typedElement("incident_state", HTMLSelectElement),
+    incidentStateLabel: ims.typedElement("incident_state_label", HTMLSpanElement),
+    markClosed: ims.typedElement("mark_closed", HTMLButtonElement),
+    reopen: ims.typedElement("reopen", HTMLButtonElement),
     incidentPriority: ims.typedElement("incident_priority", HTMLSelectElement),
     incidentOutcome: ims.typedElement("incident_outcome", HTMLSelectElement),
     startedDatetime: ims.typedElement("started_datetime", HTMLInputElement) as ims.FlatpickrHTMLInputElement,
@@ -130,7 +133,8 @@ async function initIncidentPage(): Promise<void> {
         return;
     }
 
-    window.editState = editState;
+    window.markClosed = markClosed;
+    window.reopenIncident = reopenIncident;
     window.editPriority = editPriority;
     window.editOutcome = editOutcome;
     window.editIncidentSummary = editIncidentSummary;
@@ -339,7 +343,7 @@ async function loadIncident(): Promise<{err: string|null}> {
     if (number == null) {
         incident = {
             "number": null,
-            "state": "new",
+            "state": "open",
             "priority": 3,
             "summary": "",
         };
@@ -671,10 +675,15 @@ function drawIncidentNumber(): void {
 //
 
 function drawState(): void {
-    ims.selectOptionWithValue(
-        el.incidentState,
-        ims.stateForIncident(incident!)
-    );
+    const state = ims.stateForIncident(incident!);
+    el.incidentStateLabel.textContent = ims.stateNameFromID(state);
+    // Show Mark Closed on an open incident and Reopen on a closed one, but only
+    // to incident writers (a per-incident-grant reporter may add journal entries,
+    // not change state).
+    const canWrite = ims.eventAccess?.writeIncidents ?? false;
+    const isClosed = state === "closed";
+    el.markClosed.classList.toggle("hidden", isClosed || !canWrite);
+    el.reopen.classList.toggle("hidden", !isClosed || !canWrite);
 }
 
 
@@ -818,7 +827,7 @@ function drawIncidentTypes() {
 
     // At least one incident type is required (D-R2). Show a persistent inline
     // marker while none is attached, instead of only surprising the user with an
-    // alert at close time (the close-time guard in editState remains a backstop).
+    // alert at close time (the close-time guard in markClosed remains a backstop).
     const hasType: boolean = (incident!.incident_type_ids??[]).length > 0;
     el.incidentTypesRequired.classList.toggle("hidden", hasType);
 
@@ -1366,8 +1375,8 @@ async function sendEdits(edits: ims.Incident): Promise<{err:string|null}> {
 }
 ims.setSendEdits(sendEdits);
 
-async function editState(): Promise<void> {
-    if (el.incidentState.value === "closed" && (incident!.incident_type_ids??[]).length === 0) {
+async function markClosed(): Promise<void> {
+    if ((incident!.incident_type_ids??[]).length === 0) {
         window.alert(
             "Closing out this incident?\n"+
             "Please add an incident type!\n\n" +
@@ -1377,8 +1386,11 @@ async function editState(): Promise<void> {
             "See the Incident Types help link for more details.\n"
         );
     }
+    await ims.editValue("state", "closed");
+}
 
-    await ims.editFromElement(el.incidentState, "state");
+async function reopenIncident(): Promise<void> {
+    await ims.editValue("state", "open");
 }
 
 async function editPriority(): Promise<void> {

@@ -717,15 +717,15 @@ function initSearch(): void {
             switch (_showState) {
                 case "all":
                     break;
-                case "active":
-                    state = ims.stateForIncident(incident);
-                    if (state === "on_hold" || state === "closed") {
-                        return false;
-                    }
-                    break;
                 case "open":
                     state = ims.stateForIncident(incident);
                     if (state === "closed") {
+                        return false;
+                    }
+                    break;
+                case "closed":
+                    state = ims.stateForIncident(incident);
+                    if (state !== "closed") {
                         return false;
                     }
                     break;
