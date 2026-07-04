@@ -139,6 +139,8 @@ func (action GetPersonnel) getPersonnel(req *http.Request) (GetPersonnelResponse
 					p.Email = person.Email.String
 					p.Phone = person.Phone.String
 					p.IsAdmin = person.IsAdmin
+					// Whether they can sign in — a fair name alone is identity, not access.
+					p.HasPassword = person.HasPassword
 				}
 				response = append(response, p)
 			}
@@ -154,11 +156,12 @@ func (action GetPersonnel) getPersonnel(req *http.Request) (GetPersonnelResponse
 				Handle: person.Handle.String,
 				Name:   person.Name.String,
 				// Email + phone go only to this admin-gated listing so they can be edited.
-				Email:     person.Email.String,
-				Phone:     person.Phone.String,
-				IsAdmin:   person.IsAdmin,
-				PersonID:  int64(person.ID),
-				Wristband: person.Wristband.String,
+				Email:       person.Email.String,
+				Phone:       person.Phone.String,
+				IsAdmin:     person.IsAdmin,
+				HasPassword: person.HasPassword,
+				PersonID:    int64(person.ID),
+				Wristband:   person.Wristband.String,
 			}
 			if person.ParticipationType.Valid {
 				p.ParticipationType = string(person.ParticipationType.PersonEventParticipationType)

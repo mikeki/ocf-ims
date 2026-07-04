@@ -29,7 +29,13 @@ type Person struct {
 	// view/edit it; other endpoints leave it empty and omitempty withholds it.
 	Phone    string `json:"phone,omitempty"`
 	Password string `json:"-"`
-	IsAdmin  bool   `json:"is_admin"`
+	// HasPassword reports whether the person has a password set — i.e. can actually
+	// sign in (a fair/legal name alone is identity, not a login). Sent only by the
+	// admin People listing so it can split the roster into with-/without-access;
+	// omitempty withholds it (and its meaning) from the other endpoints. Never
+	// exposes the hash itself.
+	HasPassword bool `json:"has_password,omitempty"`
+	IsAdmin     bool `json:"is_admin"`
 	PersonID int64  `json:"person_id,omitzero"`
 	// Wristband and ParticipationType are per-event and only populated by the
 	// typeahead search endpoint (GET /personnel?q=&event=); they're empty on the
