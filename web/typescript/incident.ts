@@ -51,6 +51,10 @@ let incident: ims.Incident|null = null;
 
 let allIncidentTypes: ims.IncidentType[] = [];
 
+// Data-driven outcome registry (slice 10a), loaded at init to populate the
+// disposition picker. Sorted alphabetically by name.
+let allOutcomes: ims.Outcome[] = [];
+
 let allEvents: ims.EventData[]|null = null;
 
 // The current event's areas, used to populate the location Area combobox.
@@ -167,6 +171,11 @@ async function initIncidentPage(): Promise<void> {
                 // Cluster by OCF category so the add-dropdown and info modal
                 // group types together (Phase 4a).
                 allIncidentTypes = value.types.sort(ims.compareIncidentTypesByGroup);
+            },
+        ),
+        await ims.loadOutcomes().then(
+            value=> {
+                allOutcomes = value.outcomes;
             },
         ),
         await loadEventAreas(),
@@ -692,10 +701,34 @@ function drawState(): void {
 //
 
 function drawOutcome(): void {
+    drawOutcomesToSelect();
     ims.selectOptionWithValue(
         el.incidentOutcome,
-        incident?.outcome??"",
+        (incident?.outcome_id ?? "").toString(),
     );
+}
+
+// drawOutcomesToSelect rebuilds the disposition <select> from the data-driven
+// outcome registry (slice 10a): the static "(none)" placeholder followed by one
+// <option> per visible outcome (value=id, text=name). A hidden outcome is omitted
+// unless it's the one this incident currently carries, so a retired disposition
+// still displays on an old incident.
+function drawOutcomesToSelect(): void {
+    const select = el.incidentOutcome;
+    // Drop everything after the static "(none)" first option.
+    while (select.options.length > 1) {
+        select.remove(1);
+    }
+    const currentId = incident?.outcome_id ?? null;
+    for (const outcome of allOutcomes) {
+        if (outcome.hidden && outcome.id !== currentId) {
+            continue;
+        }
+        const option = document.createElement("option");
+        option.value = (outcome.id ?? "").toString();
+        option.textContent = outcome.name ?? "";
+        select.append(option);
+    }
 }
 
 
@@ -1398,7 +1431,9 @@ async function editPriority(): Promise<void> {
 }
 
 async function editOutcome(): Promise<void> {
-    await ims.editFromElement(el.incidentOutcome, "outcome");
+    // "(none)" (value "") clears the outcome, sent as 0; otherwise the OUTCOME id.
+    await ims.editFromElement(el.incidentOutcome, "outcome_id",
+        (v)=> v === "" ? 0 : ims.parseInt10(v));
 }
 
 async function setStartDatetime(selectedDates: Date[], _dateStr: string, sender: ims.Flatpickr): Promise<void> {

@@ -38,7 +38,7 @@ update INCIDENT set
     -- CREATED should be immutable, so it's not present in this UPDATE query
     PRIORITY = ?,
     STATE = ?,
-    OUTCOME = ?,
+    OUTCOME_ID = ?,
     STARTED = ?,
     CLOSED = ?,
     SUMMARY = ?,
@@ -1138,8 +1138,10 @@ from TEAM;
 -- MetricsIncidents returns one lightweight row per incident in the event. The
 -- handler aggregates these in Go into totals (total/open/closed), counts by
 -- state and priority, the by-day created series, average time-to-close (over
--- closed incidents), and the open-follow-ups list (OUTCOME='follow_up_required'
--- and STATE!='closed'). CLOSED is nullable; it is set only for closed incidents.
+-- closed incidents), and the open-follow-ups list (the outcome named
+-- 'Follow-Up Required' and STATE!='closed'). CLOSED is nullable; it is set only
+-- for closed incidents. OUTCOME_NAME is the joined OUTCOME.NAME (null when the
+-- incident has no outcome), which the handler matches to spot follow-ups.
 -- name: MetricsIncidents :many
 select
     i.NUMBER,
@@ -1147,9 +1149,10 @@ select
     i.PRIORITY,
     i.CREATED,
     i.CLOSED,
-    i.OUTCOME,
+    o.NAME as OUTCOME_NAME,
     i.SUMMARY
 from INCIDENT i
+    left join OUTCOME o on o.ID = i.OUTCOME_ID
 where i.EVENT = ?
 order by i.NUMBER;
 

@@ -51,7 +51,11 @@ type Incident struct {
 	LastModified    time.Time         `json:"last_modified,omitzero"`
 	CreatedBy       *Mention          `json:"created_by,omitzero"`
 	State           string            `json:"state"`
-	Outcome         *string           `json:"outcome"`
+	// OutcomeID references an OUTCOME(ID) — the incident's disposition, promoted
+	// from the former hardcoded enum to a data-driven table (slice 10a). On a
+	// write: nil leaves it unchanged, 0 clears it, any other value must reference
+	// an existing outcome (else 400). On a read: nil means no outcome recorded.
+	OutcomeID       *int32            `json:"outcome_id"`
 	Started         time.Time         `json:"started,omitzero"`
 	Closed          time.Time         `json:"closed,omitzero"`
 	Priority        int8              `json:"priority"`

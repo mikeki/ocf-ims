@@ -290,7 +290,7 @@ func incidentToJSON(storedRow imsdb.IncidentRow, incidentPeople []imsjson.Incide
 		LastModified: lastModified,
 		CreatedBy:    createdByJSON(storedRow.Incident.CreatedBy, storedRow.CreatedByHandle, storedRow.CreatedByName),
 		State:        string(storedRow.Incident.State),
-		Outcome:      outcomeToString(storedRow.Incident.Outcome),
+		OutcomeID:    conv.SqlToInt32(storedRow.Incident.OutcomeID),
 		Started:      conv.FloatToTime(storedRow.Incident.Started),
 		Closed:       conv.NullFloatToTime(storedRow.Incident.Closed),
 		Priority:     storedRow.Incident.Priority,
@@ -577,7 +577,7 @@ func isJournalOnly(inc imsjson.Incident) bool {
 	return len(inc.JournalEntries) > 0 &&
 		inc.State == "" &&
 		inc.Priority == 0 &&
-		inc.Outcome == nil &&
+		inc.OutcomeID == nil &&
 		inc.Started.IsZero() &&
 		inc.Summary == nil &&
 		inc.Location.AreaSlug == nil &&
@@ -621,6 +621,17 @@ func updateIncident(ctx context.Context, imsDBQ *store.DBQ, userStore directory.
 		}
 	}
 
+	// Likewise load outcomes before the transaction, to validate an outcome edit and
+	// resolve its display name for the journal line. Only needed when setting (not
+	// clearing) an outcome; a 0 clears and needs no lookup.
+	var allOutcomes []imsdb.OutcomesRow
+	if newIncident.OutcomeID != nil && *newIncident.OutcomeID != 0 {
+		allOutcomes, err = imsDBQ.Outcomes(ctx, imsDBQ)
+		if err != nil {
+			return herr.InternalServerError("Failed to get outcomes", err).From("[Outcomes]")
+		}
+	}
+
 	linkedIncidents, err := imsDBQ.Incident_LinkedIncidents(ctx, imsDBQ, imsdb.Incident_LinkedIncidentsParams{
 		Event1:          storedIncident.Event,
 		IncidentNumber1: storedIncident.Number,
@@ -645,7 +656,7 @@ func updateIncident(ctx context.Context, imsDBQ *store.DBQ, userStore directory.
 		Number:              storedIncident.Number,
 		Priority:            storedIncident.Priority,
 		State:               storedIncident.State,
-		Outcome:             storedIncident.Outcome,
+		OutcomeID:           storedIncident.OutcomeID,
 		Started:             storedIncident.Started,
 		Closed:              storedIncident.Closed,
 		Summary:             storedIncident.Summary,
@@ -669,21 +680,28 @@ func updateIncident(ctx context.Context, imsDBQ *store.DBQ, userStore directory.
 			update.Closed = sql.NullFloat64{}
 		}
 	}
-	// OUTCOME is orthogonal to STATE. Unlike STATE (which silently ignores
-	// unknown values), an invalid outcome is rejected with 400. nil leaves the
-	// existing outcome unchanged; an empty string clears it.
-	if newIncident.Outcome != nil {
-		outcome := strings.TrimSpace(*newIncident.Outcome)
-		if outcome == "" {
-			update.Outcome = imsdb.NullIncidentOutcome{}
+	// OUTCOME_ID is orthogonal to STATE. Unlike STATE (which silently ignores
+	// unknown values), an outcome id that references no OUTCOME row is rejected with
+	// 400. nil leaves the existing outcome unchanged; 0 clears it.
+	if newIncident.OutcomeID != nil {
+		if *newIncident.OutcomeID == 0 {
+			update.OutcomeID = sql.NullInt32{}
 			logs = append(logs, "Cleared outcome")
 		} else {
-			parsed := imsdb.IncidentOutcome(outcome)
-			if !parsed.Valid() {
-				return herr.BadRequest(fmt.Sprintf("Invalid outcome: %v", outcome), nil)
+			var outcomeName string
+			found := false
+			for _, o := range allOutcomes {
+				if o.Outcome.ID == *newIncident.OutcomeID {
+					outcomeName = o.Outcome.Name
+					found = true
+					break
+				}
 			}
-			update.Outcome = imsdb.NullIncidentOutcome{IncidentOutcome: parsed, Valid: true}
-			logs = append(logs, fmt.Sprintf("Changed outcome: %v", parsed))
+			if !found {
+				return herr.BadRequest(fmt.Sprintf("Invalid outcome id: %v", *newIncident.OutcomeID), nil)
+			}
+			update.OutcomeID = sql.NullInt32{Int32: *newIncident.OutcomeID, Valid: true}
+			logs = append(logs, fmt.Sprintf("Changed outcome: %v", outcomeName))
 		}
 	}
 	if !newIncident.Started.IsZero() {
@@ -1273,11 +1291,3 @@ func (action DetachPersonFromIncident) detachPerson(req *http.Request) *herr.HTT
 	return nil
 }
 
-// outcomeToString converts the nullable sqlc incident-outcome enum to a
-// JSON-friendly *string, returning nil when the outcome is NULL.
-func outcomeToString(outcome imsdb.NullIncidentOutcome) *string {
-	if !outcome.Valid {
-		return nil
-	}
-	return new(string(outcome.IncidentOutcome))
-}

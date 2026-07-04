@@ -579,16 +579,20 @@ func TestIncidentOutcome(t *testing.T) {
 	require.Equal(t, http.StatusNoContent, resp.StatusCode)
 	require.NoError(t, resp.Body.Close())
 
+	// Outcomes are data-driven now (slice 10a); resolve seeded dispositions by name.
+	resolvedOnScene := writer.outcomeIDByName(ctx, "Resolved On Scene")
+	transported := writer.outcomeIDByName(ctx, "Transported in Ambulance")
+
 	// Create an incident carrying a disposition.
 	num := writer.newIncidentSuccess(ctx, imsjson.Incident{
-		Event:   eventName,
-		Outcome: new("resolved_on_scene"),
+		Event:     eventName,
+		OutcomeID: &resolvedOnScene,
 	})
 
 	got, resp := writer.getIncident(ctx, eventName, num)
 	require.Equal(t, http.StatusOK, resp.StatusCode)
 	require.NoError(t, resp.Body.Close())
-	require.Equal(t, "resolved_on_scene", deref(got.Outcome))
+	require.Equal(t, resolvedOnScene, deref(got.OutcomeID))
 
 	// Outcome is orthogonal to state: it survives a state change.
 	resp = writer.updateIncident(ctx, eventName, num, imsjson.Incident{
@@ -601,26 +605,28 @@ func TestIncidentOutcome(t *testing.T) {
 	got, resp = writer.getIncident(ctx, eventName, num)
 	require.Equal(t, http.StatusOK, resp.StatusCode)
 	require.NoError(t, resp.Body.Close())
-	require.Equal(t, "resolved_on_scene", deref(got.Outcome))
+	require.Equal(t, resolvedOnScene, deref(got.OutcomeID))
 
-	// An OCF-specific disposition (added in migration 00013) is accepted.
+	// An OCF-specific disposition (seeded in migration 00019) is accepted.
 	resp = writer.updateIncident(ctx, eventName, num, imsjson.Incident{
-		Event:   eventName,
-		Number:  num,
-		Outcome: new("transported_in_ambulance"),
+		Event:     eventName,
+		Number:    num,
+		OutcomeID: &transported,
 	})
 	require.Equal(t, http.StatusNoContent, resp.StatusCode)
 	require.NoError(t, resp.Body.Close())
 	got, resp = writer.getIncident(ctx, eventName, num)
 	require.Equal(t, http.StatusOK, resp.StatusCode)
 	require.NoError(t, resp.Body.Close())
-	require.Equal(t, "transported_in_ambulance", deref(got.Outcome))
+	require.Equal(t, transported, deref(got.OutcomeID))
 
-	// An unknown outcome is rejected with 400 (stricter than STATE's silent ignore).
+	// An outcome id referencing no OUTCOME row is rejected with 400 (stricter than
+	// STATE's silent ignore).
+	bogus := int32(9999999)
 	resp = writer.updateIncident(ctx, eventName, num, imsjson.Incident{
-		Event:   eventName,
-		Number:  num,
-		Outcome: new("not_a_real_outcome"),
+		Event:     eventName,
+		Number:    num,
+		OutcomeID: &bogus,
 	})
 	require.Equal(t, http.StatusBadRequest, resp.StatusCode)
 	require.NoError(t, resp.Body.Close())
@@ -629,20 +635,21 @@ func TestIncidentOutcome(t *testing.T) {
 	got, resp = writer.getIncident(ctx, eventName, num)
 	require.Equal(t, http.StatusOK, resp.StatusCode)
 	require.NoError(t, resp.Body.Close())
-	require.Equal(t, "transported_in_ambulance", deref(got.Outcome))
+	require.Equal(t, transported, deref(got.OutcomeID))
 
-	// An empty string clears the outcome back to unset (null).
+	// outcome_id=0 clears the outcome back to unset (null).
+	clear := int32(0)
 	resp = writer.updateIncident(ctx, eventName, num, imsjson.Incident{
-		Event:   eventName,
-		Number:  num,
-		Outcome: new(""),
+		Event:     eventName,
+		Number:    num,
+		OutcomeID: &clear,
 	})
 	require.Equal(t, http.StatusNoContent, resp.StatusCode)
 	require.NoError(t, resp.Body.Close())
 	got, resp = writer.getIncident(ctx, eventName, num)
 	require.Equal(t, http.StatusOK, resp.StatusCode)
 	require.NoError(t, resp.Body.Close())
-	require.Nil(t, got.Outcome)
+	require.Nil(t, got.OutcomeID)
 }
 
 func deref[T any](p *T) T {

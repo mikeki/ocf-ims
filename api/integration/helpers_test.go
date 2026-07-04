@@ -235,6 +235,22 @@ func (a ApiHelper) getOutcomes(ctx context.Context) (imsjson.Outcomes, *http.Res
 	bod, resp := a.imsGet(ctx, path, &imsjson.Outcomes{})
 	return *bod.(*imsjson.Outcomes), resp
 }
+
+// outcomeIDByName resolves a seeded outcome's ID from its display name, so tests
+// reference dispositions by name instead of hardcoding auto-increment IDs.
+func (a ApiHelper) outcomeIDByName(ctx context.Context, name string) int32 {
+	a.t.Helper()
+	outcomes, resp := a.getOutcomes(ctx)
+	require.Equal(a.t, http.StatusOK, resp.StatusCode)
+	require.NoError(a.t, resp.Body.Close())
+	for _, o := range outcomes {
+		if o.Name != nil && *o.Name == name {
+			return o.ID
+		}
+	}
+	require.Failf(a.t, "outcome not found", "no outcome named %q", name)
+	return 0
+}
 func (a ApiHelper) proposeOutcome(ctx context.Context, eventName string, req imsjson.Outcome) (*int32, *http.Response) {
 	a.t.Helper()
 	httpResp := a.imsPost(ctx, req, a.serverURL.JoinPath("/ims/api/events/", eventName, "/outcomes").String())

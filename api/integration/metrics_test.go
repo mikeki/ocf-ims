@@ -121,13 +121,14 @@ func TestMetricsAggregation(t *testing.T) {
 	})
 
 	// Incident C: open, operations (Construction Issue=14), in Main Camp,
-	// low priority, needs follow-up.
+	// low priority, needs follow-up. Outcome is data-driven now (slice 10a).
+	followUp := adminUser.outcomeIDByName(ctx, "Follow-Up Required")
 	adminUser.newIncidentSuccess(ctx, imsjson.Incident{
 		Event:           eventName,
 		State:           "open",
 		Priority:        1,
 		Summary:         new("follow up please"),
-		Outcome:         new("follow_up_required"),
+		OutcomeID:       &followUp,
 		IncidentTypeIDs: &[]int32{14},
 		Location:        imsjson.Location{AreaSlug: &areaSlug},
 	})
