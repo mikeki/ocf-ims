@@ -70,18 +70,6 @@ templ Report(deployment, versionName, versionRef, eventName string) {
         />
       </div>
     </div>
-    <div class="col-sm-4">
-      <div class="py-1">
-        <button
-            id="create_incident"
-            class="py-1 btn btn-sm btn-warning hidden"
-            title="Only click this if you're sure there is no preexisting incident for this Report. This only shows up because you have writeIncidents permission."
-            onclick="makeIncident()"
-        >
-          Create new incident from Report
-        </button>
-      </div>
-    </div>
   </div>
 
   <!-- Summary -->
@@ -89,7 +77,7 @@ templ Report(deployment, versionName, versionRef, eventName string) {
   <div class="row">
     <div class="col-sm-12">
       <div class="py-1 input-group">
-        <label for="report_summary" class="control-label input-group-text">Summary</label>
+        <label for="report_summary" class="control-label input-group-text">Brief Description</label>
         <input
                 id="report_summary" class="form-control input-sm"
                 type="text" inputmode="latin-prose" autocomplete="off"
@@ -114,7 +102,7 @@ templ Report(deployment, versionName, versionRef, eventName string) {
         <div id="verboseInstructions" class="accordion-collapse collapse text-smaller p-1"
              data-bs-parent="#instructions">
           <p>
-            Start above with a brief Summary, then scroll down to Details and enter a thorough account of what happened.
+            Start above with a Brief Description, then scroll down to Details and enter a thorough account of what happened.
           </p>
 
           <p>
