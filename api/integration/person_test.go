@@ -387,7 +387,7 @@ func TestEventRosterAddRemove(t *testing.T) {
 
 	// Attach Ivan to an incident so we can prove removal leaves that link intact.
 	num := apisAdmin.newIncidentSuccess(ctx, imsjson.Incident{
-		Event: eventName, State: "new", Priority: 3, Summary: new("roster test incident"),
+		Event: eventName, State: "open", Priority: 3, Summary: new("roster test incident"),
 	})
 	resp = apisAdmin.attachPersonToIncident(ctx, eventName, num, ivanID)
 	require.Equal(t, http.StatusNoContent, resp.StatusCode)

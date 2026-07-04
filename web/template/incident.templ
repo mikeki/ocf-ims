@@ -84,18 +84,20 @@ templ Incident(deployment, versionName, versionRef, eventName string) {
       </div>
       <div class="col-sm-4 py-1">
         <div class="input-group">
-          <label for="incident_state" class="control-label input-group-text">State</label>
-          <select
-                  id="incident_state"
-                  class="form-control form-select form-select-sm auto-width"
-                  onchange="editState()"
-          >
-            <option value="new">New</option>
-            <option value="on_hold">On Hold</option>
-            <option value="dispatched">Dispatched</option>
-            <option value="on_scene">On Scene</option>
-            <option value="closed">Closed</option>
-          </select>
+          <span class="control-label input-group-text">State</span>
+          <span id="incident_state_label" class="input-group-text auto-width"></span>
+          <button
+                  id="mark_closed"
+                  type="button"
+                  class="btn btn-sm btn-warning hidden"
+                  onclick="markClosed()"
+          >Mark Closed</button>
+          <button
+                  id="reopen"
+                  type="button"
+                  class="btn btn-sm btn-secondary hidden"
+                  onclick="reopenIncident()"
+          >Reopen</button>
         </div>
       </div>
       <div class="col-sm-6 py-1">

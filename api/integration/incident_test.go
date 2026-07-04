@@ -30,7 +30,7 @@ import (
 func sampleIncident1(eventName string) imsjson.Incident {
 	return imsjson.Incident{
 		Event:    eventName,
-		State:    "new",
+		State:    "open",
 		Priority: 5,
 		Summary:  new("my summary!"),
 		Location: imsjson.Location{
@@ -594,7 +594,7 @@ func TestIncidentOutcome(t *testing.T) {
 	resp = writer.updateIncident(ctx, eventName, num, imsjson.Incident{
 		Event:  eventName,
 		Number: num,
-		State:  "on_scene",
+		State:  "closed",
 	})
 	require.Equal(t, http.StatusNoContent, resp.StatusCode)
 	require.NoError(t, resp.Body.Close())

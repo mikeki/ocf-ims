@@ -521,7 +521,7 @@ func (action NewIncident) newIncident(req *http.Request) (incidentNumber int32, 
 		Created:   now,
 		Started:   now,
 		Priority:  imsjson.IncidentPriorityNormal,
-		State:     imsdb.IncidentStateNew,
+		State:     imsdb.IncidentStateOpen,
 		CreatedBy: sql.NullInt32{Int32: authorPersonID, Valid: true},
 	}
 	_, err = action.imsDBQ.CreateIncident(ctx, action.imsDBQ, createTheIncident)

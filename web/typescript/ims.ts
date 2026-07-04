@@ -1011,14 +1011,11 @@ export function selectOptionWithValue(select: HTMLSelectElement, value: string|n
 
 
 // Look up a state's name given its ID.
-function stateNameFromID(stateID: IncidentState): string {
+export function stateNameFromID(stateID: IncidentState): string {
     switch (stateID) {
-        case "new"       : return "New";
-        case "on_hold"   : return "On Hold";
-        case "dispatched": return "Dispatched";
-        case "on_scene"  : return "On Scene";
-        case "closed"    : return "Closed";
-        case "null"      :
+        case "open"  : return "Open";
+        case "closed": return "Closed";
+        case "null"  :
             console.warn(`Unknown incident state ID: ${stateID}`);
             return "Unknown";
         default:
@@ -1031,12 +1028,9 @@ function stateNameFromID(stateID: IncidentState): string {
 // Look up a state's sort key given its ID.
 function stateSortKeyFromID(stateID: IncidentState): number|undefined {
     switch (stateID) {
-        case "new"       : return 1;
-        case "on_hold"   : return 2;
-        case "dispatched": return 3;
-        case "on_scene"  : return 4;
-        case "closed"    : return 5;
-        case "null"      :
+        case "open"  : return 1;
+        case "closed": return 2;
+        case "null"  :
             console.warn(`Unknown incident state ID: ${stateID}`);
             return undefined;
         default:
@@ -2962,6 +2956,23 @@ export function applyJournalFilters(): void {
     apply("show_reports_checkbox", "hide-reports");
 }
 
+// Send a single fixed-value field edit, for button-driven edits that aren't tied
+// to an input element's value (e.g. Mark Closed / Reopen). Mirrors the dotted-key
+// object-building of editFromElement, minus the element error/success styling.
+export async function editValue(jsonKey: string, value: string|number|null): Promise<{err:string|null}> {
+    const edits: EditMap = {};
+    const keyPath: string[] = jsonKey.split(".");
+    const lastKey: string = keyPath.pop()!;
+    let current: EditMap = edits;
+    for (const path of keyPath) {
+        const next: EditMap = {};
+        current[path] = next;
+        current = next;
+    }
+    current[lastKey] = value??"";
+    return sendEditsFunc!(edits);
+}
+
 export async function editFromElement(
     element: HTMLInputElement|HTMLSelectElement|HTMLTextAreaElement,
     jsonKey: string,
@@ -3236,7 +3247,7 @@ export function refreshTokenAfter(): number|null {
     return parseInt10(localStorage.getItem(accessTokenRefreshAfterKey));
 }
 
-export const incidentTableStates = ["all", "open", "active"] as const;
+export const incidentTableStates = ["all", "open", "closed"] as const;
 export type IncidentsTableState = typeof incidentTableStates[number];
 export function isValidIncidentsTableState(value: string|null): value is IncidentsTableState {
     if (value) {
@@ -3487,7 +3498,7 @@ export type PersonSearchResult = {
     participation_type?: string|null;
 }
 
-export type IncidentState = 'new'|'on_hold'|'dispatched'|'on_scene'|'closed'|'null';
+export type IncidentState = 'open'|'closed'|'null';
 
 // IncidentOutcome is the disposition classification, orthogonal to IncidentState.
 // An empty string means "no outcome recorded" (clears it on the server).

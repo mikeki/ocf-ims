@@ -16,7 +16,7 @@ otherwise; each PR merges manually after CI is green.
 | # | Feedback | Slice | Plan |
 |---|---|---|---|
 | 1 | Outcomes should work like Incident Types & Areas (DB-backed, with proposed outcomes) | 10a | [94-outcomes-registry.md](94-outcomes-registry.md) |
-| 2 | Only two states, **Active** / **Resolved**; start Active; "Mark Resolved" + "Reopen" buttons | 10b | this doc |
+| 2 | Only two states, **Open** / **Closed**; start Open; "Mark Closed" + "Reopen" buttons | 10b | this doc |
 | 3 | Add a **Crew** field to person↔event; add a **Crews** table handled like types/areas/outcomes | 10c | [95-crews.md](95-crews.md) |
 | 4 | Crew Leader can **view** incidents, but not edit anything or add journal entries | 10c | [95-crews.md](95-crews.md) |
 | 5 | Crew Leaders can review their **crew's reports**; a crew has a person marked as Crew Leader | 10c | [95-crews.md](95-crews.md) |
@@ -30,10 +30,11 @@ otherwise; each PR merges manually after CI is green.
 - **10a (Outcomes):** promote the hardcoded `INCIDENT.OUTCOME` enum to a **DB table
   with a propose/approve workflow**, mirroring Incident Types (global registry).
   Outcome stays **single-valued** per incident. See [94](94-outcomes-registry.md).
-- **10b (States):** collapse the five-state enum to **`active` / `resolved`**. New
-  incidents start **`active`**. Replace the state dropdown with a **"Mark Resolved"**
-  button and a **"Reopen"** button. `resolved` sets/clears the existing `CLOSED`
-  timestamp (today's `closed` coupling).
+- **10b (States):** collapse the five-state enum to **`open` / `closed`** (decided
+  with the user; supersedes the earlier "Active/Resolved" wording). New incidents
+  start **`open`**; `closed` is retained (keeping its existing `CLOSED`-timestamp
+  coupling). Replace the state dropdown with a **"Mark Closed"** button and a
+  **"Reopen"** button.
 - **10c (Crews):** **rename/reshape the dormant `TEAM` table into `CREW`** (per-event,
   mirroring `AREA`, with `LEADER_PERSON_ID` + approval columns), **drop `PERSON__TEAM`**
   in favor of a new **`PERSON__EVENT.CREW_ID`** field, and **retire the dead teams
@@ -71,94 +72,43 @@ and redefines a rung that 10e's report scoping may reference).
 
 ---
 
-## Slice 10b — Two incident states: Active / Resolved
+## Slice 10b — Two incident states: Open / Closed
 
-### Current state (verified, file:line)
+**Status: ✅ Built.** Shipped as **`open` / `closed`** (the user chose these over the
+earlier "Active/Resolved" wording — `closed` already existed and its CLOSED-timestamp
+coupling carried over unchanged, making this the lower-churn collapse).
 
-- **Enum (5 values):** `STATE enum('new','on_hold','dispatched','on_scene','closed')
-  not null` — `store/schema/migrations/00001_baseline.sql:173-175`. No later migration
-  alters it. sqlc generates `imsdb.IncidentState*` constants + `.Valid()` +
-  `AllIncidentStateValues()` from it.
-- **Column writes:** `CreateIncident` insert `store/queries.sql:28,34`; `UpdateIncident`
-  `store/queries.sql:40` (`STATE = ?`); metrics read `store/queries.sql:1095`.
-- **Server:** new incidents default `imsdb.IncidentStateNew` (`api/incident.go:524`).
-  State-change on update at `api/incident.go:663-671` — validation is **lenient**
-  (unknown/empty state silently ignored, no 400); the **only** state coupling is
-  setting/clearing the `CLOSED` timestamp when the new state is/ isn't `closed`.
-  Journal-only guard treats `State == ""` as "no change" (`api/incident.go:576-591`).
-- **UI dropdown:** `web/template/incident.templ:87-98` (`<select id="incident_state">`
-  with 5 `<option>`s, `onchange="editState()"`). `editState()`
-  `web/typescript/incident.ts:1369-1382` (incl. the "add a type before closing" alert
-  keyed on `"closed"`); `drawState()` `incident.ts:673-677`; new-incident default
-  payload `"state":"new"` at `incident.ts:342,1303-1304`.
-- **Shared TS:** `IncidentState` type `ims.ts:3490`; `stateNameFromID`
-  `ims.ts:1013-1028`; `stateSortKeyFromID` `ims.ts:1031-1046`; `stateForIncident`
-  `ims.ts:1573-1580`; `renderState` `ims.ts:1930-1944`; action-log decode
-  `ims.ts:2095-2096`.
-- **Metrics:** `stateLabel` `api/metrics.go:391-406`; closed/open derivation
-  `api/metrics.go:241-242,266`; follow-up excludes closed `api/metrics.go:257-259`;
-  zero-filled `ByState` iterates `AllIncidentStateValues()` `api/metrics.go:270-277`;
-  dashboard card `web/template/dashboard.templ:89-90`, render `dashboard.ts:188`.
-- **⚠️ Naming collision to resolve:** the **incidents-list filter** already uses the
-  words **"Active"** and **"Open"** for *filter modes* that are distinct from the
-  incident state: `incidentTableStates = ["all","open","active"]` (`ims.ts:3239-3246`);
-  filter logic `incidents.ts:713-735` (`"active"` = new/dispatched/on_scene,
-  hides on_hold+closed; `"open"` = everything except closed); dropdown
-  `web/template/incidents.templ:82,91-98`; default `"open"` `incidents.ts:38`.
+As built:
 
-### Plan
+1. **Migration `00018_collapse_incident_state.sql`** — widen the enum to add `open`,
+   remap `new`/`on_hold`/`dispatched`/`on_scene` → `open`, then narrow to
+   `enum('open','closed') not null default 'open'`. `closed` is retained. Down reverses
+   best-effort (`open`→`new`). The migration test (`store/integration/migrate_test.go`)
+   needs no change — it checks tables exist + idempotency, not enum values.
+2. **Server (`api/incident.go`):** new-incident default → `imsdb.IncidentStateOpen`
+   (`:524`). The `CLOSED`-timestamp coupling (`:663-671`, keyed on
+   `imsdb.IncidentStateClosed`) is unchanged — closing sets it, reopening clears it.
+   The lenient "unknown state silently ignored" behaviour is kept (so old
+   `new`/`on_scene` payloads resolve to the default `open`).
+3. **Metrics (`api/metrics.go`):** `stateLabel` → `Open`/`Closed`; the closed/open
+   derivation and follow-up filter already key on `IncidentStateClosed` (unchanged);
+   the by-state chart auto-reshapes to two buckets via `AllIncidentStateValues()`.
+4. **UI (`web/template/incident.templ`):** the state `<select>` is replaced by a state
+   **label** + a **"Mark Closed"** button (shown when open) and a **"Reopen"** button
+   (shown when closed), both gated on `writeIncidents`. `incident.ts` gains
+   `markClosed()`/`reopenIncident()` (the "add an incident type before closing" alert
+   moved onto `markClosed`); `drawState()` sets the label + toggles button visibility.
+   Button-driven edits use a new `ims.editValue(jsonKey, value)` primitive.
+5. **Shared TS (`ims.ts`):** `IncidentState` → `'open'|'closed'|'null'`;
+   `stateNameFromID` (now exported) and `stateSortKeyFromID` collapsed to two states.
+6. **List filter:** the three-way `["all","open","active"]` becomes
+   **`["all","open","closed"]`** (default `open`), mapping 1:1 onto the state; the
+   `incidents.templ` dropdown + tooltips updated. Old persisted `"active"` prefs fall
+   back to the default gracefully (`isValidIncidentsTableState` rejects it).
 
-1. **Migration** (`00018_collapse_incident_state`). Scaffold with the pinned goose.
-   Two-step, data-preserving:
-   ```sql
-   -- +goose Up
-   -- widen to include both old and new values so existing rows remain valid…
-   alter table INCIDENT modify STATE enum
-     ('new','on_hold','dispatched','on_scene','closed','active','resolved') not null;
-   update INCIDENT set STATE = 'resolved' where STATE = 'closed';
-   update INCIDENT set STATE = 'active'   where STATE in ('new','on_hold','dispatched','on_scene');
-   alter table INCIDENT modify STATE enum('active','resolved') not null default 'active';
-   -- +goose Down
-   alter table INCIDENT modify STATE enum
-     ('new','on_hold','dispatched','on_scene','closed','active','resolved') not null;
-   update INCIDENT set STATE = 'new'    where STATE = 'active';
-   update INCIDENT set STATE = 'closed' where STATE = 'resolved';
-   alter table INCIDENT modify STATE enum('new','on_hold','dispatched','on_scene','closed') not null;
-   ```
-   Note MariaDB DDL isn't transactional; keep the migration append-only and bump
-   `store/integration/migrate_test.go`. Consider adding a DB `default 'active'` so a
-   bare insert is Active even if a code path forgets (belt-and-suspenders with step 3).
-2. **sqlc regen** — `imsdb.IncidentState` now has only `Active`/`Resolved`.
-3. **Server (`api/incident.go`):** default `IncidentStateActive` (`:524`); in the
-   update path (`:663-671`) key the `CLOSED` timestamp on `IncidentStateResolved`
-   (set when resolving, clear when reopening). Consider tightening the lenient
-   validation to reject an unknown non-empty state (optional; keep `""` = no change
-   for the journal-only guard at `:576-591`).
-4. **UI — replace the dropdown with two buttons** (`web/template/incident.templ:87-98`):
-   a **"Mark Resolved"** button (visible when state is `active`) and a **"Reopen"**
-   button (visible when `resolved`). Wire to a small `markResolved()`/`reopen()` in
-   `incident.ts` that posts `{state:"resolved"|"active"}` via `ims.editFromElement`-
-   equivalent. Move the existing "add an incident type before resolving" guard
-   (`incident.ts:1370`) onto the Mark-Resolved handler (keyed on `"resolved"`).
-   Remove `editState`/`drawState` dropdown logic or repurpose to toggle button
-   visibility.
-5. **Shared TS:** `IncidentState` type → `'active'|'resolved'|'null'` (`ims.ts:3490`);
-   collapse `stateNameFromID`/`stateSortKeyFromID` (`ims.ts:1013-1046`); `renderState`
-   still works via the label map.
-6. **Metrics:** `stateLabel` (`api/metrics.go:391-406`) → 2 labels; the by-state chart
-   auto-reshapes to 2 buckets via `AllIncidentStateValues()`; update closed/open
-   derivation (`:241-242,266`) and follow-up filter (`:257-259`) to key on `resolved`.
-   Confirm `dashboard.templ:89` copy ("By state" is still fine).
-7. **Resolve the list-filter overlap** (`ims.ts:3239-3246`, `incidents.ts:713-735`,
-   `incidents.templ:91-98`): with only two states the three-way filter is now
-   redundant. Simplest: reduce the filter to **All / Active / Resolved** mapping
-   1:1 onto the state, default **Active**. Update the dropdown tooltips.
-
-**Verify:** `go run bin/build/build.go`; `go test ./... ./store/integration ./api/integration`
-(migration maps `closed→resolved`, others→`active`; a fresh insert is Active).
-`npx eslint`. Manual: create an incident → Active; Mark Resolved → sets CLOSED and
-label flips; Reopen → clears CLOSED; dashboard by-state shows 2 buckets; list filter
-shows All/Active/Resolved.
+**Verified** via `docker build --target build` (generate + `go build` + tsgo) and
+`go vet ./...`; integration tests (`metrics_test`, `incident_test`, `incident_grant_test`,
+`person_test`, `area_test`) updated from the old state strings and run in CI.
 
 ---
 
@@ -263,8 +213,8 @@ incident creation and report→incident attach still work.
 
 ## Open items / cross-slice notes
 
-- **10b list-filter overlap** — decide All/Active/Resolved vs keeping the legacy
-  three-mode filter (recommended: collapse to match the two states).
+- **10b list-filter** — resolved: collapsed the three-mode filter to
+  **All / Open / Closed** to match the two states.
 - **10c report scoping** references the redefined `crew_leader` rung and the new
   `PERSON__EVENT.CREW_ID`; sequence 10c after 10e so the report code is stable. See
   [95-crews.md](95-crews.md).

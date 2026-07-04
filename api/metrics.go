@@ -390,14 +390,8 @@ func priorityKey(priority int8) string {
 
 func stateLabel(state imsdb.IncidentState) string {
 	switch state {
-	case imsdb.IncidentStateNew:
-		return "New"
-	case imsdb.IncidentStateOnHold:
-		return "On Hold"
-	case imsdb.IncidentStateDispatched:
-		return "Dispatched"
-	case imsdb.IncidentStateOnScene:
-		return "On Scene"
+	case imsdb.IncidentStateOpen:
+		return "Open"
 	case imsdb.IncidentStateClosed:
 		return "Closed"
 	default:

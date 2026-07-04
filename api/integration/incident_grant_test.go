@@ -49,8 +49,8 @@ func TestIncidentGrant_ReporterPerIncidentAccess(t *testing.T) {
 	require.NoError(t, resp.Body.Close())
 
 	// The writer creates two incidents.
-	granted := writer.newIncidentSuccess(ctx, imsjson.Incident{Event: eventName, State: "new", Priority: 3, Summary: new("granted one")})
-	other := writer.newIncidentSuccess(ctx, imsjson.Incident{Event: eventName, State: "new", Priority: 3, Summary: new("not granted")})
+	granted := writer.newIncidentSuccess(ctx, imsjson.Incident{Event: eventName, State: "open", Priority: 3, Summary: new("granted one")})
+	other := writer.newIncidentSuccess(ctx, imsjson.Incident{Event: eventName, State: "open", Priority: 3, Summary: new("not granted")})
 
 	// Before any grant the reporter sees no incidents at all.
 	_, resp = reporter.getIncident(ctx, eventName, granted)

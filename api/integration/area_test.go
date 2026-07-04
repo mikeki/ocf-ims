@@ -426,7 +426,7 @@ func TestMarkDuplicateRepointsIncidents(t *testing.T) {
 	// An incident pinned to the soon-to-be-duplicate area.
 	incidentNumber := admin.newIncidentSuccess(ctx, imsjson.Incident{
 		Event:    eventName,
-		State:    "new",
+		State:    "open",
 		Priority: 3,
 		Summary:  new("at the dupe"),
 		Location: imsjson.Location{AreaSlug: new(dupSlug)},
