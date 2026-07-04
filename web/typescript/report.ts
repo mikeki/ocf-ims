@@ -263,14 +263,33 @@ async function loadAndDisplayReport(): Promise<void> {
 }
 
 async function updateIncident(el: HTMLInputElement): Promise<void> {
-    // Only incident writers are allowed to attach/detach FRs from Incidents.
-    if (!ims.eventAccess?.writeIncidents) {
+    // Attaching/detaching a Report to an Incident is a Report-write action (the
+    // server gates it on report-write, not incident-write), so a reporter may do
+    // it for their own Report.
+    if (!ims.eventAccess?.writeReports) {
         ims.controlHasError(el);
         await loadAndDisplayReport();
         return;
     }
+    // New, unsaved Report (10e): ride the IMS# along in the create request so a
+    // reporter can attach before/without a Summary. editFromElement creates the
+    // Report via reportSendEdits({incident: N}); loadAndDisplayReport then redraws
+    // it as attached.
+    if (report == null || report.number == null) {
+        if (el.value.trim() === "") {
+            return;
+        }
+        await ims.editFromElement(el, "incident", (v: string): number => {
+            const n = ims.parseInt10(v);
+            if (n == null) {
+                throw new Error("Invalid incident number");
+            }
+            return n;
+        });
+        return;
+    }
     let url: string|null = null;
-    if (report?.incident && el.value === "") {
+    if (report.incident && el.value === "") {
         // The Report is attached to an incident and the user wants to detach it.
         url = (
             `${ims.urlReplace(url_reports)}/${report.number}` +
@@ -279,7 +298,7 @@ async function updateIncident(el: HTMLInputElement): Promise<void> {
     } else {
         // The user wants to attach the Report to an incident.
         const incidentNumber = ims.parseInt10(el.value);
-        if (incidentNumber == null || !report || !report?.number) {
+        if (incidentNumber == null) {
             ims.controlHasError(el);
             return;
         }
@@ -334,9 +353,14 @@ function drawIncident(): void {
     el.historyToggle.classList.toggle("hidden", isNewReport);
 
     el.incidentNumber.value = "";
-    // New Report. There can be no Incident yet.
+    // New Report. There's no attached Incident yet, but a report-writer may type
+    // an IMS# to attach on create (10e).
     if (isNewReport) {
         el.incidentNumber.placeholder = "(none)";
+        if (ims.eventAccess?.writeReports) {
+            el.incidentNumber.readOnly = false;
+            el.incidentNumber.classList.remove("form-control-static");
+        }
         return;
     }
     // If there's an attached Incident, then show a link to it
@@ -347,7 +371,7 @@ function drawIncident(): void {
         el.incidentNumberLink.href = incidentURL;
     }
     el.incidentNumber.placeholder = "(none)";
-    if (ims.eventAccess?.writeIncidents) {
+    if (ims.eventAccess?.writeReports) {
         el.incidentNumber.readOnly = false;
         el.incidentNumber.classList.remove("form-control-static");
     }
