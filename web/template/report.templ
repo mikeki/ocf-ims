@@ -70,18 +70,6 @@ templ Report(deployment, versionName, versionRef, eventName string) {
         />
       </div>
     </div>
-    <div class="col-sm-4">
-      <div class="py-1">
-        <button
-            id="create_incident"
-            class="py-1 btn btn-sm btn-warning hidden"
-            title="Only click this if you're sure there is no preexisting incident for this Report. This only shows up because you have writeIncidents permission."
-            onclick="makeIncident()"
-        >
-          Create new incident from Report
-        </button>
-      </div>
-    </div>
   </div>
 
   <!-- Summary -->

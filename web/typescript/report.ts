@@ -20,7 +20,6 @@ import * as ims from "./ims.ts";
 
 declare global {
     interface Window {
-        makeIncident: ()=>Promise<void>;
         editSummary: ()=>Promise<void>;
         applyJournalFilters: ()=>void;
         journalEntryEdited: ()=>void;
@@ -41,7 +40,6 @@ const el = {
     reportSummary: ims.typedElement("report_summary", HTMLInputElement),
     incidentNumber: ims.typedElement("incident_number", HTMLInputElement),
     incidentNumberLink: ims.typedElement("incident_number_link", HTMLAnchorElement),
-    createIncident: ims.typedElement("create_incident", HTMLElement),
 
     historyToggle: ims.typedElement("history_toggle", HTMLElement),
     historyCheckbox: ims.typedElement("show_history_checkbox", HTMLInputElement),
@@ -72,7 +70,6 @@ async function initReportPage(): Promise<void> {
         return;
     }
 
-    window.makeIncident = makeIncident;
     window.editSummary = editSummary;
     window.applyJournalFilters = ims.applyJournalFilters;
     window.journalEntryEdited = ims.journalEntryEdited;
@@ -350,13 +347,6 @@ function drawIncident(): void {
         el.incidentNumberLink.href = incidentURL;
     }
     el.incidentNumber.placeholder = "(none)";
-    // If there's no attached Incident, show a button for making
-    // a new Incident
-    if (incident == null && ims.eventAccess?.writeIncidents) {
-        el.createIncident.classList.remove("hidden");
-    } else {
-        el.createIncident.classList.add("hidden");
-    }
     if (ims.eventAccess?.writeIncidents) {
         el.incidentNumber.readOnly = false;
         el.incidentNumber.classList.remove("form-control-static");
@@ -452,59 +442,6 @@ ims.setSendEdits(reportSendEdits);
 async function editSummary(): Promise<void> {
     await ims.editFromElement(el.reportSummary, "summary");
 }
-
-//
-// Make a new incident and attach this Report to it
-//
-
-async function makeIncident(): Promise<void> {
-    // Create the new incident
-    const incidentsURL = ims.urlReplace(url_incidents);
-
-    if (report == null) {
-        ims.setErrorMessage("report is null!");
-        return;
-    }
-
-    const authors: string[] = [];
-    if (report.journal_entries) {
-        authors.push(report.journal_entries[0]!.author??"null");
-    }
-    const {resp, err} = await ims.fetchNoThrow(incidentsURL, {
-        body:JSON.stringify({
-            "summary": report.summary,
-            "ranger_handles": authors,
-        }),
-    });
-    if (err != null || resp == null) {
-        ims.disableEditing();
-        ims.setErrorMessage(`Failed to create incident: ${err}`);
-        return;
-    }
-    const newNum: string|null = resp.headers.get("IMS-Incident-Number");
-    if (newNum == null) {
-        ims.disableEditing();
-        ims.setErrorMessage("Failed to create incident: no IMS Incident Number provided");
-        return;
-    }
-    report.incident = ims.parseInt10(newNum);
-
-    // Attach this Report to that new incident
-    const attachToIncidentUrl =
-        `${ims.urlReplace(url_reports)}/${report.number}` +
-        `?action=attach&incident=${report.incident}`;
-    const {err: attachErr} = await ims.fetchNoThrow(attachToIncidentUrl, {
-        body: JSON.stringify({}),
-    });
-    if (attachErr != null) {
-        ims.disableEditing();
-        ims.setErrorMessage(`Failed to attach report: ${attachErr}`);
-        return;
-    }
-    console.log("Created and attached to new incident " + report.incident);
-    await loadAndDisplayReport();
-}
-
 
 // The success callback for a journal entry strike call.
 async function reportOnStrikeSuccess(): Promise<void> {
