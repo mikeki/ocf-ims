@@ -80,6 +80,49 @@ func (c *incidentTypesCache) get(
 	return *v, nil
 }
 
+// outcomesCache memoizes the fully built, sorted outcome list. Like the
+// incident-type taxonomy it is global (not event-scoped) and identical for every
+// caller with read access, so a single cache.InMemory serves them all with the same
+// lazy-create + single-flight behavior.
+type outcomesCache struct {
+	mu    sync.Mutex
+	inner *cache.InMemory[imsjson.Outcomes]
+}
+
+func newOutcomesCache() *outcomesCache {
+	return &outcomesCache{}
+}
+
+// Invalidate drops the cached list so the next read reloads from the database.
+// Called after any create/approve/rename/hide. A no-op before the first read.
+func (c *outcomesCache) Invalidate() {
+	c.mu.Lock()
+	entry := c.inner
+	c.mu.Unlock()
+	if entry != nil {
+		entry.Invalidate()
+	}
+}
+
+// get returns the cached outcome list, loading it via refresh on a miss or after
+// the TTL. All callers pass an equivalent refresh; the first one wins.
+func (c *outcomesCache) get(
+	ctx context.Context,
+	refresh func(context.Context) (imsjson.Outcomes, error),
+) (imsjson.Outcomes, error) {
+	c.mu.Lock()
+	if c.inner == nil {
+		c.inner = cache.New(refDataCacheTTL, refresh)
+	}
+	entry := c.inner
+	c.mu.Unlock()
+	v, err := entry.Get(ctx)
+	if err != nil {
+		return nil, err
+	}
+	return *v, nil
+}
+
 // areasCache memoizes the built area list per event. Areas are per-event, so each
 // event gets its own cache.InMemory (keyed by event name, the immutable event
 // identifier used everywhere else), giving the same TTL + single-flight behavior

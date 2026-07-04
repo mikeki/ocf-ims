@@ -632,6 +632,57 @@ set HIDDEN = ?,
     `GROUP` = ?
 where ID = ?;
 
+-- name: Outcomes :many
+select sqlc.embed(o)
+from OUTCOME o;
+
+-- name: OutcomesWithProposer :many
+-- Like Outcomes but resolves the proposer's handle/name for display. The admin
+-- Outcomes page flags a still-unapproved outcome and shows who proposed it. LEFT
+-- JOIN: seeded / admin-created / approved outcomes have no proposer. Mirrors
+-- IncidentTypesWithProposer.
+select
+    o.ID,
+    o.NAME,
+    o.HIDDEN,
+    o.APPROVED,
+    o.PROPOSED_BY_PERSON_ID,
+    p.HANDLE as PROPOSER_HANDLE,
+    p.NAME as PROPOSER_NAME
+from
+    OUTCOME o
+    left join PERSON p on p.ID = o.PROPOSED_BY_PERSON_ID
+;
+
+-- name: Outcome :one
+select sqlc.embed(o)
+from OUTCOME o
+where o.ID = ?;
+
+-- name: OutcomeByName :one
+-- Look up an outcome by its (collation-insensitive, unique) NAME. Used to resolve a
+-- duplicate-name collision when proposing an outcome into the existing one.
+select sqlc.embed(o)
+from OUTCOME o
+where o.NAME = ?;
+
+-- name: CreateOutcome :execlastid
+-- Admin create passes APPROVED=true with a null proposer; a writer's proposal from
+-- the incident form passes APPROVED=false with the proposer's PERSON id.
+insert into OUTCOME (NAME, HIDDEN, APPROVED, PROPOSED_BY_PERSON_ID)
+values (?, ?, ?, ?)
+;
+
+-- name: ApproveOutcome :exec
+-- An admin approves a writer's proposed outcome; the proposer is kept for audit.
+update OUTCOME set APPROVED = true where ID = ?;
+
+-- name: UpdateOutcome :exec
+update OUTCOME
+set HIDDEN = ?,
+    NAME = ?
+where ID = ?;
+
 -- name: AddActionLog :execlastid
 insert into ACTION_LOG
     (CREATED_AT, ACTION_TYPE, METHOD, PATH, REFERRER, USER_ID, USER_NAME, POSITION_ID, POSITION_NAME, CLIENT_ADDRESS, HTTP_STATUS, DURATION_MICROS)

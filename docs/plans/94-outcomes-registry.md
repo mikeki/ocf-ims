@@ -71,64 +71,45 @@ coexist during transition — see migration note).
 
 ### PR A — Outcome table, queries, API, admin page
 
-1. **Migration `00018_create_outcome_table`** (pinned goose scaffold). Create a global
-   table mirroring `INCIDENT_TYPE`'s approval shape:
-   ```sql
-   -- +goose Up
-   create table OUTCOME (
-       ID                    integer      not null auto_increment,
-       NAME                  varchar(128) not null,
-       HIDDEN                boolean      not null default false,
-       APPROVED              boolean      not null default true,
-       PROPOSED_BY_PERSON_ID integer,
-       primary key (ID),
-       unique key (NAME),
-       foreign key (PROPOSED_BY_PERSON_ID) references PERSON(ID)
-   ) DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
-   -- seed the 14 current enum values as approved rows (reference data, like 00015)
-   insert into OUTCOME (NAME, APPROVED) values ('Handled', true), … ;
-   -- +goose Down
-   drop table OUTCOME;
-   ```
-   - Seed the human-readable names that `outcomeNameFromID` (`ims.ts:1050-1071`)
-     currently renders for the 14 enum values — that switch is the canonical
-     enum→label map to copy.
-   - **Incident link — do it in a follow-on migration in this PR** (append-only, one
-     logical change each): add `INCIDENT.OUTCOME_ID integer` FK → `OUTCOME(ID)`, then
-     **backfill** `OUTCOME_ID` from the existing `OUTCOME` enum string by joining on
-     the seeded `NAME`, then keep the old `OUTCOME` enum column **for one release** (or
-     drop it in PR B once nothing reads it). Backfill mapping: enum value →
-     `outcomeNameFromID` label → `OUTCOME.NAME` → `OUTCOME.ID`.
-   - Bump `store/integration/migrate_test.go`.
-2. **sqlc queries** (mirror the `IncidentType*` set) in `store/queries.sql`: `Outcomes`,
-   `OutcomesWithProposer` (LEFT JOIN PERSON), `Outcome`, `OutcomeByName`,
-   `CreateOutcome`, `ApproveOutcome`, `UpdateOutcome`. Update `CreateIncident`/
-   `UpdateIncident` to write `OUTCOME_ID` (keep writing the legacy enum too until PR B
-   drops it, or switch fully if PR A also owns the incident form — see PR B).
-3. **API `api/outcome.go`** (mirror `api/itype.go`):
-   - `GetOutcomes` — `GET /ims/api/outcomes`, served from a new `outcomesCache`.
-   - `EditOutcomes` — `POST /ims/api/outcomes`, admin-gated (add a
-     `GlobalAdministrateOutcomes` global permission to `lib/authz/permission.go` in
-     the same style as `GlobalAdministrateIncidentTypes`, granted to `Administrator` in
-     `RolesToGlobalPerms`). Handles create / approve / update.
-   - `ProposeOutcome` — `POST /ims/api/events/{eventName}/outcomes`, event-writer-gated,
-     creates unapproved with `PROPOSED_BY_PERSON_ID = caller`, dedups by name via
-     `OutcomeByName`.
-   - Register routes in `api/mux.go` next to the incident-type routes
-     (`:448,458,471`). **All mutating routes: `LogRequest(true, …)`** (CLAUDE.md).
-4. **Admin page** `web/template/adminoutcomes.templ` + `web/typescript/admin_outcomes.ts`
-   (mirror `admintypes`): list with proposed badge + Approve button, create/edit form.
-   Add a page route in `web/mux.go` (next to `/ims/app/admin/types`, `:111-112`) and an
-   admin-root link. **Full page design in [97-admin-enum-pages.md](97-admin-enum-pages.md)
-   (`adminoutcomes`).**
-5. **`GlobalAdministrateOutcomes`** — add the permission bit + role mapping; confirm the
-   admin nav reveals the page only for holders.
+**Status: ✅ Built.** As built, PR A is purely additive — it creates the OUTCOME table
++ API + admin page and **does not touch INCIDENT at all** (no `OUTCOME_ID`/backfill).
+That kept it fully independent of the in-review two-state slice (10b) and left the
+`INCIDENT.OUTCOME` enum untouched, so incidents still record outcomes via the enum
+until PR B rewires them. Decisions baked in: **alphabetical sort** (per the user),
+`NAME`/`HIDDEN`/`APPROVED`/`PROPOSED_BY_PERSON_ID` only (no group/description), and
+migration numbered **`00019`** (not 00018 — that number is taken by 10b's state
+migration; 10a should land after 10b).
 
-**Verify:** `go run bin/build/build.go`; `go test ./... ./store/integration ./api/integration`
-(migration seeds 14 outcomes, backfills `OUTCOME_ID` correctly, `EditOutcomes`
-create/approve/update round-trip, `ProposeOutcome` writes unapproved with proposer).
-`npx eslint`. Manual: admin outcomes page lists the 14 seeded outcomes; create one;
-propose one as a writer → shows "proposed" → approve it.
+1. **Migration `00019_create_outcome_table.sql`** — create the global `OUTCOME`
+   table (`ID`, `NAME` unique, `HIDDEN`, `APPROVED` default true,
+   `PROPOSED_BY_PERSON_ID` FK→PERSON), mirroring `INCIDENT_TYPE`'s approval shape, and
+   seed the fourteen current dispositions as approved rows (the display names from the
+   incident form). No INCIDENT change; `migrate_test.go` needs no bump (tables-exist +
+   idempotency only). The `INCIDENT.OUTCOME_ID` FK + backfill + enum drop are **PR B**.
+2. **sqlc queries** in `store/queries.sql`: `Outcomes`, `OutcomesWithProposer` (LEFT
+   JOIN PERSON), `Outcome`, `OutcomeByName`, `CreateOutcome`, `ApproveOutcome`,
+   `UpdateOutcome` (mirror the `IncidentType*` set, minus group/description). No
+   `CreateIncident`/`UpdateIncident` change in PR A.
+3. **API `api/outcome.go`** (mirrors `api/itype.go`, minus the metrics cache — outcome
+   edits don't move any incident's disposition yet): `GetOutcomes`
+   (`GET /ims/api/outcomes`, served from a new `outcomesCache`, sorted alphabetically),
+   `EditOutcomes` (`POST /ims/api/outcomes`, admin create/approve/update),
+   `ProposeOutcome` (`POST /ims/api/events/{eventName}/outcomes`, writer-gated, dedups
+   by name). Routes in `api/mux.go` next to the incident-type routes; mutating routes
+   `LogRequest(true, …)`.
+4. **Permissions** — added `GlobalReadOutcomes` (every authenticated user, like
+   `GlobalReadIncidentTypes`) and `GlobalAdministrateOutcomes` (Administrator) to
+   `lib/authz/permission.go` + `RolesToGlobalPerms`.
+5. **Admin page** `web/template/adminoutcomes.templ` + `web/typescript/admin_outcomes.ts`
+   (simplified clone of `admintypes` — Name + Hidden toggle + Approve + Edit + Add, no
+   group). Page route in `web/mux.go`, admin-root link in `adminroot.templ`. See
+   [97-admin-enum-pages.md](97-admin-enum-pages.md) (`adminoutcomes`).
+6. **Tests** — `api/integration/outcome_test.go`: admin create + hide/unhide + rename,
+   and the propose → approve → duplicate-resolves → reporter-403 flow.
+
+**Verified** via `docker build --target build` (sqlc/templ/tsgo generation + `go build`
++ TS transpile) and `go vet ./...` (compiles the new integration tests). CI runs the
+integration tests against a live MariaDB.
 
 ### PR B — Data-drive the incident form; remove hardcoded lists
 

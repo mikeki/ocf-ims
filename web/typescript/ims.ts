@@ -3643,6 +3643,17 @@ export interface IncidentType {
     proposer?: Mention|null;
 }
 
+// Outcome is an incident disposition — admin-managed reference data with a
+// propose/approve workflow, mirroring IncidentType (slice 10a). Sorted
+// alphabetically by name; carries no group of its own.
+export interface Outcome {
+    id?: number|null;
+    name?: string|null;
+    hidden?: boolean|null;
+    approved?: boolean|null;
+    proposer?: Mention|null;
+}
+
 // OCF incident-type categories, listed in alphabetical display order so the
 // type dropdown and info modal group headings sort predictably (6d.2). Types
 // remain alphabetical within each group; ungrouped types sort last.

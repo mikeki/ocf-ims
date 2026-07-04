@@ -217,6 +217,37 @@ func (a ApiHelper) proposeType(ctx context.Context, eventName string, req imsjso
 	return &num, httpResp
 }
 
+func (a ApiHelper) editOutcome(ctx context.Context, req imsjson.Outcome) (*int32, *http.Response) {
+	a.t.Helper()
+	httpResp := a.imsPost(ctx, req, a.serverURL.JoinPath("/ims/api/outcomes").String())
+	numStr := httpResp.Header.Get("IMS-Outcome-ID")
+	require.NoError(a.t, httpResp.Body.Close())
+	if numStr == "" {
+		return nil, httpResp
+	}
+	num, err := conv.ParseInt32(numStr)
+	require.NoError(a.t, err)
+	return &num, httpResp
+}
+func (a ApiHelper) getOutcomes(ctx context.Context) (imsjson.Outcomes, *http.Response) {
+	a.t.Helper()
+	path := a.serverURL.JoinPath("/ims/api/outcomes").String()
+	bod, resp := a.imsGet(ctx, path, &imsjson.Outcomes{})
+	return *bod.(*imsjson.Outcomes), resp
+}
+func (a ApiHelper) proposeOutcome(ctx context.Context, eventName string, req imsjson.Outcome) (*int32, *http.Response) {
+	a.t.Helper()
+	httpResp := a.imsPost(ctx, req, a.serverURL.JoinPath("/ims/api/events/", eventName, "/outcomes").String())
+	numStr := httpResp.Header.Get("IMS-Outcome-ID")
+	require.NoError(a.t, httpResp.Body.Close())
+	if numStr == "" {
+		return nil, httpResp
+	}
+	num, err := conv.ParseInt32(numStr)
+	require.NoError(a.t, err)
+	return &num, httpResp
+}
+
 func (a ApiHelper) editArea(ctx context.Context, eventName string, req imsjson.Area) (slug string, resp *http.Response) {
 	a.t.Helper()
 	httpResp := a.imsPost(ctx, req, a.serverURL.JoinPath("/ims/api/events/", eventName, "/areas").String())
