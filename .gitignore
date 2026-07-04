@@ -53,3 +53,7 @@ air_tmp
 # session/tool artifacts
 .claude/scheduled_tasks.lock
 .playwright-mcp/
+
+# local monitoring config (log viewer + localhost compose override)
+docker-compose.monitoring.localhost.yml
+dozzle-users.yml
