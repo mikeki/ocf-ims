@@ -3508,6 +3508,7 @@ export type Incident = {
     created?: string|null;
     started?: string|null;
     last_modified?: string|null;
+    created_by?: Mention|null;
     people?: IncidentPerson[]|null;
     incident_type_ids?: number[]|null;
     location?: EventLocation|null;
@@ -3524,6 +3525,7 @@ export type Report = {
     event?: string|null;
     number?: number|null;
     created?: string|null;
+    created_by?: Mention|null;
     summary?: string|null;
     incident?: number|null;
     journal_entries?: JournalEntry[]|null;

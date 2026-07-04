@@ -523,8 +523,8 @@ func (action AttachToReport) attachToReport(req *http.Request) (int32, *herr.HTT
 	}
 
 	action.es.notifyReportUpdate(event.ID, reportNumber)
-	if report.IncidentNumber.Valid {
-		action.es.notifyIncidentUpdate(event.ID, report.IncidentNumber.Int32)
+	if report.Report.IncidentNumber.Valid {
+		action.es.notifyIncidentUpdate(event.ID, report.Report.IncidentNumber.Int32)
 	}
 	return reID, nil
 }

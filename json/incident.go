@@ -49,6 +49,7 @@ type Incident struct {
 	Number          int32             `json:"number"`
 	Created         time.Time         `json:"created,omitzero"`
 	LastModified    time.Time         `json:"last_modified,omitzero"`
+	CreatedBy       *Mention          `json:"created_by,omitzero"`
 	State           string            `json:"state"`
 	Outcome         *string           `json:"outcome"`
 	Started         time.Time         `json:"started,omitzero"`

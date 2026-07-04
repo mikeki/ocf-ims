@@ -292,6 +292,9 @@ func requireEqualReport(t *testing.T, before, after imsjson.Report) {
 	}
 	before.Created, after.Created = time.Time{}, time.Time{}
 
+	// CreatedBy is set by the server; the request won't have it.
+	before.CreatedBy, after.CreatedBy = nil, nil
+
 	require.Equal(t, before, after)
 }
 

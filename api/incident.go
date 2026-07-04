@@ -288,6 +288,7 @@ func incidentToJSON(storedRow imsdb.IncidentRow, incidentPeople []imsjson.Incide
 		Number:       storedRow.Incident.Number,
 		Created:      conv.FloatToTime(storedRow.Incident.Created),
 		LastModified: lastModified,
+		CreatedBy:    createdByJSON(storedRow.Incident.CreatedBy, storedRow.CreatedByHandle, storedRow.CreatedByName),
 		State:        string(storedRow.Incident.State),
 		Outcome:      outcomeToString(storedRow.Incident.Outcome),
 		Started:      conv.FloatToTime(storedRow.Incident.Started),
@@ -515,12 +516,13 @@ func (action NewIncident) newIncident(req *http.Request) (incidentNumber int32, 
 	newIncident.Number = newIncidentNumber
 	now := conv.TimeToFloat(time.Now())
 	createTheIncident := imsdb.CreateIncidentParams{
-		Event:    newIncident.EventID,
-		Number:   newIncidentNumber,
-		Created:  now,
-		Started:  now,
-		Priority: imsjson.IncidentPriorityNormal,
-		State:    imsdb.IncidentStateNew,
+		Event:     newIncident.EventID,
+		Number:    newIncidentNumber,
+		Created:   now,
+		Started:   now,
+		Priority:  imsjson.IncidentPriorityNormal,
+		State:     imsdb.IncidentStateNew,
+		CreatedBy: sql.NullInt32{Int32: authorPersonID, Valid: true},
 	}
 	_, err = action.imsDBQ.CreateIncident(ctx, action.imsDBQ, createTheIncident)
 	if err != nil {

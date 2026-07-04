@@ -26,10 +26,11 @@ insert into INCIDENT (
     CREATED,
     PRIORITY,
     STATE,
-    STARTED
+    STARTED,
+    CREATED_BY
 )
 values (
-   ?,?,?,?,?,?
+   ?,?,?,?,?,?,?
 );
 
 -- name: UpdateIncident :exec
@@ -69,8 +70,11 @@ select
         from VISIT visit
         where i.EVENT = visit.EVENT
           and i.NUMBER = visit.INCIDENT_NUMBER
-    ) as VISIT_NUMBERS
+    ) as VISIT_NUMBERS,
+    cb.HANDLE as CREATED_BY_HANDLE,
+    cb.NAME as CREATED_BY_NAME
 from INCIDENT i
+    left join PERSON cb on cb.ID = i.CREATED_BY
 where i.EVENT = ?
     and i.NUMBER = ?;
 
@@ -94,9 +98,12 @@ select
         from VISIT visit
         where i.EVENT = visit.EVENT
           and i.NUMBER = visit.INCIDENT_NUMBER
-    ) as VISIT_NUMBERS
+    ) as VISIT_NUMBERS,
+    cb.HANDLE as CREATED_BY_HANDLE,
+    cb.NAME as CREATED_BY_NAME
 from
     INCIDENT i
+    left join PERSON cb on cb.ID = i.CREATED_BY
 where
     i.EVENT = ?
 group by
@@ -241,13 +248,21 @@ from INCIDENT_TYPE it
 where it.NAME = ?;
 
 -- name: Reports :many
-select sqlc.embed(fr)
+select
+    sqlc.embed(fr),
+    cb.HANDLE as CREATED_BY_HANDLE,
+    cb.NAME as CREATED_BY_NAME
 from REPORT fr
+    left join PERSON cb on cb.ID = fr.CREATED_BY
 where fr.EVENT = ?;
 
 -- name: Report :one
-select sqlc.embed(fr)
+select
+    sqlc.embed(fr),
+    cb.HANDLE as CREATED_BY_HANDLE,
+    cb.NAME as CREATED_BY_NAME
 from REPORT fr
+    left join PERSON cb on cb.ID = fr.CREATED_BY
 where fr.EVENT = ?
     and fr.NUMBER = ?;
 
@@ -318,9 +333,9 @@ limit 1;
 
 -- name: CreateReport :exec
 insert into REPORT (
-    EVENT, NUMBER, CREATED, SUMMARY, INCIDENT_NUMBER
+    EVENT, NUMBER, CREATED, SUMMARY, INCIDENT_NUMBER, CREATED_BY
 )
-values (?, ?, ?, ?, ?);
+values (?, ?, ?, ?, ?, ?);
 
 -- name: UpdateReport :exec
 update REPORT

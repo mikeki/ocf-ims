@@ -688,6 +688,7 @@ func requireEqualIncident(t *testing.T, before, after imsjson.Incident) {
 	// normalize them out of this request-vs-retrieved comparison. Dedicated 52f tests
 	// cover their values.
 	before.ViewerMayAddJournal, after.ViewerMayAddJournal = false, false
+	before.CreatedBy, after.CreatedBy = nil, nil
 	for _, ppl := range []*[]imsjson.IncidentPerson{before.People, after.People} {
 		if ppl == nil {
 			continue
