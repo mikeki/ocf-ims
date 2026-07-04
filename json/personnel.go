@@ -34,9 +34,9 @@ type Person struct {
 	// admin People listing so it can split the roster into with-/without-access;
 	// omitempty withholds it (and its meaning) from the other endpoints. Never
 	// exposes the hash itself.
-	HasPassword bool `json:"has_password,omitempty"`
-	IsAdmin     bool `json:"is_admin"`
-	PersonID int64  `json:"person_id,omitzero"`
+	HasPassword bool  `json:"has_password,omitempty"`
+	IsAdmin     bool  `json:"is_admin"`
+	PersonID    int64 `json:"person_id,omitzero"`
 	// Wristband and ParticipationType are per-event and only populated by the
 	// typeahead search endpoint (GET /personnel?q=&event=); they're empty on the
 	// login directory and admin listings. See docs/plans/51-people-registry.md.
