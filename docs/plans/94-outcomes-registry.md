@@ -118,8 +118,9 @@ coexist during transition — see migration note).
      (`:448,458,471`). **All mutating routes: `LogRequest(true, …)`** (CLAUDE.md).
 4. **Admin page** `web/template/adminoutcomes.templ` + `web/typescript/admin_outcomes.ts`
    (mirror `admintypes`): list with proposed badge + Approve button, create/edit form.
-   Add a page route in `web/mux.go` (next to `/ims/app/admin/types`, `:111-112`) and a
-   nav entry.
+   Add a page route in `web/mux.go` (next to `/ims/app/admin/types`, `:111-112`) and an
+   admin-root link. **Full page design in [97-admin-enum-pages.md](97-admin-enum-pages.md)
+   (`adminoutcomes`).**
 5. **`GlobalAdministrateOutcomes`** — add the permission bit + role mapping; confirm the
    admin nav reveals the page only for holders.
 

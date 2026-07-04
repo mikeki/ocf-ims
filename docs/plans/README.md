@@ -65,3 +65,4 @@ management system.
 | [94-outcomes-registry.md](94-outcomes-registry.md) | Round 10, slice 10a — Outcomes → DB-backed registry with propose/approve (like Incident Types) | Plan — for review |
 | [95-crews.md](95-crews.md) | Round 10, slice 10c — Crews (rename TEAM→CREW, per-event crew field, redefine crew_leader to read-only, crew report review) | Plan — for review |
 | [96-person-profile-picture.md](96-person-profile-picture.md) | Round 10, slice 10d — Person profile picture on the profile card | Plan — for review |
+| [97-admin-enum-pages.md](97-admin-enum-pages.md) | Round 10 — shared admin-page design for the admin-managed taxonomies (Types, Areas, Outcomes, Crews) | Plan — for review |

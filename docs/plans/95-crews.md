@@ -165,8 +165,9 @@ reshape applies; `PERSON__EVENT.CREW_SLUG` FK holds). No behavior change yet.
 2. **Admin page** `web/template/admincrews.templ` + `web/typescript/admin_crews.ts`
    (mirror `adminareas`): list with proposed badge + Approve + mark-duplicate, create/
    edit form, and a **leader picker** (person combobox scoped to the event) writing
-   `LEADER_PERSON_ID`. Page route in `web/mux.go` (next to `/ims/app/admin/areas`
-   `:120-121`) + nav entry gated on `GlobalAdministrateCrews`.
+   `LEADER_PERSON_ID`. Per-event doorway (both the global event-picker mount and the
+   event-scoped mount, like Areas) + admin-root link, gated on `GlobalAdministrateCrews`.
+   **Full page design in [97-admin-enum-pages.md](97-admin-enum-pages.md) (`admincrews`).**
 3. **Assigning a person's crew:** add the crew field to the People roster/edit UI
    (`web/template/people.templ`, `web/typescript/people.ts`) — a per-event crew select
    posting to a `SetPersonEventCrew` endpoint (mirror `submitMarkParticipation`
