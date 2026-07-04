@@ -99,6 +99,13 @@ func TestCreateAndEditPerson(t *testing.T) {
 	require.NoError(t, resp.Body.Close())
 	require.Positive(t, created.PersonID)
 
+	// A fair-name-only person (no email, no password) is a valid login-less contact.
+	resp = apisAdmin.createPerson(ctx, api.CreatePersonRequest{Handle: "FairNameOnly"})
+	require.Equal(t, http.StatusCreated, resp.StatusCode)
+	var fairNameOnly imsjson.Person
+	require.NoError(t, json.NewDecoder(resp.Body).Decode(&fairNameOnly))
+	require.NoError(t, resp.Body.Close())
+
 	// Creating the same handle again is a conflict (a distinct email keeps the handle
 	// the sole collision).
 	resp = apisAdmin.createPerson(ctx, api.CreatePersonRequest{Handle: newHandle, Email: "edith-dup@example.com", Password: newPassword})
@@ -112,6 +119,13 @@ func TestCreateAndEditPerson(t *testing.T) {
 	require.True(t, slices.ContainsFunc(people, func(p imsjson.Person) bool {
 		return p.Handle == newHandle
 	}), "created person should appear in the admin listing")
+
+	// The listing reports has_password so the page can split with- vs without-IMS-access.
+	// A fair name alone is identity, not a login: only someone with a password counts as
+	// having access. (Regression: a handle-only person used to be mislabeled "With IMS
+	// access".)
+	require.True(t, findPerson(t, people, created.PersonID).HasPassword)
+	require.False(t, findPerson(t, people, fairNameOnly.PersonID).HasPassword)
 
 	// ...and can log in (by email — the sole login identifier) with the assigned
 	// password.

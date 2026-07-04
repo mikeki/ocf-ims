@@ -907,9 +907,13 @@ from PERSON;
 -- participation type — null when the person has no row for the event yet, or when
 -- no event is selected (event = 0 matches nothing). The login directory and the
 -- attach-person autocompletes use the People query instead.
+-- HAS_PASSWORD (PASSWORD is not null) lets the admin People page tell whether a
+-- person can actually sign in — a fair name / legal name alone is identity, not a
+-- login. It never selects the password hash itself.
 -- name: AllPeople :many
 select
     p.ID, p.HANDLE, p.NAME, p.EMAIL, p.PHONE, p.IS_ADMIN,
+    p.PASSWORD is not null as HAS_PASSWORD,
     pe.WRISTBAND, pe.PARTICIPATION_TYPE
 from PERSON p
     left join PERSON__EVENT pe on pe.PERSON_ID = p.ID and pe.EVENT = sqlc.arg(event)
@@ -1026,6 +1030,7 @@ where PERSON_ID = ? and EVENT = ?;
 -- name: EventRoster :many
 select
     p.ID, p.HANDLE, p.NAME, p.EMAIL, p.PHONE, p.IS_ADMIN,
+    p.PASSWORD is not null as HAS_PASSWORD,
     pe.WRISTBAND, pe.PARTICIPATION_TYPE
 from PERSON p
     join PERSON__EVENT pe on pe.PERSON_ID = p.ID and pe.EVENT = sqlc.arg(event)

@@ -3732,6 +3732,9 @@ export type Personnel = {
     // edited; collectable for login-less people too.
     phone?: string|null;
     person_id?: number|null;
+    // has_password reports whether the person can actually sign in (a password is
+    // set). Sent only by the admin People listing; absent (falsy) elsewhere.
+    has_password?: boolean;
     is_admin?: boolean;
     // wristband and participation_type are per-event; the admin listing populates
     // them when scoped to an event (?event=). See docs/plans/51-people-registry.md.

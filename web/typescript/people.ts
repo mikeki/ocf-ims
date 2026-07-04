@@ -69,7 +69,7 @@ function roleRungsForViewer(): RoleRung[] {
 const noLoginRoleValues = new Set(["volunteer", "public"]);
 
 // roleRungsForPerson narrows the viewer's assignable rungs to those that make sense
-// for this person: a name-only person (no handle/email) can only be a volunteer or
+// for this person: a login-less person (no password set) can only be a volunteer or
 // public, since the higher rungs imply a login they don't have.
 function roleRungsForPerson(person: ims.Personnel): RoleRung[] {
     const rungs = roleRungsForViewer();
@@ -380,11 +380,14 @@ function drawPeople(): void {
     applyFilter();
 }
 
-// hasImsAccess reports whether a person can sign in — they have a handle or email to
-// authenticate with, or they're an admin. Name-only people (neither) are tracked at
-// the fair but have no login.
+// hasImsAccess reports whether a person can sign in — they have a password set.
+// A fair name (or even an email) alone is identity/contact, not a login: signing in
+// needs an email AND a password, and the server won't set a password without an
+// email, so has_password is the authoritative "can log in" signal. People tracked at
+// the fair with no password are login-less. (has_password is populated only by the
+// admin People listing, which is the only caller of this.)
 function hasImsAccess(person: ims.Personnel): boolean {
-    return Boolean(person.is_admin) || Boolean(person.handle?.trim()) || Boolean(person.email?.trim());
+    return Boolean(person.has_password);
 }
 
 // Role ladder, most access first, used to sort each people group. Admins sort ahead
