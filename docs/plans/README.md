@@ -61,3 +61,8 @@ management system.
 | [82-notifications.md](82-notifications.md) | Notifications (in-app first, email later) | Idea — design sketch |
 | [83-email-infrastructure.md](83-email-infrastructure.md) | Email infrastructure (enabler) | Blocked on IT prerequisites |
 | [84-web-push-notifications.md](84-web-push-notifications.md) | Web push notifications (3rd delivery channel; no IT needed) | In progress — 84a server plumbing (PR #104) + 84b client subscription (PR #105) + 84c send fan-out built; 84d to do |
+| [93-feedback-round-10.md](93-feedback-round-10.md) | Phase 6 — Feedback round 10 (umbrella: 10a–10g; fully specs 10b states, 10e reporter IMS#, 10f label, 10g remove button) | Plan — for review |
+| [94-outcomes-registry.md](94-outcomes-registry.md) | Round 10, slice 10a — Outcomes → DB-backed registry with propose/approve (like Incident Types) | Plan — for review |
+| [95-crews.md](95-crews.md) | Round 10, slice 10c — Crews (rename TEAM→CREW, per-event crew field, redefine crew_leader to read-only, crew report review) | Plan — for review |
+| [96-person-profile-picture.md](96-person-profile-picture.md) | Round 10, slice 10d — Person profile picture on the profile card | Plan — for review |
+| [97-admin-enum-pages.md](97-admin-enum-pages.md) | Round 10 — shared admin-page design for the admin-managed taxonomies (Types, Areas, Outcomes, Crews) | Plan — for review |
