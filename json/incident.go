@@ -44,13 +44,13 @@ const (
 )
 
 type Incident struct {
-	Event           string            `json:"event"`
-	EventID         int32             `json:"event_id"`
-	Number          int32             `json:"number"`
-	Created         time.Time         `json:"created,omitzero"`
-	LastModified    time.Time         `json:"last_modified,omitzero"`
-	CreatedBy       *Mention          `json:"created_by,omitzero"`
-	State           string            `json:"state"`
+	Event        string    `json:"event"`
+	EventID      int32     `json:"event_id"`
+	Number       int32     `json:"number"`
+	Created      time.Time `json:"created,omitzero"`
+	LastModified time.Time `json:"last_modified,omitzero"`
+	CreatedBy    *Mention  `json:"created_by,omitzero"`
+	State        string    `json:"state"`
 	// OutcomeID references an OUTCOME(ID) — the incident's disposition, promoted
 	// from the former hardcoded enum to a data-driven table (slice 10a). On a
 	// write: nil leaves it unchanged, 0 clears it, any other value must reference

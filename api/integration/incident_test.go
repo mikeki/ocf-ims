@@ -638,11 +638,11 @@ func TestIncidentOutcome(t *testing.T) {
 	require.Equal(t, transported, deref(got.OutcomeID))
 
 	// outcome_id=0 clears the outcome back to unset (null).
-	clear := int32(0)
+	clearOutcome := int32(0)
 	resp = writer.updateIncident(ctx, eventName, num, imsjson.Incident{
 		Event:     eventName,
 		Number:    num,
-		OutcomeID: &clear,
+		OutcomeID: &clearOutcome,
 	})
 	require.Equal(t, http.StatusNoContent, resp.StatusCode)
 	require.NoError(t, resp.Body.Close())

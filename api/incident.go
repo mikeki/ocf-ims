@@ -1290,4 +1290,3 @@ func (action DetachPersonFromIncident) detachPerson(req *http.Request) *herr.HTT
 
 	return nil
 }
-
