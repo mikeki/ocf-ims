@@ -232,6 +232,53 @@ func TestCreateAndUpdateReport(t *testing.T) {
 	require.Nil(t, reportAfterDetach.Incident)
 }
 
+// TestCreateReportAttachedToIncident covers 10e: a reporter may create a Report
+// already attached to an incident, with no Summary yet (an IMS# can be added
+// before/without a Summary). A bad incident number is a friendly 404, not a 500.
+func TestCreateReportAttachedToIncident(t *testing.T) {
+	t.Parallel()
+	ctx := t.Context()
+
+	apisAdmin := ApiHelper{t: t, serverURL: shared.serverURL, jwt: jwtForAdmin(ctx, t)}
+	apisAlice := ApiHelper{t: t, serverURL: shared.serverURL, jwt: jwtForAlice(t, ctx)}
+
+	eventName := rand.NonCryptoText()
+	_, resp := apisAdmin.createEvent(ctx, imsjson.Event{Name: &eventName})
+	require.Equal(t, http.StatusNoContent, resp.StatusCode)
+	require.NoError(t, resp.Body.Close())
+	resp = apisAdmin.addWriter(ctx, eventName, userAdminHandle)
+	require.Equal(t, http.StatusNoContent, resp.StatusCode)
+	require.NoError(t, resp.Body.Close())
+	resp = apisAdmin.addReporter(ctx, eventName, userAliceHandle)
+	require.Equal(t, http.StatusNoContent, resp.StatusCode)
+	require.NoError(t, resp.Body.Close())
+
+	// Admin creates an incident for the reporter to attach to.
+	incidentNumber := apisAdmin.newIncidentSuccess(ctx, imsjson.Incident{Event: eventName})
+
+	// The reporter creates a Report already attached to that incident, with no
+	// Summary at all (IMS# before/without a Summary).
+	num := apisAlice.newReportSuccess(ctx, imsjson.Report{
+		Event:    eventName,
+		Incident: new(incidentNumber),
+	})
+
+	got, resp := apisAlice.getReport(ctx, eventName, num)
+	require.Equal(t, http.StatusOK, resp.StatusCode)
+	require.NoError(t, resp.Body.Close())
+	require.NotNil(t, got.Incident)
+	require.Equal(t, incidentNumber, *got.Incident)
+	require.Nil(t, got.Summary)
+
+	// Attaching a new Report to a nonexistent incident is a friendly 404.
+	resp = apisAlice.newReport(ctx, imsjson.Report{
+		Event:    eventName,
+		Incident: new(int32(999999)),
+	})
+	require.Equal(t, http.StatusNotFound, resp.StatusCode)
+	require.NoError(t, resp.Body.Close())
+}
+
 func TestCreateAndAttachFileToReport(t *testing.T) {
 	t.Parallel()
 	ctx := t.Context()

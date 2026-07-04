@@ -513,8 +513,12 @@ func (action NewReport) newReport(req *http.Request) (reportNumber int32, locati
 		return 0, "", errHTTP.From("[readBodyAs]")
 	}
 
+	// A new Report may be created already attached to an incident (10e): a
+	// reporter can enter the IMS# on the create form, before or without a
+	// Summary. An unknown incident trips the composite FK below (1452).
+	var incidentNumber sql.NullInt32
 	if report.Incident != nil {
-		return 0, "", herr.BadRequest("A new Report may not be attached to an incident", nil)
+		incidentNumber = sql.NullInt32{Int32: *report.Incident, Valid: true}
 	}
 
 	authorPersonID := jwtCtx.Claims.PersonID()
@@ -531,11 +535,17 @@ func (action NewReport) newReport(req *http.Request) (reportNumber int32, locati
 			Number:         newReportNum,
 			Created:        conv.TimeToFloat(time.Now()),
 			Summary:        conv.StringToSql(report.Summary, 0),
-			IncidentNumber: sql.NullInt32{},
+			IncidentNumber: incidentNumber,
 			CreatedBy:      sql.NullInt32{Int32: authorPersonID, Valid: true},
 		},
 	)
 	if err != nil {
+		// A bad incident number trips the composite (EVENT, INCIDENT_NUMBER) FK.
+		var mysqlErr *mysql.MySQLError
+		const mySQLErNoReferencedRow2 = 1452
+		if errors.As(err, &mysqlErr) && mysqlErr.Number == mySQLErNoReferencedRow2 {
+			return 0, "", herr.NotFound("No such Incident", err).From("[CreateReport]")
+		}
 		return 0, "", herr.InternalServerError("Failed to create Report", err).From("[CreateReport]")
 	}
 
@@ -547,6 +557,14 @@ func (action NewReport) newReport(req *http.Request) (reportNumber int32, locati
 
 	if report.Summary != nil {
 		text := "Changed summary to: " + *report.Summary
+		_, errHTTP := addJournalEntry(ctx, action.imsDBQ, txn, event.ID, report.Number, authorPersonID, text, true, "", "", "", sql.NullInt32{})
+		if errHTTP != nil {
+			return 0, "", errHTTP.From("[addJournalEntry]")
+		}
+	}
+
+	if report.Incident != nil {
+		text := fmt.Sprintf("Attached to incident: %v", *report.Incident)
 		_, errHTTP := addJournalEntry(ctx, action.imsDBQ, txn, event.ID, report.Number, authorPersonID, text, true, "", "", "", sql.NullInt32{})
 		if errHTTP != nil {
 			return 0, "", errHTTP.From("[addJournalEntry]")
@@ -580,6 +598,11 @@ func (action NewReport) newReport(req *http.Request) (reportNumber int32, locati
 
 	loc := fmt.Sprintf("/ims/api/events/%v/reports/%v", event.Name, report.Number)
 	defer action.eventSource.notifyReportUpdate(event.ID, report.Number)
+	if report.Incident != nil {
+		// The incident just gained a report; refresh its subscribers too (0 =
+		// no previous incident, mirroring an attach from unattached).
+		defer action.eventSource.notifyIncidentUpdates(event.ID, 0, *report.Incident)
+	}
 	// Web push the mentioned people (plan 84c): after commit, off the request path.
 	action.pusher.notifyMentionedInReport(ctx, event.Name, report.Number, mentionedPersonIDs, authorPersonID)
 	return report.Number, loc, nil
