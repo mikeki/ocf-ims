@@ -87,11 +87,19 @@ const (
 	// GlobalAdministrateAreas allows managing an event's location areas (the
 	// per-event AREA table); held by Administrators today.
 	GlobalAdministrateAreas
+	// GlobalReadOutcomes allows reading the outcome (disposition) taxonomy — the
+	// global OUTCOME table (slice 10a). Held by every authenticated user, like
+	// GlobalReadIncidentTypes.
+	GlobalReadOutcomes
+	// GlobalAdministrateOutcomes allows managing the OUTCOME table (create / rename /
+	// hide / approve proposals); held by Administrators today. Mirrors
+	// GlobalAdministrateIncidentTypes.
+	GlobalAdministrateOutcomes
 )
 
 var RolesToGlobalPerms = map[Role]GlobalPermissionMask{
-	AnyAuthenticatedUser: GlobalListEvents | GlobalReadIncidentTypes | GlobalReadPersonnel,
-	Administrator:        GlobalAdministrateEvents | GlobalAdministrateIncidentTypes | GlobalAdministrateDebugging | GlobalAdministratePersonnel | GlobalAdministrateAreas,
+	AnyAuthenticatedUser: GlobalListEvents | GlobalReadIncidentTypes | GlobalReadPersonnel | GlobalReadOutcomes,
+	Administrator:        GlobalAdministrateEvents | GlobalAdministrateIncidentTypes | GlobalAdministrateDebugging | GlobalAdministratePersonnel | GlobalAdministrateAreas | GlobalAdministrateOutcomes,
 }
 
 // RolesToEventPerms maps an access role to the event permissions it grants. Only the

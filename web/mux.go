@@ -111,6 +111,9 @@ func AddToMux(mux *http.ServeMux, cfg *conf.IMSConfig) *http.ServeMux {
 	mux.Handle("GET /ims/app/admin/types",
 		AdaptTempl(template.AdminTypes(deployment, versionName, versionRef)),
 	)
+	mux.Handle("GET /ims/app/admin/outcomes",
+		AdaptTempl(template.AdminOutcomes(deployment, versionName, versionRef)),
+	)
 	mux.Handle("GET /ims/app/admin/debug",
 		AdaptTempl(template.AdminDebug(deployment, versionName, versionRef)),
 	)

@@ -74,6 +74,7 @@ func AddToMux(
 	// they are memoized here and invalidated by their write handlers.
 	incidentTypesCache := newIncidentTypesCache()
 	areasCache := newAreasCache()
+	outcomesCache := newOutcomesCache()
 
 	// Failed-login throttle/lockout for POST /ims/api/auth (plan 90, findings H1 +
 	// M4). Enabled in real deployments; the shared test suite disables it via config.
@@ -471,6 +472,39 @@ func AddToMux(
 	mux.Handle("POST /ims/api/events/{eventName}/incident_types",
 		Adapt(
 			ProposeIncidentType{db, userStore, metricsCache, incidentTypesCache},
+			RecoverFromPanic(),
+			RequireAuthN(jwter),
+			LogRequest(true, actionLogger, userStore),
+			LimitRequestBytes(cfg.Core.MaxRequestBytes),
+		),
+	)
+
+	mux.Handle("GET /ims/api/outcomes",
+		Adapt(
+			GetOutcomes{db, userStore, outcomesCache, cfg.Core.CacheControlShort},
+			RecoverFromPanic(),
+			RequireAuthN(jwter),
+			LogRequest(false, actionLogger, userStore),
+			LimitRequestBytes(cfg.Core.MaxRequestBytes),
+		),
+	)
+
+	mux.Handle("POST /ims/api/outcomes",
+		Adapt(
+			EditOutcomes{db, userStore, outcomesCache},
+			RecoverFromPanic(),
+			RequireAuthN(jwter),
+			LogRequest(true, actionLogger, userStore),
+			LimitRequestBytes(cfg.Core.MaxRequestBytes),
+		),
+	)
+
+	// An event writer proposes a new outcome from the incident form; the route is
+	// event-scoped only to authorize the caller as a writer (the outcome is global).
+	// Approval happens back on the global admin endpoint above.
+	mux.Handle("POST /ims/api/events/{eventName}/outcomes",
+		Adapt(
+			ProposeOutcome{db, userStore, outcomesCache},
 			RecoverFromPanic(),
 			RequireAuthN(jwter),
 			LogRequest(true, actionLogger, userStore),
