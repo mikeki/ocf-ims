@@ -112,7 +112,7 @@ func (action GetReports) getReports(req *http.Request) (imsjson.Reports, *herr.H
 		resp = append(
 			resp,
 			reportToJSON(
-				report.Report,
+				report,
 				entriesByReport[report.Report.Number],
 				event,
 				action.attachmentsEnabled,
@@ -178,24 +178,36 @@ func (action GetReport) getReport(req *http.Request) (imsjson.Report, *herr.HTTP
 		}
 	}
 
-	return reportToJSON(report, journalEntries, event, action.attachmentsEnabled), nil
+	return reportToJSON(imsdb.ReportsRow(report), journalEntries, event, action.attachmentsEnabled), nil
+}
+
+func createdByJSON(personID sql.NullInt32, handle, name sql.NullString) *imsjson.Mention {
+	if !personID.Valid {
+		return nil
+	}
+	return &imsjson.Mention{
+		PersonID: personID.Int32,
+		Handle:   handle.String,
+		Name:     name.String,
+	}
 }
 
 func reportToJSON(
-	report imsdb.Report, journalEntries []imsjson.JournalEntry, event imsdb.Event, attachmentsEnabled bool,
+	row imsdb.ReportsRow, journalEntries []imsjson.JournalEntry, event imsdb.Event, attachmentsEnabled bool,
 ) imsjson.Report {
 	return imsjson.Report{
 		Event:          event.Name,
-		Number:         report.Number,
-		Created:        conv.FloatToTime(report.Created),
-		Summary:        conv.SqlToString(report.Summary),
-		Incident:       conv.SqlToInt32(report.IncidentNumber),
+		Number:         row.Report.Number,
+		Created:        conv.FloatToTime(row.Report.Created),
+		CreatedBy:      createdByJSON(row.Report.CreatedBy, row.CreatedByHandle, row.CreatedByName),
+		Summary:        conv.SqlToString(row.Report.Summary),
+		Incident:       conv.SqlToInt32(row.Report.IncidentNumber),
 		JournalEntries: journalEntries,
 	}
 }
 
 func fetchReport(ctx context.Context, imsDBQ *store.DBQ, eventID, reportNumber int32, attachmentsEnabled bool) (
-	imsdb.Report, []imsjson.JournalEntry, *herr.HTTPError,
+	imsdb.ReportRow, []imsjson.JournalEntry, *herr.HTTPError,
 ) {
 	reportRow, err := imsDBQ.Report(ctx, imsDBQ,
 		imsdb.ReportParams{
@@ -205,9 +217,9 @@ func fetchReport(ctx context.Context, imsDBQ *store.DBQ, eventID, reportNumber i
 	)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
-			return imsdb.Report{}, nil, herr.NotFound("Report does not exist", err).From("[Report]")
+			return imsdb.ReportRow{}, nil, herr.NotFound("Report does not exist", err).From("[Report]")
 		}
-		return imsdb.Report{}, nil, herr.InternalServerError("Failed to fetch Report", err).From("[Report]")
+		return imsdb.ReportRow{}, nil, herr.InternalServerError("Failed to fetch Report", err).From("[Report]")
 	}
 	journalEntryRows, err := imsDBQ.Report_JournalEntries(ctx, imsDBQ,
 		imsdb.Report_JournalEntriesParams{
@@ -215,7 +227,7 @@ func fetchReport(ctx context.Context, imsDBQ *store.DBQ, eventID, reportNumber i
 			ReportNumber: reportNumber,
 		})
 	if err != nil {
-		return imsdb.Report{}, nil, herr.InternalServerError("Failed to fetch Journal Entries", err).From("[Report_JournalEntries]")
+		return imsdb.ReportRow{}, nil, herr.InternalServerError("Failed to fetch Journal Entries", err).From("[Report_JournalEntries]")
 	}
 	var journalEntries []imsjson.JournalEntry
 	for _, rer := range journalEntryRows {
@@ -231,7 +243,7 @@ func fetchReport(ctx context.Context, imsDBQ *store.DBQ, eventID, reportNumber i
 		},
 	)
 	if err != nil {
-		return imsdb.Report{}, nil, herr.InternalServerError("Failed to fetch journal entry mentions", err).From("[Report_JournalEntryMentions]")
+		return imsdb.ReportRow{}, nil, herr.InternalServerError("Failed to fetch journal entry mentions", err).From("[Report_JournalEntryMentions]")
 	}
 	mentionsByEntry := make(map[int32][]imsjson.Mention, len(mentionRows))
 	for _, m := range mentionRows {
@@ -246,7 +258,7 @@ func fetchReport(ctx context.Context, imsDBQ *store.DBQ, eventID, reportNumber i
 			journalEntries[i].Mentions = ms
 		}
 	}
-	return reportRow.Report, journalEntries, nil
+	return reportRow, journalEntries, nil
 }
 
 type EditReport struct {
@@ -520,6 +532,7 @@ func (action NewReport) newReport(req *http.Request) (reportNumber int32, locati
 			Created:        conv.TimeToFloat(time.Now()),
 			Summary:        conv.StringToSql(report.Summary, 0),
 			IncidentNumber: sql.NullInt32{},
+			CreatedBy:      sql.NullInt32{Int32: authorPersonID, Valid: true},
 		},
 	)
 	if err != nil {
