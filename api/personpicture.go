@@ -25,9 +25,9 @@ import (
 	"fmt"
 	"image"
 	"image/color"
-	_ "image/gif"  // register GIF decoder for image.Decode
-	"image/jpeg"   // JPEG decoder + encoder (resize output)
-	_ "image/png"  // register PNG decoder for image.Decode
+	_ "image/gif" // register GIF decoder for image.Decode
+	"image/jpeg"  // JPEG decoder + encoder (resize output)
+	_ "image/png" // register PNG decoder for image.Decode
 	"io"
 	"log/slog"
 	"mime"
@@ -44,8 +44,6 @@ import (
 	"github.com/mikeki/ocf-ims/store"
 	"github.com/mikeki/ocf-ims/store/imsdb"
 	xdraw "golang.org/x/image/draw"
-	_ "golang.org/x/image/tiff" // register TIFF decoder for image.Decode
-	_ "golang.org/x/image/webp" // register WebP decoder for image.Decode
 )
 
 // personProfilePictureURL is the serve endpoint for a person's profile picture. It's
@@ -77,9 +75,12 @@ const maxProfilePictureEdge = 512
 // resizeProfilePicture decodes an image and, when it exceeds maxEdge on either side,
 // returns JPEG bytes scaled to fit within maxEdge (aspect preserved). It returns
 // ok=false — after rewinding fi to the start so the original can be stored unchanged —
-// when the image is already within bounds or can't be decoded in pure Go (notably
-// HEIC, which has no cgo-free decoder; the browser-side downscale handles that case by
-// converting to JPEG before upload).
+// when the image is already within bounds or can't be decoded here. Only the standard
+// library's JPEG/PNG/GIF decoders are registered: WebP/TIFF (whose x/image decoders
+// carry known CVEs) and HEIC (no cgo-free decoder) are left to the browser-side
+// downscale, which re-encodes them to JPEG before upload — so the bytes that reach
+// this backstop for those formats are already JPEG (or stored as-is on a client that
+// couldn't process them).
 func resizeProfilePicture(fi io.ReadSeeker, maxEdge int) ([]byte, bool) {
 	rewind := func() { _, _ = fi.Seek(0, io.SeekStart) }
 	rewind()
