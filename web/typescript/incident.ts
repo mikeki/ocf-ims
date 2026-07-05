@@ -73,6 +73,7 @@ const el = {
     incidentNumber: ims.typedElement("incident_number", HTMLInputElement),
     incidentSummary: ims.typedElement("incident_summary", HTMLInputElement),
     incidentStateLabel: ims.typedElement("incident_state_label", HTMLSpanElement),
+    incidentCreatedBy: ims.typedElement("incident_created_by", HTMLSpanElement),
     markClosed: ims.typedElement("mark_closed", HTMLButtonElement),
     reopen: ims.typedElement("reopen", HTMLButtonElement),
     incidentPriority: ims.typedElement("incident_priority", HTMLSelectElement),
@@ -622,6 +623,7 @@ function drawIncidentFields() {
     drawState();
     drawOutcome();
     drawStarted();
+    drawCreatedBy();
     drawPriority();
     drawIncidentSummary();
     drawPeople();
@@ -748,6 +750,17 @@ function drawStarted(): void {
     el.startedDatetimeTz.textContent = ims.localTzShortName(dateDate);
     el.startedDatetimeTz.title = `${Intl.DateTimeFormat().resolvedOptions().timeZone}\n\n` +
         `All date and time fields in IMS use your computer's time zone, not necessarily Gerlach time.`;
+}
+
+//
+// Populate creator ("Created by")
+//
+
+function drawCreatedBy(): void {
+    // created_by is recorded server-side at creation; a brand-new (unsaved) incident
+    // and older backfilled rows have none, so show an em dash rather than a blank box.
+    const createdBy = incident!.created_by;
+    el.incidentCreatedBy.textContent = createdBy ? ims.personDisplayLabel(createdBy) : "—";
 }
 
 //

@@ -464,6 +464,14 @@ function initDataTables(tablePrereqs: Promise<void>): void {
                 "render": ims.renderDate,
                 "responsivePriority": 8,
             },
+            {   // 9
+                "name": "incident_created_by",
+                "className": "incident_created_by",
+                "data": "created_by",
+                "defaultContent": "",
+                "render": ims.renderCreatedBy,
+                "responsivePriority": 10,
+            },
         ],
         "order": [
             // 1 --> "Started" time
