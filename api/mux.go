@@ -120,6 +120,7 @@ func AddToMux(
 				cfg.Core.JWTSecret,
 				attachmentsEnabled,
 				cfg.Push.VAPIDPublicKey,
+				cfg.Core.DefaultPasswordHash,
 			},
 			RecoverFromPanic(),
 			// This endpoint does not require authentication or authorization, by design
@@ -143,6 +144,19 @@ func AddToMux(
 			// This endpoint does not require authentication, nor
 			// does it even consider the request's Authorization header,
 			// because the point of this is to make a new access token.
+		),
+	)
+
+	// Self-service password change: the caller sets their OWN password (resolved
+	// from the JWT), no admin permission required. Backs the "you're on the shared
+	// default password" post-login prompt. Mutating → logged.
+	mux.Handle("POST /ims/api/auth/password",
+		Adapt(
+			SetOwnPassword{db, userStore},
+			RecoverFromPanic(),
+			RequireAuthN(jwter),
+			LogRequest(true, actionLogger, userStore),
+			LimitRequestBytes(cfg.Core.MaxRequestBytes),
 		),
 	)
 

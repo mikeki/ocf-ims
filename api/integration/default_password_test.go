@@ -123,3 +123,87 @@ func TestSetPersonPasswordDefault(t *testing.T) {
 	})
 	require.Equal(t, http.StatusUnauthorized, statusCode)
 }
+
+// TestDefaultPasswordPromptAndSelfChange covers the post-login change-password flow:
+// GET /auth flags a user still on the shared default, the self-service endpoint lets
+// them replace it (no admin, no current-password required), and the flag then clears.
+func TestDefaultPasswordPromptAndSelfChange(t *testing.T) {
+	t.Parallel()
+	ctx := t.Context()
+
+	apisAdmin := ApiHelper{t: t, serverURL: shared.serverURL, jwt: jwtForAdmin(ctx, t)}
+	apisNoAuth := ApiHelper{t: t, serverURL: shared.serverURL}
+
+	handle := "DefaultPrompt" + rand.NonCryptoText()
+	email := handle + "@example.com"
+
+	// A login-capable person on the shared default password.
+	resp := apisAdmin.createPerson(ctx, api.CreatePersonRequest{
+		Handle:             handle,
+		Email:              email,
+		UseDefaultPassword: true,
+	})
+	require.Equal(t, http.StatusCreated, resp.StatusCode)
+	require.NoError(t, resp.Body.Close())
+
+	// They log in with the default...
+	statusCode, _, token := apisNoAuth.postAuth(ctx, api.PostAuthRequest{
+		Identification: email,
+		Password:       sharedDefaultPassword,
+	})
+	require.Equal(t, http.StatusOK, statusCode)
+	require.NotEmpty(t, token)
+	apisUser := ApiHelper{t: t, serverURL: shared.serverURL, jwt: token}
+
+	// ...and GET /auth flags that they're on the default.
+	auth, resp := apisUser.getAuth(ctx, "")
+	require.Equal(t, http.StatusOK, resp.StatusCode)
+	require.NoError(t, resp.Body.Close())
+	require.True(t, auth.UsingDefaultPassword)
+
+	// The self-service endpoint requires authentication...
+	resp = apisNoAuth.changeOwnPassword(ctx, "a-long-enough-password")
+	require.Equal(t, http.StatusUnauthorized, resp.StatusCode)
+	require.NoError(t, resp.Body.Close())
+
+	// ...and enforces the minimum length.
+	resp = apisUser.changeOwnPassword(ctx, "short")
+	require.Equal(t, http.StatusBadRequest, resp.StatusCode)
+	require.NoError(t, resp.Body.Close())
+
+	// The user replaces the default with their own password.
+	const newPassword = "my-own-strong-password"
+	resp = apisUser.changeOwnPassword(ctx, newPassword)
+	require.Equal(t, http.StatusNoContent, resp.StatusCode)
+	require.NoError(t, resp.Body.Close())
+
+	// The flag now clears (GET /auth recomputes it live against the stored hash).
+	auth, resp = apisUser.getAuth(ctx, "")
+	require.Equal(t, http.StatusOK, resp.StatusCode)
+	require.NoError(t, resp.Body.Close())
+	require.False(t, auth.UsingDefaultPassword)
+
+	// The new password works; the shared default no longer does.
+	statusCode, _, _ = apisNoAuth.postAuth(ctx, api.PostAuthRequest{Identification: email, Password: newPassword})
+	require.Equal(t, http.StatusOK, statusCode)
+	statusCode, _, _ = apisNoAuth.postAuth(ctx, api.PostAuthRequest{Identification: email, Password: sharedDefaultPassword})
+	require.Equal(t, http.StatusUnauthorized, statusCode)
+
+	// A user with their own (non-default) password is never flagged.
+	handle2 := "SpecificPw" + rand.NonCryptoText()
+	email2 := handle2 + "@example.com"
+	resp = apisAdmin.createPerson(ctx, api.CreatePersonRequest{
+		Handle:   handle2,
+		Email:    email2,
+		Password: "a-specific-password",
+	})
+	require.Equal(t, http.StatusCreated, resp.StatusCode)
+	require.NoError(t, resp.Body.Close())
+	_, _, token2 := apisNoAuth.postAuth(ctx, api.PostAuthRequest{Identification: email2, Password: "a-specific-password"})
+	require.NotEmpty(t, token2)
+	apisUser2 := ApiHelper{t: t, serverURL: shared.serverURL, jwt: token2}
+	auth2, resp := apisUser2.getAuth(ctx, "")
+	require.Equal(t, http.StatusOK, resp.StatusCode)
+	require.NoError(t, resp.Body.Close())
+	require.False(t, auth2.UsingDefaultPassword)
+}

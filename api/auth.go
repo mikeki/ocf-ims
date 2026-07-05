@@ -176,6 +176,10 @@ type GetAuth struct {
 	// client so it can subscribe. Empty ⇒ push is unconfigured and the client
 	// hides the feature.
 	pushVAPIDPublicKey string
+	// defaultPasswordHash is the shared default password (conf DefaultPasswordHash),
+	// used to flag a user still signed in with it so the client can prompt a change.
+	// Empty ⇒ no default configured, so the flag is never set.
+	defaultPasswordHash string
 }
 
 type GetAuthResponse struct {
@@ -191,6 +195,10 @@ type GetAuthResponse struct {
 	// the server has push configured; the client uses it to subscribe and treats
 	// its absence as "push unavailable".
 	PushVAPIDPublicKey string `json:"pushVapidPublicKey,omitzero"`
+	// UsingDefaultPassword is true when the signed-in user's stored password is
+	// still the shared default (IMS_DEFAULT_PASSWORD_HASH). The client uses it to
+	// prompt them to set their own password. It self-clears once they do.
+	UsingDefaultPassword bool `json:"using_default_password"`
 }
 
 type AccessForEvent struct {
@@ -249,6 +257,21 @@ func (action GetAuth) getAuth(req *http.Request) (GetAuthResponse, *herr.HTTPErr
 		Admin:              claims.PersonAdmin(),
 		CanManagePersonnel: globalPermissions&authz.GlobalAdministratePersonnel != 0,
 		PushVAPIDPublicKey: action.pushVAPIDPublicKey,
+	}
+	// Flag a user still signed in with the shared default password so the client can
+	// prompt them to change it. The default is copied verbatim into PERSON.PASSWORD
+	// (no per-user salt), so an exact string match is reliable and self-clears the
+	// moment they set their own. Only meaningful when a default is configured.
+	if action.defaultPasswordHash != "" {
+		// GetAllUsers returns the cached directory map keyed by PERSON.ID, so index
+		// the caller directly by id rather than scanning every user.
+		people, err := action.userStore.GetAllUsers(req.Context())
+		if err != nil {
+			return resp, herr.InternalServerError("Failed to fetch personnel", err).From("[GetAllUsers]")
+		}
+		if person, ok := people[int64(claims.PersonID())]; ok {
+			resp.UsingDefaultPassword = person.Password == action.defaultPasswordHash
+		}
 	}
 	// event_id is an optional query param for this endpoint
 	eventName := req.FormValue("event_id")

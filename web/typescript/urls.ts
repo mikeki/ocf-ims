@@ -27,6 +27,7 @@ const url_bag = "/ims/api/bag";
 const url_actionlogs = "/ims/api/actionlogs";
 const url_auth = "/ims/api/auth";
 const url_authRefresh = "/ims/api/auth/refresh";
+const url_authPassword = "/ims/api/auth/password";
 const url_personnel = "/ims/api/personnel";
 const url_personnelPassword = "/ims/api/personnel/<person_id>/password";
 const url_personnelAdmin = "/ims/api/personnel/<person_id>/admin";
