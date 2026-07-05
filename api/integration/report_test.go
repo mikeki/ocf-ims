@@ -232,6 +232,75 @@ func TestCreateAndUpdateReport(t *testing.T) {
 	require.Nil(t, reportAfterDetach.Incident)
 }
 
+// TestReportEditSummaryAndEntryAuthz covers the split report edit rules: the summary
+// may be edited only by the report's creator and admins; journal entries may be added
+// only by the creator, admins, and the writer role. A writer who did not create the
+// report may add entries but may NOT rewrite its summary.
+func TestReportEditSummaryAndEntryAuthz(t *testing.T) {
+	t.Parallel()
+	ctx := t.Context()
+
+	apisAdmin := ApiHelper{t: t, serverURL: shared.serverURL, jwt: jwtForAdmin(ctx, t)}
+	apisAlice := ApiHelper{t: t, serverURL: shared.serverURL, jwt: jwtForAlice(t, ctx)} // creator (reporter)
+	apisDave := ApiHelper{t: t, serverURL: shared.serverURL, jwt: jwtForDave(t, ctx)}   // writer, not creator
+	apisErin := ApiHelper{t: t, serverURL: shared.serverURL, jwt: jwtForErin(t, ctx)}   // reporter, not creator
+
+	eventName := rand.NonCryptoText()
+	_, resp := apisAdmin.createEvent(ctx, imsjson.Event{Name: &eventName})
+	require.Equal(t, http.StatusNoContent, resp.StatusCode)
+	require.NoError(t, resp.Body.Close())
+	resp = apisAdmin.addReporter(ctx, eventName, userAliceHandle)
+	require.Equal(t, http.StatusNoContent, resp.StatusCode)
+	require.NoError(t, resp.Body.Close())
+	resp = apisAdmin.addWriter(ctx, eventName, userDaveHandle)
+	require.Equal(t, http.StatusNoContent, resp.StatusCode)
+	require.NoError(t, resp.Body.Close())
+	resp = apisAdmin.addReporter(ctx, eventName, userErinHandle)
+	require.Equal(t, http.StatusNoContent, resp.StatusCode)
+	require.NoError(t, resp.Body.Close())
+
+	// Alice (a reporter) creates the report, so she is its creator (CREATED_BY).
+	num := apisAlice.newReportSuccess(ctx, sampleReport1(eventName))
+
+	summaryEdit := func(summary string) imsjson.Report {
+		return imsjson.Report{Event: eventName, Number: num, Summary: new(summary)}
+	}
+	entryAdd := func(text string) imsjson.Report {
+		return imsjson.Report{Event: eventName, Number: num, JournalEntries: []imsjson.JournalEntry{{Text: text}}}
+	}
+	expect := func(apis ApiHelper, req imsjson.Report, want int) {
+		t.Helper()
+		r := apis.updateReport(ctx, eventName, num, req)
+		require.Equal(t, want, r.StatusCode)
+		require.NoError(t, r.Body.Close())
+	}
+
+	// Summary: creator and admins only.
+	expect(apisAlice, summaryEdit("by creator"), http.StatusNoContent)
+	expect(apisAdmin, summaryEdit("by admin"), http.StatusNoContent)
+	expect(apisDave, summaryEdit("by writer"), http.StatusForbidden)        // writer, not creator
+	expect(apisErin, summaryEdit("by other reporter"), http.StatusForbidden) // reporter, not creator
+
+	// Journal entries: creator, admins, and writers.
+	expect(apisAlice, entryAdd("by creator"), http.StatusNoContent)
+	expect(apisAdmin, entryAdd("by admin"), http.StatusNoContent)
+	expect(apisDave, entryAdd("by writer"), http.StatusNoContent)            // writer allowed to add entries
+	expect(apisErin, entryAdd("by other reporter"), http.StatusForbidden)
+
+	// The computed rights ride on the report JSON for callers who can read it.
+	aliceView, resp := apisAlice.getReport(ctx, eventName, num)
+	require.Equal(t, http.StatusOK, resp.StatusCode)
+	require.NoError(t, resp.Body.Close())
+	require.True(t, aliceView.MayEditSummary)     // creator
+	require.True(t, aliceView.MayAddJournalEntry) // creator
+
+	daveView, resp := apisDave.getReport(ctx, eventName, num)
+	require.Equal(t, http.StatusOK, resp.StatusCode)
+	require.NoError(t, resp.Body.Close())
+	require.False(t, daveView.MayEditSummary)     // writer, not creator → no summary edit
+	require.True(t, daveView.MayAddJournalEntry)  // writer → may add entries
+}
+
 // TestCreateReportAttachedToIncident covers 10e: a reporter may create a Report
 // already attached to an incident, with no Summary yet (an IMS# can be added
 // before/without a Summary). A bad incident number is a friendly 404, not a 500.
@@ -341,6 +410,11 @@ func requireEqualReport(t *testing.T, before, after imsjson.Report) {
 
 	// CreatedBy is set by the server; the request won't have it.
 	before.CreatedBy, after.CreatedBy = nil, nil
+
+	// MayEditSummary / MayAddJournalEntry are per-caller edit rights the server
+	// computes on read; they aren't part of the stored report, so ignore them here.
+	before.MayEditSummary, after.MayEditSummary = false, false
+	before.MayAddJournalEntry, after.MayAddJournalEntry = false, false
 
 	require.Equal(t, before, after)
 }

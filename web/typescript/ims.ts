@@ -3637,6 +3637,11 @@ export type Report = {
     summary?: string|null;
     incident?: number|null;
     journal_entries?: JournalEntry[]|null;
+    // Server-computed edit rights for the current caller on this report: summary is
+    // creator + admins; journal entries are creator + admins + writers. Gate the UI
+    // on these (the server is authoritative).
+    may_edit_summary?: boolean|null;
+    may_add_journal_entry?: boolean|null;
 }
 
 export type ReportsByNumber = Record<number, Report>;
