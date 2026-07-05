@@ -706,6 +706,12 @@ function urlBase64ToUint8Array(base64String: string): Uint8Array<ArrayBuffer> {
     return output;
 }
 
+// myPersonId is the signed-in user's own PERSON.ID, captured from the auth response
+// on every page (renderCommonPageItems). It lets the profile card recognize when it's
+// showing the viewer's own profile (so it offers self-edit controls) and backs the
+// "Edit Profile" menu action. null when unauthenticated or the server didn't send it.
+let myPersonId: number|null = null;
+
 function renderCommonPageItems(authInfo: AuthInfo): void {
     if (authInfo.authenticated) {
         unhide(".if-logged-in");
@@ -713,6 +719,19 @@ function renderCommonPageItems(authInfo: AuthInfo): void {
         document.querySelectorAll(".logged-in-user").forEach(e => {
             e.textContent = authInfo.user;
         });
+        myPersonId = authInfo.person_id ?? null;
+        // Wire the user-menu "Edit Profile" item to open the viewer's own card in
+        // edit mode. Only meaningful when we know their id (older servers omit it).
+        const editProfileEl = document.getElementById("nav-edit-profile");
+        if (editProfileEl != null) {
+            editProfileEl.classList.toggle("hidden", myPersonId == null);
+            editProfileEl.addEventListener("click", (e: MouseEvent): void => {
+                e.preventDefault();
+                if (myPersonId != null) {
+                    void openPersonProfileModal(myPersonId, pathIds.eventName ?? "", true);
+                }
+            });
+        }
         if (authInfo.admin) {
             unhide(".if-admin");
         }
@@ -1392,14 +1411,51 @@ export function openQuickAddPersonModal(prefillName: string, eventName: string):
     });
 }
 
+// profilePictureObjectUrl is the object URL currently shown in the profile card's
+// image, tracked so it can be revoked before being replaced (or when the card
+// reloads) — otherwise every open would leak a blob.
+let profilePictureObjectUrl: string|null = null;
+
+// loadProfilePicture points the card's <img> at the person's picture, or hides it when
+// there is none. The serve endpoint requires the Authorization header, so a bare
+// <img src> would 401 — instead fetch the bytes with auth (as attachment previews do)
+// and display them via an object URL.
+async function loadProfilePicture(
+    imgEl: HTMLImageElement, wrapEl: HTMLElement, url: string|null|undefined, altLabel: string,
+): Promise<void> {
+    if (profilePictureObjectUrl != null) {
+        URL.revokeObjectURL(profilePictureObjectUrl);
+        profilePictureObjectUrl = null;
+    }
+    imgEl.removeAttribute("src");
+    wrapEl.classList.add("hidden");
+    if (!url) {
+        return;
+    }
+    const {resp, err} = await fetchNoThrow(url, {});
+    if (err != null || resp == null) {
+        return;
+    }
+    profilePictureObjectUrl = URL.createObjectURL(await resp.blob());
+    imgEl.src = profilePictureObjectUrl;
+    imgEl.alt = `Profile picture for ${altLabel}`;
+    wrapEl.classList.remove("hidden");
+}
+
 // openPersonProfileModal fetches one person by id
-// (GET /ims/api/personnel?person_id=&event=) and shows the read-only
-// PersonProfileModal (web/template/personprofile.templ). It renders whichever fields
-// the viewer's role is allowed to see: the server sends fair name + full legal name +
-// this event's role/wristband to any authenticated viewer, and email/phone only to a
-// personnel admin — so a non-admin simply gets no contact rows. Rows with no value
-// are hidden. Requires the PersonProfileModal to be present on the page.
-export async function openPersonProfileModal(personId: number, eventName: string): Promise<void> {
+// (GET /ims/api/personnel?person_id=&event=) and shows the PersonProfileModal
+// (web/template/personprofile.templ). It renders whichever fields the viewer's role is
+// allowed to see: the server sends fair name + full legal name + this event's
+// role/wristband to any authenticated viewer, and email/phone only to a personnel
+// admin or the person viewing their own card. Rows with no value are hidden.
+//
+// When the card is the viewer's OWN profile (person_id === myPersonId) an Edit button
+// appears; startInEdit opens straight into edit mode (used by the "Edit Profile" menu
+// item). Editing saves via the self-service /ims/api/auth/{profile,picture} endpoints.
+// Requires the PersonProfileModal to be present on the page.
+export async function openPersonProfileModal(
+    personId: number, eventName: string, startInEdit = false,
+): Promise<void> {
     const modalEl = typedElement("personProfileModal", HTMLElement);
     const titleEl = typedElement("personProfileModalLabel", HTMLElement);
     const loadingEl = typedElement("person_profile_loading", HTMLElement);
@@ -1407,6 +1463,18 @@ export async function openPersonProfileModal(personId: number, eventName: string
     const fieldsEl = typedElement("person_profile_fields", HTMLElement);
     const pictureWrapEl = typedElement("person_profile_picture_wrap", HTMLElement);
     const pictureEl = typedElement("person_profile_picture", HTMLImageElement);
+    const editFormEl = typedElement("person_profile_edit", HTMLFormElement);
+    const viewFooterEl = typedElement("person_profile_view_footer", HTMLElement);
+    const editFooterEl = typedElement("person_profile_edit_footer", HTMLElement);
+    const editButtonEl = typedElement("person_profile_edit_button", HTMLButtonElement);
+    const saveButtonEl = typedElement("person_profile_save_button", HTMLButtonElement);
+    const cancelButtonEl = typedElement("person_profile_cancel_button", HTMLButtonElement);
+    const fairNameInput = typedElement("person_profile_edit_fair_name", HTMLInputElement);
+    const legalNameInput = typedElement("person_profile_edit_legal_name", HTMLInputElement);
+    const emailInput = typedElement("person_profile_edit_email", HTMLInputElement);
+    const phoneInput = typedElement("person_profile_edit_phone", HTMLInputElement);
+    const pictureInput = typedElement("person_profile_edit_picture", HTMLInputElement);
+    const pictureRemoveEl = typedElement("person_profile_edit_picture_remove", HTMLButtonElement);
 
     // A row is a <dt>/<dd> pair sharing a suffix; set the value and reveal the pair
     // when there's a value, hide both when empty. The fair name / legal name rows
@@ -1423,14 +1491,39 @@ export async function openPersonProfileModal(personId: number, eventName: string
         labelEl.classList.toggle("hidden", hide);
     }
 
-    // Reset to the loading state on each open.
+    function showEditMode(person: Personnel): void {
+        errorEl.classList.add("hidden");
+        errorEl.textContent = "";
+        fairNameInput.value = person.handle ?? "";
+        legalNameInput.value = person.name ?? "";
+        emailInput.value = person.email ?? "";
+        phoneInput.value = person.phone ?? "";
+        pictureInput.value = "";
+        pictureRemoveEl.classList.toggle("hidden", !person.profile_picture_url);
+        fieldsEl.classList.add("hidden");
+        editFormEl.classList.remove("hidden");
+        viewFooterEl.classList.add("hidden");
+        editFooterEl.classList.remove("hidden");
+    }
+
+    function showViewMode(): void {
+        editFormEl.classList.add("hidden");
+        editFooterEl.classList.add("hidden");
+        viewFooterEl.classList.remove("hidden");
+        fieldsEl.classList.remove("hidden");
+    }
+
+    // Reset to the loading state on each open, in view mode.
     titleEl.textContent = "Person";
     loadingEl.classList.remove("hidden");
     errorEl.classList.add("hidden");
     errorEl.textContent = "";
     fieldsEl.classList.add("hidden");
-    pictureWrapEl.classList.add("hidden");
-    pictureEl.removeAttribute("src");
+    editFormEl.classList.add("hidden");
+    editFooterEl.classList.add("hidden");
+    viewFooterEl.classList.remove("hidden");
+    editButtonEl.classList.add("hidden");
+    void loadProfilePicture(pictureEl, pictureWrapEl, null, "");
 
     const modal = bsModal(modalEl);
     modal.show();
@@ -1452,13 +1545,9 @@ export async function openPersonProfileModal(personId: number, eventName: string
 
     // Head the card with the combined "Fair Name (Legal Name)" label (feedback
     // round 9), then still list each identifier on its own row below.
-    titleEl.textContent = personDisplayLabel(person) || "Person";
-    // Show the picture at the top of the card when the person has one.
-    if (person.profile_picture_url) {
-        pictureEl.src = person.profile_picture_url;
-        pictureEl.alt = `Profile picture for ${personDisplayLabel(person) || "person"}`;
-        pictureWrapEl.classList.remove("hidden");
-    }
+    const label = personDisplayLabel(person) || "Person";
+    titleEl.textContent = label;
+    void loadProfilePicture(pictureEl, pictureWrapEl, person.profile_picture_url, label);
     setRow("fair_name", person.handle ?? "—", false);
     setRow("legal_name", person.name ?? "—", false);
     // Per-event + contact rows only render when populated (the server withholds
@@ -1468,6 +1557,72 @@ export async function openPersonProfileModal(personId: number, eventName: string
     setRow("email", person.email ?? "", true);
     setRow("phone", person.phone ?? "", true);
     fieldsEl.classList.remove("hidden");
+
+    // The card is editable only when it's the viewer's own profile. (Admins edit other
+    // people from the People page; this is deliberately self-service only.)
+    const isSelf = myPersonId != null && person.person_id === myPersonId;
+    editButtonEl.classList.toggle("hidden", !isSelf);
+    if (!isSelf) {
+        return;
+    }
+
+    // Assign (not add) handlers so reopening the card doesn't stack duplicates.
+    editButtonEl.onclick = (): void => { showEditMode(person); };
+    cancelButtonEl.onclick = (): void => { showViewMode(); };
+    pictureRemoveEl.onclick = async (): Promise<void> => {
+        const {err: delErr} = await fetchNoThrow(url_authPicture, {method: "DELETE"});
+        if (delErr != null) {
+            errorEl.textContent = `Failed to remove picture: ${delErr}`;
+            errorEl.classList.remove("hidden");
+            return;
+        }
+        // Reload the card (now in view mode) to reflect the removal.
+        void openPersonProfileModal(personId, eventName, true);
+    };
+    saveButtonEl.onclick = async (): Promise<void> => {
+        errorEl.classList.add("hidden");
+        if (!fairNameInput.value.trim() && !legalNameInput.value.trim()) {
+            errorEl.textContent = "A fair name or full legal name is required.";
+            errorEl.classList.remove("hidden");
+            return;
+        }
+        saveButtonEl.disabled = true;
+        const {err: profErr} = await fetchNoThrow(url_authProfile, {
+            body: JSON.stringify({
+                handle: fairNameInput.value.trim(),
+                name: legalNameInput.value.trim(),
+                email: emailInput.value.trim(),
+                phone: phoneInput.value.trim(),
+            }),
+        });
+        if (profErr != null) {
+            saveButtonEl.disabled = false;
+            errorEl.textContent = `Failed to save profile: ${profErr}`;
+            errorEl.classList.remove("hidden");
+            return;
+        }
+        // A chosen picture is uploaded separately (multipart), after the JSON save —
+        // mirroring how incident attachments are separate from the incident edit.
+        const picture = pictureInput.files?.[0];
+        if (picture) {
+            const form = new FormData();
+            form.append("imsAttachment", picture);
+            const {err: picErr} = await fetchNoThrow(url_authPicture, {body: form});
+            if (picErr != null) {
+                saveButtonEl.disabled = false;
+                errorEl.textContent = `Saved your profile, but the picture upload failed: ${picErr}`;
+                errorEl.classList.remove("hidden");
+                return;
+            }
+        }
+        saveButtonEl.disabled = false;
+        // Reload the card in view mode to show the saved values.
+        void openPersonProfileModal(personId, eventName, false);
+    };
+
+    if (startInEdit) {
+        showEditMode(person);
+    }
 }
 
 export type PersonComboboxConfig = {
@@ -3822,6 +3977,10 @@ export type UnauthenticatedAuthInfo = {
 export type AuthenticatedAuthInfo = {
     authenticated: true,
     user: string,
+    // person_id is the signed-in user's own PERSON.ID. Used to open their own
+    // profile card ("Edit Profile") and to detect when a card being viewed is the
+    // viewer's own (so it may offer self-edit controls). Absent on older responses.
+    person_id?: number,
     admin: boolean,
     // Whether the user may manage people (e.g. set/reset passwords). Held by
     // admins today; gates the admin people UI.

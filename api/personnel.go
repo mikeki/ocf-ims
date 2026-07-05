@@ -75,7 +75,7 @@ func (action GetPersonnel) getPersonnel(req *http.Request) (GetPersonnelResponse
 	// (GlobalReadPersonnel, checked above) may see identity + participation, the same
 	// fields the ?q= typeahead already returns; only an admin sees contact info.
 	if pid := strings.TrimSpace(req.FormValue("person_id")); pid != "" {
-		return action.personnelByID(req, pid, globalPermissions)
+		return action.personnelByID(req, pid, globalPermissions, jwtCtx.Claims.PersonID())
 	}
 
 	// The admin People page requests ?all=true to manage every person, including
@@ -198,7 +198,7 @@ func (action GetPersonnel) getPersonnel(req *http.Request) (GetPersonnelResponse
 // GlobalAdministratePersonnel, exactly like the ?all= admin listing. With an event
 // named (?event=), the person's wristband + participation type for that event are
 // included (empty if they have no row for it).
-func (action GetPersonnel) personnelByID(req *http.Request, pidStr string, globalPermissions authz.GlobalPermissionMask) (GetPersonnelResponse, *herr.HTTPError) {
+func (action GetPersonnel) personnelByID(req *http.Request, pidStr string, globalPermissions authz.GlobalPermissionMask, callerID int32) (GetPersonnelResponse, *herr.HTTPError) {
 	response := make(GetPersonnelResponse, 0)
 	pid, err := strconv.ParseInt(pidStr, 10, 32)
 	if err != nil || pid <= 0 {
@@ -225,10 +225,16 @@ func (action GetPersonnel) personnelByID(req *http.Request, pidStr string, globa
 		url := personProfilePictureURL(person.ID)
 		p.ProfilePictureURL = &url
 	}
-	// Contact info + admin flag are admin-only, exactly like the ?all= listing.
-	if globalPermissions&authz.GlobalAdministratePersonnel != 0 {
+	// Contact info is shown to a personnel admin (like the ?all= listing) and to the
+	// person viewing their OWN card — they need to see and self-edit their email/phone.
+	// The admin flag stays admin-only (it's not self-editable and not the viewer's
+	// concern on their own card).
+	isSelf := callerID > 0 && person.ID == callerID
+	if globalPermissions&authz.GlobalAdministratePersonnel != 0 || isSelf {
 		p.Email = person.Email.String
 		p.Phone = person.Phone.String
+	}
+	if globalPermissions&authz.GlobalAdministratePersonnel != 0 {
 		p.IsAdmin = person.IsAdmin
 	}
 

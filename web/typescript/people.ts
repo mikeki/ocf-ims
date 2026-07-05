@@ -533,7 +533,7 @@ function buildPersonRow(
                     el.editPersonPhone.value = person.phone ?? "";
                     el.editPersonWristband.value = person.wristband ?? "";
                     el.editPersonParticipation.value = person.participation_type ?? "";
-                    showEditPicturePreview(person.person_id ?? null);
+                    void showEditPicturePreview(person.person_id ?? null);
                     ims.bsModal(el.editPersonModal).show();
                 },
             );
@@ -1045,27 +1045,36 @@ async function submitEditPerson(): Promise<void> {
     await loadAndDrawPeople();
 }
 
-// showEditPicturePreview points the Edit-modal preview at the person's picture serve
-// endpoint. The admin listing doesn't carry the picture URL, so we just try to load
-// it: onload reveals the preview + Remove button, onerror (e.g. 404 = no picture)
-// keeps them hidden. The cache-buster defeats a stale image after a replace.
-function showEditPicturePreview(personId: number|null): void {
+// editPicturePreviewObjectUrl is the object URL currently shown in the Edit-modal
+// picture preview, revoked before being replaced so repeated opens don't leak blobs.
+let editPicturePreviewObjectUrl: string|null = null;
+
+// showEditPicturePreview loads the person's current picture into the Edit-modal
+// preview. The serve endpoint requires the Authorization header, so a bare <img src>
+// would 401 — fetch the bytes with auth and show them via an object URL (as the
+// profile card and attachment previews do). A 404 (no picture) or any error simply
+// leaves the preview + Remove button hidden.
+async function showEditPicturePreview(personId: number|null): Promise<void> {
     el.editPersonPicture.value = "";
     el.editPersonPicturePreview.classList.add("hidden");
     el.editPersonPictureRemove.classList.add("hidden");
+    if (editPicturePreviewObjectUrl != null) {
+        URL.revokeObjectURL(editPicturePreviewObjectUrl);
+        editPicturePreviewObjectUrl = null;
+    }
+    el.editPersonPicturePreview.removeAttribute("src");
     if (personId == null) {
         return;
     }
-    el.editPersonPicturePreview.onload = function (): void {
-        el.editPersonPicturePreview.classList.remove("hidden");
-        el.editPersonPictureRemove.classList.remove("hidden");
-    };
-    el.editPersonPicturePreview.onerror = function (): void {
-        el.editPersonPicturePreview.classList.add("hidden");
-        el.editPersonPictureRemove.classList.add("hidden");
-    };
-    el.editPersonPicturePreview.src =
-        url_personnelPicture.replace("<person_id>", encodeURIComponent(personId.toString())) + "?t=" + Date.now();
+    const url = url_personnelPicture.replace("<person_id>", encodeURIComponent(personId.toString()));
+    const {resp, err} = await ims.fetchNoThrow(url, {});
+    if (err != null || resp == null) {
+        return; // 404 = no picture, or fetch failed → leave hidden
+    }
+    editPicturePreviewObjectUrl = URL.createObjectURL(await resp.blob());
+    el.editPersonPicturePreview.src = editPicturePreviewObjectUrl;
+    el.editPersonPicturePreview.classList.remove("hidden");
+    el.editPersonPictureRemove.classList.remove("hidden");
 }
 
 async function removePersonPicture(): Promise<void> {
@@ -1082,7 +1091,7 @@ async function removePersonPicture(): Promise<void> {
         return;
     }
     // Reflect the removal in the still-open modal.
-    showEditPicturePreview(ims.parseInt10(personId));
+    void showEditPicturePreview(ims.parseInt10(personId));
 }
 
 // participationUrl builds the per-event participation endpoint for a person, with

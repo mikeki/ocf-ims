@@ -160,6 +160,42 @@ func AddToMux(
 		),
 	)
 
+	// Self-service profile edit: the caller changes their OWN identity/contact fields
+	// (resolved from the JWT), no admin permission required. Participation and the
+	// admin flag are not editable here — those stay admin-only. Mutating → logged.
+	mux.Handle("POST /ims/api/auth/profile",
+		Adapt(
+			SetOwnProfile{db, userStore},
+			RecoverFromPanic(),
+			RequireAuthN(jwter),
+			LogRequest(true, actionLogger, userStore),
+			LimitRequestBytes(cfg.Core.MaxRequestBytes),
+		),
+	)
+
+	// Self-service profile picture: the caller uploads/removes their OWN picture. Same
+	// admin-free, JWT-resolved model as /auth/profile. Serving stays on the shared
+	// GET /ims/api/personnel/{personId}/picture (any personnel reader). Mutating → logged.
+	mux.Handle("POST /ims/api/auth/picture",
+		Adapt(
+			SetOwnProfilePicture{db, cfg.AttachmentsStore, s3Client},
+			RecoverFromPanic(),
+			RequireAuthN(jwter),
+			LogRequest(true, actionLogger, userStore),
+			LimitRequestBytes(cfg.Core.MaxRequestBytes),
+		),
+	)
+
+	mux.Handle("DELETE /ims/api/auth/picture",
+		Adapt(
+			DeleteOwnProfilePicture{db},
+			RecoverFromPanic(),
+			RequireAuthN(jwter),
+			LogRequest(true, actionLogger, userStore),
+			LimitRequestBytes(cfg.Core.MaxRequestBytes),
+		),
+	)
+
 	mux.Handle("GET /ims/api/events/{eventName}/incidents",
 		Adapt(
 			GetIncidents{db, userStore, attachmentsEnabled},

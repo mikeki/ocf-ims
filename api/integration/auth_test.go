@@ -90,6 +90,7 @@ func TestGetAuthAPIAuthorization(t *testing.T) {
 	require.Equal(t, api.GetAuthResponse{
 		Authenticated: true,
 		User:          userAliceHandle,
+		PersonID:      userAlicePersonID,
 		Admin:         false,
 	}, getAuth)
 	require.NoError(t, resp.Body.Close())
@@ -101,6 +102,7 @@ func TestGetAuthAPIAuthorization(t *testing.T) {
 	require.Equal(t, api.GetAuthResponse{
 		Authenticated:      true,
 		User:               userAdminHandle,
+		PersonID:           userAdminPersonID,
 		Admin:              true,
 		CanManagePersonnel: true,
 	}, getAuth)
@@ -138,6 +140,7 @@ func TestGetAuthWithEvent(t *testing.T) {
 	require.Equal(t, api.GetAuthResponse{
 		Authenticated:      true,
 		User:               userAdminHandle,
+		PersonID:           userAdminPersonID,
 		Admin:              true,
 		CanManagePersonnel: true,
 		EventAccess: map[string]api.AccessForEvent{

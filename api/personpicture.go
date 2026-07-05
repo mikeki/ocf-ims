@@ -17,6 +17,7 @@
 package api
 
 import (
+	"context"
 	"crypto/rand"
 	"database/sql"
 	"errors"
@@ -107,6 +108,21 @@ func (action SetPersonProfilePicture) setPersonProfilePicture(req *http.Request)
 		return errHTTP
 	}
 
+	return storeProfilePicture(ctx, action.attachmentsStore, action.s3Client, action.imsDBQ,
+		req, person.ID, jwtCtx.Claims.PersonHandle())
+}
+
+// storeProfilePicture parses the uploaded multipart image, validates it against the
+// profile-picture allow-list, saves the bytes to the attachments backend, and points
+// the person at the new file. It is the shared core of the admin upload
+// (SetPersonProfilePicture, path-addressed) and the self-service upload
+// (SetOwnProfilePicture, JWT-addressed); the caller enforces authorization and
+// resolves personID. Any prior file is left in the backend (orphaned but harmless) —
+// physical cleanup is deferred, see the plan/PR notes.
+func storeProfilePicture(
+	ctx context.Context, attachmentsStore conf.AttachmentsStore, s3Client *attachment.S3Client,
+	imsDBQ *store.DBQ, req *http.Request, personID int32, actorHandle string,
+) *herr.HTTPError {
 	// this must match the key sent by the client (shared with the attachment uploads)
 	fi, fiHead, err := req.FormFile(IMSAttachmentFormKey)
 	if err != nil {
@@ -127,27 +143,25 @@ func (action SetPersonProfilePicture) setPersonProfilePicture(req *http.Request)
 		return herr.BadRequest(fmt.Sprintf("A profile picture must be an image (got %v)", mtype.String()), nil)
 	}
 
-	newFileName := fmt.Sprintf("person_%05d_%v%v", person.ID, rand.Text(), mtype.Extension())
+	newFileName := fmt.Sprintf("person_%05d_%v%v", personID, rand.Text(), mtype.Extension())
 	// #nosec G706 // log injection
 	slog.Info("User uploaded a profile picture",
-		"user", jwtCtx.Claims.PersonHandle(),
-		"personID", person.ID,
+		"user", actorHandle,
+		"personID", personID,
 		"originalName", fiHead.Filename,
 		"newFileName", newFileName,
 		"size", fiHead.Size,
 		"contentType", mtype.String(),
 	)
 
-	errHTTP = saveFile(ctx, action.attachmentsStore, action.s3Client, newFileName, fi)
+	errHTTP = saveFile(ctx, attachmentsStore, s3Client, newFileName, fi)
 	if errHTTP != nil {
 		return errHTTP.From("[saveFile]")
 	}
 
-	// Point the person at the new file. Any prior file is left in the backend
-	// (orphaned but harmless) — cleanup is deferred; see the PR notes.
-	err = action.imsDBQ.SetPersonProfilePicture(ctx, action.imsDBQ, imsdb.SetPersonProfilePictureParams{
+	err = imsDBQ.SetPersonProfilePicture(ctx, imsDBQ, imsdb.SetPersonProfilePictureParams{
 		ProfilePicture: sql.NullString{String: newFileName, Valid: true},
-		ID:             person.ID,
+		ID:             personID,
 	})
 	if err != nil {
 		return herr.InternalServerError("Failed to save profile picture", err).From("[SetPersonProfilePicture]")
@@ -228,11 +242,18 @@ func (action DeletePersonProfilePicture) deletePersonProfilePicture(req *http.Re
 		return errHTTP
 	}
 
-	// Clear the pointer; the backing file (if any) is left in the backend (harmless
-	// orphan) — physical cleanup is deferred, see the PR notes.
-	err := action.imsDBQ.SetPersonProfilePicture(ctx, action.imsDBQ, imsdb.SetPersonProfilePictureParams{
+	return clearProfilePicture(ctx, action.imsDBQ, person.ID)
+}
+
+// clearProfilePicture clears a person's profile-picture pointer. Shared by the admin
+// remove (DeletePersonProfilePicture) and the self-service remove
+// (DeleteOwnProfilePicture); the caller enforces authorization and resolves personID.
+// The backing file (if any) is left in the backend (harmless orphan) — physical
+// cleanup is deferred, see the plan/PR notes.
+func clearProfilePicture(ctx context.Context, imsDBQ *store.DBQ, personID int32) *herr.HTTPError {
+	err := imsDBQ.SetPersonProfilePicture(ctx, imsDBQ, imsdb.SetPersonProfilePictureParams{
 		ProfilePicture: sql.NullString{},
-		ID:             person.ID,
+		ID:             personID,
 	})
 	if err != nil {
 		return herr.InternalServerError("Failed to remove profile picture", err).From("[SetPersonProfilePicture]")

@@ -427,65 +427,10 @@ func (action EditPerson) editPerson(req *http.Request) *herr.HTTPError {
 		return errHTTP
 	}
 
-	// Handle/Name/Email/Phone default to the stored values; a non-nil pointer
-	// overrides (empty clears). Compute handle and name first, then enforce the
-	// identity invariant on the *resulting* pair: a person must keep at least a
-	// handle or a name, else they'd have no human identifier left.
-	handle := person.Handle
-	if body.Handle != nil {
-		trimmed := strings.TrimSpace(*body.Handle)
-		if len(trimmed) > maxHandleLength {
-			return herr.BadRequest("Handle is too long", nil)
-		}
-		handle = conv.StringToSql(&trimmed, maxHandleLength) // null when empty
-	}
-	name := person.Name
-	if body.Name != nil {
-		trimmed := strings.TrimSpace(*body.Name)
-		if len(trimmed) > maxNameLength {
-			return herr.BadRequest("Name is too long", nil)
-		}
-		name = conv.StringToSql(&trimmed, maxNameLength) // null when empty
-	}
-	if handle.String == "" && name.String == "" {
-		return herr.BadRequest("A fair name or full legal name is required", nil)
-	}
-	email := person.Email
-	if body.Email != nil {
-		trimmed := strings.TrimSpace(*body.Email)
-		if len(trimmed) > maxEmailLength {
-			return herr.BadRequest("Email is too long", nil)
-		}
-		email = conv.StringToSql(&trimmed, maxEmailLength) // null when empty
-	}
-	// A person who can sign in (has a password) must keep an email, since login now
-	// matches EMAIL only — clearing it would strand the account. There's no way to drop
-	// a password through this endpoint, so this can't be circumvented by clearing both.
-	if person.HasPassword && email.String == "" {
-		return herr.BadRequest("This person can sign in, so an email is required and cannot be cleared", nil)
-	}
-	phone := person.Phone
-	if body.Phone != nil {
-		trimmed := strings.TrimSpace(*body.Phone)
-		if len(trimmed) > maxPhoneLength {
-			return herr.BadRequest("Phone number is too long", nil)
-		}
-		phone = conv.StringToSql(&trimmed, maxPhoneLength) // null when empty
-	}
-
-	err := action.imsDBQ.EditPerson(req.Context(), action.imsDBQ, imsdb.EditPersonParams{
-		Handle: handle,
-		Name:   name,
-		Email:  email,
-		Phone:  phone,
-		ID:     person.ID,
-	})
-	if err != nil {
-		var mysqlErr *mysql.MySQLError
-		if errors.As(err, &mysqlErr) && mysqlErr.Number == dupEntryError {
-			return herr.Conflict("That handle or email is already in use", nil)
-		}
-		return herr.InternalServerError("Failed to edit person", err).From("[EditPerson]")
+	errHTTP = applyProfileFields(req.Context(), action.imsDBQ, person,
+		body.Handle, body.Name, body.Email, body.Phone)
+	if errHTTP != nil {
+		return errHTTP
 	}
 
 	// Per-event participation: applied only when an event is named and the admin
@@ -501,6 +446,78 @@ func (action EditPerson) editPerson(req *http.Request) *herr.HTTPError {
 
 	// #nosec G706 // log injection
 	slog.Info("Edited person", "person_id", person.ID, "handle", person.Handle.String)
+	return nil
+}
+
+// applyProfileFields validates the handle/name/email/phone deltas of a profile edit
+// against the stored person and writes them. It is the shared core of the admin
+// EditPerson path (which also applies per-event participation) and the self-service
+// SetOwnProfile path. Each field pointer is nil to leave the value unchanged, non-nil
+// to set it (empty string clears). The caller is responsible for InvalidateUsers.
+func applyProfileFields(
+	ctx context.Context, imsDBQ *store.DBQ, person imsdb.PersonByIDRow,
+	bodyHandle, bodyName, bodyEmail, bodyPhone *string,
+) *herr.HTTPError {
+	// Handle/Name/Email/Phone default to the stored values; a non-nil pointer
+	// overrides (empty clears). Compute handle and name first, then enforce the
+	// identity invariant on the *resulting* pair: a person must keep at least a
+	// handle or a name, else they'd have no human identifier left.
+	handle := person.Handle
+	if bodyHandle != nil {
+		trimmed := strings.TrimSpace(*bodyHandle)
+		if len(trimmed) > maxHandleLength {
+			return herr.BadRequest("Handle is too long", nil)
+		}
+		handle = conv.StringToSql(&trimmed, maxHandleLength) // null when empty
+	}
+	name := person.Name
+	if bodyName != nil {
+		trimmed := strings.TrimSpace(*bodyName)
+		if len(trimmed) > maxNameLength {
+			return herr.BadRequest("Name is too long", nil)
+		}
+		name = conv.StringToSql(&trimmed, maxNameLength) // null when empty
+	}
+	if handle.String == "" && name.String == "" {
+		return herr.BadRequest("A fair name or full legal name is required", nil)
+	}
+	email := person.Email
+	if bodyEmail != nil {
+		trimmed := strings.TrimSpace(*bodyEmail)
+		if len(trimmed) > maxEmailLength {
+			return herr.BadRequest("Email is too long", nil)
+		}
+		email = conv.StringToSql(&trimmed, maxEmailLength) // null when empty
+	}
+	// A person who can sign in (has a password) must keep an email, since login now
+	// matches EMAIL only — clearing it would strand the account. There's no way to drop
+	// a password through this endpoint, so this can't be circumvented by clearing both.
+	if person.HasPassword && email.String == "" {
+		return herr.BadRequest("This person can sign in, so an email is required and cannot be cleared", nil)
+	}
+	phone := person.Phone
+	if bodyPhone != nil {
+		trimmed := strings.TrimSpace(*bodyPhone)
+		if len(trimmed) > maxPhoneLength {
+			return herr.BadRequest("Phone number is too long", nil)
+		}
+		phone = conv.StringToSql(&trimmed, maxPhoneLength) // null when empty
+	}
+
+	err := imsDBQ.EditPerson(ctx, imsDBQ, imsdb.EditPersonParams{
+		Handle: handle,
+		Name:   name,
+		Email:  email,
+		Phone:  phone,
+		ID:     person.ID,
+	})
+	if err != nil {
+		var mysqlErr *mysql.MySQLError
+		if errors.As(err, &mysqlErr) && mysqlErr.Number == dupEntryError {
+			return herr.Conflict("That handle or email is already in use", nil)
+		}
+		return herr.InternalServerError("Failed to edit person", err).From("[EditPerson]")
+	}
 	return nil
 }
 
