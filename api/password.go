@@ -17,6 +17,8 @@
 package api
 
 import (
+	"database/sql"
+	"errors"
 	"fmt"
 	"log/slog"
 	"net/http"
@@ -129,5 +131,82 @@ func (action SetPersonPassword) setPersonPassword(req *http.Request) *herr.HTTPE
 
 	// #nosec G706 // log injection
 	slog.Info("Password set for person", "person_id", person.ID, "handle", person.Handle.String)
+	return nil
+}
+
+// SetOwnPassword lets an authenticated user change THEIR OWN password. Unlike
+// SetPersonPassword it needs no admin permission (you may always change your own
+// credential) and resolves the target from the caller's JWT rather than a path ID.
+// It backs the post-login "you're on the shared default password, set your own"
+// prompt, and is the general self-service change primitive.
+//
+// The current password is intentionally NOT required: the caller is already
+// authenticated (RequireAuthN gates the route), and for the default-password case
+// re-typing the shared secret would add friction with no real security gain.
+type SetOwnPassword struct {
+	imsDBQ    *store.DBQ
+	userStore directory.UserStore
+}
+
+type SetOwnPasswordRequest struct {
+	// #nosec G117 // Exported secret field
+	Password string `json:"password"`
+}
+
+func (action SetOwnPassword) ServeHTTP(w http.ResponseWriter, req *http.Request) {
+	errHTTP := action.setOwnPassword(req)
+	if errHTTP != nil {
+		errHTTP.From("[setOwnPassword]").WriteResponse(w)
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
+}
+
+func (action SetOwnPassword) setOwnPassword(req *http.Request) *herr.HTTPError {
+	jwtCtx, errHTTP := getJwtCtx(req)
+	if errHTTP != nil {
+		return errHTTP.From("[getJwtCtx]")
+	}
+	personID := jwtCtx.Claims.PersonID()
+
+	body, errHTTP := readBodyAs[SetOwnPasswordRequest](req)
+	if errHTTP != nil {
+		return errHTTP.From("[readBodyAs]")
+	}
+	if len(body.Password) < minPasswordLength {
+		return herr.BadRequest(fmt.Sprintf("Password must be at least %d characters", minPasswordLength), nil)
+	}
+	// See the note in postAuth: very long passwords are a hashing-exhaustion vector.
+	if len(body.Password) > 256 {
+		return herr.BadRequest("Outrageously long passwords are disallowed", ErrLongPassword)
+	}
+
+	person, err := action.imsDBQ.PersonByID(req.Context(), action.imsDBQ, personID)
+	if errors.Is(err, sql.ErrNoRows) {
+		return herr.NotFound("Unknown person", nil)
+	}
+	if err != nil {
+		return herr.InternalServerError("Failed to load person", err).From("[PersonByID]")
+	}
+	// Login matches EMAIL only, so a password is useless without one. An access-holder
+	// always has an email (they logged in), but guard anyway.
+	if person.Email.String == "" {
+		return herr.BadRequest("Your account has no email on file; ask an admin to add one", nil)
+	}
+
+	hashed := argon2id.CreateHash(body.Password, argon2id.DefaultParams)
+	err = action.imsDBQ.SetPersonPassword(req.Context(), action.imsDBQ, imsdb.SetPersonPasswordParams{
+		Password: conv.StringToSql(&hashed, 255),
+		ID:       person.ID,
+	})
+	if err != nil {
+		return herr.InternalServerError("Failed to set password", err).From("[SetPersonPassword]")
+	}
+
+	// Drop the cached directory so the new password is effective immediately (and the
+	// old/default one stops working).
+	action.userStore.InvalidateUsers()
+
+	slog.Info("Password changed by self", "person_id", person.ID)
 	return nil
 }

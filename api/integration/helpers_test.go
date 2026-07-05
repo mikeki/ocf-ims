@@ -110,6 +110,14 @@ func (a ApiHelper) setPersonPasswordDefault(ctx context.Context, personID int64)
 	return a.imsPost(ctx, api.SetPersonPasswordRequest{UseDefaultPassword: true}, path)
 }
 
+// changeOwnPassword calls the self-service endpoint (the caller sets their own
+// password, resolved from their JWT).
+func (a ApiHelper) changeOwnPassword(ctx context.Context, password string) *http.Response {
+	a.t.Helper()
+	path := a.serverURL.JoinPath("/ims/api/auth/password").String()
+	return a.imsPost(ctx, api.SetOwnPasswordRequest{Password: password}, path)
+}
+
 func (a ApiHelper) setPersonAdmin(ctx context.Context, personID int64, isAdmin bool) *http.Response {
 	a.t.Helper()
 	path := a.serverURL.JoinPath("/ims/api/personnel", strconv.FormatInt(personID, 10), "admin").String()

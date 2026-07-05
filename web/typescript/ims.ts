@@ -380,7 +380,94 @@ export async function commonPageInit(): Promise<PageInitResult> {
         );
     }
     renderCommonPageItems(authInfo);
+    // If the user is still on the shared default password, force a change before
+    // they go any further (the modal is non-dismissable).
+    if (authInfo.authenticated && authInfo.using_default_password) {
+        showChangeDefaultPasswordModal();
+    }
     return {authInfo: authInfo, eventDatas: eds};
+}
+
+// minPasswordLength mirrors the server's floor (api/password.go minPasswordLength).
+const minPasswordLength = 8;
+
+// changeDefaultPasswordModalEl is the lazily-built forced "set your own password"
+// modal, injected into <body> the first time it's needed so it works on any page
+// (commonPageInit runs everywhere; there is no shared page-body template to host it).
+let changeDefaultPasswordModalEl: HTMLElement|null = null;
+
+// showChangeDefaultPasswordModal builds (once) and shows the forced change-password
+// modal. It has a static backdrop, no Esc-to-close, and no dismiss/close button, so
+// the user cannot proceed until they set their own password.
+export function showChangeDefaultPasswordModal(): void {
+    let el = changeDefaultPasswordModalEl;
+    if (el == null) {
+        el = document.createElement("div");
+        el.className = "modal no-print";
+        el.id = "changeDefaultPasswordModal";
+        el.tabIndex = -1;
+        el.setAttribute("data-bs-backdrop", "static");
+        el.setAttribute("data-bs-keyboard", "false");
+        el.setAttribute("aria-hidden", "true");
+        el.innerHTML = `
+            <div class="modal-dialog">
+              <div class="modal-content">
+                <div class="modal-header">
+                  <p class="modal-title fs-5">Set your password</p>
+                </div>
+                <div class="modal-body">
+                  <p>You're signed in with the shared default password. For security, choose your own password to continue.</p>
+                  <div class="form-floating mb-2">
+                    <input id="change_default_password_input" type="password" class="form-control" autocomplete="new-password" placeholder="New password" />
+                    <label for="change_default_password_input">New password</label>
+                  </div>
+                  <div class="form-floating mb-2">
+                    <input id="change_default_password_confirm" type="password" class="form-control" autocomplete="new-password" placeholder="Confirm password" />
+                    <label for="change_default_password_confirm">Confirm password</label>
+                  </div>
+                  <div id="change_default_password_error" class="text-danger small hidden"></div>
+                </div>
+                <div class="modal-footer">
+                  <button type="button" class="btn btn-primary" id="change_default_password_submit">Save password</button>
+                </div>
+              </div>
+            </div>`;
+        document.body.append(el);
+        changeDefaultPasswordModalEl = el;
+        const submit = el.querySelector("#change_default_password_submit") as HTMLButtonElement;
+        submit.addEventListener("click", () => void submitChangeDefaultPassword());
+    }
+    bsModal(el).show();
+}
+
+async function submitChangeDefaultPassword(): Promise<void> {
+    const el = changeDefaultPasswordModalEl!;
+    const input = el.querySelector("#change_default_password_input") as HTMLInputElement;
+    const confirm = el.querySelector("#change_default_password_confirm") as HTMLInputElement;
+    const errEl = el.querySelector("#change_default_password_error") as HTMLElement;
+    const showError = (message: string): void => {
+        errEl.textContent = message;
+        errEl.classList.remove("hidden");
+    };
+    const password = input.value;
+    if (password.length < minPasswordLength) {
+        controlHasError(input);
+        showError(`Password must be at least ${minPasswordLength} characters.`);
+        return;
+    }
+    if (password !== confirm.value) {
+        controlHasError(confirm);
+        showError("Passwords do not match.");
+        return;
+    }
+    const {err} = await fetchNoThrow(url_authPassword, {body: JSON.stringify({password: password})});
+    if (err != null) {
+        controlHasError(input);
+        showError(`Failed to set password: ${err}`);
+        return;
+    }
+    // Done — the default is replaced; let them into the app.
+    bsModal(el).hide();
 }
 
 export async function getAuthInfo(): Promise<FetchRes<AuthInfo>> {
@@ -3716,6 +3803,9 @@ export type AuthenticatedAuthInfo = {
     // when the server has push configured; its absence means push is unavailable
     // and the UI hides the feature.
     pushVapidPublicKey?: string,
+    // using_default_password is true when the user is still signed in with the
+    // shared default password; the client prompts them to set their own.
+    using_default_password?: boolean,
 }
 
 export type AuthInfo = UnauthenticatedAuthInfo | AuthenticatedAuthInfo;
