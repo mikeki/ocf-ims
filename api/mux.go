@@ -120,7 +120,7 @@ func AddToMux(
 				cfg.Core.JWTSecret,
 				attachmentsEnabled,
 				cfg.Push.VAPIDPublicKey,
-				cfg.Core.DefaultPasswordHash,
+				cfg.Core.DefaultPassword,
 			},
 			RecoverFromPanic(),
 			// This endpoint does not require authentication or authorization, by design
@@ -152,7 +152,7 @@ func AddToMux(
 	// default password" post-login prompt. Mutating → logged.
 	mux.Handle("POST /ims/api/auth/password",
 		Adapt(
-			SetOwnPassword{db, userStore},
+			SetOwnPassword{db, userStore, cfg.Core.DefaultPassword},
 			RecoverFromPanic(),
 			RequireAuthN(jwter),
 			LogRequest(true, actionLogger, userStore),
@@ -538,7 +538,7 @@ func AddToMux(
 
 	mux.Handle("POST /ims/api/personnel",
 		Adapt(
-			CreatePerson{db, userStore, cfg.Core.DefaultPasswordHash},
+			CreatePerson{db, userStore, cfg.Core.DefaultPassword},
 			RecoverFromPanic(),
 			RequireAuthN(jwter),
 			LogRequest(true, actionLogger, userStore),
@@ -558,7 +558,7 @@ func AddToMux(
 
 	mux.Handle("POST /ims/api/personnel/{personId}/password",
 		Adapt(
-			SetPersonPassword{db, userStore, cfg.Core.DefaultPasswordHash},
+			SetPersonPassword{db, userStore, cfg.Core.DefaultPassword},
 			RecoverFromPanic(),
 			RequireAuthN(jwter),
 			LogRequest(true, actionLogger, userStore),

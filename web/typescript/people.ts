@@ -190,7 +190,7 @@ const el = {
     removeEventName: ims.typedElement("remove_event_name", HTMLElement),
 };
 
-// Whether the server has a shared default password configured (IMS_DEFAULT_PASSWORD_HASH).
+// Whether the server has a shared default password configured (IMS_DEFAULT_PASSWORD).
 // When set, granting IMS access defaults to "use the shared default password" and the
 // specific-password fields are revealed on demand; when not, the default option is hidden
 // and a specific password is always required (the pre-existing behavior).

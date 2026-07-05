@@ -965,7 +965,7 @@ limit 1;
 --
 
 -- name: People :many
-select ID, HANDLE, EMAIL, PASSWORD, IS_ADMIN
+select ID, HANDLE, EMAIL, PASSWORD, IS_ADMIN, PASSWORD_CHANGED
 from PERSON;
 
 -- AllPeople returns every person, for the admin People page. It LEFT JOINs
@@ -1002,8 +1002,8 @@ from PERSON
 where ID = ?;
 
 -- name: CreatePerson :execlastid
-insert into PERSON (HANDLE, NAME, EMAIL, PHONE, PASSWORD, CREATED)
-values (?, ?, ?, ?, ?, ?);
+insert into PERSON (HANDLE, NAME, EMAIL, PHONE, PASSWORD, CREATED, PASSWORD_CHANGED)
+values (?, ?, ?, ?, ?, ?, ?);
 
 -- EditPerson updates a person's editable profile fields, all nullable: HANDLE,
 -- NAME, EMAIL, and PHONE. Authorization no longer keys off HANDLE (it derives from
@@ -1019,7 +1019,14 @@ where ID = ?;
 
 -- name: SetPersonPassword :exec
 update PERSON
-set PASSWORD = ?
+set PASSWORD = ?, PASSWORD_CHANGED = ?
+where ID = ?;
+
+-- MarkPasswordChanged records that a person is no longer on the shared default
+-- password, so GET /auth stops re-verifying them. Idempotent.
+-- name: MarkPasswordChanged :exec
+update PERSON
+set PASSWORD_CHANGED = true
 where ID = ?;
 
 -- name: SetPersonAdmin :exec

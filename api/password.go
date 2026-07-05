@@ -45,18 +45,18 @@ const minPasswordLength = 8
 type SetPersonPassword struct {
 	imsDBQ    *store.DBQ
 	userStore directory.UserStore
-	// defaultPasswordHash is the optional pre-hashed shared default password
-	// (conf.ConfigCore.DefaultPasswordHash), used when a request opts into it
-	// (UseDefaultPassword) to reset a person to the shared default. Empty ⇒
-	// unavailable.
-	defaultPasswordHash string
+	// defaultPassword is the optional shared default password (plaintext, from
+	// conf.ConfigCore.DefaultPassword), used when a request opts into it
+	// (UseDefaultPassword) to reset a person to the shared default (hashed per
+	// user). Empty ⇒ unavailable.
+	defaultPassword string
 }
 
 type SetPersonPasswordRequest struct {
 	// #nosec G117 // Exported secret field
 	Password string `json:"password"`
 	// UseDefaultPassword resets the person to the server's shared default password
-	// (conf DefaultPasswordHash) instead of a typed one. When set, Password is
+	// (conf DefaultPassword) instead of a typed one. When set, Password is
 	// ignored; a 400 results if no default is configured.
 	UseDefaultPassword bool `json:"use_default_password"`
 }
@@ -83,11 +83,11 @@ func (action SetPersonPassword) setPersonPassword(req *http.Request) *herr.HTTPE
 	if errHTTP != nil {
 		return errHTTP.From("[readBodyAs]")
 	}
-	// Two paths: reset to the shared default (already argon2id-hashed) or set a
-	// specific typed password. Validate the typed one against the same bounds as
-	// the create/auth endpoints (see postAuth re: the hashing-exhaustion vector).
+	// Two paths: reset to the shared default or set a specific typed password. Either
+	// way it is hashed per user below; validate the typed one against the same bounds
+	// as the create/auth endpoints (see postAuth re: the hashing-exhaustion vector).
 	if body.UseDefaultPassword {
-		if action.defaultPasswordHash == "" {
+		if action.defaultPassword == "" {
 			return herr.BadRequest("No default password is configured on this server; set a specific password instead", nil)
 		}
 	} else {
@@ -113,13 +113,17 @@ func (action SetPersonPassword) setPersonPassword(req *http.Request) *herr.HTTPE
 		return herr.BadRequest("This person has no email; an email is the login identifier, so add one before setting a password", nil)
 	}
 
-	hashed := action.defaultPasswordHash
+	password := action.defaultPassword
 	if !body.UseDefaultPassword {
-		hashed = argon2id.CreateHash(body.Password, argon2id.DefaultParams)
+		password = body.Password
 	}
+	hashed := argon2id.CreateHash(password, argon2id.DefaultParams)
+	// Record whether the new password is off the shared default, so GET /auth's
+	// change-prompt can skip re-verifying this person (see MarkPasswordChanged).
 	err := action.imsDBQ.SetPersonPassword(req.Context(), action.imsDBQ, imsdb.SetPersonPasswordParams{
-		Password: conv.StringToSql(&hashed, 255),
-		ID:       person.ID,
+		Password:        conv.StringToSql(&hashed, 255),
+		PasswordChanged: action.defaultPassword == "" || password != action.defaultPassword,
+		ID:              person.ID,
 	})
 	if err != nil {
 		return herr.InternalServerError("Failed to set password", err).From("[SetPersonPassword]")
@@ -146,6 +150,10 @@ func (action SetPersonPassword) setPersonPassword(req *http.Request) *herr.HTTPE
 type SetOwnPassword struct {
 	imsDBQ    *store.DBQ
 	userStore directory.UserStore
+	// defaultPassword is the shared default (conf DefaultPassword). Used to refuse a
+	// "change" that just re-sets the same default, so the change-prompt is actually
+	// satisfied. Empty ⇒ no default configured, so nothing to refuse.
+	defaultPassword string
 }
 
 type SetOwnPasswordRequest struct {
@@ -180,6 +188,10 @@ func (action SetOwnPassword) setOwnPassword(req *http.Request) *herr.HTTPError {
 	if len(body.Password) > 256 {
 		return herr.BadRequest("Outrageously long passwords are disallowed", ErrLongPassword)
 	}
+	// The whole point is to get OFF the shared default, so refuse to "change" to it.
+	if action.defaultPassword != "" && body.Password == action.defaultPassword {
+		return herr.BadRequest("Please choose a password other than the shared default", nil)
+	}
 
 	person, err := action.imsDBQ.PersonByID(req.Context(), action.imsDBQ, personID)
 	if errors.Is(err, sql.ErrNoRows) {
@@ -195,9 +207,12 @@ func (action SetOwnPassword) setOwnPassword(req *http.Request) *herr.HTTPError {
 	}
 
 	hashed := argon2id.CreateHash(body.Password, argon2id.DefaultParams)
+	// They just set a non-default password (the default was refused above), so mark
+	// them off the default — GET /auth won't prompt or re-verify them.
 	err = action.imsDBQ.SetPersonPassword(req.Context(), action.imsDBQ, imsdb.SetPersonPasswordParams{
-		Password: conv.StringToSql(&hashed, 255),
-		ID:       person.ID,
+		Password:        conv.StringToSql(&hashed, 255),
+		PasswordChanged: true,
+		ID:              person.ID,
 	})
 	if err != nil {
 		return herr.InternalServerError("Failed to set password", err).From("[SetPersonPassword]")

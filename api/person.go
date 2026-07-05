@@ -65,11 +65,11 @@ const dupEntryError = 1062
 type CreatePerson struct {
 	imsDBQ    *store.DBQ
 	userStore directory.UserStore
-	// defaultPasswordHash is the optional pre-hashed shared default password
-	// (conf.ConfigCore.DefaultPasswordHash). When a request opts into the default
-	// (UseDefaultPassword) it is stored verbatim as PERSON.PASSWORD. Empty ⇒ the
+	// defaultPassword is the optional shared default password (plaintext, from
+	// conf.ConfigCore.DefaultPassword). When a request opts into the default
+	// (UseDefaultPassword) it is hashed per user into PERSON.PASSWORD. Empty ⇒ the
 	// default-password path is unavailable.
-	defaultPasswordHash string
+	defaultPassword string
 }
 
 type CreatePersonRequest struct {
@@ -81,7 +81,7 @@ type CreatePersonRequest struct {
 	// #nosec G117 // Exported secret field
 	Password string `json:"password"`
 	// UseDefaultPassword grants IMS access with the server's shared default password
-	// (conf DefaultPasswordHash) instead of a typed one — the fast-onboarding path.
+	// (conf DefaultPassword) instead of a typed one — the fast-onboarding path.
 	// Honored only when Password is empty; ignored if no default is configured
 	// (that surfaces as a 400 so the UI can fall back to a specific password).
 	UseDefaultPassword bool `json:"use_default_password"`
@@ -210,10 +210,13 @@ func (action CreatePerson) createPerson(req *http.Request) (imsjson.Person, *her
 		return empty, herr.BadRequest("An email is required to provide IMS access (it is the login identifier)", nil)
 	}
 
-	// A password is optional. If given specifically it must satisfy the same bounds
-	// as the reset endpoint (see postAuth re: the long-password hashing-exhaustion
-	// vector); otherwise the shared default (already argon2id-hashed) is copied in.
+	// A password is optional. Whether specific or the shared default, it is hashed
+	// per user; a specific one must satisfy the same bounds as the reset endpoint
+	// (see postAuth re: the long-password hashing-exhaustion vector). passwordChanged
+	// records whether the stored password differs from the shared default, so the
+	// change-prompt in GET /auth can skip re-verifying this person (see MarkPasswordChanged).
 	var passwordNull sql.NullString
+	passwordChanged := false
 	switch {
 	case body.Password != "":
 		if len(body.Password) < minPasswordLength {
@@ -224,11 +227,14 @@ func (action CreatePerson) createPerson(req *http.Request) (imsjson.Person, *her
 		}
 		hashed := argon2id.CreateHash(body.Password, argon2id.DefaultParams)
 		passwordNull = conv.StringToSql(&hashed, 255)
+		// A specific password is off the default unless the admin literally typed it.
+		passwordChanged = body.Password != action.defaultPassword
 	case body.UseDefaultPassword:
-		if action.defaultPasswordHash == "" {
+		if action.defaultPassword == "" {
 			return empty, herr.BadRequest("No default password is configured on this server; set a specific password instead", nil)
 		}
-		passwordNull = conv.StringToSql(&action.defaultPasswordHash, 255)
+		hashed := argon2id.CreateHash(action.defaultPassword, argon2id.DefaultParams)
+		passwordNull = conv.StringToSql(&hashed, 255)
 	}
 
 	// Friendly pre-check on the handle (the unique constraint is the backstop below,
@@ -244,12 +250,13 @@ func (action CreatePerson) createPerson(req *http.Request) (imsjson.Person, *her
 	}
 
 	newID, err := action.imsDBQ.CreatePerson(req.Context(), action.imsDBQ, imsdb.CreatePersonParams{
-		Handle:   handleNull,
-		Name:     nameNull,
-		Email:    emailNull,
-		Phone:    phoneNull,
-		Password: passwordNull,
-		Created:  conv.TimeToFloat(time.Now()),
+		Handle:          handleNull,
+		Name:            nameNull,
+		Email:           emailNull,
+		Phone:           phoneNull,
+		Password:        passwordNull,
+		Created:         conv.TimeToFloat(time.Now()),
+		PasswordChanged: passwordChanged,
 	})
 	if err != nil {
 		var mysqlErr *mysql.MySQLError

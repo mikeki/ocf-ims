@@ -65,7 +65,11 @@ type User struct {
 	Handle string
 	Email  string
 	// #nosec G117 // Exported secret struct field
-	Password           string
+	Password string
+	// PasswordChanged is false while the person may still be on the shared default
+	// password (IMS_DEFAULT_PASSWORD); it becomes true once they're known to be off
+	// it. Lets GET /auth skip the argon2 verify for anyone already off the default.
+	PasswordChanged    bool
 	IsAdmin            bool
 	PositionIDs        []int64
 	PositionNames      []string

@@ -103,11 +103,11 @@ func mustApplyEnvConfig(baseCfg *conf.IMSConfig, envFileName string) *conf.IMSCo
 	if v, ok := lookupEnv("IMS_JWT_SECRET"); ok && v != "" {
 		baseCfg.Core.JWTSecret = v
 	}
-	// Optional shared default password, stored already argon2id-hashed (generate
-	// it with the hash_password CLI). Used when an admin grants IMS access without
-	// typing a specific password. See conf.ConfigCore.DefaultPasswordHash.
-	if v, ok := lookupEnv("IMS_DEFAULT_PASSWORD_HASH"); ok {
-		baseCfg.Core.DefaultPasswordHash = v
+	// Optional shared default password (plaintext). Used to grant IMS access without
+	// typing a specific password, and to detect a user still on the default so they
+	// can be prompted to change it. See conf.ConfigCore.DefaultPassword.
+	if v, ok := lookupEnv("IMS_DEFAULT_PASSWORD"); ok {
+		baseCfg.Core.DefaultPassword = v
 	}
 	if v, ok := lookupEnv("IMS_DB_STORE_TYPE"); ok {
 		baseCfg.Store.Type = conf.DBStoreType(strings.ToLower(v))

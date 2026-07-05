@@ -63,11 +63,12 @@ func (s *localPersonSource) users(ctx context.Context) (map[int64]*User, error) 
 	m := make(map[int64]*User, len(people))
 	for _, person := range people {
 		m[int64(person.ID)] = &User{
-			ID:       int64(person.ID),
-			Handle:   person.Handle.String,
-			Email:    person.Email.String,
-			Password: person.Password.String,
-			IsAdmin:  person.IsAdmin,
+			ID:              int64(person.ID),
+			Handle:          person.Handle.String,
+			Email:           person.Email.String,
+			Password:        person.Password.String,
+			PasswordChanged: person.PasswordChanged,
+			IsAdmin:         person.IsAdmin,
 		}
 	}
 	for _, pp := range personPositions {
