@@ -39,12 +39,18 @@ async function initRootPage(): Promise<void> {
     const loginButton = document.getElementById("login-button");
 
     if (result.authInfo.authenticated) {
-        // Point the "jump to the current event" link at the active (newest) event
-        // the user can see, rather than the hardcoded year baked into the template.
+        // A logged-in user has no reason to linger on the landing page: send them
+        // straight to the active (newest) event they can see. replace() (not assign)
+        // keeps the home page out of history, so Back doesn't bounce here.
         const newest = ims.newestEvent((await result.eventDatas) ?? []);
-        if (currentYearLink != null && newest != null) {
-            currentYearLink.href = url_viewIncidents.replace("<event_id>", newest.name);
-            currentYearLink.textContent = `Jump to the ${newest.name} event`;
+        if (newest != null) {
+            window.location.replace(url_viewIncidents.replace("<event_id>", newest.name));
+            return;
+        }
+        // No visible event to jump to — stay put but still repoint the link, so the
+        // page remains usable rather than redirect-looping.
+        if (currentYearLink != null) {
+            currentYearLink.textContent = "Jump to the current event";
         }
         currentYearLink?.focus();
     } else {

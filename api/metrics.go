@@ -373,7 +373,7 @@ var participationLadder = []struct {
 	rung  imsdb.PersonEventParticipationType
 	label string
 }{
-	{imsdb.PersonEventParticipationTypeWriter, "Writer"},
+	{imsdb.PersonEventParticipationTypeWriter, "FC/BUM"},
 	{imsdb.PersonEventParticipationTypeCrewLeader, "Crew leader"},
 	{imsdb.PersonEventParticipationTypeReporter, "Reporter"},
 	{imsdb.PersonEventParticipationTypeVolunteer, "Volunteer"},
