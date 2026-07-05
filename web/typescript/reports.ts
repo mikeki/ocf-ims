@@ -275,6 +275,14 @@ function reportInitDataTables() {
                 "responsivePriority": 4,
             },
             {   // 3
+                "name": "report_created_by",
+                "className": "report_created_by",
+                "data": "created_by",
+                "defaultContent": "",
+                "render": ims.renderCreatedBy,
+                "responsivePriority": 5,
+            },
+            {   // 4
                 "name": "report_summary",
                 "className": "report_summary all",
                 "data": "summary",

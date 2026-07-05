@@ -112,6 +112,17 @@ templ Incident(deployment, versionName, versionRef, eventName string) {
       </div>
     </div>
 
+    <!-- Creator (recorded at creation; read-only) -->
+
+    <div class="row py-1">
+      <div class="col-sm-6 py-1">
+        <div class="input-group">
+          <span class="control-label input-group-text">Created by</span>
+          <span id="incident_created_by" class="input-group-text auto-width"></span>
+        </div>
+      </div>
+    </div>
+
     <!-- Outcome (disposition; orthogonal to state) -->
 
     <div class="row py-1">

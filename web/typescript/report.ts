@@ -37,6 +37,7 @@ let report: ims.Report|null = null;
 
 const el = {
     reportNumber: ims.typedElement("report_number", HTMLInputElement),
+    reportCreatedBy: ims.typedElement("report_created_by", HTMLInputElement),
     reportSummary: ims.typedElement("report_summary", HTMLInputElement),
     incidentNumber: ims.typedElement("incident_number", HTMLInputElement),
     incidentNumberLink: ims.typedElement("incident_number_link", HTMLAnchorElement),
@@ -242,6 +243,7 @@ async function loadAndDisplayReport(): Promise<void> {
 
     drawTitle();
     drawNumber();
+    drawCreatedBy();
     drawIncident();
     drawSummary();
     ims.applyJournalFilters();
@@ -339,6 +341,18 @@ function drawNumber(): void {
     // the box appear out of nowhere the moment the Report auto-created on first edit.
     el.reportNumber.value = (report!.number ?? "").toString();
     el.reportNumber.placeholder = report!.number == null ? "(new)" : "";
+}
+
+//
+// Populate creator ("Created by")
+//
+
+function drawCreatedBy(): void {
+    // created_by is recorded server-side at creation; a brand-new (unsaved) report
+    // and older backfilled rows have none, so show a placeholder rather than a value.
+    const createdBy = report!.created_by;
+    el.reportCreatedBy.value = createdBy ? ims.personDisplayLabel(createdBy) : "";
+    el.reportCreatedBy.placeholder = createdBy ? "" : "—";
 }
 
 //

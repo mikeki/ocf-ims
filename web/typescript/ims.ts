@@ -1952,6 +1952,24 @@ export function renderPersonHandles(data: IncidentPerson[]|null, type: RenderTyp
     }
 }
 
+// renderCreatedBy is the DataTables cell renderer for the "Created by" column on
+// the Incident and Report queues. created_by is a single Mention (the recorded
+// creator, from CREATED_BY); older backfilled rows may have none, which renders
+// blank. Sort/filter use the same label so the column behaves like plain text.
+export function renderCreatedBy(data: Mention|null|undefined, type: RenderType, _row: any): RenderValue {
+    const label = data == null ? "" : personDisplayLabel(data);
+    switch (type) {
+        case "display":
+        case "filter":
+        case "sort":
+        case "type":
+        case undefined:
+            return label;
+        default:
+            return undefined;
+    }
+}
+
 //
 // Populate journal entry text
 //
