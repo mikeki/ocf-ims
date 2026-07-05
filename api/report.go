@@ -330,6 +330,9 @@ func (action EditReport) editReport(req *http.Request) *herr.HTTPError {
 			Number: reportNumber,
 		},
 	)
+	if errors.Is(err, sql.ErrNoRows) {
+		return herr.NotFound("Report does not exist", err).From("[Report]")
+	}
 	if err != nil {
 		return herr.InternalServerError("Failed to fetch Report", err).From("[Report]")
 	}

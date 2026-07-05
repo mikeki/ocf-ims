@@ -278,13 +278,13 @@ func TestReportEditSummaryAndEntryAuthz(t *testing.T) {
 	// Summary: creator and admins only.
 	expect(apisAlice, summaryEdit("by creator"), http.StatusNoContent)
 	expect(apisAdmin, summaryEdit("by admin"), http.StatusNoContent)
-	expect(apisDave, summaryEdit("by writer"), http.StatusForbidden)        // writer, not creator
+	expect(apisDave, summaryEdit("by writer"), http.StatusForbidden)         // writer, not creator
 	expect(apisErin, summaryEdit("by other reporter"), http.StatusForbidden) // reporter, not creator
 
 	// Journal entries: creator, admins, and writers.
 	expect(apisAlice, entryAdd("by creator"), http.StatusNoContent)
 	expect(apisAdmin, entryAdd("by admin"), http.StatusNoContent)
-	expect(apisDave, entryAdd("by writer"), http.StatusNoContent)            // writer allowed to add entries
+	expect(apisDave, entryAdd("by writer"), http.StatusNoContent) // writer allowed to add entries
 	expect(apisErin, entryAdd("by other reporter"), http.StatusForbidden)
 
 	// The computed rights ride on the report JSON for callers who can read it.
@@ -297,8 +297,8 @@ func TestReportEditSummaryAndEntryAuthz(t *testing.T) {
 	daveView, resp := apisDave.getReport(ctx, eventName, num)
 	require.Equal(t, http.StatusOK, resp.StatusCode)
 	require.NoError(t, resp.Body.Close())
-	require.False(t, daveView.MayEditSummary)     // writer, not creator → no summary edit
-	require.True(t, daveView.MayAddJournalEntry)  // writer → may add entries
+	require.False(t, daveView.MayEditSummary)    // writer, not creator → no summary edit
+	require.True(t, daveView.MayAddJournalEntry) // writer → may add entries
 }
 
 // TestCreateReportAttachedToIncident covers 10e: a reporter may create a Report
