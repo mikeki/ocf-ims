@@ -107,8 +107,11 @@ func (action GetReports) getReports(req *http.Request) (imsjson.Reports, *herr.H
 		authorizedReports = storedReports
 	}
 
+	callerPersonID := jwtCtx.Claims.PersonID()
+	callerIsAdmin := jwtCtx.Claims.PersonAdmin()
 	resp = make(imsjson.Reports, 0, len(authorizedReports))
 	for _, report := range authorizedReports {
+		mayEditSummary, mayAddEntry := reportEditRights(report.Report, callerPersonID, callerIsAdmin, eventPermissions)
 		resp = append(
 			resp,
 			reportToJSON(
@@ -116,6 +119,8 @@ func (action GetReports) getReports(req *http.Request) (imsjson.Reports, *herr.H
 				entriesByReport[report.Report.Number],
 				event,
 				action.attachmentsEnabled,
+				mayEditSummary,
+				mayAddEntry,
 			),
 		)
 	}
@@ -178,7 +183,10 @@ func (action GetReport) getReport(req *http.Request) (imsjson.Report, *herr.HTTP
 		}
 	}
 
-	return reportToJSON(imsdb.ReportsRow(report), journalEntries, event, action.attachmentsEnabled), nil
+	reportRow := imsdb.ReportsRow(report)
+	mayEditSummary, mayAddEntry := reportEditRights(
+		reportRow.Report, jwtCtx.Claims.PersonID(), jwtCtx.Claims.PersonAdmin(), eventPermissions)
+	return reportToJSON(reportRow, journalEntries, event, action.attachmentsEnabled, mayEditSummary, mayAddEntry), nil
 }
 
 func createdByJSON(personID sql.NullInt32, handle, name sql.NullString) *imsjson.Mention {
@@ -192,17 +200,35 @@ func createdByJSON(personID sql.NullInt32, handle, name sql.NullString) *imsjson
 	}
 }
 
+// reportEditRights reports what the caller may do to a report. Editing the summary
+// is limited to the report's creator (REPORT.CREATED_BY) and admins; adding journal
+// entries additionally allows the writer role (EventWriteAllReports, held by writers
+// and — via the admin bypass — admins). EditReport enforces these server-side; the
+// same values ride on the report JSON to gate the client's controls.
+func reportEditRights(
+	report imsdb.Report, callerPersonID int32, callerIsAdmin bool, eventPermissions authz.EventPermissionMask,
+) (mayEditSummary, mayAddEntry bool) {
+	isCreator := report.CreatedBy.Valid && report.CreatedBy.Int32 == callerPersonID
+	isWriter := eventPermissions&authz.EventWriteAllReports != 0
+	mayEditSummary = callerIsAdmin || isCreator
+	mayAddEntry = callerIsAdmin || isWriter || isCreator
+	return mayEditSummary, mayAddEntry
+}
+
 func reportToJSON(
 	row imsdb.ReportsRow, journalEntries []imsjson.JournalEntry, event imsdb.Event, attachmentsEnabled bool,
+	mayEditSummary, mayAddEntry bool,
 ) imsjson.Report {
 	return imsjson.Report{
-		Event:          event.Name,
-		Number:         row.Report.Number,
-		Created:        conv.FloatToTime(row.Report.Created),
-		CreatedBy:      createdByJSON(row.Report.CreatedBy, row.CreatedByHandle, row.CreatedByName),
-		Summary:        conv.SqlToString(row.Report.Summary),
-		Incident:       conv.SqlToInt32(row.Report.IncidentNumber),
-		JournalEntries: journalEntries,
+		Event:              event.Name,
+		Number:             row.Report.Number,
+		Created:            conv.FloatToTime(row.Report.Created),
+		CreatedBy:          createdByJSON(row.Report.CreatedBy, row.CreatedByHandle, row.CreatedByName),
+		Summary:            conv.SqlToString(row.Report.Summary),
+		Incident:           conv.SqlToInt32(row.Report.IncidentNumber),
+		JournalEntries:     journalEntries,
+		MayEditSummary:     mayEditSummary,
+		MayAddJournalEntry: mayAddEntry,
 	}
 }
 
@@ -284,8 +310,6 @@ func (action EditReport) editReport(req *http.Request) *herr.HTTPError {
 	if eventPermissions&(authz.EventWriteAllReports|authz.EventWriteOwnReports) == 0 {
 		return herr.Forbidden("The requestor does not have permission to edit Reports on this Event", nil)
 	}
-	// i.e. they have EventWriteOwnReports, but not EventWriteAllReports
-	limitedAccess := eventPermissions&authz.EventWriteAllReports == 0
 
 	ctx := req.Context()
 	err := req.ParseForm()
@@ -298,7 +322,31 @@ func (action EditReport) editReport(req *http.Request) *herr.HTTPError {
 	}
 	author := jwt.Claims.PersonHandle()
 	authorPersonID := jwt.Claims.PersonID()
-	if limitedAccess {
+	isAdmin := jwt.Claims.PersonAdmin()
+
+	reportRow, err := action.imsDBQ.Report(ctx, action.imsDBQ,
+		imsdb.ReportParams{
+			Event:  event.ID,
+			Number: reportNumber,
+		},
+	)
+	if errors.Is(err, sql.ErrNoRows) {
+		return herr.NotFound("Report does not exist", err).From("[Report]")
+	}
+	if err != nil {
+		return herr.InternalServerError("Failed to fetch Report", err).From("[Report]")
+	}
+	storedReport := reportRow.Report
+
+	// Ownership floor. It governs the incident link/unlink action below and is the
+	// baseline for the summary/entry edits. A caller with EventWriteAllReports (the
+	// writer role, or an admin via the bypass) always qualifies; a limited
+	// (own-reports) caller must own the report — as its creator (REPORT.CREATED_BY)
+	// or, historically, as an author of one of its journal entries. The stricter
+	// per-action gates for the summary and for adding entries are applied further down.
+	hasWriteAll := eventPermissions&authz.EventWriteAllReports != 0
+	isCreator := storedReport.CreatedBy.Valid && storedReport.CreatedBy.Int32 == authorPersonID
+	if !hasWriteAll && !isCreator {
 		isPrevAuthor, errHTTP := action.isPreviousAuthor(req, event.ID, reportNumber, author)
 		if errHTTP != nil {
 			return errHTTP.From("[isPreviousAuthor]")
@@ -307,17 +355,6 @@ func (action EditReport) editReport(req *http.Request) *herr.HTTPError {
 			return herr.Forbidden("The requestor does not have permission to edit this Report", nil)
 		}
 	}
-
-	reportRow, err := action.imsDBQ.Report(ctx, action.imsDBQ,
-		imsdb.ReportParams{
-			Event:  event.ID,
-			Number: reportNumber,
-		},
-	)
-	if err != nil {
-		return herr.InternalServerError("Failed to fetch Report", err).From("[Report]")
-	}
-	storedReport := reportRow.Report
 
 	// If there's an "action" in the form, we're either linking or unlinking this Report from an Incident.
 	if queryAction := req.FormValue("action"); queryAction != "" {
@@ -338,6 +375,25 @@ func (action EditReport) editReport(req *http.Request) *herr.HTTPError {
 	if requestReport.Number == 0 {
 		slog.Debug("No report number provided")
 		return nil
+	}
+
+	// Per-action authorization: editing the summary is limited to the report's
+	// creator and admins; adding journal entries additionally allows the writer role.
+	// (Stricter than the ownership floor above — a writer may add entries to any
+	// report but may not rewrite a summary they didn't create.)
+	mayEditSummary, mayAddEntry := reportEditRights(storedReport, authorPersonID, isAdmin, eventPermissions)
+	if requestReport.Summary != nil && !mayEditSummary {
+		return herr.Forbidden("Only the report's creator or an admin may edit the summary", nil)
+	}
+	addsJournalEntry := false
+	for _, entry := range requestReport.JournalEntries {
+		if entry.Text != "" {
+			addsJournalEntry = true
+			break
+		}
+	}
+	if addsJournalEntry && !mayAddEntry {
+		return herr.Forbidden("Only the report's creator, a writer, or an admin may add journal entries", nil)
 	}
 
 	txn, err := action.imsDBQ.Begin()

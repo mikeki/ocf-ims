@@ -259,6 +259,18 @@ async function loadAndDisplayReport(): Promise<void> {
         ims.disableEditing();
     }
 
+    // Per-report edit rights (server-computed): the summary is editable only by the
+    // report's creator or an admin; journal entries may be added only by the creator,
+    // a writer, or an admin. Layer these on top of the coarse enable/disable above.
+    // Only applies to an existing report — while creating a new one, the current user
+    // is the creator and may fill in both.
+    if (report.number != null) {
+        el.reportSummary.disabled = !report.may_edit_summary;
+        const mayAddEntry = report.may_add_journal_entry ?? false;
+        el.journalEntryAdd.disabled = !mayAddEntry;
+        el.journalEntrySubmit.classList.toggle("disabled", !mayAddEntry);
+    }
+
     if (ims.eventAccess?.attachFiles) {
         el.attachFile.classList.remove("hidden");
     }
