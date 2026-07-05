@@ -30,7 +30,7 @@ templ People(deployment, versionName, versionRef, eventName string, defaultPassw
 <h1 id="doc-title">People</h1>
 @LoadingOverlay()
 @ErrorInfo()
-<!-- Whether a shared default password is configured on the server (IMS_DEFAULT_PASSWORD_HASH).
+<!-- Whether a shared default password is configured on the server (IMS_DEFAULT_PASSWORD).
      Read by people.ts to decide whether to offer the "use default password" choice. -->
 <span id="default_password_configured" class="hidden" data-configured={ strconv.FormatBool(defaultPasswordConfigured) }></span>
 

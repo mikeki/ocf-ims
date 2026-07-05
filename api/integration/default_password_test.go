@@ -28,7 +28,7 @@ import (
 )
 
 // TestDefaultPasswordCreate covers granting IMS access with the shared default
-// password (IMS_DEFAULT_PASSWORD_HASH) rather than a typed one. The created person
+// password (IMS_DEFAULT_PASSWORD) rather than a typed one. The created person
 // can immediately log in with the default, and the access invariants (fair name +
 // email) still hold on this path.
 func TestDefaultPasswordCreate(t *testing.T) {
@@ -189,7 +189,8 @@ func TestDefaultPasswordPromptAndSelfChange(t *testing.T) {
 	statusCode, _, _ = apisNoAuth.postAuth(ctx, api.PostAuthRequest{Identification: email, Password: sharedDefaultPassword})
 	require.Equal(t, http.StatusUnauthorized, statusCode)
 
-	// A user with their own (non-default) password is never flagged.
+	// A user created with their own (non-default) password is flagged off the default
+	// immediately (PASSWORD_CHANGED set on create), so it's never flagged.
 	handle2 := "SpecificPw" + rand.NonCryptoText()
 	email2 := handle2 + "@example.com"
 	resp = apisAdmin.createPerson(ctx, api.CreatePersonRequest{
@@ -206,4 +207,50 @@ func TestDefaultPasswordPromptAndSelfChange(t *testing.T) {
 	require.Equal(t, http.StatusOK, resp.StatusCode)
 	require.NoError(t, resp.Body.Close())
 	require.False(t, auth2.UsingDefaultPassword)
+
+	// A seeded user starts with PASSWORD_CHANGED=false but a non-default password —
+	// the shape of a pre-existing/bulk-loaded account. GET /auth verifies once, finds
+	// they're off the default, and must not flag them (and records it so it won't
+	// re-verify). This exercises the lazy-heal path.
+	apisAlice := ApiHelper{t: t, serverURL: shared.serverURL, jwt: jwtForAlice(t, ctx)}
+	aliceAuth, resp := apisAlice.getAuth(ctx, "")
+	require.Equal(t, http.StatusOK, resp.StatusCode)
+	require.NoError(t, resp.Body.Close())
+	require.False(t, aliceAuth.UsingDefaultPassword)
+}
+
+// TestSelfChangeRejectsDefault covers the guard that a self-service change may not set
+// the password back to the shared default — otherwise the forced prompt could be
+// "satisfied" while the user is still on the default.
+func TestSelfChangeRejectsDefault(t *testing.T) {
+	t.Parallel()
+	ctx := t.Context()
+
+	apisAdmin := ApiHelper{t: t, serverURL: shared.serverURL, jwt: jwtForAdmin(ctx, t)}
+	apisNoAuth := ApiHelper{t: t, serverURL: shared.serverURL}
+
+	handle := "RejectDefault" + rand.NonCryptoText()
+	email := handle + "@example.com"
+	resp := apisAdmin.createPerson(ctx, api.CreatePersonRequest{
+		Handle:             handle,
+		Email:              email,
+		UseDefaultPassword: true,
+	})
+	require.Equal(t, http.StatusCreated, resp.StatusCode)
+	require.NoError(t, resp.Body.Close())
+
+	_, _, token := apisNoAuth.postAuth(ctx, api.PostAuthRequest{Identification: email, Password: sharedDefaultPassword})
+	require.NotEmpty(t, token)
+	apisUser := ApiHelper{t: t, serverURL: shared.serverURL, jwt: token}
+
+	// "Changing" to the shared default is refused.
+	resp = apisUser.changeOwnPassword(ctx, sharedDefaultPassword)
+	require.Equal(t, http.StatusBadRequest, resp.StatusCode)
+	require.NoError(t, resp.Body.Close())
+
+	// They're still on the default afterward.
+	auth, resp := apisUser.getAuth(ctx, "")
+	require.Equal(t, http.StatusOK, resp.StatusCode)
+	require.NoError(t, resp.Body.Close())
+	require.True(t, auth.UsingDefaultPassword)
 }

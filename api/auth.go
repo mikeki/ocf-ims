@@ -176,10 +176,10 @@ type GetAuth struct {
 	// client so it can subscribe. Empty ⇒ push is unconfigured and the client
 	// hides the feature.
 	pushVAPIDPublicKey string
-	// defaultPasswordHash is the shared default password (conf DefaultPasswordHash),
+	// defaultPassword is the shared default password (plaintext, conf DefaultPassword),
 	// used to flag a user still signed in with it so the client can prompt a change.
 	// Empty ⇒ no default configured, so the flag is never set.
-	defaultPasswordHash string
+	defaultPassword string
 }
 
 type GetAuthResponse struct {
@@ -196,7 +196,7 @@ type GetAuthResponse struct {
 	// its absence as "push unavailable".
 	PushVAPIDPublicKey string `json:"pushVapidPublicKey,omitzero"`
 	// UsingDefaultPassword is true when the signed-in user's stored password is
-	// still the shared default (IMS_DEFAULT_PASSWORD_HASH). The client uses it to
+	// still the shared default (IMS_DEFAULT_PASSWORD). The client uses it to
 	// prompt them to set their own password. It self-clears once they do.
 	UsingDefaultPassword bool `json:"using_default_password"`
 }
@@ -259,18 +259,37 @@ func (action GetAuth) getAuth(req *http.Request) (GetAuthResponse, *herr.HTTPErr
 		PushVAPIDPublicKey: action.pushVAPIDPublicKey,
 	}
 	// Flag a user still signed in with the shared default password so the client can
-	// prompt them to change it. The default is copied verbatim into PERSON.PASSWORD
-	// (no per-user salt), so an exact string match is reliable and self-clears the
-	// moment they set their own. Only meaningful when a default is configured.
-	if action.defaultPasswordHash != "" {
+	// prompt them to change it. To keep this cheap, we only run the argon2 verify for
+	// a user whose PASSWORD_CHANGED flag is still false ("may be on the default"); once
+	// a user is known to be off it (either a password write recorded it, or the check
+	// below records it the first time), we skip the verify entirely. So it costs at
+	// most one argon2 per user, not one per page load. Only meaningful when a default
+	// is configured.
+	if action.defaultPassword != "" {
 		// GetAllUsers returns the cached directory map keyed by PERSON.ID, so index
 		// the caller directly by id rather than scanning every user.
 		people, err := action.userStore.GetAllUsers(req.Context())
 		if err != nil {
 			return resp, herr.InternalServerError("Failed to fetch personnel", err).From("[GetAllUsers]")
 		}
-		if person, ok := people[int64(claims.PersonID())]; ok {
-			resp.UsingDefaultPassword = person.Password == action.defaultPasswordHash
+		if person, ok := people[int64(claims.PersonID())]; ok && !person.PasswordChanged && person.Password != "" {
+			// Verify the configured default against the user's stored hash — so it
+			// catches every user on the default regardless of how their hash was
+			// salted. A malformed/incompatible hash simply isn't the default (false).
+			match, _ := authn.Verify(action.defaultPassword, person.Password)
+			resp.UsingDefaultPassword = match
+			if !match {
+				// Off the default but not yet recorded (a pre-existing row, or a
+				// password set outside the tracked paths). Persist it so we never
+				// verify this user again. Best-effort: a failure just re-verifies next
+				// time, so don't fail the auth check over it.
+				if err := action.imsDBQ.MarkPasswordChanged(req.Context(), action.imsDBQ, int32(claims.PersonID())); err != nil {
+					// #nosec G706 // log injection
+					slog.Warn("Failed to record password-changed flag", "person_id", claims.PersonID(), "err", err)
+				} else {
+					action.userStore.InvalidateUsers()
+				}
+			}
 		}
 	}
 	// event_id is an optional query param for this endpoint

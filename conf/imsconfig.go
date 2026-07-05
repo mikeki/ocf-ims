@@ -23,7 +23,6 @@ import (
 	"os"
 	"time"
 
-	"github.com/mikeki/ocf-ims/lib/argon2id"
 	"github.com/mikeki/ocf-ims/lib/redact"
 )
 
@@ -36,6 +35,14 @@ const mib = 1 << 20
 // 256-bit width of the underlying hash. A shorter secret is brute-forceable and
 // would let an attacker forge tokens (plan 90 finding M2).
 const minJWTSecretLen = 32
+
+// minDefaultPasswordLen / maxDefaultPasswordLen bound IMS_DEFAULT_PASSWORD. The
+// minimum mirrors the password endpoints' floor; the maximum mirrors their cap on
+// the argon2 hashing-exhaustion vector (see api.postAuth).
+const (
+	minDefaultPasswordLen = 8
+	maxDefaultPasswordLen = 256
+)
 
 // DefaultIMS is the base configuration used for the IMS server.
 // It gets overridden by values in .env, if present, then the result
@@ -131,13 +138,14 @@ func (c *IMSConfig) Validate() error {
 	// three are required — a half-configured key pair would fail at send time.
 	errs = append(errs, c.Push.Validate())
 
-	// The default password (if configured) is stored already-hashed and copied
-	// verbatim into PERSON.PASSWORD, so a malformed value would silently mint
-	// unusable logins. Reject it at boot rather than at first use.
-	if c.Core.DefaultPasswordHash != "" {
-		_, _, _, err := argon2id.DecodeHash(c.Core.DefaultPasswordHash)
-		if err != nil {
-			errs = append(errs, fmt.Errorf("IMS_DEFAULT_PASSWORD_HASH is not a valid argon2id hash: %w", err))
+	// The default password (if configured) is granted to real users, so hold it to
+	// the same length bounds as the password endpoints (the max guards the argon2
+	// hashing-exhaustion vector — see api.postAuth). Reject a bad value at boot.
+	if c.Core.DefaultPassword != "" {
+		if n := len(c.Core.DefaultPassword); n < minDefaultPasswordLen || n > maxDefaultPasswordLen {
+			errs = append(errs, fmt.Errorf(
+				"IMS_DEFAULT_PASSWORD must be between %d and %d characters (got %d)",
+				minDefaultPasswordLen, maxDefaultPasswordLen, n))
 		}
 	}
 
@@ -267,16 +275,16 @@ type ConfigCore struct {
 	// idempotent — see store.Seed.
 	Seed SeedProfile
 
-	// DefaultPasswordHash is an optional pre-computed argon2id hash used as the
-	// initial password when an admin grants IMS access without typing a specific
-	// one (the "use the shared default password" path in Add-person / Set-password).
-	// It is stored already-hashed — the operator generates it with the
-	// `hash_password` CLI and sets IMS_DEFAULT_PASSWORD_HASH — so no plaintext
-	// default lives at rest and the server copies it straight into PERSON.PASSWORD.
-	// Empty ⇒ the default-password option is unavailable and a specific password
-	// must be given. Validated at boot (see Validate).
-	// #nosec G117 // Exported secret struct field (an argon2id hash, not plaintext)
-	DefaultPasswordHash string `redact:"true"`
+	// DefaultPassword is the optional shared default password (plaintext, from
+	// IMS_DEFAULT_PASSWORD). Two uses: (1) as the initial password when an admin
+	// grants IMS access without typing a specific one (the "use the shared default
+	// password" path — the server hashes it per user); (2) to detect a user still
+	// signed in with it, by verifying it against their stored hash (so it catches
+	// every user on the default regardless of how their hash was salted). Empty ⇒
+	// the default-password option is unavailable and no one is flagged. Length is
+	// validated at boot (see Validate). Stored plaintext, so it is a secret.
+	// #nosec G117 // Exported secret struct field
+	DefaultPassword string `redact:"true"`
 }
 
 type DBStore struct {

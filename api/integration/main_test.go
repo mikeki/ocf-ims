@@ -21,7 +21,6 @@ import (
 	"github.com/mikeki/ocf-ims/api"
 	"github.com/mikeki/ocf-ims/conf"
 	"github.com/mikeki/ocf-ims/directory"
-	"github.com/mikeki/ocf-ims/lib/argon2id"
 	_ "github.com/mikeki/ocf-ims/lib/noopdb"
 	"github.com/mikeki/ocf-ims/lib/rand"
 	"github.com/mikeki/ocf-ims/lib/testctr"
@@ -103,7 +102,7 @@ const (
 	nonexistentPersonID = 999999
 
 	// sharedDefaultPassword is the plaintext behind the shared-suite server's
-	// IMS_DEFAULT_PASSWORD_HASH (set in setup). Tests that exercise the
+	// IMS_DEFAULT_PASSWORD (set in setup). Tests that exercise the
 	// "use the shared default password" path log in with it afterward.
 	sharedDefaultPassword = "shared-default-password"
 )
@@ -171,10 +170,10 @@ func setup(ctx context.Context, tempDir string) {
 	// trip each other. The throttle itself is covered on a dedicated server in
 	// ratelimit_test.go.
 	shared.cfg.Core.LoginRateLimitEnabled = false
-	// A shared default password (stored pre-hashed) so the "use the shared default
-	// password" create/reset paths can be exercised; opt-in, so it doesn't affect
-	// tests that pass an explicit password or none.
-	shared.cfg.Core.DefaultPasswordHash = argon2id.CreateHash(sharedDefaultPassword, argon2id.DefaultParams)
+	// A shared default password (plaintext) so the "use the shared default password"
+	// create/reset paths and the default-password detection can be exercised; opt-in,
+	// so it doesn't affect tests that pass an explicit password or none.
+	shared.cfg.Core.DefaultPassword = sharedDefaultPassword
 	must(shared.cfg.Validate())
 	shared.es = api.NewEventSourcerer()
 
