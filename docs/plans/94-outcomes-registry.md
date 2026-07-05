@@ -113,28 +113,50 @@ integration tests against a live MariaDB.
 
 ### PR B — Data-drive the incident form; remove hardcoded lists
 
-1. **Incident form** (`web/template/incident.templ:124-138`): replace the hardcoded
-   `<option>`s with a placeholder the client populates from `GET /ims/api/outcomes`
-   (mirror how incident types load into their combobox, `incident.ts:849`
-   `drawIncidentTypesToAdd`). Include a **propose-new-outcome** affordance for writers,
-   like the incident-type propose flow.
-2. **Client (`web/typescript`):** delete the `IncidentOutcome` union (`ims.ts:3494-3499`)
-   and the `outcomeNameFromID` switch (`ims.ts:1050-1071`); replace with a data-driven
-   lookup keyed on `OUTCOME.ID`/`NAME` fetched at load (add a loader analogous to
-   `loadIncidentTypes`). Update `editOutcome` (`incident.ts:1388-1389`) and the draw
-   path (`:685-688`) to send/read `outcome_id`.
-3. **Server incident edit** (`api/incident.go:675-686`, `outcomeToString` `:1276-1283`,
-   `json/incident.go:54`): switch from parsing the enum string to accepting/serializing
-   `outcome_id` (nullable) validated against the `OUTCOME` table. Update
-   `UpdateIncident`/`CreateIncident` to persist `OUTCOME_ID`.
-4. **Migration `000NN_drop_incident_outcome_enum`** — once nothing reads the legacy
-   `INCIDENT.OUTCOME` enum, drop the column. (Append-only; separate migration.)
-5. **Metrics** (`api/metrics.go:258` and the by-outcome aggregate, `queries.sql:1099`):
-   repoint from the enum to `OUTCOME_ID`/name.
+**Status: ✅ Built.** The incident form's disposition picker is now data-driven from the
+`OUTCOME` table and the legacy `INCIDENT.OUTCOME` enum is gone end-to-end (schema →
+API → client). As built:
 
-**Verify:** `go run bin/build/build.go`; `go test ./...`; `npx eslint`. Manual: set an
-incident's outcome from the (now data-driven) dropdown; propose a new outcome from the
-incident form as a writer; confirm dashboards' outcome breakdown still renders.
+1. **Migrations** — `00020_add_incident_outcome_id.sql` adds the nullable
+   `INCIDENT.OUTCOME_ID` FK (named constraint `INCIDENT_OUTCOME_TO_OUTCOME`) and
+   backfills it from the enum by matching each enum value to its seeded `OUTCOME.NAME`;
+   `00021_drop_incident_outcome_enum.sql` then drops the `INCIDENT.OUTCOME` column.
+   (Two migrations, add-then-drop, so the backfill runs before the source column
+   disappears.)
+2. **Queries** — `UpdateIncident` writes `OUTCOME_ID = ?`; `MetricsIncidents`
+   `left join OUTCOME` and selects `o.NAME as OUTCOME_NAME` for follow-up detection.
+3. **Server** (`api/incident.go`) — JSON is now `outcome_id *int32`
+   (`json/incident.go`): **nil** leaves it unchanged, **0** clears it, any other value
+   must reference an existing `OUTCOME` row (else **400**). Outcomes are loaded
+   pre-transaction to validate and to resolve the display name for the journal line
+   (`"Changed outcome: <name>"`). `outcomeToString` removed; read path serializes
+   `conv.SqlToInt32(OUTCOME_ID)`.
+4. **Metrics** (`api/metrics.go`) — follow-up detection keys on the joined
+   `OUTCOME_NAME == "Follow-Up Required"` (package const `outcomeFollowUpRequired`,
+   with a comment that renaming that seeded outcome would need a matching update).
+5. **Client** (`web/typescript`) — deleted the `IncidentOutcome` union and the
+   `outcomeNameFromID` switch; added `ims.loadOutcomes()` (alphabetical, mirrors
+   `loadIncidentTypes`). `incident.ts` loads outcomes at init and
+   `drawOutcomesToSelect()` populates the `<select>` (visible outcomes + the incident's
+   current one even if hidden); `editOutcome` sends `outcome_id` (0 to clear). The
+   journal render drops the code→label translation since the server now logs the
+   display name directly.
+6. **Tests** — `TestIncidentOutcome` and the metrics test resolve seeded outcome IDs by
+   name via a new `outcomeIDByName` helper (no hardcoded auto-increment IDs).
+
+**Deviation from the original sketch:** the **propose-new-outcome affordance on the
+incident form was intentionally left out.** The picker is a single-`<select>`, for which
+an inline "type-a-new-one" combobox (the incident-type pattern) is a poor UX fit, and
+admins already manage the outcome vocabulary from the admin page delivered in PR A. The
+`ProposeOutcome` API (`POST /ims/api/events/{event}/outcomes`) still exists if a
+writer-facing propose UI is wanted later. Flagged for the user; easy follow-up if
+desired.
+
+**Verified** via `docker build --target build` (sqlc/templ/tsgo generation + `go build`
++ TS transpile), `go vet ./...`, and the non-integration unit suite
+(`go test $(go list ./... | grep -v integration)` — all green bar the testcontainer
+directory test, which needs Docker-in-Docker and passes in CI). The integration tests
+(`TestIncidentOutcome`, metrics) exercise the new FK path against a live MariaDB in CI.
 
 ## Notes / decisions to confirm
 

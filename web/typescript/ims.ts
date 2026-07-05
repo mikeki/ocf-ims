@@ -1039,31 +1039,6 @@ function stateSortKeyFromID(stateID: IncidentState): number|undefined {
     }
 }
 
-// Look up an outcome's display name given its ID. "" (no outcome recorded)
-// renders blank.
-export function outcomeNameFromID(outcomeID: IncidentOutcome): string {
-    switch (outcomeID) {
-        case ""                            : return "";
-        case "information_only"            : return "Information Only";
-        case "resolved_on_scene"           : return "Resolved On Scene";
-        case "referred_to_coordinator"     : return "Referred to Coordinator";
-        case "referred_to_management"      : return "Referred to Management";
-        case "referred_to_community_support": return "Referred to Community Support";
-        case "referred_to_mediation"       : return "Referred to Mediation";
-        case "follow_up_required"          : return "Follow-Up Required";
-        case "no_action_needed"            : return "No Action Needed";
-        case "taken_to_big_bird"           : return "Taken to Big Bird";
-        case "taken_to_little_wing"        : return "Taken to Little Wing";
-        case "asked_to_leave"              : return "Asked to Leave";
-        case "booted"                      : return "Booted";
-        case "arrested"                    : return "Arrested";
-        case "transported_in_ambulance"    : return "Transported in Ambulance";
-        default:
-            console.warn(`Unknown incident outcome ID: ${outcomeID satisfies never}`);
-            return "Unknown";
-    }
-}
-
 // key is person handle
 export type PersonnelMap = Record<string, Personnel>;
 
@@ -2084,8 +2059,6 @@ function renderSystemLine(p: HTMLElement, line: string): void {
     // Translate stored codes to the labels the rest of the UI shows.
     if (label === "Changed location area") {
         value = journalRenderContext.areaSlugToName.get(value) ?? value;
-    } else if (label === "Changed outcome") {
-        value = outcomeNameFromID(value as IncidentOutcome);
     } else if (label === "Changed state") {
         value = stateNameFromID(value as IncidentState);
     } else if (label === "Changed priority") {
@@ -3368,6 +3341,32 @@ export async function loadIncidentTypes(): Promise<{types: IncidentType[], err: 
     };
 }
 
+//
+// Load outcomes
+//
+
+// loadOutcomes fetches the data-driven outcome registry (slice 10a), sorted
+// alphabetically, for the incident-form disposition picker. Mirrors loadIncidentTypes.
+export async function loadOutcomes(): Promise<{outcomes: Outcome[], err: string|null}> {
+    const {json, err} = await fetchNoThrow<Outcome[]>(url_outcomes, null);
+    if (err != null || json == null) {
+        const message = `Failed to load outcomes: ${err}`;
+        console.error(message);
+        setErrorMessage(message);
+        return {
+            outcomes: [],
+            err: message,
+        };
+    }
+    json.sort((a: Outcome, b: Outcome): number => {
+        return (a.name??"").localeCompare(b.name??"");
+    });
+    return {
+        outcomes: json,
+        err: null,
+    };
+}
+
 export function hideLoadingOverlay(): void {
     const overlay = document.getElementById("loading-overlay");
     if (overlay) {
@@ -3500,20 +3499,13 @@ export type PersonSearchResult = {
 
 export type IncidentState = 'open'|'closed'|'null';
 
-// IncidentOutcome is the disposition classification, orthogonal to IncidentState.
-// An empty string means "no outcome recorded" (clears it on the server).
-export type IncidentOutcome =
-    ''|'information_only'|'resolved_on_scene'|'referred_to_coordinator'|
-    'referred_to_management'|'referred_to_community_support'|
-    'referred_to_mediation'|'follow_up_required'|'no_action_needed'|
-    'taken_to_big_bird'|'taken_to_little_wing'|'asked_to_leave'|
-    'booted'|'arrested'|'transported_in_ambulance';
-
 export type Incident = {
     number?: number|null;
     event?: string|null;
     state?: IncidentState|null;
-    outcome?: IncidentOutcome|null;
+    // outcome_id references an OUTCOME(id) — the incident's disposition (slice 10a,
+    // data-driven). null means no outcome recorded; 0 clears it on a write.
+    outcome_id?: number|null;
     priority?: number|null;
     summary?: string|null;
     created?: string|null;

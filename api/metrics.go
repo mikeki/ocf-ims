@@ -213,6 +213,11 @@ func (action GetMetrics) computeMetrics(ctx context.Context, eventName string) (
 	return resp, nil
 }
 
+// outcomeFollowUpRequired is the OUTCOME.NAME the dashboard treats as "needs
+// follow-up" when listing still-open incidents. It matches the seeded outcome row
+// (migration 00019); if an admin renames that outcome, update this to match.
+const outcomeFollowUpRequired = "Follow-Up Required"
+
 // buildMetrics turns the raw query rows into the dashboard payload. The
 // state/priority/by-day/time-to-close/follow-up metrics are derived here from the
 // per-incident rows; category/type/area come straight from their GROUP BY queries.
@@ -254,8 +259,8 @@ func buildMetrics(
 			closeSum += inc.Closed.Float64 - inc.Created
 		}
 
-		if inc.Outcome.Valid &&
-			inc.Outcome.IncidentOutcome == imsdb.IncidentOutcomeFollowUpRequired &&
+		if inc.OutcomeName.Valid &&
+			inc.OutcomeName.String == outcomeFollowUpRequired &&
 			inc.State != imsdb.IncidentStateClosed {
 			followUps = append(followUps, imsjson.MetricIncidentRef{
 				Number:  inc.Number,
