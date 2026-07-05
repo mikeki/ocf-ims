@@ -524,7 +524,7 @@ func AddToMux(
 
 	mux.Handle("POST /ims/api/personnel",
 		Adapt(
-			CreatePerson{db, userStore},
+			CreatePerson{db, userStore, cfg.Core.DefaultPasswordHash},
 			RecoverFromPanic(),
 			RequireAuthN(jwter),
 			LogRequest(true, actionLogger, userStore),
@@ -544,7 +544,7 @@ func AddToMux(
 
 	mux.Handle("POST /ims/api/personnel/{personId}/password",
 		Adapt(
-			SetPersonPassword{db, userStore},
+			SetPersonPassword{db, userStore, cfg.Core.DefaultPasswordHash},
 			RecoverFromPanic(),
 			RequireAuthN(jwter),
 			LogRequest(true, actionLogger, userStore),

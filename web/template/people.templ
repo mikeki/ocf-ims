@@ -16,7 +16,9 @@
 
 package template
 
-templ People(deployment, versionName, versionRef, eventName string) {
+import "strconv"
+
+templ People(deployment, versionName, versionRef, eventName string, defaultPasswordConfigured bool) {
 <!DOCTYPE html>
 <html lang="en">
 @Head("Manage People", "people.js", false, false, versionRef)
@@ -28,6 +30,9 @@ templ People(deployment, versionName, versionRef, eventName string) {
 <h1 id="doc-title">People</h1>
 @LoadingOverlay()
 @ErrorInfo()
+<!-- Whether a shared default password is configured on the server (IMS_DEFAULT_PASSWORD_HASH).
+     Read by people.ts to decide whether to offer the "use default password" choice. -->
+<span id="default_password_configured" class="hidden" data-configured={ strconv.FormatBool(defaultPasswordConfigured) }></span>
 
     <div class="modal no-print" id="setPasswordModal" tabindex="-1" aria-labelledby="setPasswordModalLabel" aria-hidden="true">
       <div class="modal-dialog">
@@ -38,19 +43,35 @@ templ People(deployment, versionName, versionRef, eventName string) {
           </div>
           <div class="modal-body row">
             <p>Set a new password for <strong id="set_password_handle"></strong>.</p>
-            <div class="input-group mb-3">
-              <div class="form-floating">
-                <input id="set_password_input" type="password" class="form-control" autocomplete="new-password" placeholder="New password" />
-                <label for="set_password_input">New password</label>
+            <!-- When a shared default is configured it's the primary path (reset to
+                 the default); "Set a specific password" reveals the fields below.
+                 With no default configured this choice stays hidden and the fields
+                 are always shown (people.ts). -->
+            <div id="set_password_choice" class="hidden mb-2">
+              <div class="form-check">
+                <input class="form-check-input" type="radio" name="setPasswordMode" id="set_password_mode_default" value="default" checked onchange="updateSetPasswordMode()" />
+                <label class="form-check-label" for="set_password_mode_default">Reset to the shared default password</label>
               </div>
-              <button class="btn btn-outline-secondary" type="button" id="set_password_toggle">Show</button>
+              <div class="form-check">
+                <input class="form-check-input" type="radio" name="setPasswordMode" id="set_password_mode_specific" value="specific" onchange="updateSetPasswordMode()" />
+                <label class="form-check-label" for="set_password_mode_specific">Set a specific password</label>
+              </div>
             </div>
-            <div class="input-group mb-3">
-              <div class="form-floating">
-                <input id="set_password_confirm" type="password" class="form-control" autocomplete="new-password" placeholder="Confirm password" />
-                <label for="set_password_confirm">Confirm password</label>
+            <div id="set_password_fields">
+              <div class="input-group mb-3">
+                <div class="form-floating">
+                  <input id="set_password_input" type="password" class="form-control" autocomplete="new-password" placeholder="New password" />
+                  <label for="set_password_input">New password</label>
+                </div>
+                <button class="btn btn-outline-secondary" type="button" id="set_password_toggle">Show</button>
               </div>
-              <button class="btn btn-outline-secondary" type="button" id="set_password_confirm_toggle">Show</button>
+              <div class="input-group mb-3">
+                <div class="form-floating">
+                  <input id="set_password_confirm" type="password" class="form-control" autocomplete="new-password" placeholder="Confirm password" />
+                  <label for="set_password_confirm">Confirm password</label>
+                </div>
+                <button class="btn btn-outline-secondary" type="button" id="set_password_confirm_toggle">Show</button>
+              </div>
             </div>
           </div>
           <div class="modal-footer">
@@ -125,19 +146,37 @@ templ People(deployment, versionName, versionRef, eventName string) {
               </button>
               <div id="add_person_access_section" class="hidden">
                 <div class="form-text mb-2">Signing in needs an email, a fair name (both above), and a password.</div>
-                <div class="input-group mb-3">
-                  <div class="form-floating">
-                    <input id="add_person_password" type="password" class="form-control" autocomplete="new-password" placeholder="Password" />
-                    <label for="add_person_password">Password</label>
+                <!-- Password choice. When a shared default password is configured it is
+                     the primary path (fast onboarding — the person signs in with it and
+                     changes it later); "Set a specific password" reveals the fields.
+                     With no default configured this choice stays hidden and the fields
+                     are always shown (people.ts). -->
+                <div id="add_person_pw_choice" class="hidden mb-2">
+                  <div class="form-check">
+                    <input class="form-check-input" type="radio" name="addPersonPwMode" id="add_person_pw_default" value="default" checked onchange="updateAddPasswordMode()" />
+                    <label class="form-check-label" for="add_person_pw_default">Use the shared default password</label>
+                    <div class="form-text mt-0">They sign in with this server's default password, then change it (or an admin resets it) later.</div>
                   </div>
-                  <button class="btn btn-outline-secondary" type="button" id="add_person_password_toggle">Show</button>
+                  <div class="form-check">
+                    <input class="form-check-input" type="radio" name="addPersonPwMode" id="add_person_pw_specific" value="specific" onchange="updateAddPasswordMode()" />
+                    <label class="form-check-label" for="add_person_pw_specific">Set a specific password</label>
+                  </div>
                 </div>
-                <div class="input-group mb-3">
-                  <div class="form-floating">
-                    <input id="add_person_password_confirm" type="password" class="form-control" autocomplete="new-password" placeholder="Confirm password" />
-                    <label for="add_person_password_confirm">Confirm password</label>
+                <div id="add_person_password_fields">
+                  <div class="input-group mb-3">
+                    <div class="form-floating">
+                      <input id="add_person_password" type="password" class="form-control" autocomplete="new-password" placeholder="Password" />
+                      <label for="add_person_password">Password</label>
+                    </div>
+                    <button class="btn btn-outline-secondary" type="button" id="add_person_password_toggle">Show</button>
                   </div>
-                  <button class="btn btn-outline-secondary" type="button" id="add_person_password_confirm_toggle">Show</button>
+                  <div class="input-group mb-3">
+                    <div class="form-floating">
+                      <input id="add_person_password_confirm" type="password" class="form-control" autocomplete="new-password" placeholder="Confirm password" />
+                      <label for="add_person_password_confirm">Confirm password</label>
+                    </div>
+                    <button class="btn btn-outline-secondary" type="button" id="add_person_password_confirm_toggle">Show</button>
+                  </div>
                 </div>
               </div>
 

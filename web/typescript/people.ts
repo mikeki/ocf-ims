@@ -24,10 +24,12 @@ declare global {
         changeShowAll: ()=>Promise<void>;
         filterPeople: ()=>void;
         submitSetPassword: ()=>Promise<void>;
+        updateSetPasswordMode: ()=>void;
         showAddPersonModal: ()=>void;
         showCreatePersonForm: ()=>void;
         backToPersonSearch: ()=>void;
         toggleProvideAccess: ()=>void;
+        updateAddPasswordMode: ()=>void;
         submitCreatePerson: ()=>Promise<void>;
         submitEditPerson: ()=>Promise<void>;
         submitMarkParticipation: (participation: string)=>Promise<void>;
@@ -118,8 +120,13 @@ const el = {
     peopleWithAccess: ims.typedElement("people_with_access", HTMLTableSectionElement),
     peopleWithoutAccess: ims.typedElement("people_without_access", HTMLTableSectionElement),
     personRowTemplate: ims.typedElement("person_row_template", HTMLTemplateElement),
+    defaultPasswordConfigured: ims.typedElement("default_password_configured", HTMLElement),
     setPasswordModal: ims.typedElement("setPasswordModal", HTMLElement),
     setPasswordHandle: ims.typedElement("set_password_handle", HTMLElement),
+    setPasswordChoice: ims.typedElement("set_password_choice", HTMLElement),
+    setPasswordModeDefault: ims.typedElement("set_password_mode_default", HTMLInputElement),
+    setPasswordModeSpecific: ims.typedElement("set_password_mode_specific", HTMLInputElement),
+    setPasswordFields: ims.typedElement("set_password_fields", HTMLElement),
     setPasswordInput: ims.typedElement("set_password_input", HTMLInputElement),
     setPasswordConfirm: ims.typedElement("set_password_confirm", HTMLInputElement),
     setPasswordToggle: ims.typedElement("set_password_toggle", HTMLButtonElement),
@@ -143,6 +150,10 @@ const el = {
     addPersonPasswordConfirmToggle: ims.typedElement("add_person_password_confirm_toggle", HTMLButtonElement),
     addPersonAccessToggle: ims.typedElement("add_person_access_toggle", HTMLButtonElement),
     addPersonAccessSection: ims.typedElement("add_person_access_section", HTMLElement),
+    addPersonPwChoice: ims.typedElement("add_person_pw_choice", HTMLElement),
+    addPersonPwDefault: ims.typedElement("add_person_pw_default", HTMLInputElement),
+    addPersonPwSpecific: ims.typedElement("add_person_pw_specific", HTMLInputElement),
+    addPersonPasswordFields: ims.typedElement("add_person_password_fields", HTMLElement),
     addPersonCreateSection: ims.typedElement("add_person_create_section", HTMLElement),
     addPersonBackToSearch: ims.typedElement("add_person_back_to_search", HTMLButtonElement),
     addPersonEventSection: ims.typedElement("add_person_event_section", HTMLElement),
@@ -168,6 +179,12 @@ const el = {
     removePersonLabel: ims.typedElement("remove_person_label", HTMLElement),
     removeEventName: ims.typedElement("remove_event_name", HTMLElement),
 };
+
+// Whether the server has a shared default password configured (IMS_DEFAULT_PASSWORD_HASH).
+// When set, granting IMS access defaults to "use the shared default password" and the
+// specific-password fields are revealed on demand; when not, the default option is hidden
+// and a specific password is always required (the pre-existing behavior).
+const defaultPasswordConfigured = el.defaultPasswordConfigured.dataset["configured"] === "true";
 
 // The page serves two doorways (docs/plans/62-people-event-nav.md):
 //   - event doorway  (/ims/app/events/{event}/people): pinned to the URL event;
@@ -205,10 +222,12 @@ async function initPeoplePage(): Promise<void> {
     window.changeShowAll = changeShowAll;
     window.filterPeople = filterPeople;
     window.submitSetPassword = submitSetPassword;
+    window.updateSetPasswordMode = updateSetPasswordMode;
     window.showAddPersonModal = showAddPersonModal;
     window.showCreatePersonForm = showCreatePersonForm;
     window.backToPersonSearch = backToPersonSearch;
     window.toggleProvideAccess = toggleProvideAccess;
+    window.updateAddPasswordMode = updateAddPasswordMode;
     window.submitCreatePerson = submitCreatePerson;
 
     // Bind the Show/Hide buttons on every password field once (these inputs live for
@@ -515,6 +534,11 @@ function buildPersonRow(
                         el.setPasswordHandle.textContent = displayLabel;
                         el.setPasswordInput.value = "";
                         el.setPasswordConfirm.value = "";
+                        // Default to resetting to the shared default when one is configured.
+                        el.setPasswordChoice.classList.toggle("hidden", !defaultPasswordConfigured);
+                        el.setPasswordModeDefault.checked = true;
+                        el.setPasswordModeSpecific.checked = false;
+                        updateSetPasswordMode();
                         setPasswordModal.show();
                     },
                 );
@@ -703,27 +727,44 @@ async function toggleAdmin(person: ims.Personnel): Promise<void> {
     await loadAndDrawPeople();
 }
 
+// updateSetPasswordMode shows or hides the specific-password fields to match the chosen
+// mode. With no default configured the fields are always shown (default radio hidden).
+function updateSetPasswordMode(): void {
+    const useSpecific = !defaultPasswordConfigured || el.setPasswordModeSpecific.checked;
+    el.setPasswordFields.classList.toggle("hidden", !useSpecific);
+    if (!useSpecific) {
+        el.setPasswordInput.value = "";
+        el.setPasswordConfirm.value = "";
+        resetPasswordToggle(el.setPasswordInput, el.setPasswordToggle);
+        resetPasswordToggle(el.setPasswordConfirm, el.setPasswordConfirmToggle);
+    }
+}
+
 async function submitSetPassword(): Promise<void> {
     const personId = el.setPasswordModal.dataset["personId"];
     if (!personId) {
         return;
     }
+    // useDefault: reset to the shared default password rather than a typed one.
+    const useDefault = defaultPasswordConfigured && el.setPasswordModeDefault.checked;
     const password = el.setPasswordInput.value;
     const confirm = el.setPasswordConfirm.value;
-    if (password.length < minPasswordLength) {
-        ims.controlHasError(el.setPasswordInput);
-        ims.setErrorMessage(`Password must be at least ${minPasswordLength} characters.`);
-        return;
-    }
-    if (password !== confirm) {
-        ims.controlHasError(el.setPasswordConfirm);
-        ims.setErrorMessage("Passwords do not match.");
-        return;
+    if (!useDefault) {
+        if (password.length < minPasswordLength) {
+            ims.controlHasError(el.setPasswordInput);
+            ims.setErrorMessage(`Password must be at least ${minPasswordLength} characters.`);
+            return;
+        }
+        if (password !== confirm) {
+            ims.controlHasError(el.setPasswordConfirm);
+            ims.setErrorMessage("Passwords do not match.");
+            return;
+        }
     }
 
     const url = url_personnelPassword.replace("<person_id>", encodeURIComponent(personId));
     const {err} = await ims.fetchNoThrow(url, {
-        body: JSON.stringify({"password": password}),
+        body: JSON.stringify(useDefault ? {"use_default_password": true} : {"password": password}),
     });
     if (err != null) {
         ims.controlHasError(el.setPasswordInput);
@@ -771,12 +812,35 @@ function resetAddPersonForm(): void {
     resetPasswordToggle(el.addPersonPassword, el.addPersonPasswordToggle);
     resetPasswordToggle(el.addPersonPasswordConfirm, el.addPersonPasswordConfirmToggle);
 
+    // Password mode: when a shared default exists, default to using it and collapse the
+    // specific-password fields; the choice UI lets the admin switch to a typed one. With
+    // no default configured the choice is hidden and the fields are always shown.
+    el.addPersonPwChoice.classList.toggle("hidden", !defaultPasswordConfigured);
+    el.addPersonPwDefault.checked = true;
+    el.addPersonPwSpecific.checked = false;
+    updateAddPasswordMode();
+
     // Access (login) is opt-in for an admin — the button reveals the credential
     // fields. Inviting a reporter, though, exists to give login, so the section is
     // forced open and its toggle hidden in that flow.
     const forceAccess = !isAdmin;
     el.addPersonAccessToggle.classList.toggle("hidden", forceAccess);
     setAccessShown(forceAccess);
+}
+
+// updateAddPasswordMode shows or hides the specific-password fields to match the chosen
+// mode. With no default configured the fields are always shown (the default radio is
+// hidden, so a specific password is effectively required — the pre-existing behavior).
+function updateAddPasswordMode(): void {
+    const useSpecific = !defaultPasswordConfigured || el.addPersonPwSpecific.checked;
+    el.addPersonPasswordFields.classList.toggle("hidden", !useSpecific);
+    if (!useSpecific) {
+        // Switching back to the default discards any half-typed password so it isn't sent.
+        el.addPersonPassword.value = "";
+        el.addPersonPasswordConfirm.value = "";
+        resetPasswordToggle(el.addPersonPassword, el.addPersonPasswordToggle);
+        resetPasswordToggle(el.addPersonPasswordConfirm, el.addPersonPasswordConfirmToggle);
+    }
 }
 
 // setAddPersonStep switches the modal between searching the registry (step 1) and
@@ -852,6 +916,8 @@ async function submitCreatePerson(): Promise<void> {
     }
     // Credentials are only collected (and required) when the access section is open.
     const wantAccess = !el.addPersonAccessSection.classList.contains("hidden");
+    // useDefault: grant access with the shared default password — no fields to fill.
+    const useDefault = wantAccess && defaultPasswordConfigured && el.addPersonPwDefault.checked;
     const password = el.addPersonPassword.value;
     if (wantAccess) {
         if (!handle) {
@@ -864,15 +930,17 @@ async function submitCreatePerson(): Promise<void> {
             ims.setErrorMessage("An email is required to provide IMS access.");
             return;
         }
-        if (password.length < minPasswordLength) {
-            ims.controlHasError(el.addPersonPassword);
-            ims.setErrorMessage(`Password must be at least ${minPasswordLength} characters.`);
-            return;
-        }
-        if (password !== el.addPersonPasswordConfirm.value) {
-            ims.controlHasError(el.addPersonPasswordConfirm);
-            ims.setErrorMessage("Passwords do not match.");
-            return;
+        if (!useDefault) {
+            if (password.length < minPasswordLength) {
+                ims.controlHasError(el.addPersonPassword);
+                ims.setErrorMessage(`Password must be at least ${minPasswordLength} characters.`);
+                return;
+            }
+            if (password !== el.addPersonPasswordConfirm.value) {
+                ims.controlHasError(el.addPersonPasswordConfirm);
+                ims.setErrorMessage("Passwords do not match.");
+                return;
+            }
         }
     }
 
@@ -883,7 +951,8 @@ async function submitCreatePerson(): Promise<void> {
         // Email and phone are contact info, sent whether or not access is granted.
         "email": el.addPersonEmail.value.trim(),
         "phone": el.addPersonPhone.value.trim(),
-        "password": wantAccess ? password : "",
+        "password": wantAccess && !useDefault ? password : "",
+        "use_default_password": useDefault,
     };
     if (currentEvent) {
         body["event"] = currentEvent;

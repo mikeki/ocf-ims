@@ -124,7 +124,7 @@ func AddToMux(mux *http.ServeMux, cfg *conf.IMSConfig) *http.ServeMux {
 		AdaptTempl(template.AdminAreas(deployment, versionName, versionRef, "")),
 	)
 	mux.Handle("GET /ims/app/admin/people",
-		AdaptTempl(template.People(deployment, versionName, versionRef, "")),
+		AdaptTempl(template.People(deployment, versionName, versionRef, "", cfg.Core.DefaultPasswordHash != "")),
 	)
 	mux.Handle("GET /ims/app/settings",
 		AdaptTempl(template.Settings(deployment, versionName, versionRef)),
@@ -177,7 +177,7 @@ func AddToMux(mux *http.ServeMux, cfg *conf.IMSConfig) *http.ServeMux {
 	mux.HandleFunc("GET /ims/app/events/{eventName}/people",
 		func(w http.ResponseWriter, r *http.Request) {
 			AdaptTempl(
-				template.People(deployment, versionName, versionRef, r.PathValue("eventName")),
+				template.People(deployment, versionName, versionRef, r.PathValue("eventName"), cfg.Core.DefaultPasswordHash != ""),
 			).ServeHTTP(w, r)
 		},
 	)

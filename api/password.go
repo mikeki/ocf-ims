@@ -43,11 +43,20 @@ const minPasswordLength = 8
 type SetPersonPassword struct {
 	imsDBQ    *store.DBQ
 	userStore directory.UserStore
+	// defaultPasswordHash is the optional pre-hashed shared default password
+	// (conf.ConfigCore.DefaultPasswordHash), used when a request opts into it
+	// (UseDefaultPassword) to reset a person to the shared default. Empty ⇒
+	// unavailable.
+	defaultPasswordHash string
 }
 
 type SetPersonPasswordRequest struct {
 	// #nosec G117 // Exported secret field
 	Password string `json:"password"`
+	// UseDefaultPassword resets the person to the server's shared default password
+	// (conf DefaultPasswordHash) instead of a typed one. When set, Password is
+	// ignored; a 400 results if no default is configured.
+	UseDefaultPassword bool `json:"use_default_password"`
 }
 
 func (action SetPersonPassword) ServeHTTP(w http.ResponseWriter, req *http.Request) {
@@ -72,12 +81,20 @@ func (action SetPersonPassword) setPersonPassword(req *http.Request) *herr.HTTPE
 	if errHTTP != nil {
 		return errHTTP.From("[readBodyAs]")
 	}
-	if len(body.Password) < minPasswordLength {
-		return herr.BadRequest(fmt.Sprintf("Password must be at least %d characters", minPasswordLength), nil)
-	}
-	// See the note in postAuth: very long passwords are a hashing-exhaustion vector.
-	if len(body.Password) > 256 {
-		return herr.BadRequest("Outrageously long passwords are disallowed", ErrLongPassword)
+	// Two paths: reset to the shared default (already argon2id-hashed) or set a
+	// specific typed password. Validate the typed one against the same bounds as
+	// the create/auth endpoints (see postAuth re: the hashing-exhaustion vector).
+	if body.UseDefaultPassword {
+		if action.defaultPasswordHash == "" {
+			return herr.BadRequest("No default password is configured on this server; set a specific password instead", nil)
+		}
+	} else {
+		if len(body.Password) < minPasswordLength {
+			return herr.BadRequest(fmt.Sprintf("Password must be at least %d characters", minPasswordLength), nil)
+		}
+		if len(body.Password) > 256 {
+			return herr.BadRequest("Outrageously long passwords are disallowed", ErrLongPassword)
+		}
 	}
 
 	// The person is addressed by stable ID in the URL path (registry people may
@@ -94,7 +111,10 @@ func (action SetPersonPassword) setPersonPassword(req *http.Request) *herr.HTTPE
 		return herr.BadRequest("This person has no email; an email is the login identifier, so add one before setting a password", nil)
 	}
 
-	hashed := argon2id.CreateHash(body.Password, argon2id.DefaultParams)
+	hashed := action.defaultPasswordHash
+	if !body.UseDefaultPassword {
+		hashed = argon2id.CreateHash(body.Password, argon2id.DefaultParams)
+	}
 	err := action.imsDBQ.SetPersonPassword(req.Context(), action.imsDBQ, imsdb.SetPersonPasswordParams{
 		Password: conv.StringToSql(&hashed, 255),
 		ID:       person.ID,
