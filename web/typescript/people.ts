@@ -50,7 +50,7 @@ type RoleRung = {value: string; label: string; hint: string};
 // writer and crew_leader are admin-only (plan 53d): minting an inviter/writer stays
 // an admin act, so a non-admin inviter's menu tops out at reporter.
 const adminOnlyRungs: RoleRung[] = [
-    {value: "writer", label: "Writer", hint: "full access"},
+    {value: "writer", label: "FC/BUM", hint: "full access"},
     {value: "crew_leader", label: "Crew leader", hint: "own reports + invite"},
 ];
 const inviterRungs: RoleRung[] = [
@@ -89,6 +89,16 @@ function targetAboveInviterCeiling(type: string|null|undefined): boolean {
 // scannable down a long roster — the access-bearing rungs (writer/crew_leader/
 // reporter) pop, the kept-but-inactive states keep their slice-6j warning/secondary
 // cues.
+// participationLabel maps a raw participation-type identifier to its user-facing
+// label. Only "writer" diverges from its identifier (displayed as "FC/BUM"); every
+// other rung reads fine with the underscore swapped for a space.
+function participationLabel(type: string): string {
+    if (type === "writer") {
+        return "FC/BUM";
+    }
+    return type.replace("_", " ");
+}
+
 function participationBadgeClass(type: string): string {
     switch (type) {
         case "writer": return "text-bg-primary";
@@ -632,18 +642,18 @@ function drawParticipationDropdown(
     // label — no dropdown toggle, no menu.
     const editable = isAdmin || (canInvite && !targetAboveInviterCeiling(type));
     if (!editable) {
-        button.textContent = type.replace("_", " ");
+        button.textContent = participationLabel(type);
         button.className = `person-participation badge border-0 ${participationBadgeClass(type)}`;
         button.removeAttribute("data-bs-toggle");
         button.setAttribute("disabled", "true");
-        button.setAttribute("aria-label", `Role: ${type.replace("_", " ")}`);
+        button.setAttribute("aria-label", `Role: ${participationLabel(type)}`);
         menu.replaceChildren();
         return;
     }
 
-    button.textContent = type.replace("_", " ");
+    button.textContent = participationLabel(type);
     button.className = `person-participation badge dropdown-toggle border-0 ${participationBadgeClass(type)}`;
-    button.setAttribute("aria-label", `Role: ${type.replace("_", " ")}. Change.`);
+    button.setAttribute("aria-label", `Role: ${participationLabel(type)}. Change.`);
 
     menu.replaceChildren();
     for (const rung of roleRungsForPerson(person)) {
