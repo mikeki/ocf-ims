@@ -88,9 +88,16 @@ async function initIncidentsPage(): Promise<void> {
     }
     // 52f: a reporter with per-incident grants (readIncidentsViaGrant) sees the list
     // filtered to those incidents. A viewer with neither event-wide incident read nor
-    // any grant has no business here — the Incidents nav tab is hidden from them, so
-    // this only fires on direct navigation; show a plain OCF-appropriate message.
+    // any grant has no incidents visible here at all (readIncidentsViaGrant is true iff
+    // they hold ≥1 grant), and the root page auto-jumps every logged-in user to this
+    // page — so a plain reporter would otherwise land on a dead-end error banner.
     if (!ims.eventAccess!.readIncidents && !ims.eventAccess!.readIncidentsViaGrant) {
+        // Send them to Reports, where their field-report work lives, instead. Fall back
+        // to the error message only when they can't view Reports either (nowhere to go).
+        if (ims.eventAccess!.writeReports) {
+            window.location.replace(ims.urlReplace(url_viewReports));
+            return;
+        }
         ims.setErrorMessage(
             "You're not currently authorized to access Incidents for this event. " +
             "Ask a crew lead or an admin if you need incident access for this event."
