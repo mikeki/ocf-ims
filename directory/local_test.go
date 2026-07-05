@@ -29,8 +29,8 @@ import (
 )
 
 // TestLocalUserStore exercises the local IMS-DB-backed directory: it seeds the
-// PERSON/POSITION/TEAM tables and verifies NewLocalUserStore reads them back the
-// same way the Clubhouse backend would. See docs/plans/31-local-people-directory.md.
+// PERSON/POSITION tables and verifies NewLocalUserStore reads them back the same
+// way the Clubhouse backend would. See docs/plans/31-local-people-directory.md.
 func TestLocalUserStore(t *testing.T) {
 	t.Parallel()
 	ctx := t.Context()
@@ -59,9 +59,7 @@ func TestLocalUserStore(t *testing.T) {
 			(1, 'Alice', 'alice@example.com', 'hashA', 0),
 			(2, 'Bob',   'bob@example.com',   'hashB', 0);
 		insert into `+"`POSITION`"+` (ID, NAME) values (10, 'Driver'), (11, 'Dancer');
-		insert into TEAM (ID, NAME) values (20, 'Green Team');
 		insert into PERSON__POSITION (PERSON_ID, POSITION_ID) values (1, 10), (1, 11);
-		insert into PERSON__TEAM (PERSON_ID, TEAM_ID) values (2, 20);
 	`)
 	require.NoError(t, err)
 
@@ -79,18 +77,15 @@ func TestLocalUserStore(t *testing.T) {
 	require.Equal(t, "hashA", alice.Password)
 	require.ElementsMatch(t, []int64{10, 11}, alice.PositionIDs)
 	require.ElementsMatch(t, []string{"Driver", "Dancer"}, alice.PositionNames)
-	require.Empty(t, alice.TeamIDs)
 
 	bob := users[2]
 	require.NotNil(t, bob)
 	require.Equal(t, "Bob", bob.Handle)
-	require.ElementsMatch(t, []int64{20}, bob.TeamIDs)
-	require.ElementsMatch(t, []string{"Green Team"}, bob.TeamNames)
+	require.Empty(t, bob.PositionIDs)
 
-	positions, teams, err := us.GetPositionsAndTeams(ctx)
+	positions, err := us.GetPositions(ctx)
 	require.NoError(t, err)
 	require.Equal(t, map[int64]string{10: "Driver", 11: "Dancer"}, positions)
-	require.Equal(t, map[int64]string{20: "Green Team"}, teams)
 
 	people, err := us.GetPeople(ctx)
 	require.NoError(t, err)

@@ -18,7 +18,6 @@ package directory
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"time"
 
@@ -33,7 +32,7 @@ import (
 type UserStore interface {
 	GetAllUsers(ctx context.Context) (map[int64]*User, error)
 	GetPeople(ctx context.Context) ([]imsjson.Person, error)
-	GetPositionsAndTeams(ctx context.Context) (positions, teams map[int64]string, err error)
+	GetPositions(ctx context.Context) (map[int64]string, error)
 	// InvalidateUsers drops the cached user data so the next read reflects writes
 	// made directly to the underlying people tables (e.g. a password reset). Without
 	// this, a changed password would not take effect until the cache TTL expired.
@@ -48,14 +47,12 @@ type UserStore interface {
 type personSource interface {
 	users(ctx context.Context) (map[int64]*User, error)
 	positions(ctx context.Context) (map[int64]string, error)
-	teams(ctx context.Context) (map[int64]string, error)
 }
 
 type cachedUserStore struct {
 	src           personSource
 	userCache     *cache.InMemory[map[int64]*User]
 	positionCache *cache.InMemory[map[int64]string]
-	teamCache     *cache.InMemory[map[int64]string]
 }
 
 var _ UserStore = (*cachedUserStore)(nil)
@@ -73,8 +70,6 @@ type User struct {
 	IsAdmin            bool
 	PositionIDs        []int64
 	PositionNames      []string
-	TeamIDs            []int64
-	TeamNames          []string
 	OnDutyPositionID   *int64
 	OnDutyPositionName *string
 }
@@ -90,10 +85,6 @@ func newUserStore(src personSource, cacheTTL time.Duration) *cachedUserStore {
 	us.positionCache = cache.New(
 		cacheTTL,
 		us.refreshPositionCache,
-	)
-	us.teamCache = cache.New(
-		cacheTTL,
-		us.refreshTeamCache,
 	)
 
 	return us
@@ -128,17 +119,12 @@ func (store *cachedUserStore) GetPeople(ctx context.Context) ([]imsjson.Person, 
 	return response, nil
 }
 
-func (store *cachedUserStore) GetPositionsAndTeams(ctx context.Context) (positions, teams map[int64]string, err error) {
-	var errs []error
+func (store *cachedUserStore) GetPositions(ctx context.Context) (map[int64]string, error) {
 	posMap, err := store.positionCache.Get(ctx)
-	errs = append(errs, err)
-	teamMap, err := store.teamCache.Get(ctx)
-	errs = append(errs, err)
-	err = errors.Join(errs...)
 	if err != nil {
-		return nil, nil, fmt.Errorf("[GetPositionsAndTeams] %w", err)
+		return nil, fmt.Errorf("[GetPositions] %w", err)
 	}
-	return *posMap, *teamMap, nil
+	return *posMap, nil
 }
 
 func (store *cachedUserStore) InvalidateUsers() {
@@ -151,8 +137,4 @@ func (store *cachedUserStore) refreshUserCache(ctx context.Context) (map[int64]*
 
 func (store *cachedUserStore) refreshPositionCache(ctx context.Context) (map[int64]string, error) {
 	return store.src.positions(ctx)
-}
-
-func (store *cachedUserStore) refreshTeamCache(ctx context.Context) (map[int64]string, error) {
-	return store.src.teams(ctx)
 }

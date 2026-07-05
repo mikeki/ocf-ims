@@ -812,6 +812,142 @@ where
     and `SLUG` = ?
 ;
 
+-- name: Crews :many
+-- The crews of an event, ordered for display. Crews are admin-managed only (no
+-- propose/approve), so there is no proposer column to resolve.
+select
+    `EVENT`,
+    `SLUG`,
+    `NAME`,
+    `SORT_ORDER`
+from
+    CREW
+where
+    `EVENT` = ?
+order by `SORT_ORDER`, `NAME`
+;
+
+-- name: Crew :one
+select
+    `EVENT`,
+    `SLUG`,
+    `NAME`,
+    `SORT_ORDER`
+from
+    CREW
+where
+    `EVENT` = ?
+    and `SLUG` = ?
+;
+
+-- name: CreateCrew :exec
+insert into CREW
+    (`EVENT`, `SLUG`, `NAME`, `SORT_ORDER`)
+values
+    (?, ?, ?, ?)
+;
+
+-- name: UpdateCrew :exec
+update CREW set
+    -- SLUG is immutable, so it is the lookup key, never updated.
+    `NAME` = ?,
+    `SORT_ORDER` = ?
+where
+    `EVENT` = ?
+    and `SLUG` = ?
+;
+
+-- name: DeleteCrew :exec
+-- Deleting a crew cascades in application logic: its CREW_MEMBERSHIP rows must be
+-- removed first (their FK references CREW).
+delete from CREW
+where
+    `EVENT` = ?
+    and `SLUG` = ?
+;
+
+-- name: CrewMembers :many
+-- The members of a crew, with each person's display fields and leader flag. JOIN
+-- (not LEFT JOIN): a membership row always references a real PERSON.
+select
+    cm.`PERSON_ID`,
+    cm.`IS_LEADER`,
+    p.HANDLE as MEMBER_HANDLE,
+    p.NAME   as MEMBER_NAME
+from
+    CREW_MEMBERSHIP cm
+    join PERSON p on p.ID = cm.`PERSON_ID`
+where
+    cm.`EVENT` = ?
+    and cm.`CREW_SLUG` = ?
+order by cm.`IS_LEADER` desc, p.HANDLE, p.NAME
+;
+
+-- name: PersonCrews :many
+-- The crews a person belongs to for an event (with the crew's display name and
+-- whether the person leads it). Drives the People roster / profile-card crew field.
+select
+    cm.`CREW_SLUG`,
+    cm.`IS_LEADER`,
+    c.`NAME` as CREW_NAME
+from
+    CREW_MEMBERSHIP cm
+    join CREW c on c.`EVENT` = cm.`EVENT` and c.`SLUG` = cm.`CREW_SLUG`
+where
+    cm.`EVENT` = ?
+    and cm.`PERSON_ID` = ?
+order by c.`SORT_ORDER`, c.`NAME`
+;
+
+-- name: CrewsLedByPerson :many
+-- The crew slugs a person leads for an event (IS_LEADER = true). Used to derive the
+-- crew_leader read-only role and to scope which crews' reports a leader may review.
+select
+    `CREW_SLUG`
+from
+    CREW_MEMBERSHIP
+where
+    `EVENT` = ?
+    and `PERSON_ID` = ?
+    and `IS_LEADER` = true
+;
+
+-- name: AddCrewMember :exec
+-- Add a person to a crew (idempotent on the primary key; re-adding refreshes the
+-- leader flag).
+insert into CREW_MEMBERSHIP
+    (`EVENT`, `CREW_SLUG`, `PERSON_ID`, `IS_LEADER`)
+values
+    (?, ?, ?, ?)
+on duplicate key update `IS_LEADER` = values(`IS_LEADER`)
+;
+
+-- name: SetCrewMemberLeader :exec
+update CREW_MEMBERSHIP set
+    `IS_LEADER` = ?
+where
+    `EVENT` = ?
+    and `CREW_SLUG` = ?
+    and `PERSON_ID` = ?
+;
+
+-- name: RemoveCrewMember :exec
+delete from CREW_MEMBERSHIP
+where
+    `EVENT` = ?
+    and `CREW_SLUG` = ?
+    and `PERSON_ID` = ?
+;
+
+-- name: RemoveAllCrewMembers :exec
+-- Clear a crew's membership before deleting the crew (the CREW_MEMBERSHIP FK
+-- references CREW(EVENT, SLUG)).
+delete from CREW_MEMBERSHIP
+where
+    `EVENT` = ?
+    and `CREW_SLUG` = ?
+;
+
 -- name: CreateVisit :execlastid
 insert into VISIT (`EVENT`, NUMBER, CREATED) values (?, ?, ?);
 
@@ -1129,17 +1265,9 @@ where PERSON_ID = ? and EVENT = ?;
 select PERSON_ID, POSITION_ID
 from PERSON__POSITION;
 
--- name: PeopleTeams :many
-select PERSON_ID, TEAM_ID
-from PERSON__TEAM;
-
 -- name: PeoplePositionsList :many
 select ID, NAME
 from `POSITION`;
-
--- name: PeopleTeamsList :many
-select ID, NAME
-from TEAM;
 
 -- ============================================================================
 -- Dashboard metrics (Phase 7). All read-only, all filtered by EVENT. The

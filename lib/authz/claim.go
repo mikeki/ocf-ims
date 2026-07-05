@@ -39,7 +39,6 @@ type IMSClaims struct {
 
 	Handle         string `json:"han"`
 	Positions      string `json:"pos"`
-	Teams          string `json:"tea"`
 	Admin          bool   `json:"adm,omitempty"`
 	OnDutyPosition *int64 `json:"dut,omitempty"`
 	TokenType      string `json:"tok,omitempty"`
@@ -117,11 +116,6 @@ func (c IMSClaims) WithPersonPositions(pos ...int64) IMSClaims {
 	return c
 }
 
-func (c IMSClaims) WithPersonTeams(teams ...int64) IMSClaims {
-	c.Teams = marshalBigInt(intsToBitSet(teams))
-	return c
-}
-
 func (c IMSClaims) WithPersonOnDutyPosition(pos *int64) IMSClaims {
 	c.OnDutyPosition = pos
 	return c
@@ -142,10 +136,6 @@ func (c IMSClaims) PersonAdmin() bool {
 
 func (c IMSClaims) PersonPositions() []int64 {
 	return bitSetToInts(unmarshalBigInt(c.Positions))
-}
-
-func (c IMSClaims) PersonTeams() []int64 {
-	return bitSetToInts(unmarshalBigInt(c.Teams))
 }
 
 // PersonID returns the authenticated person's local id (the JWT subject) as the

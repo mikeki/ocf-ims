@@ -109,9 +109,9 @@ const (
 
 // imsPeopleTestSeed seeds the local IMS-DB people directory used by the integration
 // suite: the two login users (with argon2id password hashes for userAdminPassword /
-// userAlicePassword), plus a position and team so the positions/teams paths are
-// exercised. The person_id FKs (attachments, journal-entry author) resolve against
-// these rows and the author join renders the expected handle.
+// userAlicePassword), plus a position so the positions path is exercised. The
+// person_id FKs (attachments, journal-entry author) resolve against these rows and
+// the author join renders the expected handle.
 const imsPeopleTestSeed = `
 insert into PERSON (ID, HANDLE, EMAIL, PASSWORD, CREATED, IS_ADMIN) values
     (6000, 'AdminTestRanger', 'admintestranger@example.com', '$argon2id$v=19$m=1,t=1,p=1$51uXrZoFRb6O4Tw4TsAJVQ$SedDwp+hPpIJc42QcnFJy6EOtE+b5kyYFpnuRHl/5qs', 0, true),
@@ -121,9 +121,7 @@ insert into PERSON (ID, HANDLE, EMAIL, PASSWORD, CREATED, IS_ADMIN) values
     (6004, 'DaveTestRanger', 'davetestranger@example.com', '$argon2id$v=19$m=1,t=1,p=1$eg9U8hLotCSmyCph1BQroA$KFfy0uDDpP+cXPnkSQRXt3z0Shd7M39tsrwJZuDrOdU', 0, false),
     (6005, 'ErinTestRanger', 'erintestranger@example.com', '$argon2id$v=19$m=1,t=1,p=1$eg9U8hLotCSmyCph1BQroA$KFfy0uDDpP+cXPnkSQRXt3z0Shd7M39tsrwJZuDrOdU', 0, false);
 insert into ` + "`POSITION`" + ` (ID, NAME) values (7000, 'Nooperator');
-insert into TEAM (ID, NAME) values (8000, 'Brown Dot');
 insert into PERSON__POSITION (PERSON_ID, POSITION_ID) values (6001, 7000);
-insert into PERSON__TEAM (PERSON_ID, TEAM_ID) values (6000, 8000);
 `
 
 // TestMain does the common setup and teardown for all tests in this package.
@@ -194,7 +192,7 @@ func setup(ctx context.Context, tempDir string) {
 	shared.cfg.Store.MariaDB.HostPort = dbHostPort
 	db, err := store.SqlDB(ctx, shared.cfg.Store, true)
 	must(err)
-	// Seed the local people directory (login users, position, team) before any
+	// Seed the local people directory (login users, position) before any
 	// request can run. See docs/plans/32-retire-clubhouse.md.
 	_, err = db.ExecContext(ctx, imsPeopleTestSeed)
 	must(err)

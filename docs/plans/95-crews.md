@@ -4,27 +4,51 @@
 
 Three related feedback items (round 10, slice 10c):
 
-- **Item 3:** add a **Crew** field to the person↔event table (track which crew a person
-  is on *that year*), and add a **Crews** DB table handled like Incident Types / Areas /
-  Outcomes (data-driven, admin-managed, with a propose/approve workflow).
+- **Item 3:** add a **Crew** concept — a per-event **Crews** registry an admin curates,
+  and a per-event record of **which crew(s) a person is on that year**.
 - **Item 4:** the **Crew Leader** role can **view incidents**, but may **not edit
   anything or add journal entries**.
-- **Item 5:** Crew Leaders can **review the reports of their crew**; a crew has a person
-  **marked as its Crew Leader**.
+- **Item 5:** Crew Leaders can **review the reports of their crew**; a crew can have
+  **one or more people marked as its leader**.
 
-These form one cohesive feature: a crew registry, a per-event crew assignment on each
-person, a designated leader per crew, and a redefinition of the existing `crew_leader`
-participation rung into a read-only viewer.
+These form one cohesive feature: a per-event crew registry, per-event membership on
+each person, one-or-more leaders per crew, and a `crew_leader` read-only viewer role
+that is **derived from leading a crew** (not assigned by hand).
+
+> **Scope (simplified with the user, 2026-07).** The original plan modeled Outcomes-
+> style **propose/approve** and a single leader. The user pared it back: **admins alone
+> create and modify crews** (no writer-proposal flow), and leadership lives in the
+> membership join as a flag (multiple leaders allowed). We are *not* wiring crews to
+> roles/positions beyond the derived `crew_leader` view described here.
 
 ## Decisions locked with the user
 
 - **Reuse/rename the dormant `TEAM` table into `CREW`**, reshaping it to fit (see the
   TEAM analysis below) rather than adding a brand-new table — and **retire the dead
   teams plumbing** so we don't carry that debt forward.
-- **Redefine the existing `crew_leader` participation rung** to **read-only**: read all
-  incidents + review own-crew reports; **no** writes, journal entries, or
-  reporter-invite. (This replaces the plan-53 grant where `crew_leader` = reporter +
-  invite.)
+- **Crews are per-event** (keyed `(EVENT, SLUG)`, mirroring `AREA`) — "which crew a
+  person is on *that year*"; membership changes year over year.
+- **Admins only create and modify crews.** No writer propose→approve workflow, so
+  `CREW` has **no `APPROVED` / `PROPOSED_BY_PERSON_ID`** columns. All crew and
+  membership mutations gate on a new admin-only `GlobalAdministrateCrews` permission.
+- **Crews live in the event nav, next to People** — a per-event **Crews** page
+  (`/ims/app/events/{event}/crews`), since crews are event-scoped. (Not an
+  `/ims/app/admin/…` global page like Incident Types.)
+- **Membership is a join table, not a scalar field.** `CREW_MEMBERSHIP(EVENT,
+  CREW_SLUG, PERSON_ID, IS_LEADER)` — a row is membership; `IS_LEADER = true` marks a
+  leader. This supports **multiple crews per person** and **multiple leaders per crew**,
+  both in one table. **No `PERSON__EVENT.CREW_ID`/`CREW_SLUG` column** and **no single
+  `CREW.LEADER_PERSON_ID`** — those were the earlier single-valued design and are
+  replaced by this join.
+- **The `crew_leader` role is derived from leadership.** Being a member marked
+  `IS_LEADER = true` of any crew that event **grants** the `crew_leader` read-only
+  capability — **unless the person already holds a higher role** (writer, or admin via
+  bypass), which keeps its greater access. Implemented as an **OR of permission masks**
+  in `EventPermissions` (PR 3), so "unless higher" falls out for free (a writer's mask
+  already supersets the read-only bits). Because the role is now derived, the manual
+  **`crew_leader` option is removed from the People roster's role dropdown** (the
+  `crew_leader` enum value stays in the DB — removing it is a needless migration — it is
+  just no longer hand-assigned).
 
 ## TEAM-table analysis (does it fit? — the user asked)
 
@@ -47,16 +71,23 @@ correctness), but its *shape is wrong* on three axes for item 3:
 | Need (item 3/5) | TEAM today | Gap |
 |---|---|---|
 | Per-event ("that year") | global | must scope per-event (mirror `AREA`) |
-| One crew per person per event, as a field on person↔event | global M:N `PERSON__TEAM` | drop the join; add `PERSON__EVENT.CREW_ID` |
-| A designated leader | none | add `LEADER_PERSON_ID` |
-| Propose/approve like types/areas | none | add `APPROVED` + `PROPOSED_BY_PERSON_ID` |
+| Membership (multiple crews per person, ready) | global M:N `PERSON__TEAM` | reshape the join into per-event `CREW_MEMBERSHIP` |
+| Multiple designated leaders per crew | none | add `IS_LEADER` to the membership join |
+| Admin-only create/modify | none | gate on new `GlobalAdministrateCrews`; **no** approval columns |
 
 **Conclusion:** honor "reuse/rename" by **renaming `TEAM`→`CREW` and reshaping it to
-mirror `AREA`** (per-event, `SLUG`/`NAME`, `SORT_ORDER`) **plus** a `LEADER_PERSON_ID`
-and the two approval columns; **drop `PERSON__TEAM`** (replaced by
-`PERSON__EVENT.CREW_ID`); and **delete the dead teams plumbing** in `directory/`. This
-is close to "a new table shaped like AREA" but keeps the rename lineage and removes the
-Burning-Man-era debt, exactly as requested.
+mirror `AREA`** (per-event, `SLUG`/`NAME`, `SORT_ORDER`) — but **without** the AREA-
+style approval columns, since crews are admin-only; and **reshape `PERSON__TEAM` into
+`CREW_MEMBERSHIP`** — a per-event
+`(EVENT, CREW_SLUG, PERSON_ID, IS_LEADER)` join that carries both membership and
+(multiple) leadership. Delete the dead teams plumbing in `directory/`. Keeps the
+rename lineage and removes the Burning-Man-era debt, exactly as requested.
+
+**As built (PR 1):** because the old TEAM/PERSON__TEAM shapes are so different (global,
+integer PK, no event, no leader), the reshape was done as a clean **create + drop**
+rather than an in-place rename (TEAM carries no production data OCF relies on):
+`00025_create_crew.sql` creates `CREW`, `00026_create_crew_membership.sql` creates
+`CREW_MEMBERSHIP`, and `00027_retire_team_tables.sql` drops `PERSON__TEAM` then `TEAM`.
 
 > Because the reshape is substantial, the migration may be cleaner as **rename +
 > alter** (`rename table TEAM to CREW`, then add/modify columns and drop
@@ -102,164 +133,124 @@ Burning-Man-era debt, exactly as requested.
   (`api/personnel.go:201+`). Roster JSON `json/personnel.go:40-44` carries
   `ParticipationType` + `Wristband`.
 
-## Plan — four PRs
+## Plan — three PRs
 
-### PR 1 — `CREW` table + `PERSON__EVENT.CREW_ID` (schema + registry, no authz change)
+Sequence: **PR 1 (schema + registry) → PR 2 (event Crews page + membership) → PR 3
+(derived `crew_leader` role + crew-scoped report review)**. The old plan's PR 3
+(redefine the rung) and PR 4 (report scoping) collapse into one PR here, because with
+admin-only crews and a *derived* role the authz change and the report scope are the
+same small, tightly-coupled step.
 
-1. **Migrations** (pinned goose scaffold; one logical change each; bump
-   `store/integration/migrate_test.go`):
-   - `rename table TEAM to CREW;`
-   - Reshape `CREW` to mirror `AREA` + leader + approval. Target shape:
-     ```sql
-     CREW(
-       EVENT                 integer      not null,
-       SLUG                  varchar(128) not null,   -- immutable, like AREA
-       NAME                  varchar(255) not null,
-       LEADER_PERSON_ID      integer,                 -- item 5: crew's leader
-       SORT_ORDER            integer      not null default 0,
-       APPROVED              boolean      not null default true,
-       PROPOSED_BY_PERSON_ID integer,
-       primary key (EVENT, SLUG),
-       foreign key (LEADER_PERSON_ID)      references PERSON(ID),
-       foreign key (PROPOSED_BY_PERSON_ID) references PERSON(ID)
-     )
-     ```
-     (Since old `TEAM` was global with an integer PK and no event, this is effectively
-     a rebuild — if a rename+alter is awkward given existing rows, `drop table
-     PERSON__TEAM; drop table TEAM; create table CREW …` is acceptable because TEAM
-     carries no production data OCF relies on. Note the choice in the PR.)
-   - `drop table PERSON__TEAM;`
-   - `alter table PERSON__EVENT add column CREW_ID …` — **FK to the crew.** Because
-     `CREW` is keyed `(EVENT, SLUG)`, the person↔event crew field is best a
-     `CREW_SLUG varchar(128)` with a composite FK `(EVENT, CREW_SLUG) → CREW(EVENT,
-     SLUG)` (mirrors how `INCIDENT.LOCATION_AREA_SLUG` references `AREA`,
-     `00001_baseline.sql:352-354`). Nullable = "no crew".
-2. **Retire dead teams plumbing** (`directory/`): remove `teams`/`teamCache`/
-   `GetPositionsAndTeams`' team half / `Person.TeamIDs/TeamNames` / `PeopleTeams` /
-   `PeopleTeamsList` (`directory/directory.go:36,72-73,90-92,127-137,152-153`,
-   `directory/local.go:54-82,90+`, `store/queries.sql:1066-1068,1074-1076`). Keep
-   POSITION untouched (still stamped on the action log). Regen sqlc.
-3. **sqlc queries** (mirror `Area*`): `Crews`, `CrewsWithProposer` (LEFT JOIN PERSON for
-   proposer; and JOIN PERSON for the leader's display name), `LatestEventWithCrews`
-   (year-over-year copy-forward like `LatestEventWithAreas` `queries.sql:690`), `Crew`,
-   `CreateCrew`, `ApproveCrew`, `DeleteCrew`, `UpdateCrew` (SLUG immutable),
-   `SetCrewLeader`. Plus `SetPersonEventCrew` (writes `PERSON__EVENT.CREW_SLUG`).
+### PR 1 — `CREW` + `CREW_MEMBERSHIP` schema, queries, retire TEAM ✅ IMPLEMENTED
 
-**Verify:** `go run bin/build/build.go`; `go test ./... ./store/integration` (rename/
-reshape applies; `PERSON__EVENT.CREW_SLUG` FK holds). No behavior change yet.
+**Status: built and green** (PR #184, rebased onto master). No authz or UI behavior
+change yet — schema, generated queries, and dead-code removal only.
 
-### PR 2 — Crews admin page + propose/approve (mirror Areas)
+1. **Migrations** (`00025`–`00027`; the picture/password migrations hold `00023`/`00024`
+   on master, so crews start at `00025`):
+   - `00025_create_crew.sql` — `CREW(EVENT, SLUG, NAME, SORT_ORDER)`, PK `(EVENT, SLUG)`,
+     FK `EVENT → EVENT(ID)`. **No approval columns** (admin-only).
+   - `00026_create_crew_membership.sql` — `CREW_MEMBERSHIP(EVENT, CREW_SLUG, PERSON_ID,
+     IS_LEADER)`, PK `(EVENT, CREW_SLUG, PERSON_ID)`, composite FK `(EVENT, CREW_SLUG) →
+     CREW(EVENT, SLUG)` (mirrors `INCIDENT.LOCATION_AREA_SLUG → AREA`) + FK
+     `PERSON_ID → PERSON(ID)`. `IS_LEADER` carries leadership (multiple leaders allowed).
+   - `00027_retire_team_tables.sql` — `drop table PERSON__TEAM` then `TEAM` (join first;
+     its FK references TEAM). `Down` recreates the baseline shapes best-effort for dev.
+   - `store/integration/migrate_test.go` asserts `CREW`/`CREW_MEMBERSHIP` exist and
+     `TEAM`/`PERSON__TEAM` are gone at head.
+2. **Retired dead teams plumbing** (`directory/`): removed the `teams`/`teamCache`
+   read-through, `GetPositionsAndTeams`' team half (now `GetPositions`),
+   `Person.TeamIDs/TeamNames`, and the `PeopleTeams`/`PeopleTeamsList` queries; also
+   dropped the never-read JWT `tea` (teams) claim. `POSITION` is untouched (still stamped
+   on the action log).
+3. **sqlc queries** (`store/queries.sql`): registry CRUD — `Crews`, `Crew`, `CreateCrew`,
+   `UpdateCrew` (SLUG immutable), `DeleteCrew`; membership — `CrewMembers` (JOIN PERSON
+   for display + leader flag), `PersonCrews`, `CrewsLedByPerson` (backs PR 3's role
+   derivation + report scoping), `AddCrewMember` (upsert), `SetCrewMemberLeader`,
+   `RemoveCrewMember`, `RemoveAllCrewMembers` (clear before crew delete). **No**
+   `LatestEventWithCrews` copy-forward yet — whether the crew *list* carries year-over-
+   year is a PR 2 decision (membership does not).
 
-1. **API `api/crew.go`** (mirror `api/area.go`):
-   - `GetCrews` — `GET /ims/api/events/{eventName}/crews`, served from a `crewsCache`
-     keyed by event.
-   - `EditCrews` — `POST /ims/api/events/{eventName}/crews`: create (writer→proposal /
-     admin→approved), approve, update, mark-duplicate/delete, **set-leader** (assign
-     `LEADER_PERSON_ID`). Admin gate: add `GlobalAdministrateCrews` to
-     `lib/authz/permission.go` + `RolesToGlobalPerms` (mirror
-     `GlobalAdministrateAreas`); non-admins may only propose.
-   - `ProposeCrew` if the propose flow lives on a separate event-scoped route like
-     incident types, or fold into `EditCrews`' create branch like Areas — match Areas.
-   - Routes in `api/mux.go` next to the areas routes (`:398,408`). **Mutating routes
-     `LogRequest(true, …)`.**
-2. **Admin page** `web/template/admincrews.templ` + `web/typescript/admin_crews.ts`
-   (mirror `adminareas`): list with proposed badge + Approve + mark-duplicate, create/
-   edit form, and a **leader picker** (person combobox scoped to the event) writing
-   `LEADER_PERSON_ID`. Per-event doorway (both the global event-picker mount and the
-   event-scoped mount, like Areas) + admin-root link, gated on `GlobalAdministrateCrews`.
-   **Full page design in [97-admin-enum-pages.md](97-admin-enum-pages.md) (`admincrews`).**
-3. **Assigning a person's crew:** add the crew field to the People roster/edit UI
-   (`web/template/people.templ`, `web/typescript/people.ts`) — a per-event crew select
-   posting to a `SetPersonEventCrew` endpoint (mirror `submitMarkParticipation`
-   `people.ts:33` / the participation route `api/mux.go:531`). Gate it like other
-   person-event edits (admins + inviters).
+**Verified:** `go run bin/build/build.go`, `go vet ./...`, `go test ./...`,
+`go test ./store/integration` (migrations apply to real MariaDB), golangci-lint clean.
 
-**Verify:** `go test ./... ./api/integration`; `npx eslint`. Manual: admin creates a
-crew, sets its leader; a writer proposes a crew → "proposed" → admin approves; assign a
-person to a crew from the People page.
+### PR 2 — Crews page in the event nav + membership management (admin-only)
 
-### PR 3 — Redefine `crew_leader` to read-only (authz)
+1. **API `api/crew.go`** (mirror `api/area.go`, minus propose/approve):
+   - `GetCrews` — `GET /ims/api/events/{eventName}/crews`, served from a per-event
+     `crewsCache`. Include each crew's members + leader flags (or a sibling members
+     endpoint) so the page can render membership.
+   - `EditCrews` — `POST /ims/api/events/{eventName}/crews`: create / update / delete
+     crews **and** manage membership (add/remove a person, toggle `IS_LEADER`). **Admin
+     only** — gate on a new `GlobalAdministrateCrews` (add to `lib/authz/permission.go`
+     + `RolesToGlobalPerms[Administrator]`, mirror `GlobalAdministrateAreas`); there is
+     **no** non-admin propose branch. Deleting a crew calls `RemoveAllCrewMembers` then
+     `DeleteCrew`. **Mutating routes register `LogRequest(true, …)`.**
+   - Routes in `api/mux.go` next to the areas routes.
+2. **Event Crews page** `web/template/crews.templ` + `web/typescript/crews.ts` — mounted
+   at **`/ims/app/events/{event}/crews`**, linked from the **event nav next to People**
+   (`web/template/nav.templ`), **not** the global admin root. List crews (create/rename/
+   delete), and per crew a member list with an add-person combobox (scoped to the event)
+   and a per-member **leader** checkbox. Gate the whole page on `GlobalAdministrateCrews`.
+3. **Show crew on the person views (read-only):** surface a person's crew(s) on the
+   People roster and/or the profile card (`personprofile.templ` + `openPersonProfileModal`)
+   via `PersonCrews`. Display-only; management stays on the Crews page.
 
-1. **`participationToEventPerms`** (`lib/authz/permission.go:104-119`): change
-   `crew_leader` from `RolesToEventPerms[EventReporter] | EventInviteReporters` to a
-   **read-only mask**:
+**Verify:** `go test ./... ./api/integration`; `npx eslint`. Manual: as an admin, create
+a crew from the event's Crews page, add members, mark one or more as leader; a non-admin
+gets no Crews link and a 403 from the API.
+
+### PR 3 — Derive the `crew_leader` role from leadership + crew-scoped report review
+
+1. **Derive the role (`lib/authz/permission.go`).** In `EventPermissions`, after
+   computing the participation-derived mask, **OR in** a `crewLeaderReadOnlyMask` when
+   the caller leads any crew for that event (`CrewsLedByPerson` non-empty):
    ```
-   EventReadEventName | EventReadIncidents | EventReadAllReports | EventReadAreas
+   crewLeaderReadOnlyMask = EventReadEventName | EventReadIncidents | EventReadAreas
+   effective = participationToEventPerms(participationType)
+   if CrewsLedByPerson(event, caller) not empty: effective |= crewLeaderReadOnlyMask
    ```
-   — **no** `EventWrite*`, **no** `EventInviteReporters`, **no** journal grant. (Item 4:
-   view incidents, no edits, no journal.) Note `EventReadAllReports` is refined by PR 4
-   to a crew-scoped read; include it here so the rung can see reports at all, then PR 4
-   narrows *which* reports.
-2. **Journal entries are already gated** on `EventWriteIncidents`
-   (`api/incident.go:1060-1071`) — with the write bit gone, a crew leader cannot add
-   journal entries. Add a test asserting a `crew_leader` POST to incident-edit with a
-   journal payload is **403** (no write bit, no per-incident grant).
-3. **Plan-53 fallout:** `crew_leader` no longer carries `EventInviteReporters`. Confirm
-   invites still work for **writers** (they retain the bit, `permission.go:97`) and
-   update any UI/copy that implied crew leaders can invite (`api/auth.go:213-216`
-   `inviteReporters`, People UI reveal). Update plan 53's status note to reflect the
-   redefinition.
-4. **People UI:** crew_leader now reads as a view-only rung — adjust the role-rung
-   labels/tooltips (`web/typescript/people.ts:40-68`) and `mayAssignParticipation`
-   ceiling if the rung's assignability changes (it stays admin-assignable; confirm a
-   non-admin inviter still cannot assign it, `api/person.go:334-347`).
+   "Unless higher role" is automatic: a writer's mask already supersets these bits, and
+   admins bypass entirely. Report reading is **not** a flat bit here — it's crew-scoped
+   in step 2. Drop the now-unused `EventInviteReporters` from the static `crew_leader`
+   rung in `participationToEventPerms` (the derived path replaces it); keep the
+   `crew_leader` enum value.
+2. **Journal entries stay blocked** — journal creation is gated on `EventWriteIncidents`
+   (`api/incident.go:1060-1071`), which the read-only mask never grants. Add a test: a
+   crew leader (no other role) POST-ing an incident edit / journal payload → **403**.
+3. **Crew-scoped report review (`api/report.go`).** A crew leader may read reports whose
+   **creator is a member of a crew they lead**. Add a query joining
+   `REPORT.CREATED_BY → CREW_MEMBERSHIP` for the crews from `CrewsLedByPerson`, and a
+   branch in `getReports` that unions these with the caller's own reports. Least-
+   privilege: do **not** grant a flat `EventReadAllReports`; the crew branch is the scope.
+4. **People roster dropdown:** remove `crew_leader` from the assignable role options
+   (`web/typescript/people.ts`) — the role is now a consequence of being marked a crew
+   leader on the Crews page, not a hand-assigned rung. Update `mayAssignParticipation`/
+   `validParticipation` copy if they enumerate it.
+5. **Plan-53 note:** `crew_leader` no longer carries reporter-invite; writers still hold
+   `EventInviteReporters`, so invites survive. Update plan 53's status note.
 
-**Verify:** `go test ./... ./api/integration` (a `crew_leader` can GET incidents but
-POST-edit/journal → 403; cannot invite). `npx eslint`. Manual: log in as a crew_leader
-→ incidents are visible read-only; no journal box / edit controls; no invite affordance.
-
-### PR 4 — Crew Leaders review their crew's reports (report scoping)
-
-Item 5: a crew leader reviews the reports **of their crew** — i.e. reports authored by
-people whose `PERSON__EVENT.CREW_SLUG` matches the crew the leader leads.
-
-1. **Define "their crew":** the crew(s) where `CREW.LEADER_PERSON_ID = caller`
-   (a person may lead one crew). "Crew members" = people with
-   `PERSON__EVENT.CREW_SLUG = <that crew>` for the event.
-2. **Report visibility** (`api/report.go:54-124`): today `limitedAccess` filters to
-   reports the caller **authored** (`containsAuthor` `:100-133`). Add a **crew-leader
-   branch**: if the caller is a crew leader for the event, they may read reports whose
-   **author/creator is a member of their crew** (not just their own). Implement via a
-   new query joining `REPORT.CREATED_BY → PERSON__EVENT.CREW_SLUG` = the leader's crew
-   (and/or journal-entry authorship for the legacy "own" definition — pick `CREATED_BY`
-   as the crew-membership anchor since that is the deterministic creator link,
-   `00017_*` / `json/report.go:26`). Add `ReportsForCrew`-style query in
-   `store/queries.sql`.
-3. **Permission shaping:** rather than granting `crew_leader` the broad
-   `EventReadAllReports` from PR 3, consider a **crew-scoped read** so a crew leader
-   sees *their crew's* reports, not every report. Two options:
-   - (a) Keep `EventReadAllReports` off; add a dedicated capability/branch checked in
-     `getReports` for crew leaders (cleanest — report scope is data-driven by crew).
-   - (b) Grant `EventReadAllReports` and filter in the handler. (a) is preferred —
-     least privilege. Update PR 3's mask accordingly (drop `EventReadAllReports`, rely
-     on the crew branch).
-4. **UI:** the reports list already renders what the server returns; ensure the
-   crew-leader view is labeled (e.g. "My crew's reports") and that incident **journal**
-   controls stay hidden for them.
-
-**Verify:** `go test ./... ./api/integration` (crew leader sees reports created by crew
-members, not reports from other crews; a non-leader crew member sees only their own).
-`npx eslint`. Manual: as a crew leader, the reports list shows the crew's reports and
-nothing outside the crew; still no edit/journal.
+**Verify:** `go test ./... ./api/integration` (a crew leader can GET incidents read-only,
+POST-edit/journal → 403, sees their crew's reports but not other crews'; a plain crew
+*member* who is not a leader gets no elevated access). `npx eslint`. Manual: log in as a
+crew leader → incidents visible read-only, no journal/edit controls, reports list shows
+the crew's reports.
 
 ## Sequencing & risks
 
-- Order: **PR 1 → PR 2 → PR 3 → PR 4** (schema → admin/assignment → authz → report
-  scoping). PR 3 and PR 4 are coupled (the report mask); author them together if it
-  reads cleaner, but keep the migration (PR 1) separate.
-- **Land after slice 10e** (reporter IMS #) so the report handler is stable before PR 4
-  reworks report scoping. See [93-feedback-round-10.md](93-feedback-round-10.md).
-- **Behavior change to a shipped feature:** redefining `crew_leader` (PR 3) alters
-  plan-53 semantics — coordinate with anyone relying on crew-leader invites and update
-  plan 53's doc/status.
-- **Decisions to confirm:**
-  - Crew registry **per-event** (mirrors AREA, chosen) vs **global** (mirrors
-    INCIDENT_TYPE). Per-event fits "that year" + per-year leadership; confirm.
-  - One crew per person per event (a single `CREW_SLUG` field, chosen) vs many
-    (would need to keep a join). Item 3 says "a Crew field" → single. Confirm.
-  - Does a person have to hold the `crew_leader` **rung** to be a crew's
-    `LEADER_PERSON_ID`, or can any person be marked leader while the rung is what
-    grants the read-only view? Recommended: **rung grants the capability**,
-    `LEADER_PERSON_ID` + the member's `CREW_SLUG` defines **scope** — keep them
-    independent but expect them to align in practice.
-</content>
+- Order: **PR 1 → PR 2 → PR 3**. PR 1 is done. PR 2 and PR 3 share the membership tables
+  but are otherwise independent (PR 2 = admin UI, PR 3 = authz + reports); PR 3 can even
+  precede PR 2's UI since it only needs the schema, but building the assignment UI first
+  makes PR 3 manually testable.
+- **Behavior change to a shipped feature:** the `crew_leader` rung changes meaning (was
+  reporter + invite; becomes a derived read-only viewer). Coordinate with anyone relying
+  on crew-leader invites and update plan 53's doc/status.
+- **Decisions confirmed with the user (2026-07):**
+  - Crew registry is **per-event** (mirrors AREA), for "that year".
+  - **Membership join table** with **multiple crews per person** and **multiple leaders
+    per crew** (`CREW_MEMBERSHIP.IS_LEADER`). No single-valued `PERSON__EVENT.CREW_SLUG`
+    / `CREW.LEADER_PERSON_ID`.
+  - **Admins alone** create/modify crews (no propose/approve); the **Crews page lives in
+    the event nav next to People**.
+  - The `crew_leader` role is **derived** from `IS_LEADER`, capped by any higher role;
+    it is **removed from the People roster's role dropdown**.

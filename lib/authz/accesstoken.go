@@ -31,7 +31,6 @@ func (j JWTer) CreateAccessToken(
 	personHandle string,
 	personID int64,
 	positionIDs []int64,
-	teamIDs []int64,
 	isAdmin bool,
 	onDutyPositionID *int64,
 	expiration time.Time,
@@ -46,7 +45,6 @@ func (j JWTer) CreateAccessToken(
 			WithPersonAdmin(isAdmin).
 			WithPersonOnDutyPosition(onDutyPositionID).
 			WithPersonPositions(positionIDs...).
-			WithPersonTeams(teamIDs...).
 			WithSubject(strconv.FormatInt(personID, 10)),
 	)
 }

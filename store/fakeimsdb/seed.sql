@@ -33,9 +33,7 @@ insert into PERSON (ID, HANDLE, NAME, CREATED)
 values (607, null, 'River Quinn', 0);
 
 insert into `POSITION` (ID, NAME) values (701, 'Driver'), (702, 'Dancer');
-insert into TEAM (ID, NAME) values (800, 'Driving Team');
 insert into PERSON__POSITION (PERSON_ID, POSITION_ID) values (601, 702);
-insert into PERSON__TEAM (PERSON_ID, TEAM_ID) values (602, 800);
 
 
 insert into EVENT (ID, NAME, IS_GROUP, PARENT_GROUP)
