@@ -123,7 +123,8 @@ func TestPersonProfilePicture(t *testing.T) {
 	personID := created.PersonID
 
 	// No picture yet: the card omits the URL and the serve endpoint 404s.
-	people, _ := admin.getPersonnelByID(ctx, personID, "")
+	people, resp := admin.getPersonnelByID(ctx, personID, "")
+	require.NoError(t, resp.Body.Close())
 	require.Len(t, people, 1)
 	require.Nil(t, people[0].ProfilePictureURL)
 	resp = admin.getProfilePicture(ctx, personID)
@@ -146,7 +147,8 @@ func TestPersonProfilePicture(t *testing.T) {
 	require.NoError(t, resp.Body.Close())
 
 	// The card now advertises the picture URL...
-	people, _ = admin.getPersonnelByID(ctx, personID, "")
+	people, resp = admin.getPersonnelByID(ctx, personID, "")
+	require.NoError(t, resp.Body.Close())
 	require.Len(t, people, 1)
 	require.NotNil(t, people[0].ProfilePictureURL)
 
@@ -166,7 +168,8 @@ func TestPersonProfilePicture(t *testing.T) {
 	require.Equal(t, http.StatusNoContent, resp.StatusCode)
 	require.NoError(t, resp.Body.Close())
 
-	people, _ = admin.getPersonnelByID(ctx, personID, "")
+	people, resp = admin.getPersonnelByID(ctx, personID, "")
+	require.NoError(t, resp.Body.Close())
 	require.Len(t, people, 1)
 	require.Nil(t, people[0].ProfilePictureURL)
 	resp = admin.getProfilePicture(ctx, personID)
