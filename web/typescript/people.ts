@@ -1028,8 +1028,9 @@ async function submitEditPerson(): Promise<void> {
     // profile save. If it fails, the profile edit still stuck — say so and stop.
     const picture = el.editPersonPicture.files?.[0];
     if (picture) {
+        const blob = await ims.downscaleImageForUpload(picture);
         const form = new FormData();
-        form.append("imsAttachment", picture);
+        form.append("imsAttachment", blob, "profile.jpg");
         const pictureUrl = url_personnelPicture.replace("<person_id>", encodeURIComponent(personId));
         const {err: picErr} = await ims.fetchNoThrow(pictureUrl, {body: form});
         if (picErr != null) {

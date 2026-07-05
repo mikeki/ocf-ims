@@ -17,11 +17,17 @@
 package api
 
 import (
+	"bytes"
 	"context"
 	"crypto/rand"
 	"database/sql"
 	"errors"
 	"fmt"
+	"image"
+	"image/color"
+	_ "image/gif"  // register GIF decoder for image.Decode
+	"image/jpeg"   // JPEG decoder + encoder (resize output)
+	_ "image/png"  // register PNG decoder for image.Decode
 	"io"
 	"log/slog"
 	"mime"
@@ -37,6 +43,9 @@ import (
 	"github.com/mikeki/ocf-ims/lib/herr"
 	"github.com/mikeki/ocf-ims/store"
 	"github.com/mikeki/ocf-ims/store/imsdb"
+	xdraw "golang.org/x/image/draw"
+	_ "golang.org/x/image/tiff" // register TIFF decoder for image.Decode
+	_ "golang.org/x/image/webp" // register WebP decoder for image.Decode
 )
 
 // personProfilePictureURL is the serve endpoint for a person's profile picture. It's
@@ -58,6 +67,50 @@ var profilePictureMediaTypes = []string{
 	"image/png",
 	"image/tiff",
 	"image/webp",
+}
+
+// maxProfilePictureEdge bounds the longest side of a stored profile picture (px). A
+// profile card renders at ~12rem; 512 leaves headroom for high-DPI without storing
+// full-resolution photos.
+const maxProfilePictureEdge = 512
+
+// resizeProfilePicture decodes an image and, when it exceeds maxEdge on either side,
+// returns JPEG bytes scaled to fit within maxEdge (aspect preserved). It returns
+// ok=false — after rewinding fi to the start so the original can be stored unchanged —
+// when the image is already within bounds or can't be decoded in pure Go (notably
+// HEIC, which has no cgo-free decoder; the browser-side downscale handles that case by
+// converting to JPEG before upload).
+func resizeProfilePicture(fi io.ReadSeeker, maxEdge int) ([]byte, bool) {
+	rewind := func() { _, _ = fi.Seek(0, io.SeekStart) }
+	rewind()
+	img, _, err := image.Decode(fi)
+	if err != nil {
+		rewind()
+		return nil, false
+	}
+	b := img.Bounds()
+	w, h := b.Dx(), b.Dy()
+	if w <= maxEdge && h <= maxEdge {
+		rewind()
+		return nil, false
+	}
+	var nw, nh int
+	if w >= h {
+		nw, nh = maxEdge, max(1, h*maxEdge/w)
+	} else {
+		nw, nh = max(1, w*maxEdge/h), maxEdge
+	}
+	dst := image.NewRGBA(image.Rect(0, 0, nw, nh))
+	// White backdrop so a source with transparency doesn't flatten to black in JPEG.
+	xdraw.Draw(dst, dst.Bounds(), image.NewUniform(color.White), image.Point{}, xdraw.Src)
+	xdraw.CatmullRom.Scale(dst, dst.Bounds(), img, b, xdraw.Over, nil)
+	var buf bytes.Buffer
+	err = jpeg.Encode(&buf, dst, &jpeg.Options{Quality: 85})
+	if err != nil {
+		rewind()
+		return nil, false
+	}
+	return buf.Bytes(), true
 }
 
 type SetPersonProfilePicture struct {
@@ -143,7 +196,16 @@ func storeProfilePicture(
 		return herr.BadRequest(fmt.Sprintf("A profile picture must be an image (got %v)", mtype.String()), nil)
 	}
 
-	newFileName := fmt.Sprintf("person_%05d_%v%v", personID, rand.Text(), mtype.Extension())
+	// Bound the stored size. The browser already downscales most uploads before
+	// sending (see downscaleImageForUpload), but re-cap here as a backstop for
+	// anything decodable in pure Go. Undecodable formats (notably HEIC) and
+	// already-small images fall through and are stored as uploaded.
+	saveReader, ext := io.Reader(fi), mtype.Extension()
+	if resized, ok := resizeProfilePicture(fi, maxProfilePictureEdge); ok {
+		saveReader, ext = bytes.NewReader(resized), ".jpg"
+	}
+
+	newFileName := fmt.Sprintf("person_%05d_%v%v", personID, rand.Text(), ext)
 	// #nosec G706 // log injection
 	slog.Info("User uploaded a profile picture",
 		"user", actorHandle,
@@ -154,7 +216,7 @@ func storeProfilePicture(
 		"contentType", mtype.String(),
 	)
 
-	errHTTP = saveFile(ctx, attachmentsStore, s3Client, newFileName, fi)
+	errHTTP = saveFile(ctx, attachmentsStore, s3Client, newFileName, saveReader)
 	if errHTTP != nil {
 		return errHTTP.From("[saveFile]")
 	}

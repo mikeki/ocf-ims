@@ -25,7 +25,6 @@ import (
 	"io"
 	"log/slog"
 	"mime"
-	"mime/multipart"
 	"net/http"
 	"os"
 	"slices"
@@ -412,9 +411,13 @@ func (action AttachToIncident) attachToIncident(req *http.Request) (int32, *herr
 	return reID, nil
 }
 
+// saveFile writes fi's bytes to the configured attachments backend under newFileName.
+// fi is an io.Reader (not multipart.File) so callers can pass either the uploaded
+// multipart file or an in-memory reader over transformed bytes (e.g. a resized
+// profile picture).
 func saveFile(
 	ctx context.Context, attachmentsStore conf.AttachmentsStore,
-	s3Client *attachment.S3Client, newFileName string, fi multipart.File,
+	s3Client *attachment.S3Client, newFileName string, fi io.Reader,
 ) *herr.HTTPError {
 	switch attachmentsStore.Type {
 	case conf.AttachmentsStoreLocal:

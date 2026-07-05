@@ -1442,6 +1442,47 @@ async function loadProfilePicture(
     wrapEl.classList.remove("hidden");
 }
 
+// downscaleImageForUpload shrinks a chosen image to fit within maxEdge px (longest
+// side) and re-encodes it as JPEG, returning a smaller Blob to upload. The browser
+// does the decode, so this both cuts upload size and normalizes formats the browser
+// can display — including iOS HEIC, which pure-Go can't resize server-side. It returns
+// the original file unchanged when the image can't be decoded in this browser (e.g.
+// HEIC on non-Safari) or is already within bounds; the server re-caps decodable
+// formats as a backstop, so nothing depends on this running.
+export async function downscaleImageForUpload(
+    file: File, maxEdge = 512, quality = 0.85,
+): Promise<Blob> {
+    try {
+        const bitmap = await createImageBitmap(file, {imageOrientation: "from-image"});
+        const {width, height} = bitmap;
+        if (width <= maxEdge && height <= maxEdge) {
+            bitmap.close();
+            return file;
+        }
+        const scale = maxEdge / Math.max(width, height);
+        const w = Math.max(1, Math.round(width * scale));
+        const h = Math.max(1, Math.round(height * scale));
+        const canvas = document.createElement("canvas");
+        canvas.width = w;
+        canvas.height = h;
+        const ctx = canvas.getContext("2d");
+        if (ctx == null) {
+            bitmap.close();
+            return file;
+        }
+        // White backdrop so a source with transparency doesn't flatten to black in JPEG.
+        ctx.fillStyle = "#ffffff";
+        ctx.fillRect(0, 0, w, h);
+        ctx.drawImage(bitmap, 0, 0, w, h);
+        bitmap.close();
+        const blob = await new Promise<Blob|null>(
+            resolve => canvas.toBlob(resolve, "image/jpeg", quality));
+        return blob ?? file;
+    } catch {
+        return file; // undecodable in this browser (e.g. HEIC on Chrome) → upload as-is
+    }
+}
+
 // openPersonProfileModal fetches one person by id
 // (GET /ims/api/personnel?person_id=&event=) and shows the PersonProfileModal
 // (web/template/personprofile.templ). It renders whichever fields the viewer's role is
@@ -1605,8 +1646,9 @@ export async function openPersonProfileModal(
         // mirroring how incident attachments are separate from the incident edit.
         const picture = pictureInput.files?.[0];
         if (picture) {
+            const blob = await downscaleImageForUpload(picture);
             const form = new FormData();
-            form.append("imsAttachment", picture);
+            form.append("imsAttachment", blob, "profile.jpg");
             const {err: picErr} = await fetchNoThrow(url_authPicture, {body: form});
             if (picErr != null) {
                 saveButtonEl.disabled = false;
