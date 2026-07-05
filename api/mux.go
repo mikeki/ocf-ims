@@ -598,6 +598,39 @@ func AddToMux(
 		),
 	)
 
+	// Profile picture: upload/remove are admin-only (mirror EditPerson), serving is
+	// open to any personnel reader (mirror the profile card). Upload/remove mutate →
+	// logged; the GET is a read → unlogged.
+	mux.Handle("POST /ims/api/personnel/{personId}/picture",
+		Adapt(
+			SetPersonProfilePicture{db, userStore, cfg.AttachmentsStore, s3Client},
+			RecoverFromPanic(),
+			RequireAuthN(jwter),
+			LogRequest(true, actionLogger, userStore),
+			LimitRequestBytes(cfg.Core.MaxRequestBytes),
+		),
+	)
+
+	mux.Handle("DELETE /ims/api/personnel/{personId}/picture",
+		Adapt(
+			DeletePersonProfilePicture{db, userStore, cfg.AttachmentsStore, s3Client},
+			RecoverFromPanic(),
+			RequireAuthN(jwter),
+			LogRequest(true, actionLogger, userStore),
+			LimitRequestBytes(cfg.Core.MaxRequestBytes),
+		),
+	)
+
+	mux.Handle("GET /ims/api/personnel/{personId}/picture",
+		Adapt(
+			GetPersonProfilePicture{db, userStore, cfg.AttachmentsStore, s3Client},
+			RecoverFromPanic(),
+			RequireAuthN(jwter),
+			LogRequest(false, actionLogger, userStore),
+			LimitRequestBytes(cfg.Core.MaxRequestBytes),
+		),
+	)
+
 	// Notifications (plan 82): per-person (the caller's own), so only
 	// authentication is required — no event scoping.
 	mux.Handle("GET /ims/api/notifications",

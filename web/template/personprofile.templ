@@ -35,6 +35,13 @@ templ PersonProfileModal() {
         <div class="modal-body">
           <div id="person_profile_loading" class="text-body-secondary small">Loading…</div>
           <div id="person_profile_error" class="text-danger small hidden"></div>
+          <!-- Profile picture: shown at the top of the card when the person has one
+               (the client sets the src and reveals it). Sized with CSS — there is no
+               server-side thumbnailing. -->
+          <div id="person_profile_picture_wrap" class="text-center mb-3 hidden">
+            <img id="person_profile_picture" alt="Profile picture" class="rounded img-fluid"
+                 style="max-height: 12rem; object-fit: cover;" />
+          </div>
           <dl id="person_profile_fields" class="row mb-0 hidden">
             <dt class="col-sm-4 text-body-secondary" id="person_profile_fair_name_row">Fair Name</dt>
             <dd class="col-sm-8" id="person_profile_fair_name"></dd>

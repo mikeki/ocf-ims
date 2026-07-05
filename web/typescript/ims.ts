@@ -1405,6 +1405,8 @@ export async function openPersonProfileModal(personId: number, eventName: string
     const loadingEl = typedElement("person_profile_loading", HTMLElement);
     const errorEl = typedElement("person_profile_error", HTMLElement);
     const fieldsEl = typedElement("person_profile_fields", HTMLElement);
+    const pictureWrapEl = typedElement("person_profile_picture_wrap", HTMLElement);
+    const pictureEl = typedElement("person_profile_picture", HTMLImageElement);
 
     // A row is a <dt>/<dd> pair sharing a suffix; set the value and reveal the pair
     // when there's a value, hide both when empty. The fair name / legal name rows
@@ -1427,6 +1429,8 @@ export async function openPersonProfileModal(personId: number, eventName: string
     errorEl.classList.add("hidden");
     errorEl.textContent = "";
     fieldsEl.classList.add("hidden");
+    pictureWrapEl.classList.add("hidden");
+    pictureEl.removeAttribute("src");
 
     const modal = bsModal(modalEl);
     modal.show();
@@ -1449,6 +1453,12 @@ export async function openPersonProfileModal(personId: number, eventName: string
     // Head the card with the combined "Fair Name (Legal Name)" label (feedback
     // round 9), then still list each identifier on its own row below.
     titleEl.textContent = personDisplayLabel(person) || "Person";
+    // Show the picture at the top of the card when the person has one.
+    if (person.profile_picture_url) {
+        pictureEl.src = person.profile_picture_url;
+        pictureEl.alt = `Profile picture for ${personDisplayLabel(person) || "person"}`;
+        pictureWrapEl.classList.remove("hidden");
+    }
     setRow("fair_name", person.handle ?? "—", false);
     setRow("legal_name", person.name ?? "—", false);
     // Per-event + contact rows only render when populated (the server withholds
@@ -3864,6 +3874,10 @@ export type Personnel = {
     // them when scoped to an event (?event=). See docs/plans/51-people-registry.md.
     wristband?: string|null;
     participation_type?: string|null;
+    // profile_picture_url points at the person's picture serve endpoint, set only
+    // when they have one. Sent to anyone who can open the profile card (not gated
+    // like email/phone).
+    profile_picture_url?: string|null;
 }
 
 // This is a simple wrapper to help with typing on BroadcastChannels. It's

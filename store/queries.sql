@@ -997,7 +997,7 @@ where HANDLE = ?;
 -- HAS_PASSWORD lets the personnel-edit handler tell whether a person can sign in
 -- (so it can refuse clearing the EMAIL — the sole login identifier — out from under
 -- an account that has a password) without ever selecting the password hash itself.
-select ID, HANDLE, NAME, EMAIL, PHONE, IS_ADMIN, PASSWORD is not null as HAS_PASSWORD
+select ID, HANDLE, NAME, EMAIL, PHONE, IS_ADMIN, PROFILE_PICTURE, PASSWORD is not null as HAS_PASSWORD
 from PERSON
 where ID = ?;
 
@@ -1015,6 +1015,14 @@ values (?, ?, ?, ?, ?, ?);
 -- name: EditPerson :exec
 update PERSON
 set HANDLE = ?, NAME = ?, EMAIL = ?, PHONE = ?
+where ID = ?;
+
+-- SetPersonProfilePicture stores (or clears) the generated file name of a person's
+-- profile picture. The bytes live in the attachments backend; this only records the
+-- pointer. A NULL clears it (the "remove picture" path).
+-- name: SetPersonProfilePicture :exec
+update PERSON
+set PROFILE_PICTURE = ?
 where ID = ?;
 
 -- name: SetPersonPassword :exec

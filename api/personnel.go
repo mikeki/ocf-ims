@@ -218,6 +218,13 @@ func (action GetPersonnel) personnelByID(req *http.Request, pidStr string, globa
 		Handle:   person.Handle.String,
 		Name:     person.Name.String,
 	}
+	// A profile picture is an identification aid, not contact PII, so its URL goes to
+	// anyone who can open the card (unlike email/phone below). Sent only when the
+	// person actually has one; the URL points at the picture serve endpoint.
+	if person.ProfilePicture.Valid && person.ProfilePicture.String != "" {
+		url := personProfilePictureURL(person.ID)
+		p.ProfilePictureURL = &url
+	}
 	// Contact info + admin flag are admin-only, exactly like the ?all= listing.
 	if globalPermissions&authz.GlobalAdministratePersonnel != 0 {
 		p.Email = person.Email.String

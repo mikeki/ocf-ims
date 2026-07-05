@@ -32,6 +32,7 @@ declare global {
         updateAddPasswordMode: ()=>void;
         submitCreatePerson: ()=>Promise<void>;
         submitEditPerson: ()=>Promise<void>;
+        removePersonPicture: ()=>Promise<void>;
         submitMarkParticipation: (participation: string)=>Promise<void>;
         submitRemoveFromEvent: ()=>Promise<void>;
     }
@@ -179,6 +180,9 @@ const el = {
     editPersonEventName: ims.typedElement("edit_person_event_name", HTMLElement),
     editPersonWristband: ims.typedElement("edit_person_wristband", HTMLInputElement),
     editPersonParticipation: ims.typedElement("edit_person_participation", HTMLSelectElement),
+    editPersonPicture: ims.typedElement("edit_person_picture", HTMLInputElement),
+    editPersonPicturePreview: ims.typedElement("edit_person_picture_preview", HTMLImageElement),
+    editPersonPictureRemove: ims.typedElement("edit_person_picture_remove", HTMLButtonElement),
     showAllWrap: ims.typedElement("show_all_people_wrap", HTMLElement),
     showAllCheckbox: ims.typedElement("show-all-people", HTMLInputElement),
     addPersonSearchSection: ims.typedElement("add_person_search_section", HTMLElement),
@@ -247,6 +251,7 @@ async function initPeoplePage(): Promise<void> {
     ims.wirePasswordToggle(el.addPersonPasswordToggle, el.addPersonPassword);
     ims.wirePasswordToggle(el.addPersonPasswordConfirmToggle, el.addPersonPasswordConfirm);
     window.submitEditPerson = submitEditPerson;
+    window.removePersonPicture = removePersonPicture;
     window.submitMarkParticipation = submitMarkParticipation;
     window.submitRemoveFromEvent = submitRemoveFromEvent;
 
@@ -528,6 +533,7 @@ function buildPersonRow(
                     el.editPersonPhone.value = person.phone ?? "";
                     el.editPersonWristband.value = person.wristband ?? "";
                     el.editPersonParticipation.value = person.participation_type ?? "";
+                    showEditPicturePreview(person.person_id ?? null);
                     ims.bsModal(el.editPersonModal).show();
                 },
             );
@@ -1017,9 +1023,66 @@ async function submitEditPerson(): Promise<void> {
         ims.setErrorMessage(message);
         return;
     }
+
+    // A chosen profile picture is uploaded separately (multipart), after the JSON
+    // profile save. If it fails, the profile edit still stuck — say so and stop.
+    const picture = el.editPersonPicture.files?.[0];
+    if (picture) {
+        const form = new FormData();
+        form.append("imsAttachment", picture);
+        const pictureUrl = url_personnelPicture.replace("<person_id>", encodeURIComponent(personId));
+        const {err: picErr} = await ims.fetchNoThrow(pictureUrl, {body: form});
+        if (picErr != null) {
+            const message = `Saved the profile, but the picture upload failed:\n${picErr}`;
+            console.error(message);
+            ims.setErrorMessage(message);
+            return;
+        }
+    }
+
     ims.bsModal(el.editPersonModal).hide();
     ims.clearErrorMessage();
     await loadAndDrawPeople();
+}
+
+// showEditPicturePreview points the Edit-modal preview at the person's picture serve
+// endpoint. The admin listing doesn't carry the picture URL, so we just try to load
+// it: onload reveals the preview + Remove button, onerror (e.g. 404 = no picture)
+// keeps them hidden. The cache-buster defeats a stale image after a replace.
+function showEditPicturePreview(personId: number|null): void {
+    el.editPersonPicture.value = "";
+    el.editPersonPicturePreview.classList.add("hidden");
+    el.editPersonPictureRemove.classList.add("hidden");
+    if (personId == null) {
+        return;
+    }
+    el.editPersonPicturePreview.onload = function (): void {
+        el.editPersonPicturePreview.classList.remove("hidden");
+        el.editPersonPictureRemove.classList.remove("hidden");
+    };
+    el.editPersonPicturePreview.onerror = function (): void {
+        el.editPersonPicturePreview.classList.add("hidden");
+        el.editPersonPictureRemove.classList.add("hidden");
+    };
+    el.editPersonPicturePreview.src =
+        url_personnelPicture.replace("<person_id>", encodeURIComponent(personId.toString())) + "?t=" + Date.now();
+}
+
+async function removePersonPicture(): Promise<void> {
+    const personId = el.editPersonModal.dataset["personId"];
+    if (!personId) {
+        return;
+    }
+    const url = url_personnelPicture.replace("<person_id>", encodeURIComponent(personId));
+    const {err} = await ims.fetchNoThrow(url, {method: "DELETE"});
+    if (err != null) {
+        const message = `Failed to remove profile picture:\n${err}`;
+        console.error(message);
+        ims.setErrorMessage(message);
+        return;
+    }
+    // Reflect the removal in the still-open modal.
+    showEditPicturePreview(ims.parseInt10(personId));
 }
 
 // participationUrl builds the per-event participation endpoint for a person, with

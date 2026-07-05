@@ -37,6 +37,12 @@ type Person struct {
 	HasPassword bool  `json:"has_password,omitempty"`
 	IsAdmin     bool  `json:"is_admin"`
 	PersonID    int64 `json:"person_id,omitzero"`
+	// ProfilePictureURL points at the person's profile picture serve endpoint
+	// (GET /ims/api/personnel/{personId}/picture). It is set only when the person
+	// actually has a picture, and — unlike Email/Phone — is sent to anyone who can
+	// open the profile card (a face is an aid to identification, not contact PII).
+	// nil (omitted) means "no picture".
+	ProfilePictureURL *string `json:"profile_picture_url,omitempty"`
 	// Wristband and ParticipationType are per-event and only populated by the
 	// typeahead search endpoint (GET /personnel?q=&event=); they're empty on the
 	// login directory and admin listings. See docs/plans/51-people-registry.md.
