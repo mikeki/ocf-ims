@@ -263,15 +263,14 @@ func (action GetAuth) getAuth(req *http.Request) (GetAuthResponse, *herr.HTTPErr
 	// (no per-user salt), so an exact string match is reliable and self-clears the
 	// moment they set their own. Only meaningful when a default is configured.
 	if action.defaultPasswordHash != "" {
+		// GetAllUsers returns the cached directory map keyed by PERSON.ID, so index
+		// the caller directly by id rather than scanning every user.
 		people, err := action.userStore.GetAllUsers(req.Context())
 		if err != nil {
 			return resp, herr.InternalServerError("Failed to fetch personnel", err).From("[GetAllUsers]")
 		}
-		for _, person := range people {
-			if person.ID == int64(claims.PersonID()) {
-				resp.UsingDefaultPassword = person.Password == action.defaultPasswordHash
-				break
-			}
+		if person, ok := people[int64(claims.PersonID())]; ok {
+			resp.UsingDefaultPassword = person.Password == action.defaultPasswordHash
 		}
 	}
 	// event_id is an optional query param for this endpoint
