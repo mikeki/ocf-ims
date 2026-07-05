@@ -283,7 +283,7 @@ func (action GetAuth) getAuth(req *http.Request) (GetAuthResponse, *herr.HTTPErr
 				// password set outside the tracked paths). Persist it so we never
 				// verify this user again. Best-effort: a failure just re-verifies next
 				// time, so don't fail the auth check over it.
-				if err := action.imsDBQ.MarkPasswordChanged(req.Context(), action.imsDBQ, int32(claims.PersonID())); err != nil {
+				if err := action.imsDBQ.MarkPasswordChanged(req.Context(), action.imsDBQ, claims.PersonID()); err != nil {
 					// #nosec G706 // log injection
 					slog.Warn("Failed to record password-changed flag", "person_id", claims.PersonID(), "err", err)
 				} else {
