@@ -18,6 +18,7 @@ package conf_test
 
 import (
 	"github.com/mikeki/ocf-ims/conf"
+	"github.com/mikeki/ocf-ims/lib/argon2id"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"os"
@@ -61,6 +62,24 @@ func TestValidateDBStore(t *testing.T) {
 	cfg := conf.DefaultIMS()
 	cfg.Store.Type = "invalid type"
 	require.Error(t, cfg.Validate())
+}
+
+func TestValidateDefaultPasswordHash(t *testing.T) {
+	t.Parallel()
+
+	// Empty (the default) is fine — the feature is opt-in.
+	cfg := conf.DefaultIMS()
+	require.NoError(t, cfg.Validate())
+
+	// A malformed hash is rejected at boot rather than minting unusable logins.
+	cfg = conf.DefaultIMS()
+	cfg.Core.DefaultPasswordHash = "not-an-argon2id-hash"
+	require.Error(t, cfg.Validate())
+
+	// A well-formed argon2id hash validates.
+	cfg = conf.DefaultIMS()
+	cfg.Core.DefaultPasswordHash = argon2id.CreateHash("some-default", argon2id.DefaultParams)
+	require.NoError(t, cfg.Validate())
 }
 
 func TestValidateNonDevDeployment(t *testing.T) {

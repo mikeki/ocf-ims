@@ -104,6 +104,12 @@ func (a ApiHelper) setPersonPassword(ctx context.Context, personID int64, passwo
 	return a.imsPost(ctx, api.SetPersonPasswordRequest{Password: password}, path)
 }
 
+func (a ApiHelper) setPersonPasswordDefault(ctx context.Context, personID int64) *http.Response {
+	a.t.Helper()
+	path := a.serverURL.JoinPath("/ims/api/personnel", strconv.FormatInt(personID, 10), "password").String()
+	return a.imsPost(ctx, api.SetPersonPasswordRequest{UseDefaultPassword: true}, path)
+}
+
 func (a ApiHelper) setPersonAdmin(ctx context.Context, personID int64, isAdmin bool) *http.Response {
 	a.t.Helper()
 	path := a.serverURL.JoinPath("/ims/api/personnel", strconv.FormatInt(personID, 10), "admin").String()

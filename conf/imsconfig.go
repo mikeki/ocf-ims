@@ -23,6 +23,7 @@ import (
 	"os"
 	"time"
 
+	"github.com/mikeki/ocf-ims/lib/argon2id"
 	"github.com/mikeki/ocf-ims/lib/redact"
 )
 
@@ -129,6 +130,15 @@ func (c *IMSConfig) Validate() error {
 	// Web push (plan 84). Off unless configured; if any VAPID value is set, all
 	// three are required — a half-configured key pair would fail at send time.
 	errs = append(errs, c.Push.Validate())
+
+	// The default password (if configured) is stored already-hashed and copied
+	// verbatim into PERSON.PASSWORD, so a malformed value would silently mint
+	// unusable logins. Reject it at boot rather than at first use.
+	if c.Core.DefaultPasswordHash != "" {
+		if _, _, _, err := argon2id.DecodeHash(c.Core.DefaultPasswordHash); err != nil {
+			errs = append(errs, fmt.Errorf("IMS_DEFAULT_PASSWORD_HASH is not a valid argon2id hash: %w", err))
+		}
+	}
 
 	// Assorted other validations
 	if c.Core.AccessTokenLifetime > c.Core.RefreshTokenLifetime {
@@ -255,6 +265,17 @@ type ConfigCore struct {
 	// on boot. Defaults to SeedNone; "demo" loads the dev fixture. The load is
 	// idempotent — see store.Seed.
 	Seed SeedProfile
+
+	// DefaultPasswordHash is an optional pre-computed argon2id hash used as the
+	// initial password when an admin grants IMS access without typing a specific
+	// one (the "use the shared default password" path in Add-person / Set-password).
+	// It is stored already-hashed — the operator generates it with the
+	// `hash_password` CLI and sets IMS_DEFAULT_PASSWORD_HASH — so no plaintext
+	// default lives at rest and the server copies it straight into PERSON.PASSWORD.
+	// Empty ⇒ the default-password option is unavailable and a specific password
+	// must be given. Validated at boot (see Validate).
+	// #nosec G117 // Exported secret struct field (an argon2id hash, not plaintext)
+	DefaultPasswordHash string `redact:"true"`
 }
 
 type DBStore struct {
