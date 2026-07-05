@@ -104,7 +104,7 @@ func TestSetPersonPasswordDefault(t *testing.T) {
 	require.NoError(t, resp.Body.Close())
 
 	// ...is reset to the shared default.
-	resp = apisAdmin.setPersonPasswordDefault(ctx, int64(created.PersonID))
+	resp = apisAdmin.setPersonPasswordDefault(ctx, created.PersonID)
 	require.Equal(t, http.StatusNoContent, resp.StatusCode)
 	require.NoError(t, resp.Body.Close())
 

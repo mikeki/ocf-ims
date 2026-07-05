@@ -135,7 +135,8 @@ func (c *IMSConfig) Validate() error {
 	// verbatim into PERSON.PASSWORD, so a malformed value would silently mint
 	// unusable logins. Reject it at boot rather than at first use.
 	if c.Core.DefaultPasswordHash != "" {
-		if _, _, _, err := argon2id.DecodeHash(c.Core.DefaultPasswordHash); err != nil {
+		_, _, _, err := argon2id.DecodeHash(c.Core.DefaultPasswordHash)
+		if err != nil {
 			errs = append(errs, fmt.Errorf("IMS_DEFAULT_PASSWORD_HASH is not a valid argon2id hash: %w", err))
 		}
 	}
