@@ -396,6 +396,42 @@ func addIncidentJournalEntry(
 	return reID, nil
 }
 
+// personChangeLog returns the system-journal lines for a person attach/edit on an
+// incident. Because an attach is a detach-then-reattach replace, the caller passes
+// the person's pre-existing state (alreadyAttached, plus their old involvement and
+// grant): a first-time add records the add along with any involvement and access
+// grant, while an edit records only the involvement and/or access-grant that
+// actually changed — so re-saving an unchanged person writes nothing. Returns an
+// empty slice when there is nothing to record.
+func personChangeLog(name string, alreadyAttached bool, oldInvolvement, newInvolvement sql.NullString, oldGranted, newGranted bool) []string {
+	if !alreadyAttached {
+		lines := []string{fmt.Sprintf("Added person: %v", name)}
+		if newInvolvement.Valid {
+			lines = append(lines, fmt.Sprintf("Set involvement for %v: %v", name, newInvolvement.String))
+		}
+		if newGranted {
+			lines = append(lines, fmt.Sprintf("Granted incident access to %v", name))
+		}
+		return lines
+	}
+	var lines []string
+	if newInvolvement != oldInvolvement {
+		if newInvolvement.Valid {
+			lines = append(lines, fmt.Sprintf("Changed involvement for %v: %v", name, newInvolvement.String))
+		} else {
+			lines = append(lines, fmt.Sprintf("Cleared involvement for %v", name))
+		}
+	}
+	if newGranted != oldGranted {
+		if newGranted {
+			lines = append(lines, fmt.Sprintf("Granted incident access to %v", name))
+		} else {
+			lines = append(lines, fmt.Sprintf("Revoked incident access from %v", name))
+		}
+	}
+	return lines
+}
+
 // addJournalEntryMentions records the @mention rows for a freshly-created
 // journal entry (plan 81). It records both the people the author picked via the
 // "@" typeahead (explicitPersonIDs) and any "@handle" they typed by hand without
@@ -667,11 +703,15 @@ func updateIncident(ctx context.Context, imsDBQ *store.DBQ, userStore directory.
 
 	var logs []string
 
-	if newIncident.Priority != 0 {
+	// Scalar fields log a "Changed …" entry only when the submitted value actually
+	// differs from what's stored. The edit form re-submits every field, so a
+	// presence check alone would record phantom changes on an unrelated edit; the
+	// value comparison keeps the journal honest.
+	if newIncident.Priority != 0 && newIncident.Priority != storedIncident.Priority {
 		update.Priority = newIncident.Priority
 		logs = append(logs, fmt.Sprintf("Changed priority: %v", update.Priority))
 	}
-	if newState := imsdb.IncidentState(newIncident.State); newState.Valid() {
+	if newState := imsdb.IncidentState(newIncident.State); newState.Valid() && newState != storedIncident.State {
 		update.State = newState
 		logs = append(logs, fmt.Sprintf("Changed state: %v", update.State))
 		if newState == imsdb.IncidentStateClosed {
@@ -685,9 +725,11 @@ func updateIncident(ctx context.Context, imsDBQ *store.DBQ, userStore directory.
 	// 400. nil leaves the existing outcome unchanged; 0 clears it.
 	if newIncident.OutcomeID != nil {
 		if *newIncident.OutcomeID == 0 {
-			update.OutcomeID = sql.NullInt32{}
-			logs = append(logs, "Cleared outcome")
-		} else {
+			if storedIncident.OutcomeID.Valid {
+				update.OutcomeID = sql.NullInt32{}
+				logs = append(logs, "Cleared outcome")
+			}
+		} else if !storedIncident.OutcomeID.Valid || storedIncident.OutcomeID.Int32 != *newIncident.OutcomeID {
 			var outcomeName string
 			found := false
 			for _, o := range allOutcomes {
@@ -705,28 +747,42 @@ func updateIncident(ctx context.Context, imsDBQ *store.DBQ, userStore directory.
 		}
 	}
 	if !newIncident.Started.IsZero() {
-		update.Started = conv.TimeToFloat(newIncident.Started)
-		logs = append(logs, fmt.Sprintf("Changed start time: %v", newIncident.Started.In(time.UTC).Format(time.RFC3339)))
+		newStarted := conv.TimeToFloat(newIncident.Started)
+		if newStarted != storedIncident.Started {
+			update.Started = newStarted
+			logs = append(logs, fmt.Sprintf("Changed start time: %v", newIncident.Started.In(time.UTC).Format(time.RFC3339)))
+		}
 	}
 	if newIncident.Summary != nil {
-		update.Summary = conv.StringToSql(newIncident.Summary, 0)
-		logs = append(logs, fmt.Sprintf("Changed summary: %v", update.Summary.String))
+		newSummary := conv.StringToSql(newIncident.Summary, 0)
+		if newSummary != storedIncident.Summary {
+			update.Summary = newSummary
+			logs = append(logs, fmt.Sprintf("Changed summary: %v", update.Summary.String))
+		}
 	}
 	if newIncident.Location.Description != nil {
-		update.LocationDescription = conv.StringToSql(newIncident.Location.Description, 0)
-		logs = append(logs, fmt.Sprintf("Changed location description: %v", update.LocationDescription.String))
+		newDescription := conv.StringToSql(newIncident.Location.Description, 0)
+		if newDescription != storedIncident.LocationDescription {
+			update.LocationDescription = newDescription
+			logs = append(logs, fmt.Sprintf("Changed location description: %v", update.LocationDescription.String))
+		}
 	}
 	if newIncident.Location.Booth != nil {
-		update.LocationBooth = conv.StringToSql(newIncident.Location.Booth, 32)
-		logs = append(logs, fmt.Sprintf("Changed location booth: %v", update.LocationBooth.String))
+		newBooth := conv.StringToSql(newIncident.Location.Booth, 32)
+		if newBooth != storedIncident.LocationBooth {
+			update.LocationBooth = newBooth
+			logs = append(logs, fmt.Sprintf("Changed location booth: %v", update.LocationBooth.String))
+		}
 	}
 	if newIncident.Location.AreaSlug != nil {
 		slug := strings.TrimSpace(*newIncident.Location.AreaSlug)
 		if slug == "" {
 			// Empty string clears the structured area, leaving only the freeform detail.
-			update.LocationAreaSlug = sql.NullString{}
-			logs = append(logs, "Cleared location area")
-		} else {
+			if storedIncident.LocationAreaSlug.Valid {
+				update.LocationAreaSlug = sql.NullString{}
+				logs = append(logs, "Cleared location area")
+			}
+		} else if !storedIncident.LocationAreaSlug.Valid || storedIncident.LocationAreaSlug.String != slug {
 			// The area must belong to this incident's event; the FK would also
 			// reject a stray slug, but a 400 is clearer than a 500 on constraint.
 			_, err = imsDBQ.Area(ctx, imsDBQ, imsdb.AreaParams{
@@ -804,6 +860,13 @@ func updateIncident(ctx context.Context, imsDBQ *store.DBQ, userStore directory.
 				if err != nil {
 					return herr.InternalServerError("Failed to attach Report", err).From("[AttachReportToIncident]")
 				}
+				// Mirror the link onto the field report's own journal, so the change is
+				// visible from either timeline regardless of which editor made it.
+				_, errHTTP := addJournalEntry(ctx, imsDBQ, txn, newIncident.EventID, reportNum, authorPersonID,
+					fmt.Sprintf("Attached to incident: %v", newIncident.Number), true, "", "", "", sql.NullInt32{})
+				if errHTTP != nil {
+					return errHTTP.From("[addJournalEntry]")
+				}
 			}
 		}
 		if len(sub) > 0 {
@@ -818,6 +881,12 @@ func updateIncident(ctx context.Context, imsDBQ *store.DBQ, userStore directory.
 				)
 				if err != nil {
 					return herr.InternalServerError("Failed to detach Report", err).From("[AttachReportToIncident]")
+				}
+				// Mirror the unlink onto the field report's own journal (see attach above).
+				_, errHTTP := addJournalEntry(ctx, imsDBQ, txn, newIncident.EventID, reportNum, authorPersonID,
+					fmt.Sprintf("Detached from incident: %v", newIncident.Number), true, "", "", "", sql.NullInt32{})
+				if errHTTP != nil {
+					return errHTTP.From("[addJournalEntry]")
 				}
 			}
 		}
@@ -1156,17 +1225,29 @@ func (action AttachPersonToIncident) attachPerson(req *http.Request) *herr.HTTPE
 	// Whether this save was a genuine new attach (vs. an involvement edit), set in
 	// the transaction and read after commit to drive the push fan-out (plan 84c).
 	var newlyAttached bool
+	newInvolvement := conv.StringToSql(body.Involvement, 128)
 	runErr := action.imsDBQ.RunInTx(ctx, func(txn *sql.Tx) error {
 		// Attach is a detach-then-reattach replace, so we can't tell a new add from
-		// an involvement edit afterwards. Check up front: only a genuine new add
-		// fires an "added_to_incident" notification (plan 82), not every save.
-		alreadyAttached, txErr := action.imsDBQ.IncidentHasPerson(ctx, txn, imsdb.IncidentHasPersonParams{
+		// an involvement edit afterwards. Read the person's current row up front: its
+		// presence distinguishes a genuine new add (which alone fires an
+		// "added_to_incident" notification, plan 82) from an edit, and its old
+		// involvement/grant let the journal record what actually changed.
+		var oldInvolvement sql.NullString
+		var oldGranted, alreadyAttached bool
+		existingPeople, txErr := action.imsDBQ.Incident_People(ctx, txn, imsdb.Incident_PeopleParams{
 			Event:          event.ID,
 			IncidentNumber: incidentNumber,
-			PersonID:       personID,
 		})
 		if txErr != nil {
-			return herr.InternalServerError("Failed to check incident person", txErr).From("[IncidentHasPerson]")
+			return herr.InternalServerError("Failed to fetch incident people", txErr).From("[Incident_People]")
+		}
+		for _, row := range existingPeople {
+			if row.IncidentPerson.PersonID == personID {
+				alreadyAttached = true
+				oldInvolvement = row.IncidentPerson.Involvement
+				oldGranted = row.IncidentPerson.GrantedAccess
+				break
+			}
 		}
 		// Reassigned each attempt (RunInTx may retry on deadlock) so it reflects the
 		// committed run, not a rolled-back one.
@@ -1185,7 +1266,7 @@ func (action AttachPersonToIncident) attachPerson(req *http.Request) *herr.HTTPE
 			Event:          event.ID,
 			IncidentNumber: incidentNumber,
 			PersonID:       personID,
-			Involvement:    conv.StringToSql(body.Involvement, 128),
+			Involvement:    newInvolvement,
 			// 52f: per-incident access grant for an involved reporter (writer-gated here).
 			GrantedAccess: body.GrantedAccess,
 		})
@@ -1193,13 +1274,17 @@ func (action AttachPersonToIncident) attachPerson(req *http.Request) *herr.HTTPE
 			return herr.InternalServerError("Failed to attach person to Incident", txErr).From("[AttachPersonToIncident]")
 		}
 
-		_, errJournal := addIncidentJournalEntry(
-			ctx, action.imsDBQ, txn, event.ID, incidentNumber,
-			jwtCtx.Claims.PersonID(), fmt.Sprintf("Added person: %v", personDisplayName(person)),
-			true, "", "", "",
-		)
-		if errJournal != nil {
-			return errJournal.From("[addIncidentJournalEntry]")
+		// Record what actually changed — the add, and/or the involvement and
+		// access-grant edits — as a single system entry. Nothing changed → no entry.
+		if lines := personChangeLog(personDisplayName(person), alreadyAttached, oldInvolvement, newInvolvement, oldGranted, body.GrantedAccess); len(lines) > 0 {
+			_, errJournal := addIncidentJournalEntry(
+				ctx, action.imsDBQ, txn, event.ID, incidentNumber,
+				jwtCtx.Claims.PersonID(), strings.Join(lines, "\n"),
+				true, "", "", "",
+			)
+			if errJournal != nil {
+				return errJournal.From("[addIncidentJournalEntry]")
+			}
 		}
 
 		// Notify the person they were added — only on a genuine new attach (plan 82).
