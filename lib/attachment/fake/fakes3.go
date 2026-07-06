@@ -56,5 +56,11 @@ func (s S3Funcs) GetObject(ctx context.Context, params *s3.GetObjectInput, optFn
 	}, nil
 }
 
+// DeleteObject removes the object; like real S3, deleting a missing key succeeds.
+func (s S3Funcs) DeleteObject(ctx context.Context, params *s3.DeleteObjectInput, optFns ...func(*s3.Options)) (*s3.DeleteObjectOutput, error) {
+	delete(s.objects, BucketAndKey{*params.Bucket, *params.Key})
+	return &s3.DeleteObjectOutput{}, nil
+}
+
 // force the fake to implement the interface.
 var _ attachment.S3Funcs = (*S3Funcs)(nil)

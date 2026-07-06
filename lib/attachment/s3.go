@@ -37,6 +37,7 @@ import (
 type S3Funcs interface {
 	PutObject(ctx context.Context, params *s3.PutObjectInput, optFns ...func(*s3.Options)) (*s3.PutObjectOutput, error)
 	GetObject(ctx context.Context, params *s3.GetObjectInput, optFns ...func(*s3.Options)) (*s3.GetObjectOutput, error)
+	DeleteObject(ctx context.Context, params *s3.DeleteObjectInput, optFns ...func(*s3.Options)) (*s3.DeleteObjectOutput, error)
 }
 
 type S3Client struct {
@@ -65,6 +66,26 @@ func (c *S3Client) UploadToS3(ctx context.Context, bucketName, objectName string
 		return herr.InternalServerError("IMS failed to upload the file to S3. There may be an internet connectivity issue.", err).From("[PutObject]")
 	}
 	slog.Debug("Uploaded attachment to S3", "objectName", objectName, "duration", time.Since(start))
+	return nil
+}
+
+// DeleteObject removes an object from S3. S3 treats deleting a missing key as
+// success, so this is naturally idempotent — used to clean up a replaced/cleared
+// profile picture. It returns a plain error (not an *herr.HTTPError) because callers
+// treat deletion as best-effort cleanup and log failures rather than surface them.
+func (c *S3Client) DeleteObject(ctx context.Context, bucketName, objectName string) error {
+	start := time.Now()
+	_, err := c.S3Funcs.DeleteObject(
+		ctx,
+		&s3.DeleteObjectInput{
+			Bucket: new(bucketName),
+			Key:    new(objectName),
+		},
+	)
+	if err != nil {
+		return fmt.Errorf("[DeleteObject]: %w", err)
+	}
+	slog.Debug("Deleted attachment from S3", "objectName", objectName, "duration", time.Since(start))
 	return nil
 }
 

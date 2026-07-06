@@ -61,6 +61,7 @@ func DefaultIMS() *IMSConfig {
 			CacheControlShort:     20 * time.Minute,
 			CacheControlLong:      2 * time.Hour,
 			MaxRequestBytes:       100 * mib,
+			MaxAttachmentBytes:    50 * mib,
 			ActionLogEnabled:      true,
 			LoginRateLimitEnabled: true,
 			Seed:                  SeedNone,
@@ -152,6 +153,16 @@ func (c *IMSConfig) Validate() error {
 	// Assorted other validations
 	if c.Core.AccessTokenLifetime > c.Core.RefreshTokenLifetime {
 		errs = append(errs, errors.New("access token lifetime should not be greater than refresh token lifetime"))
+	}
+	if c.Core.MaxAttachmentBytes <= 0 {
+		errs = append(errs, errors.New("IMS_MAX_ATTACHMENT_SIZE must be greater than zero"))
+	}
+	if c.Core.MaxAttachmentBytes > c.Core.MaxRequestBytes {
+		// A per-attachment cap above the whole-request cap can never be reached (the
+		// request backstop rejects the upload first), so it's certainly a misconfig.
+		errs = append(errs, fmt.Errorf(
+			"IMS_MAX_ATTACHMENT_SIZE (%d bytes) must not exceed the max request size (%d bytes)",
+			c.Core.MaxAttachmentBytes, c.Core.MaxRequestBytes))
 	}
 	return errors.Join(errs...)
 }
@@ -261,6 +272,13 @@ type ConfigCore struct {
 	// MaxRequestBytes is a hard limit on request sizes that will be permitted by the API server.
 	// This serve as a backstop against accidentally or maliciously large requests.
 	MaxRequestBytes int64
+
+	// MaxAttachmentBytes caps the size of a single uploaded journal-entry attachment
+	// (incident/report/visit), checked from the multipart part's own length before the
+	// bytes are stored. It sits below MaxRequestBytes (the whole-request backstop) so a
+	// too-large file gets a clear per-attachment error. Set via IMS_MAX_ATTACHMENT_SIZE
+	// (in MiB); defaults to 50 MiB.
+	MaxAttachmentBytes int64
 
 	// ActionLogEnabled is a global toggle switch for enabling writing to the ACTION_LOG table.
 	ActionLogEnabled bool

@@ -53,6 +53,15 @@ func TestValidateBase(t *testing.T) {
 	// must have AccessTokenLifetime <= RefreshTokenLifetime
 	cfg.Core.AccessTokenLifetime = cfg.Core.RefreshTokenLifetime + 1
 	require.Error(t, cfg.Validate())
+
+	// MaxAttachmentBytes must be positive and must not exceed the request-size cap.
+	cfg = conf.DefaultIMS()
+	cfg.Core.MaxAttachmentBytes = 0
+	require.Error(t, cfg.Validate())
+
+	cfg = conf.DefaultIMS()
+	cfg.Core.MaxAttachmentBytes = cfg.Core.MaxRequestBytes + 1
+	require.Error(t, cfg.Validate())
 }
 
 func TestValidateDBStore(t *testing.T) {

@@ -21,9 +21,12 @@ import (
 	"context"
 	"encoding/base64"
 	"encoding/json"
+	"fmt"
 	"mime/multipart"
 	"net/http"
+	"os"
 	"strconv"
+	"strings"
 	"testing"
 	"time"
 
@@ -32,6 +35,26 @@ import (
 	"github.com/mikeki/ocf-ims/lib/rand"
 	"github.com/stretchr/testify/require"
 )
+
+// profilePictureFilesFor counts the stored attachment files belonging to a person.
+// Their server-generated names share a "person_<id>_" prefix, so filtering by that
+// isolates this person's files from the parallel suite's shared attachments dir. Used
+// to prove that replacing or removing a picture deletes the backing file rather than
+// leaving it orphaned.
+func profilePictureFilesFor(t *testing.T, personID int64) int {
+	t.Helper()
+	dir := shared.cfg.AttachmentsStore.Local.Dir.Name()
+	entries, err := os.ReadDir(dir)
+	require.NoError(t, err)
+	prefix := fmt.Sprintf("person_%05d_", personID)
+	n := 0
+	for _, e := range entries {
+		if strings.HasPrefix(e.Name(), prefix) {
+			n++
+		}
+	}
+	return n
+}
 
 // A minimal valid 1x1 PNG — enough for the server's mimetype sniff to detect
 // image/png on the happy path.
@@ -152,6 +175,16 @@ func TestPersonProfilePicture(t *testing.T) {
 	require.Equal(t, http.StatusNoContent, resp.StatusCode)
 	require.NoError(t, resp.Body.Close())
 
+	// Exactly one file is now stored for this person.
+	require.Equal(t, 1, profilePictureFilesFor(t, personID))
+
+	// Uploading a replacement deletes the previous file rather than orphaning it: the
+	// person still has exactly one stored picture, not two.
+	resp = admin.uploadProfilePicture(ctx, personID, onePixelPNG)
+	require.Equal(t, http.StatusNoContent, resp.StatusCode)
+	require.NoError(t, resp.Body.Close())
+	require.Equal(t, 1, profilePictureFilesFor(t, personID))
+
 	// The card now advertises the picture URL...
 	people, resp = admin.getPersonnelByID(ctx, personID, "")
 	require.NoError(t, resp.Body.Close())
@@ -169,10 +202,12 @@ func TestPersonProfilePicture(t *testing.T) {
 	require.Equal(t, http.StatusForbidden, resp.StatusCode)
 	require.NoError(t, resp.Body.Close())
 
-	// The admin removes it: the URL is gone and the bytes 404 again.
+	// The admin removes it: the URL is gone, the bytes 404 again, and the backing file
+	// is deleted (not just the pointer cleared).
 	resp = admin.deleteProfilePicture(ctx, personID)
 	require.Equal(t, http.StatusNoContent, resp.StatusCode)
 	require.NoError(t, resp.Body.Close())
+	require.Equal(t, 0, profilePictureFilesFor(t, personID))
 
 	people, resp = admin.getPersonnelByID(ctx, personID, "")
 	require.NoError(t, resp.Body.Close())

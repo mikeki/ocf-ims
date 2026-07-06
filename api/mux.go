@@ -188,7 +188,7 @@ func AddToMux(
 
 	mux.Handle("DELETE /ims/api/auth/picture",
 		Adapt(
-			DeleteOwnProfilePicture{db},
+			DeleteOwnProfilePicture{db, cfg.AttachmentsStore, s3Client},
 			RecoverFromPanic(),
 			RequireAuthN(jwter),
 			LogRequest(true, actionLogger, userStore),
@@ -248,7 +248,7 @@ func AddToMux(
 
 	mux.Handle("POST /ims/api/events/{eventName}/incidents/{incidentNumber}/attachments",
 		Adapt(
-			AttachToIncident{db, userStore, es, cfg.AttachmentsStore, s3Client},
+			AttachToIncident{db, userStore, es, cfg.AttachmentsStore, s3Client, cfg.Core.MaxAttachmentBytes},
 			RecoverFromPanic(),
 			RequireAuthN(jwter),
 			LogRequest(true, actionLogger, userStore),
@@ -338,7 +338,7 @@ func AddToMux(
 
 	mux.Handle("POST /ims/api/events/{eventName}/reports/{reportNumber}/attachments",
 		Adapt(
-			AttachToReport{db, userStore, es, cfg.AttachmentsStore, s3Client},
+			AttachToReport{db, userStore, es, cfg.AttachmentsStore, s3Client, cfg.Core.MaxAttachmentBytes},
 			RecoverFromPanic(),
 			RequireAuthN(jwter),
 			LogRequest(true, actionLogger, userStore),
@@ -428,7 +428,7 @@ func AddToMux(
 
 	mux.Handle("POST /ims/api/events/{eventName}/visits/{visitNumber}/attachments",
 		Adapt(
-			AttachToVisit{db, userStore, es, cfg.AttachmentsStore, s3Client},
+			AttachToVisit{db, userStore, es, cfg.AttachmentsStore, s3Client, cfg.Core.MaxAttachmentBytes},
 			RecoverFromPanic(),
 			RequireAuthN(jwter),
 			LogRequest(true, actionLogger, userStore),

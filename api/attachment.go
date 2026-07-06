@@ -25,6 +25,7 @@ import (
 	"io"
 	"log/slog"
 	"mime"
+	"mime/multipart"
 	"net/http"
 	"os"
 	"slices"
@@ -56,11 +57,12 @@ type GetIncidentAttachment struct {
 }
 
 type AttachToIncident struct {
-	imsDBQ           *store.DBQ
-	userStore        directory.UserStore
-	es               *EventSourcerer
-	attachmentsStore conf.AttachmentsStore
-	s3Client         *attachment.S3Client
+	imsDBQ             *store.DBQ
+	userStore          directory.UserStore
+	es                 *EventSourcerer
+	attachmentsStore   conf.AttachmentsStore
+	s3Client           *attachment.S3Client
+	maxAttachmentBytes int64
 }
 
 type GetReportAttachment struct {
@@ -71,11 +73,12 @@ type GetReportAttachment struct {
 }
 
 type AttachToReport struct {
-	imsDBQ           *store.DBQ
-	userStore        directory.UserStore
-	es               *EventSourcerer
-	attachmentsStore conf.AttachmentsStore
-	s3Client         *attachment.S3Client
+	imsDBQ             *store.DBQ
+	userStore          directory.UserStore
+	es                 *EventSourcerer
+	attachmentsStore   conf.AttachmentsStore
+	s3Client           *attachment.S3Client
+	maxAttachmentBytes int64
 }
 
 type GetVisitAttachment struct {
@@ -86,11 +89,12 @@ type GetVisitAttachment struct {
 }
 
 type AttachToVisit struct {
-	imsDBQ           *store.DBQ
-	userStore        directory.UserStore
-	es               *EventSourcerer
-	attachmentsStore conf.AttachmentsStore
-	s3Client         *attachment.S3Client
+	imsDBQ             *store.DBQ
+	userStore          directory.UserStore
+	es                 *EventSourcerer
+	attachmentsStore   conf.AttachmentsStore
+	s3Client           *attachment.S3Client
+	maxAttachmentBytes int64
 }
 
 func (action GetIncidentAttachment) ServeHTTP(w http.ResponseWriter, req *http.Request) {
@@ -374,6 +378,11 @@ func (action AttachToIncident) attachToIncident(req *http.Request) (int32, *herr
 	}
 	defer shut(fi)
 
+	errHTTP = checkAttachmentSize(fiHead, action.maxAttachmentBytes)
+	if errHTTP != nil {
+		return 0, errHTTP.From("[checkAttachmentSize]")
+	}
+
 	mtype, errHTTP := sniffFile(fi)
 	if errHTTP != nil {
 		return 0, errHTTP.From("[sniffFile]")
@@ -411,6 +420,21 @@ func (action AttachToIncident) attachToIncident(req *http.Request) (int32, *herr
 	return reID, nil
 }
 
+// checkAttachmentSize rejects a journal-entry upload whose file exceeds the configured
+// per-attachment cap (conf MaxAttachmentBytes / IMS_MAX_ATTACHMENT_SIZE). fiHead.Size is
+// the multipart part's length as measured by the parser (not a client-declared header),
+// so it's a reliable gate to apply before the bytes are sniffed or stored. The global
+// LimitRequestBytes middleware is a coarser whole-request backstop; this gives a clear
+// per-file error well below it.
+func checkAttachmentSize(fiHead *multipart.FileHeader, maxBytes int64) *herr.HTTPError {
+	if fiHead.Size > maxBytes {
+		return herr.RequestEntityTooLarge(
+			fmt.Sprintf("An attachment must be under %v (got %v)",
+				format.HumanByteSize(maxBytes), format.HumanByteSize(fiHead.Size)), nil)
+	}
+	return nil
+}
+
 // saveFile writes fi's bytes to the configured attachments backend under newFileName.
 // fi is an io.Reader (not multipart.File) so callers can pass either the uploaded
 // multipart file or an in-memory reader over transformed bytes (e.g. a resized
@@ -440,6 +464,33 @@ func saveFile(
 		return herr.NotFound("Attachments are not currently supported", nil)
 	}
 	return nil
+}
+
+// deleteFile best-effort removes filename from the configured attachments backend.
+// A name that's empty or already gone is treated as success (idempotent). It is used
+// to clean up a profile picture that has just been replaced or cleared; the DB pointer
+// is updated first, so a deletion failure leaves at worst a harmless orphaned file —
+// callers log it rather than fail the request.
+func deleteFile(
+	ctx context.Context, attachmentsStore conf.AttachmentsStore,
+	s3Client *attachment.S3Client, filename string,
+) error {
+	if filename == "" {
+		return nil
+	}
+	switch attachmentsStore.Type {
+	case conf.AttachmentsStoreLocal:
+		err := attachmentsStore.Local.Dir.Remove(filename)
+		if err != nil && !errors.Is(err, os.ErrNotExist) {
+			return fmt.Errorf("[Remove]: %w", err)
+		}
+		return nil
+	case conf.AttachmentsStoreS3:
+		return s3Client.DeleteObject(ctx, attachmentsStore.S3.Bucket, attachmentsStore.S3.CommonKeyPrefix+filename)
+	default:
+		// No backend (noop) — nothing to delete.
+		return nil
+	}
 }
 
 func (action AttachToReport) ServeHTTP(w http.ResponseWriter, req *http.Request) {
@@ -489,6 +540,11 @@ func (action AttachToReport) attachToReport(req *http.Request) (int32, *herr.HTT
 		return 0, herr.BadRequest("Failed to parse file", err)
 	}
 	defer shut(fi)
+
+	errHTTP = checkAttachmentSize(fiHead, action.maxAttachmentBytes)
+	if errHTTP != nil {
+		return 0, errHTTP.From("[checkAttachmentSize]")
+	}
 
 	mtype, errHTTP := sniffFile(fi)
 	if errHTTP != nil {
@@ -637,6 +693,11 @@ func (action AttachToVisit) attachToVisit(req *http.Request) (int32, *herr.HTTPE
 		return 0, herr.BadRequest("Failed to parse file", err)
 	}
 	defer shut(fi)
+
+	errHTTP = checkAttachmentSize(fiHead, action.maxAttachmentBytes)
+	if errHTTP != nil {
+		return 0, errHTTP.From("[checkAttachmentSize]")
+	}
 
 	mtype, errHTTP := sniffFile(fi)
 	if errHTTP != nil {
