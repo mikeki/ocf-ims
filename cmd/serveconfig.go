@@ -66,6 +66,13 @@ func mustApplyEnvConfig(baseCfg *conf.IMSConfig, envFileName string) *conf.IMSCo
 		must(err)
 		baseCfg.Core.AccessTokenLifetime = time.Duration(seconds) * time.Second
 	}
+	// IMS_MAX_ATTACHMENT_SIZE is given in whole MiB (e.g. "50" = 50 MiB) — the friendlier
+	// unit for an operator than raw bytes. It caps a single journal-entry attachment.
+	if v, ok := lookupEnv("IMS_MAX_ATTACHMENT_SIZE"); ok {
+		mibs, err := conv.ParseInt64(v)
+		must(err)
+		baseCfg.Core.MaxAttachmentBytes = mibs * (1 << 20)
+	}
 	if v, ok := lookupEnv("IMS_CACHE_CONTROL_SHORT"); ok {
 		dur, err := time.ParseDuration(v)
 		must(err)

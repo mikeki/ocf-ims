@@ -326,7 +326,15 @@ func TestCreateAndAttachFileToIncident(t *testing.T) {
 	require.NoError(t, resp.Body.Close())
 	require.Equal(t, fileBytes, returnedAttachment)
 
-	// Try to send something too large
+	// A file over the per-attachment cap but under the whole-request cap is rejected by
+	// the per-attachment check (413), distinct from the request-size backstop below.
+	fileBytes = []byte(strings.Repeat("a", int(shared.cfg.Core.MaxAttachmentBytes+1)))
+	require.Less(t, int64(len(fileBytes)), shared.cfg.Core.MaxRequestBytes)
+	_, resp = apisNonAdmin.attachFileToIncident(ctx, eventName, num, fileBytes)
+	require.NoError(t, resp.Body.Close())
+	require.Equal(t, http.StatusRequestEntityTooLarge, resp.StatusCode)
+
+	// Try to send something too large for the whole request (request-size backstop).
 	fileBytes = []byte(strings.Repeat("a", int(shared.cfg.Core.MaxRequestBytes+1)))
 	_, resp = apisNonAdmin.attachFileToIncident(ctx, eventName, num, fileBytes)
 	require.NoError(t, resp.Body.Close())

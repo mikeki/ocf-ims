@@ -157,6 +157,10 @@ func setup(ctx context.Context, tempDir string) {
 	// 100 KiB, much lower than we'd use outside tests, since we want to test error cases
 	// when requests are too large.
 	shared.cfg.Core.MaxRequestBytes = 100 << 10
+	// Per-attachment cap set below the request cap so a single upload can exceed the
+	// per-attachment limit while still fitting under the whole-request limit — that's
+	// how the per-attachment 413 is tested distinctly from the request-size 413.
+	shared.cfg.Core.MaxAttachmentBytes = 50 << 10
 	shared.cfg.AttachmentsStore.Type = conf.AttachmentsStoreLocal
 	shared.cfg.AttachmentsStore.Local = conf.LocalAttachments{
 		Dir: tempRoot,

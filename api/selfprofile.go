@@ -132,12 +132,14 @@ func (action SetOwnProfilePicture) setOwnProfilePicture(req *http.Request) *herr
 	}
 	// #nosec G706 // handle is not logged here; PersonHandle is a display handle
 	return storeProfilePicture(req.Context(), action.attachmentsStore, action.s3Client,
-		action.imsDBQ, req, person.ID, person.Handle.String)
+		action.imsDBQ, req, person.ID, person.ProfilePicture.String, person.Handle.String)
 }
 
 // DeleteOwnProfilePicture lets an authenticated user remove THEIR OWN profile picture.
 type DeleteOwnProfilePicture struct {
-	imsDBQ *store.DBQ
+	imsDBQ           *store.DBQ
+	attachmentsStore conf.AttachmentsStore
+	s3Client         *attachment.S3Client
 }
 
 func (action DeleteOwnProfilePicture) ServeHTTP(w http.ResponseWriter, req *http.Request) {
@@ -154,5 +156,6 @@ func (action DeleteOwnProfilePicture) deleteOwnProfilePicture(req *http.Request)
 	if errHTTP != nil {
 		return errHTTP
 	}
-	return clearProfilePicture(req.Context(), action.imsDBQ, person.ID)
+	return clearProfilePicture(req.Context(), action.attachmentsStore, action.s3Client,
+		action.imsDBQ, person.ID, person.ProfilePicture.String)
 }

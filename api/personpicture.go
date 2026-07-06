@@ -173,7 +173,7 @@ func (action SetPersonProfilePicture) setPersonProfilePicture(req *http.Request)
 	}
 
 	return storeProfilePicture(ctx, action.attachmentsStore, action.s3Client, action.imsDBQ,
-		req, person.ID, jwtCtx.Claims.PersonHandle())
+		req, person.ID, person.ProfilePicture.String, jwtCtx.Claims.PersonHandle())
 }
 
 // storeProfilePicture parses the uploaded multipart image, validates it against the
@@ -181,11 +181,12 @@ func (action SetPersonProfilePicture) setPersonProfilePicture(req *http.Request)
 // the person at the new file. It is the shared core of the admin upload
 // (SetPersonProfilePicture, path-addressed) and the self-service upload
 // (SetOwnProfilePicture, JWT-addressed); the caller enforces authorization and
-// resolves personID. Any prior file is left in the backend (orphaned but harmless) —
-// physical cleanup is deferred, see the plan/PR notes.
+// resolves personID + oldFileName (the picture being replaced, "" if none). Once the
+// pointer is repointed at the new file, the old file is deleted so replaced pictures
+// don't accumulate as orphans; that cleanup is best-effort (see the delete below).
 func storeProfilePicture(
 	ctx context.Context, attachmentsStore conf.AttachmentsStore, s3Client *attachment.S3Client,
-	imsDBQ *store.DBQ, req *http.Request, personID int32, actorHandle string,
+	imsDBQ *store.DBQ, req *http.Request, personID int32, oldFileName, actorHandle string,
 ) *herr.HTTPError {
 	// this must match the key sent by the client (shared with the attachment uploads)
 	fi, fiHead, err := req.FormFile(IMSAttachmentFormKey)
@@ -247,6 +248,20 @@ func storeProfilePicture(
 	})
 	if err != nil {
 		return herr.InternalServerError("Failed to save profile picture", err).From("[SetPersonProfilePicture]")
+	}
+
+	// The person now points at the new file, so the prior one is unreferenced — delete
+	// it so replaced pictures don't pile up in the backend. Best-effort: the pointer is
+	// already updated, so a failure just leaves a harmless orphan; log and move on
+	// rather than fail an otherwise-successful upload. (Guard against the pathological
+	// case where a new upload happened to reuse the old name.)
+	if oldFileName != "" && oldFileName != newFileName {
+		err = deleteFile(ctx, attachmentsStore, s3Client, oldFileName)
+		if err != nil {
+			// #nosec G706 // log injection
+			slog.Warn("Failed to delete replaced profile picture",
+				"personID", personID, "oldFileName", oldFileName, "err", err)
+		}
 	}
 	return nil
 }
@@ -324,21 +339,33 @@ func (action DeletePersonProfilePicture) deletePersonProfilePicture(req *http.Re
 		return errHTTP
 	}
 
-	return clearProfilePicture(ctx, action.imsDBQ, person.ID)
+	return clearProfilePicture(ctx, action.attachmentsStore, action.s3Client, action.imsDBQ,
+		person.ID, person.ProfilePicture.String)
 }
 
-// clearProfilePicture clears a person's profile-picture pointer. Shared by the admin
-// remove (DeletePersonProfilePicture) and the self-service remove
-// (DeleteOwnProfilePicture); the caller enforces authorization and resolves personID.
-// The backing file (if any) is left in the backend (harmless orphan) — physical
-// cleanup is deferred, see the plan/PR notes.
-func clearProfilePicture(ctx context.Context, imsDBQ *store.DBQ, personID int32) *herr.HTTPError {
+// clearProfilePicture clears a person's profile-picture pointer and deletes the backing
+// file (if any). Shared by the admin remove (DeletePersonProfilePicture) and the
+// self-service remove (DeleteOwnProfilePicture); the caller enforces authorization and
+// resolves personID + oldFileName. File deletion is best-effort — the pointer is cleared
+// first, so a failure leaves a harmless orphan rather than a broken profile.
+func clearProfilePicture(
+	ctx context.Context, attachmentsStore conf.AttachmentsStore, s3Client *attachment.S3Client,
+	imsDBQ *store.DBQ, personID int32, oldFileName string,
+) *herr.HTTPError {
 	err := imsDBQ.SetPersonProfilePicture(ctx, imsDBQ, imsdb.SetPersonProfilePictureParams{
 		ProfilePicture: sql.NullString{},
 		ID:             personID,
 	})
 	if err != nil {
 		return herr.InternalServerError("Failed to remove profile picture", err).From("[SetPersonProfilePicture]")
+	}
+	if oldFileName != "" {
+		err = deleteFile(ctx, attachmentsStore, s3Client, oldFileName)
+		if err != nil {
+			// #nosec G706 // log injection
+			slog.Warn("Failed to delete removed profile picture",
+				"personID", personID, "oldFileName", oldFileName, "err", err)
+		}
 	}
 	return nil
 }

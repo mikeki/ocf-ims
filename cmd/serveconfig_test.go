@@ -38,6 +38,7 @@ func TestMustApplyEnvConfig(t *testing.T) {
 	t.Setenv("IMS_DEPLOYMENT", "dev")
 	t.Setenv("IMS_TOKEN_LIFETIME", "1000")
 	t.Setenv("IMS_ACCESS_TOKEN_LIFETIME", "100")
+	t.Setenv("IMS_MAX_ATTACHMENT_SIZE", "7")
 	t.Setenv("IMS_CACHE_CONTROL_SHORT", "3m")
 	t.Setenv("IMS_CACHE_CONTROL_LONG", "7m")
 	t.Setenv("IMS_DIRECTORY_CACHE_TTL", "15m")
@@ -66,6 +67,8 @@ func TestMustApplyEnvConfig(t *testing.T) {
 	assert.Equal(t, conf.DeploymentTypeDev, cfg.Core.Deployment)
 	assert.Equal(t, 1000*time.Second, cfg.Core.RefreshTokenLifetime)
 	assert.Equal(t, 100*time.Second, cfg.Core.AccessTokenLifetime)
+	// IMS_MAX_ATTACHMENT_SIZE is given in MiB (7 -> 7 MiB in bytes).
+	assert.Equal(t, int64(7<<20), cfg.Core.MaxAttachmentBytes)
 	assert.Equal(t, 3*time.Minute, cfg.Core.CacheControlShort)
 	assert.Equal(t, 7*time.Minute, cfg.Core.CacheControlLong)
 	assert.Equal(t, 15*time.Minute, cfg.Directory.InMemoryCacheTTL)

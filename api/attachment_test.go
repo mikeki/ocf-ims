@@ -23,6 +23,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"io"
+	"mime/multipart"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -112,6 +113,77 @@ func TestSaveAndRetrieveLocalFile(t *testing.T) {
 	all, err := io.ReadAll(fileResp)
 	require.NoError(t, err)
 	assert.Equal(t, fileContents, all)
+}
+
+func TestDeleteLocalFile(t *testing.T) {
+	t.Parallel()
+	ctx := t.Context()
+	tempRoot, err := os.OpenRoot(t.TempDir())
+	require.NoError(t, err)
+	config := conf.AttachmentsStore{
+		Type:  "local",
+		Local: conf.LocalAttachments{Dir: tempRoot},
+	}
+	filename := "myfile.txt"
+
+	// Save a file, then delete it: it should no longer be retrievable.
+	tempFilePath := filepath.Join(t.TempDir(), filename)
+	require.NoError(t, os.WriteFile(tempFilePath, []byte("hello world"), 0600))
+	file, err := os.Open(tempFilePath) // #nosec G304
+	require.NoError(t, err)
+	require.Nil(t, saveFile(ctx, config, nil, filename, file))
+
+	require.NoError(t, deleteFile(ctx, config, nil, filename))
+
+	_, httpError := retrieveFile(ctx, config, nil, filename)
+	require.Error(t, httpError)
+	assert.Equal(t, http.StatusNotFound, httpError.Code)
+
+	// Deleting a file that's already gone is a no-op (idempotent), and an empty name
+	// is a no-op too — both matter because deletion is best-effort cleanup.
+	require.NoError(t, deleteFile(ctx, config, nil, filename))
+	require.NoError(t, deleteFile(ctx, config, nil, ""))
+}
+
+func TestDeleteS3File(t *testing.T) {
+	t.Parallel()
+	ctx := t.Context()
+	config := conf.AttachmentsStore{
+		Type: "s3",
+		S3:   conf.S3Attachments{},
+	}
+	client, err := attachment.NewS3Client(ctx)
+	require.NoError(t, err)
+	client.S3Funcs = fake.NewS3Funcs()
+
+	filename := "myfile.txt"
+	tempFilePath := filepath.Join(t.TempDir(), filename)
+	require.NoError(t, os.WriteFile(tempFilePath, []byte("hello world"), 0600))
+	file, err := os.Open(tempFilePath) // #nosec G304
+	require.NoError(t, err)
+	require.Nil(t, saveFile(ctx, config, client, filename, file))
+
+	require.NoError(t, deleteFile(ctx, config, client, filename))
+
+	_, httpError := retrieveFile(ctx, config, client, filename)
+	require.Error(t, httpError)
+	assert.Equal(t, http.StatusNotFound, httpError.Code)
+
+	// Like real S3, deleting a missing key succeeds; empty name is a no-op.
+	require.NoError(t, deleteFile(ctx, config, client, filename))
+	require.NoError(t, deleteFile(ctx, config, client, ""))
+}
+
+func TestCheckAttachmentSize(t *testing.T) {
+	t.Parallel()
+	const maxBytes = 1000
+
+	// At or under the cap is allowed; over the cap is rejected with 413.
+	assert.Nil(t, checkAttachmentSize(&multipart.FileHeader{Size: maxBytes - 1}, maxBytes))
+	assert.Nil(t, checkAttachmentSize(&multipart.FileHeader{Size: maxBytes}, maxBytes))
+	errHTTP := checkAttachmentSize(&multipart.FileHeader{Size: maxBytes + 1}, maxBytes)
+	require.Error(t, errHTTP)
+	assert.Equal(t, http.StatusRequestEntityTooLarge, errHTTP.Code)
 }
 
 func TestSaveAndRetrieveLocalFile_Errors(t *testing.T) {
