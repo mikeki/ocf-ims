@@ -1799,7 +1799,7 @@ export function setupPersonCombobox(cfg: PersonComboboxConfig): void {
                 item.append(label);
                 if (row.person.participation_type) {
                     const pt: HTMLSpanElement = document.createElement("span");
-                    pt.classList.add("badge", "text-bg-light", "ms-2");
+                    pt.classList.add("badge", "text-bg-light", "text-uppercase", "ms-2");
                     pt.textContent = row.person.participation_type;
                     item.append(pt);
                 }

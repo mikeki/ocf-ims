@@ -623,7 +623,7 @@ function drawParticipationDropdown(
     if (person.is_admin) {
         wrap.classList.remove("hidden");
         button.textContent = "admin";
-        button.className = "person-participation badge border-0 text-bg-dark";
+        button.className = "person-participation badge border-0 text-uppercase text-bg-dark";
         button.removeAttribute("data-bs-toggle");
         button.setAttribute("disabled", "true");
         button.setAttribute("aria-label", "Role: admin");
@@ -644,7 +644,7 @@ function drawParticipationDropdown(
     const editable = isAdmin || (canInvite && !targetAboveInviterCeiling(type));
     if (!editable) {
         button.textContent = participationLabel(type);
-        button.className = `person-participation badge border-0 ${participationBadgeClass(type)}`;
+        button.className = `person-participation badge border-0 text-uppercase ${participationBadgeClass(type)}`;
         button.removeAttribute("data-bs-toggle");
         button.setAttribute("disabled", "true");
         button.setAttribute("aria-label", `Role: ${participationLabel(type)}`);
@@ -653,7 +653,7 @@ function drawParticipationDropdown(
     }
 
     button.textContent = participationLabel(type);
-    button.className = `person-participation badge dropdown-toggle border-0 ${participationBadgeClass(type)}`;
+    button.className = `person-participation badge dropdown-toggle border-0 text-uppercase ${participationBadgeClass(type)}`;
     button.setAttribute("aria-label", `Role: ${participationLabel(type)}. Change.`);
 
     menu.replaceChildren();
