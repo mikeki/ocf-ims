@@ -308,6 +308,37 @@ rejected (400), non-leader gets an empty list + 403 on write, unknown slug 403, 
 the admin crews view reflects the leader's change (cache invalidation). Build + full-module
 golangci-lint clean.
 
+## PR 5 — Crew picker in the person modals (follow-up)
+
+**Requested 2026-07 after PR 4.** The add/edit-person modals and the shared quick-add
+modal had no way to put a person on a crew — you had to create/enroll them, then go to
+the Crews or My Crew page. PR 5 adds a **single "Crew" `<select>`** to all three so
+**admins and crew leaders can assign a crew inline**.
+
+**Client + templates only** — the crew endpoints from PRs 2/4 already do the work:
+- **Who sees it / what's in it.** A shared `ims.fetchManageableCrews(event)` returns the
+  crews the viewer may assign to — **every crew for an admin** (`GET /crews`), **only the
+  crews they lead for a crew leader** (`GET /crews/mine`), **none otherwise** (empty →
+  picker hidden). `commonPageInit` now exports `currentUserAdmin` so shared code (the
+  quick-add modal) can pick the right endpoint without threading auth through.
+- **Add / quick-add** (new person): the chosen crew is applied after create via
+  `ims.assignCrewMembership` (admin → `/crews`, leader → `/crews/mine`). Best-effort — the
+  person is already created, so a crew failure is surfaced (People page) / logged
+  (quick-add, which is mid-incident-attach) rather than blocking or duplicating.
+- **Edit** (admin-only modal): pre-set to the person's current **non-leader** crew within
+  the manageable set; changing it moves/clears **only** within that set (remove the old,
+  add the new). Leader memberships and crews the viewer can't manage are never touched;
+  the server double-guards (`EditMyCrew` 403s a leader touching a crew they don't lead or
+  removing a fellow leader). Multi-crew members keep full management on the Crews / My Crew
+  pages.
+
+**Decision:** single-select (matches the request's "select **a** crew" and real usage —
+most people are on one crew); multi-crew management stays on the Crews / My Crew pages.
+
+**Verified:** `go run bin/build/build.go` (regenerates templ + tsgo, so TypeScript is
+type-checked) + `go test ./web ./api` green. Frontend-only; no Go/schema change, no new
+files, no new endpoints.
+
 ## Sequencing & risks
 
 - Order: **PR 1 → PR 2 → PR 3**. PR 1 is done. PR 2 and PR 3 share the membership tables
