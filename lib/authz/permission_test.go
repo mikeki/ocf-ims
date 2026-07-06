@@ -26,7 +26,7 @@ import (
 const (
 	writerPerm             = EventReadEventName | EventReadIncidents | EventWriteIncidents | EventReadAllReports | EventReadOwnReports | EventWriteAllReports | EventWriteOwnReports | EventReadVisits | EventWriteVisits | EventReadAreas | EventInviteReporters
 	reporterPerm           = EventReadEventName | EventReadOwnReports | EventWriteOwnReports | EventReadAreas
-	crewLeaderPerm         = reporterPerm | EventInviteReporters | EventReadIncidents
+	crewLeaderPerm         = reporterPerm | EventInviteReporters | EventReadIncidents | EventReadCrewReports
 	authenticatedUserPerms = GlobalListEvents | GlobalReadIncidentTypes | GlobalReadPersonnel | GlobalReadOutcomes
 	adminGlobalPerms       = GlobalAdministrateEvents | GlobalAdministrateIncidentTypes | GlobalAdministrateDebugging | GlobalAdministratePersonnel | GlobalAdministrateAreas | GlobalAdministrateOutcomes | GlobalAdministrateCrews
 )

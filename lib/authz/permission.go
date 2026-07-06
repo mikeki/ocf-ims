@@ -48,7 +48,7 @@ const (
 const EventAllPermissions = EventReadIncidents | EventWriteIncidents |
 	EventReadAllReports | EventReadOwnReports | EventWriteAllReports | EventWriteOwnReports |
 	EventReadEventName | EventReadVisits | EventWriteVisits | EventReadAreas |
-	EventInviteReporters
+	EventInviteReporters | EventReadCrewReports
 
 const (
 	// Event-specific permissions.
@@ -69,6 +69,11 @@ const (
 	// The anti-escalation ceiling (never assign writer/crew_leader) is enforced at
 	// the endpoints, not by this bit.
 	EventInviteReporters
+	// EventReadCrewReports lets a crew leader read the reports of their crew's
+	// members (slice 10c). Unlike EventReadAllReports it is not a blanket grant — the
+	// report handler scopes the visible set to reports whose creator is a member of a
+	// crew the caller leads (CREW_MEMBERSHIP). Held by the derived crew-leader role.
+	EventReadCrewReports
 )
 
 const (
@@ -115,22 +120,29 @@ var RolesToEventPerms = map[Role]EventPermissionMask{
 	EventWriter:   EventReadEventName | EventReadIncidents | EventWriteIncidents | EventReadAllReports | EventReadOwnReports | EventWriteAllReports | EventWriteOwnReports | EventReadVisits | EventWriteVisits | EventReadAreas | EventInviteReporters,
 }
 
+// crewLeaderMask is the access a crew leader holds (plan 53a + slice 10c):
+// reporter-level access (own reports read/write), the invite-reporters power,
+// read-only visibility into incidents (view but not edit — no EventWriteIncidents,
+// so no journal entries either), and their crew's reports (EventReadCrewReports,
+// scoped in the report handler). This is the original plan-53 crew_leader grant
+// plus the 10c crew-report read — it is NOT a stripped-down read-only role.
+const crewLeaderMask = EventReadEventName | EventReadOwnReports | EventWriteOwnReports |
+	EventReadAreas | EventInviteReporters | EventReadIncidents | EventReadCrewReports
+
 // participationToEventPerms maps a person's per-event participation tier to the
-// event permissions it grants (plans 52b, 53a). 'writer' carries full access;
-// 'reporter' carries own-reports-only; 'crew_leader' has reporter-level access
-// plus the invite-reporters power. volunteer/public/not_present/ejected — and
-// any unrecognized value — grant nothing.
+// event permissions it grants (plans 52b, 53a; slice 10c). 'writer' carries full
+// access; 'reporter' carries own-reports-only; 'crew_leader' carries reporter-level
+// access plus invite, read-only incident visibility, and crew-report read. The
+// crew-leader role is normally *derived* from crew leadership (see EventPermissions);
+// this rung also keeps any hand-assigned/legacy 'crew_leader' PERSON__EVENT row
+// working. volunteer/public/not_present/ejected — and any unrecognized value —
+// grant nothing.
 func participationToEventPerms(pt imsdb.PersonEventParticipationType) EventPermissionMask {
 	switch pt {
 	case imsdb.PersonEventParticipationTypeWriter:
 		return RolesToEventPerms[EventWriter]
 	case imsdb.PersonEventParticipationTypeCrewLeader:
-		// Reporter-level access (own reports), the ability to invite reporters (plan
-		// 53a), plus read-only visibility into incidents: a crew leader can view the
-		// Incidents list/detail but gets no EventWriteIncidents, so they cannot create
-		// or edit incidents (nor add incident journal entries, which are gated on the
-		// write bit). See docs/plans/95-crews.md (item 4).
-		return RolesToEventPerms[EventReporter] | EventInviteReporters | EventReadIncidents
+		return crewLeaderMask
 	case imsdb.PersonEventParticipationTypeReporter:
 		return RolesToEventPerms[EventReporter]
 	default:
@@ -173,6 +185,26 @@ func EventPermissions(
 		claims.PersonHandle(),
 		claims.PersonAdmin(),
 	)
+
+	// Derive the crew-leader role (slice 10c): a non-admin who leads at least one
+	// crew for this event gains the crew-leader access, unless a higher role already
+	// grants it. "Unless higher" falls out of the mask OR — a writer (or someone who
+	// already holds the crew_leader rung) already has EventReadIncidents, so we skip
+	// the lookup for them; admins bypass per-event roles entirely. This adds one small
+	// CREW_MEMBERSHIP query per request only for callers who aren't already incident
+	// readers (reporters/volunteers/etc.).
+	if eventID != nil && !claims.PersonAdmin() && eventPermissions[*eventID]&EventReadIncidents == 0 {
+		ledCrews, err := imsDBQ.CrewsLedByPerson(ctx, imsDBQ, imsdb.CrewsLedByPersonParams{
+			Event:    *eventID,
+			PersonID: claims.PersonID(),
+		})
+		if err != nil {
+			return nil, GlobalNoPermissions, fmt.Errorf("[CrewsLedByPerson]: %w", err)
+		}
+		if len(ledCrews) > 0 {
+			eventPermissions[*eventID] |= crewLeaderMask
+		}
+	}
 	return eventPermissions, globalPermissions, nil
 }
 

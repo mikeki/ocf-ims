@@ -1606,6 +1606,28 @@ export async function openPersonProfileModal(
         labelEl.classList.toggle("hidden", hide);
     }
 
+    // setCrewsRow renders the person's crews as badges — a leader's crew is
+    // highlighted and tagged "leader" (slice 10c). The row hides when empty.
+    function setCrewsRow(crews: PersonCrew[]|null|undefined): void {
+        const valueEl = typedElement("person_profile_crews", HTMLElement);
+        const labelEl = typedElement("person_profile_crews_row", HTMLElement);
+        valueEl.replaceChildren();
+        const list = crews ?? [];
+        if (list.length === 0) {
+            valueEl.classList.add("hidden");
+            labelEl.classList.add("hidden");
+            return;
+        }
+        for (const crew of list) {
+            const badge = document.createElement("span");
+            badge.className = crew.is_leader ? "badge text-bg-success me-1" : "badge text-bg-light me-1";
+            badge.textContent = crew.is_leader ? `${crew.name} · leader` : crew.name;
+            valueEl.append(badge);
+        }
+        valueEl.classList.remove("hidden");
+        labelEl.classList.remove("hidden");
+    }
+
     function showEditMode(person: Personnel): void {
         errorEl.classList.add("hidden");
         errorEl.textContent = "";
@@ -1668,6 +1690,7 @@ export async function openPersonProfileModal(
     // Per-event + contact rows only render when populated (the server withholds
     // contact info from non-admins, so those rows just stay hidden for them).
     setRow("role", person.participation_type ?? "", true);
+    setCrewsRow(person.crews);
     setRow("email", person.email ?? "", true);
     setRow("phone", person.phone ?? "", true);
     fieldsEl.classList.remove("hidden");
@@ -4145,6 +4168,16 @@ export type Personnel = {
     // when they have one. Sent to anyone who can open the profile card (not gated
     // like email/phone).
     profile_picture_url?: string|null;
+    // crews are the person's crews for the scoped event, and whether they lead each
+    // (slice 10c). Populated by the event-scoped roster + profile-card endpoints.
+    crews?: PersonCrew[]|null;
+}
+
+// PersonCrew is one crew a person belongs to, with whether they lead it.
+export type PersonCrew = {
+    name: string;
+    slug: string;
+    is_leader: boolean;
 }
 
 // This is a simple wrapper to help with typing on BroadcastChannels. It's

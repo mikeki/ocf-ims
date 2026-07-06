@@ -369,6 +369,12 @@ templ People(deployment, versionName, versionRef, eventName string, defaultPassw
               <span class="person-admin-badge ms-1 hidden" title="Admin">
                 <svg class="bi" fill="currentColor" role="img" aria-label="Admin"><use href="#shield-lock-fill"></use></svg>
               </span>
+              <!-- Crew-leader marker: shown by people.ts when the person leads at least
+                   one crew this event (slice 10c). Like the admin marker it's an icon;
+                   the specific crews are on the profile card. -->
+              <span class="person-crew-leader-badge ms-1 hidden text-success" title="Crew leader">
+                <svg class="bi" fill="currentColor" role="img" aria-label="Crew leader"><use href="#people-fill"></use></svg>
+              </span>
             </td>
             <td>
               <!-- The role badge is a click-to-open menu (slice 52e): one click changes

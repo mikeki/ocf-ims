@@ -339,12 +339,13 @@ func defaultParticipation(wristband string) imsdb.PersonEventParticipationType {
 
 // validParticipation validates a participation_type string against the enum.
 // validParticipation recognizes every PARTICIPATION_TYPE value (plan 52b's single
-// access ladder, extended by 53a): writer/crew_leader/reporter are the
-// access-bearing rungs an admin promotes to (crew_leader has reporter-level access
-// plus the invite-reporters power); volunteer/public are the no-access roster
-// roles; not_present/ejected are the kept-but-inactive states set by the roster's
-// "remove" flow (eject / not present), recorded on the row rather than deleting it
-// (slice 6j).
+// access ladder, extended by 53a): writer/reporter are the access-bearing rungs an
+// admin promotes to; volunteer/public are the no-access roster roles;
+// not_present/ejected are the kept-but-inactive states set by the roster's "remove"
+// flow (eject / not present), recorded on the row rather than deleting it (slice
+// 6j). crew_leader stays accepted for any legacy row, but is no longer offered in
+// the roster UI — the crew-leader role is now derived from crew leadership (slice
+// 10c), not hand-assigned.
 func validParticipation(s string) (imsdb.PersonEventParticipationType, bool) {
 	switch imsdb.PersonEventParticipationType(s) {
 	case imsdb.PersonEventParticipationTypeWriter,

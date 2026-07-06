@@ -21,17 +21,21 @@ import (
 	"slices"
 	"testing"
 
+	"github.com/mikeki/ocf-ims/api"
 	imsjson "github.com/mikeki/ocf-ims/json"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
 
-// bobPersonID is a person seeded by imsPeopleTestSeed (BobTestRanger); crew
-// membership references PERSON directly, so a seeded person id is enough.
+// Person ids seeded by imsPeopleTestSeed; crew membership references PERSON
+// directly, so a seeded person id is enough. Alice/Dave/Erin also have JWT helpers.
 const (
+	alicePersonID = 6001
 	bobPersonID   = 6002
 	bobHandle     = "BobTestRanger"
 	carolPersonID = 6003
+	davePersonID  = 6004
+	erinPersonID  = 6005
 )
 
 func findCrew(crews imsjson.Crews, slug string) (imsjson.Crew, bool) {
@@ -236,4 +240,146 @@ func TestCrewAddMemberBadPerson(t *testing.T) {
 	})
 	assert.Equal(t, http.StatusNotFound, resp.StatusCode)
 	require.NoError(t, resp.Body.Close())
+}
+
+// reportNumbers pulls the numbers out of a report list for set comparisons.
+func reportNumbers(reports imsjson.Reports) []int32 {
+	nums := make([]int32, 0, len(reports))
+	for _, r := range reports {
+		nums = append(nums, r.Number)
+	}
+	return nums
+}
+
+// TestPersonCrewsInPersonnel verifies the personnel API surfaces a person's crews
+// (with leader flags) on the profile-card (by-id) and roster endpoints — the data
+// behind the crew-leader badge and the profile card's Crews row (slice 10c).
+func TestPersonCrewsInPersonnel(t *testing.T) {
+	t.Parallel()
+	ctx := t.Context()
+	admin := ApiHelper{t: t, serverURL: shared.serverURL, jwt: jwtForAdmin(ctx, t)}
+	eventName := makeEvent(ctx, t, admin)
+
+	slug, resp := admin.editCrew(ctx, eventName, imsjson.Crew{Name: new("Ops")})
+	require.Equal(t, http.StatusNoContent, resp.StatusCode)
+	require.NoError(t, resp.Body.Close())
+	_, resp = admin.editCrew(ctx, eventName, imsjson.Crew{Slug: slug, Member: &imsjson.CrewMemberEdit{PersonID: davePersonID}})
+	require.Equal(t, http.StatusNoContent, resp.StatusCode)
+	require.NoError(t, resp.Body.Close())
+	_, resp = admin.editCrew(ctx, eventName, imsjson.Crew{Slug: slug, Member: &imsjson.CrewMemberEdit{PersonID: erinPersonID, IsLeader: true}})
+	require.Equal(t, http.StatusNoContent, resp.StatusCode)
+	require.NoError(t, resp.Body.Close())
+
+	// Profile card (by id): the leader's crew is tagged is_leader.
+	erinCard, resp := admin.getPersonnelByID(ctx, erinPersonID, eventName)
+	require.Equal(t, http.StatusOK, resp.StatusCode)
+	require.NoError(t, resp.Body.Close())
+	require.Len(t, erinCard, 1)
+	require.Len(t, erinCard[0].Crews, 1)
+	assert.Equal(t, slug, erinCard[0].Crews[0].Slug)
+	assert.Equal(t, "Ops", erinCard[0].Crews[0].Name)
+	assert.True(t, erinCard[0].Crews[0].IsLeader)
+
+	// A plain member's crew is present but not flagged leader.
+	daveCard, resp := admin.getPersonnelByID(ctx, davePersonID, eventName)
+	require.Equal(t, http.StatusOK, resp.StatusCode)
+	require.NoError(t, resp.Body.Close())
+	require.Len(t, daveCard, 1)
+	require.Len(t, daveCard[0].Crews, 1)
+	assert.False(t, daveCard[0].Crews[0].IsLeader)
+
+	// The roster (participation-scoped) carries the same crew annotation. Erin needs
+	// a participation row to appear on it.
+	resp = admin.setParticipation(ctx, erinPersonID, eventName, api.SetParticipationRequest{ParticipationType: "reporter"})
+	require.Equal(t, http.StatusNoContent, resp.StatusCode)
+	require.NoError(t, resp.Body.Close())
+	roster, resp := admin.getEventRoster(ctx, eventName)
+	require.Equal(t, http.StatusOK, resp.StatusCode)
+	require.NoError(t, resp.Body.Close())
+	erinRow := findPerson(t, roster, erinPersonID)
+	require.Len(t, erinRow.Crews, 1)
+	assert.True(t, erinRow.Crews[0].IsLeader)
+}
+
+// TestCrewLeaderDerivedAccess verifies the slice-10c derived role: marking a person
+// a crew leader (IS_LEADER) grants them the crew-leader access without any
+// participation row — read-only incident visibility and their crew's reports — and
+// that a plain crew member (not a leader) gets no such elevation.
+func TestCrewLeaderDerivedAccess(t *testing.T) {
+	t.Parallel()
+	ctx := t.Context()
+	admin := ApiHelper{t: t, serverURL: shared.serverURL, jwt: jwtForAdmin(ctx, t)}
+	erin := ApiHelper{t: t, serverURL: shared.serverURL, jwt: jwtForErin(t, ctx)}   // crew LEADER, no participation row
+	dave := ApiHelper{t: t, serverURL: shared.serverURL, jwt: jwtForDave(t, ctx)}   // crew MEMBER + reporter
+	alice := ApiHelper{t: t, serverURL: shared.serverURL, jwt: jwtForAlice(t, ctx)} // reporter OUTSIDE the crew
+
+	eventName := makeEvent(ctx, t, admin)
+
+	// A crew with Dave as a member and Erin as its leader.
+	slug, resp := admin.editCrew(ctx, eventName, imsjson.Crew{Name: new("Gate")})
+	require.Equal(t, http.StatusNoContent, resp.StatusCode)
+	require.NoError(t, resp.Body.Close())
+	_, resp = admin.editCrew(ctx, eventName, imsjson.Crew{Slug: slug, Member: &imsjson.CrewMemberEdit{PersonID: davePersonID}})
+	require.Equal(t, http.StatusNoContent, resp.StatusCode)
+	require.NoError(t, resp.Body.Close())
+	_, resp = admin.editCrew(ctx, eventName, imsjson.Crew{Slug: slug, Member: &imsjson.CrewMemberEdit{PersonID: erinPersonID, IsLeader: true}})
+	require.Equal(t, http.StatusNoContent, resp.StatusCode)
+	require.NoError(t, resp.Body.Close())
+
+	// Dave (crew member) and Alice (outside the crew) are reporters so they can file
+	// reports; the report's CREATED_BY is the filer.
+	resp = admin.setParticipation(ctx, davePersonID, eventName, api.SetParticipationRequest{ParticipationType: "reporter"})
+	require.Equal(t, http.StatusNoContent, resp.StatusCode)
+	require.NoError(t, resp.Body.Close())
+	resp = admin.setParticipation(ctx, alicePersonID, eventName, api.SetParticipationRequest{ParticipationType: "reporter"})
+	require.Equal(t, http.StatusNoContent, resp.StatusCode)
+	require.NoError(t, resp.Body.Close())
+
+	crewReport := dave.newReportSuccess(ctx, imsjson.Report{Event: eventName})   // by a crew member
+	otherReport := alice.newReportSuccess(ctx, imsjson.Report{Event: eventName}) // by a non-member
+
+	// An incident for the read-only visibility check.
+	incNum := admin.newIncidentSuccess(ctx, imsjson.Incident{Event: eventName})
+
+	// --- The derived crew leader (Erin, no participation row) ---
+	// Reads the incident list/detail...
+	incidents, resp := erin.getIncidents(ctx, eventName)
+	require.Equal(t, http.StatusOK, resp.StatusCode)
+	require.NoError(t, resp.Body.Close())
+	assert.True(t, slices.ContainsFunc(incidents, func(i imsjson.Incident) bool { return i.Number == incNum }),
+		"a crew leader sees the event's incidents")
+	_, resp = erin.getIncident(ctx, eventName, incNum)
+	assert.Equal(t, http.StatusOK, resp.StatusCode)
+	require.NoError(t, resp.Body.Close())
+
+	// ...but cannot edit an incident (read-only: no EventWriteIncidents).
+	resp = erin.updateIncident(ctx, eventName, incNum, imsjson.Incident{Event: eventName, Number: incNum, Summary: new("nope")})
+	assert.Equal(t, http.StatusForbidden, resp.StatusCode, "a crew leader may not edit incidents")
+	require.NoError(t, resp.Body.Close())
+
+	// Sees the crew's report but not the outside report.
+	reports, resp := erin.getReports(ctx, eventName)
+	require.Equal(t, http.StatusOK, resp.StatusCode)
+	require.NoError(t, resp.Body.Close())
+	nums := reportNumbers(reports)
+	assert.Contains(t, nums, crewReport, "a crew leader sees a crew member's report")
+	assert.NotContains(t, nums, otherReport, "a crew leader does not see a non-member's report")
+	// Single-report access matches: crew report OK, outside report forbidden.
+	_, resp = erin.getReport(ctx, eventName, crewReport)
+	assert.Equal(t, http.StatusOK, resp.StatusCode)
+	require.NoError(t, resp.Body.Close())
+	_, resp = erin.getReport(ctx, eventName, otherReport)
+	assert.Equal(t, http.StatusForbidden, resp.StatusCode)
+	require.NoError(t, resp.Body.Close())
+
+	// --- A plain crew member (Dave, reporter, not a leader) is NOT elevated ---
+	// No incident read access.
+	_, resp = dave.getIncidents(ctx, eventName)
+	assert.Equal(t, http.StatusForbidden, resp.StatusCode, "a crew member who is not a leader cannot read incidents")
+	require.NoError(t, resp.Body.Close())
+	// Sees only his own report, not the crew scope.
+	daveReports, resp := dave.getReports(ctx, eventName)
+	require.Equal(t, http.StatusOK, resp.StatusCode)
+	require.NoError(t, resp.Body.Close())
+	assert.Equal(t, []int32{crewReport}, reportNumbers(daveReports), "a member sees only their own report")
 }

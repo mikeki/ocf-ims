@@ -948,6 +948,40 @@ where
     and `CREW_SLUG` = ?
 ;
 
+-- name: EventCrewMemberships :many
+-- Every person's crew membership for an event, to annotate the People roster with
+-- each person's crews + leader flags in one query (avoids an N+1 over the roster).
+-- Joined to CREW for the display name.
+select
+    cm.`PERSON_ID`,
+    cm.`CREW_SLUG`,
+    cm.`IS_LEADER`,
+    c.`NAME` as CREW_NAME
+from CREW_MEMBERSHIP cm
+    join CREW c on c.`EVENT` = cm.`EVENT` and c.`SLUG` = cm.`CREW_SLUG`
+where cm.`EVENT` = ?
+order by c.`SORT_ORDER`, c.`NAME`
+;
+
+-- name: CrewLeaderReportNumbers :many
+-- Report numbers in an event whose creator (REPORT.CREATED_BY) is a member of a
+-- crew the given person leads. Scopes a crew leader's report visibility to their
+-- crew(s) (slice 10c). The self-join: `leader` rows are the caller's led crews,
+-- `member` rows are everyone in those crews, and the report's creator must be one
+-- of those members. DISTINCT because a member may share more than one led crew.
+select distinct r.`NUMBER`
+from REPORT r
+    join CREW_MEMBERSHIP member
+        on member.`EVENT` = r.`EVENT` and member.`PERSON_ID` = r.`CREATED_BY`
+    join CREW_MEMBERSHIP leader
+        on leader.`EVENT` = member.`EVENT`
+        and leader.`CREW_SLUG` = member.`CREW_SLUG`
+        and leader.`IS_LEADER` = true
+where
+    r.`EVENT` = sqlc.arg(event)
+    and leader.`PERSON_ID` = sqlc.arg(leader_person_id)
+;
+
 -- name: CreateVisit :execlastid
 insert into VISIT (`EVENT`, NUMBER, CREATED) values (?, ?, ?);
 

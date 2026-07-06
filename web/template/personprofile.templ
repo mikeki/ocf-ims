@@ -60,6 +60,11 @@ templ PersonProfileModal() {
             <dt class="col-sm-4 text-body-secondary hidden" id="person_profile_role_row">Role</dt>
             <dd class="col-sm-8 hidden text-uppercase" id="person_profile_role"></dd>
 
+            <!-- Crews the person is on for this event, each tagged if they lead it
+                 (slice 10c). Populated + shown by the client when non-empty. -->
+            <dt class="col-sm-4 text-body-secondary hidden" id="person_profile_crews_row">Crews</dt>
+            <dd class="col-sm-8 hidden" id="person_profile_crews"></dd>
+
             <!-- Contact info: sent to (and shown for) a personnel admin or the person's
                  own card. -->
             <dt class="col-sm-4 text-body-secondary hidden" id="person_profile_email_row">Email</dt>

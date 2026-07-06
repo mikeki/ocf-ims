@@ -57,10 +57,11 @@ func (action GetReports) getReports(req *http.Request) (imsjson.Reports, *herr.H
 	if errHTTP != nil {
 		return resp, errHTTP.From("[getEventPermissions]")
 	}
-	if eventPermissions&(authz.EventReadAllReports|authz.EventReadOwnReports) == 0 {
+	if eventPermissions&(authz.EventReadAllReports|authz.EventReadOwnReports|authz.EventReadCrewReports) == 0 {
 		return resp, herr.Forbidden("The requestor does not have permission to read Reports on this Event", nil)
 	}
-	// i.e. the user has EventReadOwnReports, but not EventReadAllReports
+	// i.e. the user has EventReadOwnReports and/or EventReadCrewReports, but not
+	// EventReadAllReports
 	limitedAccess := eventPermissions&authz.EventReadAllReports == 0
 
 	err := req.ParseForm()
@@ -101,9 +102,21 @@ func (action GetReports) getReports(req *http.Request) (imsjson.Reports, *herr.H
 
 	var authorizedReports []imsdb.ReportsRow
 	if limitedAccess {
+		// A limited caller sees the union of their own reports (EventReadOwnReports)
+		// and — for a crew leader — reports created by their crew's members
+		// (EventReadCrewReports, scoped by CrewLeaderReportNumbers).
+		hasOwn := eventPermissions&authz.EventReadOwnReports != 0
+		crewReportNums := map[int32]bool{}
+		if eventPermissions&authz.EventReadCrewReports != 0 {
+			crewReportNums, errHTTP = crewReportNumberSet(req.Context(), action.imsDBQ, event.ID, callerPersonID)
+			if errHTTP != nil {
+				return resp, errHTTP
+			}
+		}
 		for _, storedReport := range storedReports {
 			entries := entriesByReport[storedReport.Report.Number]
-			if ownsReport(storedReport.Report, entries, callerPersonID, callerHandle) {
+			ownVisible := hasOwn && ownsReport(storedReport.Report, entries, callerPersonID, callerHandle)
+			if ownVisible || crewReportNums[storedReport.Report.Number] {
 				authorizedReports = append(authorizedReports, storedReport)
 			}
 		}
@@ -156,6 +169,26 @@ func containsAuthor(entries []imsjson.JournalEntry, author string) bool {
 	return false
 }
 
+// crewReportNumberSet returns the set of report numbers a crew leader may read:
+// reports whose creator is a member of a crew the caller leads (slice 10c). The
+// caller must already hold EventReadCrewReports.
+func crewReportNumberSet(
+	ctx context.Context, imsDBQ *store.DBQ, eventID, leaderPersonID int32,
+) (map[int32]bool, *herr.HTTPError) {
+	nums, err := imsDBQ.CrewLeaderReportNumbers(ctx, imsDBQ, imsdb.CrewLeaderReportNumbersParams{
+		Event:          eventID,
+		LeaderPersonID: leaderPersonID,
+	})
+	if err != nil {
+		return nil, herr.InternalServerError("Failed to scope crew reports", err).From("[CrewLeaderReportNumbers]")
+	}
+	set := make(map[int32]bool, len(nums))
+	for _, n := range nums {
+		set[n] = true
+	}
+	return set, nil
+}
+
 type GetReport struct {
 	imsDBQ             *store.DBQ
 	userStore          directory.UserStore
@@ -178,10 +211,11 @@ func (action GetReport) getReport(req *http.Request) (imsjson.Report, *herr.HTTP
 	if errHTTP != nil {
 		return response, errHTTP.From("[getEventPermissions]")
 	}
-	if eventPermissions&(authz.EventReadAllReports|authz.EventReadOwnReports) == 0 {
+	if eventPermissions&(authz.EventReadAllReports|authz.EventReadOwnReports|authz.EventReadCrewReports) == 0 {
 		return response, herr.Forbidden("The requestor does not have permission to read Reports on this Event", nil)
 	}
-	// i.e. they have EventReadOwnReports, but not EventReadAllReports
+	// i.e. they have EventReadOwnReports and/or EventReadCrewReports, but not
+	// EventReadAllReports
 	limitedAccess := eventPermissions&authz.EventReadAllReports == 0
 
 	ctx := req.Context()
@@ -198,7 +232,18 @@ func (action GetReport) getReport(req *http.Request) (imsjson.Report, *herr.HTTP
 
 	reportRow := imsdb.ReportsRow(report)
 	if limitedAccess {
-		if !ownsReport(reportRow.Report, journalEntries, jwtCtx.Claims.PersonID(), jwtCtx.Claims.PersonHandle()) {
+		callerPersonID := jwtCtx.Claims.PersonID()
+		ownVisible := eventPermissions&authz.EventReadOwnReports != 0 &&
+			ownsReport(reportRow.Report, journalEntries, callerPersonID, jwtCtx.Claims.PersonHandle())
+		crewVisible := false
+		if !ownVisible && eventPermissions&authz.EventReadCrewReports != 0 {
+			crewReportNums, errHTTP := crewReportNumberSet(ctx, action.imsDBQ, event.ID, callerPersonID)
+			if errHTTP != nil {
+				return response, errHTTP
+			}
+			crewVisible = crewReportNums[reportNumber]
+		}
+		if !ownVisible && !crewVisible {
 			return response, herr.Forbidden("The requestor does not have permission to access this particular Report", nil)
 		}
 	}
