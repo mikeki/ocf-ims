@@ -560,6 +560,16 @@ function buildPersonRow(
         if (person.crews?.some(c => c.is_leader)) {
             entryItem.querySelector(".person-crew-leader-badge")!.classList.remove("hidden");
         }
+        // Crew column: one badge per crew this event, a led crew highlighted green to
+        // match the profile card's crews row (slice 10c). Blank when the person is in
+        // no crews or no event is selected (crews are per-event).
+        const crewCell = entryItem.querySelector(".person-crew")!;
+        for (const crew of person.crews ?? []) {
+            const badge = document.createElement("span");
+            badge.className = crew.is_leader ? "badge text-bg-success me-1" : "badge text-bg-light me-1";
+            badge.textContent = crew.name;
+            crewCell.append(badge);
+        }
 
         const participationWrap: HTMLElement = entryItem.querySelector(".person-participation-dropdown")!;
         const participationButton: HTMLButtonElement = entryItem.querySelector(".person-participation")!;
