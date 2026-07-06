@@ -187,6 +187,8 @@ const el = {
     addPersonEventSection: ims.typedElement("add_person_event_section", HTMLElement),
     addPersonEventName: ims.typedElement("add_person_event_name", HTMLElement),
     addPersonParticipation: ims.typedElement("add_person_participation", HTMLSelectElement),
+    addPersonCrewWrap: ims.typedElement("add_person_crew_wrap", HTMLElement),
+    addPersonCrew: ims.typedElement("add_person_crew", HTMLSelectElement),
     editPersonModal: ims.typedElement("editPersonModal", HTMLElement),
     editPersonHandle: ims.typedElement("edit_person_handle", HTMLInputElement),
     editPersonName: ims.typedElement("edit_person_name", HTMLInputElement),
@@ -195,6 +197,8 @@ const el = {
     editPersonEventSection: ims.typedElement("edit_person_event_section", HTMLElement),
     editPersonEventName: ims.typedElement("edit_person_event_name", HTMLElement),
     editPersonParticipation: ims.typedElement("edit_person_participation", HTMLSelectElement),
+    editPersonCrewWrap: ims.typedElement("edit_person_crew_wrap", HTMLElement),
+    editPersonCrew: ims.typedElement("edit_person_crew", HTMLSelectElement),
     editPersonPicture: ims.typedElement("edit_person_picture", HTMLInputElement),
     editPersonPicturePreview: ims.typedElement("edit_person_picture_preview", HTMLImageElement),
     editPersonPictureRemove: ims.typedElement("edit_person_picture_remove", HTMLButtonElement),
@@ -320,6 +324,7 @@ async function initPeoplePage(): Promise<void> {
         onPick: enrollPerson,
     });
 
+    await loadManageableCrews();
     await loadAndDrawPeople();
     ims.hideLoadingOverlay();
     ims.enableEditing();
@@ -351,6 +356,28 @@ let people: ims.Personnel[]|null = null;
 // to listing every person (so anyone can be found and added). Off by default and
 // only meaningful when an event is selected.
 let showAllPeople: boolean = false;
+// The crews the viewer may assign people to for the current event — every crew for an
+// admin, only the crews they lead for a crew leader, none otherwise. Drives the Crew
+// picker in the Add/Edit person modals; reloaded on every event change.
+let manageableCrews: ims.ManageableCrew[] = [];
+
+// loadManageableCrews refreshes manageableCrews for the current event and repopulates
+// the Add form's Crew picker (the Edit picker is filled per-person when its modal
+// opens). With no event or no manageable crews, the picker stays hidden.
+async function loadManageableCrews(): Promise<void> {
+    manageableCrews = currentEvent ? await ims.fetchManageableCrews(currentEvent) : [];
+    ims.populateCrewSelect(el.addPersonCrew, manageableCrews, el.addPersonCrew.value);
+    el.addPersonCrewWrap.classList.toggle("hidden", manageableCrews.length === 0);
+}
+
+// currentManageableCrew returns the slug of the crew this person is on that the viewer
+// can manage — a non-leader membership within the manageable set — or "" if none.
+// Leader memberships are excluded: they're managed on the Crews page, not moved here.
+function currentManageableCrew(person: ims.Personnel): string {
+    const manageable = new Set(manageableCrews.map(c => c.slug));
+    const match = (person.crews ?? []).find(c => !c.is_leader && manageable.has(c.slug));
+    return match?.slug ?? "";
+}
 
 async function changeEvent(): Promise<void> {
     currentEvent = el.eventName.value.trim();
@@ -363,6 +390,7 @@ async function changeEvent(): Promise<void> {
         el.showAllCheckbox.checked = false;
     }
     reflectEventSelection();
+    await loadManageableCrews();
     await loadAndDrawPeople();
 }
 
@@ -562,6 +590,12 @@ function buildPersonRow(
                     // value on the modal and send it back unchanged (see submitEditPerson).
                     el.editPersonModal.dataset["wristband"] = person.wristband ?? "";
                     el.editPersonParticipation.value = person.participation_type ?? "";
+                    // Crew picker: pre-set to the person's current manageable (non-leader)
+                    // crew and stash it so submitEditPerson can tell if it changed.
+                    const crewSlug = currentManageableCrew(person);
+                    ims.populateCrewSelect(el.editPersonCrew, manageableCrews, crewSlug);
+                    el.editPersonModal.dataset["crewSlug"] = crewSlug;
+                    el.editPersonCrewWrap.classList.toggle("hidden", manageableCrews.length === 0);
                     void showEditPicturePreview(person.person_id ?? null);
                     ims.bsModal(el.editPersonModal).show();
                 },
@@ -852,6 +886,9 @@ function resetAddPersonForm(): void {
     el.addPersonPasswordConfirm.value = "";
     // Default a new event participant to "volunteer" (the common at-the-fair role).
     el.addPersonParticipation.value = "volunteer";
+    // A new person starts on no crew; the picker only shows if the viewer manages any.
+    el.addPersonCrew.value = "";
+    el.addPersonCrewWrap.classList.toggle("hidden", manageableCrews.length === 0);
     resetPasswordToggle(el.addPersonPassword, el.addPersonPasswordToggle);
     resetPasswordToggle(el.addPersonPasswordConfirm, el.addPersonPasswordConfirmToggle);
 
@@ -1007,7 +1044,7 @@ async function submitCreatePerson(): Promise<void> {
         }
     }
 
-    const {err} = await ims.fetchNoThrow(url_personnel, {
+    const {json, err} = await ims.fetchNoThrow<ims.PersonSearchResult>(url_personnel, {
         body: JSON.stringify(body),
     });
     if (err != null) {
@@ -1016,6 +1053,19 @@ async function submitCreatePerson(): Promise<void> {
         console.error(message);
         ims.setErrorMessage(message);
         return;
+    }
+    // Optionally put the new person on a crew. They're already created, so a crew
+    // failure is surfaced but non-fatal — the create stuck.
+    const crewSlug = el.addPersonCrew.value;
+    const newPid = json?.person_id;
+    if (currentEvent && crewSlug && newPid) {
+        const crewErr = await ims.assignCrewMembership(currentEvent, crewSlug, newPid, false);
+        if (crewErr != null) {
+            ims.bsModal(el.addPersonModal).hide();
+            ims.setErrorMessage(`Created the person, but adding them to the crew failed:\n${crewErr}`);
+            await loadAndDrawPeople();
+            return;
+        }
     }
     ims.bsModal(el.addPersonModal).hide();
     ims.clearErrorMessage();
@@ -1066,6 +1116,33 @@ async function submitEditPerson(): Promise<void> {
             console.error(message);
             ims.setErrorMessage(message);
             return;
+        }
+    }
+
+    // Reconcile the person's crew with the picker (the edit modal is admin-only, so
+    // this uses the admin crews endpoint). Move/clear only within the manageable set:
+    // remove the previous crew if it changed, add the newly-chosen one.
+    const prevCrew = el.editPersonModal.dataset["crewSlug"] ?? "";
+    const nextCrew = el.editPersonCrew.value;
+    const editPid = ims.parseInt10(personId) ?? 0;
+    if (currentEvent && editPid > 0 && nextCrew !== prevCrew) {
+        if (prevCrew) {
+            const remErr = await ims.assignCrewMembership(currentEvent, prevCrew, editPid, true);
+            if (remErr != null) {
+                ims.bsModal(el.editPersonModal).hide();
+                ims.setErrorMessage(`Saved the profile, but changing the crew failed:\n${remErr}`);
+                await loadAndDrawPeople();
+                return;
+            }
+        }
+        if (nextCrew) {
+            const addErr = await ims.assignCrewMembership(currentEvent, nextCrew, editPid, false);
+            if (addErr != null) {
+                ims.bsModal(el.editPersonModal).hide();
+                ims.setErrorMessage(`Saved the profile, but changing the crew failed:\n${addErr}`);
+                await loadAndDrawPeople();
+                return;
+            }
         }
     }
 

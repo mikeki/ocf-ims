@@ -93,6 +93,15 @@ templ QuickAddPersonModal() {
               </select>
               <label for="quick_add_person_participation">Role</label>
             </div>
+            <!-- Crew picker (slice 10c PR 5): populated by openQuickAddPersonModal with
+                 the crews the viewer may assign to (all for an admin, led-only for a crew
+                 leader). Hidden when the viewer manages none. -->
+            <div id="quick_add_person_crew_wrap" class="form-floating mb-3 hidden">
+              <select id="quick_add_person_crew" class="form-select" aria-label="Crew">
+                <option value="">— no crew —</option>
+              </select>
+              <label for="quick_add_person_crew">Crew</label>
+            </div>
           </div>
           <div id="quick_add_person_error" class="text-danger small mt-2 hidden"></div>
         </div>

@@ -30,6 +30,12 @@ export let pathIds: {
 
 export let eventAccess: AuthInfoEventAccess|null = null;
 
+// currentUserAdmin mirrors the signed-in user's PERSON.IS_ADMIN, set by
+// commonPageInit. Used where a page needs the admin signal outside its own init flow
+// — e.g. choosing the crew endpoint (admins read every crew; everyone else only the
+// crews they lead). False until commonPageInit runs / when unauthenticated.
+export let currentUserAdmin = false;
+
 const accessTokenKey = "access_token";
 const accessTokenRefreshAfterKey = "access_token_refresh_after";
 
@@ -376,6 +382,7 @@ export async function commonPageInit(): Promise<PageInitResult> {
         // Register the push service worker in the background. Harmless if push is
         // unconfigured or unsupported; it's what lets a later opt-in subscribe.
         void registerServiceWorker();
+        currentUserAdmin = authInfo.admin;
         eventAccess = authInfo.event_access?.[pathIds.eventName!]??null;
         pathIds.eventId = eventAccess?.event_id??null;
         eds = fetchNoThrow<EventData[]>(url_events, null).then(
@@ -1282,6 +1289,62 @@ export async function createRegistryPerson(name: string, eventName: string): Pro
     return json;
 }
 
+// ManageableCrew is one crew the viewer may assign people to, in the person modals'
+// Crew picker.
+export type ManageableCrew = {slug: string; name: string};
+
+// fetchManageableCrews returns the crews the viewer may put a person on for an event:
+// every crew for an admin, only the crews they lead for a crew leader, and none for
+// anyone else (an empty list, which hides the picker). Backs the Crew <select> in the
+// add/edit/quick-add person modals.
+export async function fetchManageableCrews(eventName: string): Promise<ManageableCrew[]> {
+    if (!eventName) {
+        return [];
+    }
+    const base = currentUserAdmin ? url_crews : url_myCrews;
+    const url = base.replace("<event_id>", encodeURIComponent(eventName));
+    const {json, err} = await fetchNoThrow<{slug: string; name?: string|null}[]>(
+        url, {headers: {"Cache-Control": "no-cache"}},
+    );
+    if (err != null || json == null) {
+        return [];
+    }
+    return json.map(c => ({slug: c.slug, name: c.name ?? c.slug}));
+}
+
+// populateCrewSelect fills a Crew <select> with a "no crew" option plus one per
+// manageable crew, then applies the given selection.
+export function populateCrewSelect(select: HTMLSelectElement, crews: ManageableCrew[], selected: string): void {
+    select.replaceChildren();
+    const none = document.createElement("option");
+    none.value = "";
+    none.textContent = "— no crew —";
+    select.append(none);
+    for (const crew of crews) {
+        const opt = document.createElement("option");
+        opt.value = crew.slug;
+        opt.textContent = crew.name;
+        select.append(opt);
+    }
+    select.value = selected;
+}
+
+// assignCrewMembership adds a person to (remove=false) or drops them from
+// (remove=true) a crew, via whichever crew endpoint the viewer is entitled to: the
+// admin crews endpoint for an admin, the leader-scoped "my crews" endpoint otherwise.
+// Returns the error string, or null on success. The server is the real gate — a leader
+// may only touch crews they lead.
+export async function assignCrewMembership(
+    eventName: string, slug: string, personId: number, remove: boolean,
+): Promise<string|null> {
+    const base = currentUserAdmin ? url_crews : url_myCrews;
+    const url = base.replace("<event_id>", encodeURIComponent(eventName));
+    const {err} = await fetchNoThrow(url, {
+        body: JSON.stringify({slug: slug, member: {person_id: personId, remove: remove}}),
+    });
+    return err;
+}
+
 // openQuickAddPersonModal shows the shared QuickAddPersonModal (web/template/quickaddperson.templ)
 // pre-filled with the typed text as the FAIR NAME (the search-first picker is usually
 // fed a callsign), lets the user supply legal name/email/phone/password and (when an event
@@ -1300,6 +1363,8 @@ export function openQuickAddPersonModal(prefillName: string, eventName: string):
     const eventSectionEl = typedElement("quick_add_person_event_section", HTMLElement);
     const eventNameEl = typedElement("quick_add_person_event_name", HTMLElement);
     const participationEl = typedElement("quick_add_person_participation", HTMLSelectElement);
+    const crewWrapEl = typedElement("quick_add_person_crew_wrap", HTMLElement);
+    const crewEl = typedElement("quick_add_person_crew", HTMLSelectElement);
     const errorEl = typedElement("quick_add_person_error", HTMLElement);
     const submitEl = typedElement("quick_add_person_submit", HTMLButtonElement);
     const accessToggleEl = typedElement("quick_add_person_access_toggle", HTMLButtonElement);
@@ -1333,6 +1398,18 @@ export function openQuickAddPersonModal(prefillName: string, eventName: string):
     // Per-event fields only make sense when scoped to an actual event.
     eventSectionEl.classList.toggle("hidden", !eventName);
     eventNameEl.textContent = eventName;
+    // Crew picker: reset, then populate + reveal in the background if the viewer can
+    // assign to any crew for this event (admins to all, crew leaders to led ones). The
+    // fetch is async and the modal doesn't wait on it — the picker just appears once
+    // the crews load.
+    crewEl.replaceChildren();
+    crewWrapEl.classList.add("hidden");
+    if (eventName) {
+        void fetchManageableCrews(eventName).then((crews): void => {
+            populateCrewSelect(crewEl, crews, "");
+            crewWrapEl.classList.toggle("hidden", crews.length === 0);
+        });
+    }
 
     const modal = bsModal(modalEl);
 
@@ -1436,6 +1513,17 @@ export function openQuickAddPersonModal(prefillName: string, eventName: string):
             if (err != null || json == null) {
                 showError(`Failed to create person: ${err ?? "no response"}`);
                 return;
+            }
+            // Optionally drop the new person onto a crew. The person is already created
+            // (and about to be attached), so a crew failure is best-effort: log it and
+            // proceed rather than block/duplicate — the crew can be fixed on the Crews
+            // page.
+            const newPid = json.person_id;
+            if (eventName && crewEl.value && newPid) {
+                const crewErr = await assignCrewMembership(eventName, crewEl.value, newPid, false);
+                if (crewErr != null) {
+                    console.error(`Created the person but failed to add them to the crew: ${crewErr}`);
+                }
             }
             settled = true;
             cleanup();

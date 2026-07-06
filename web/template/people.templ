@@ -199,6 +199,15 @@ templ People(deployment, versionName, versionRef, eventName string, defaultPassw
                   </select>
                   <label for="add_person_participation">Role</label>
                 </div>
+                <!-- Crew picker (slice 10c PR 5): populated by people.ts with the crews
+                     the viewer may assign to (all for an admin, led-only for a crew
+                     leader). Hidden when the viewer manages none. -->
+                <div id="add_person_crew_wrap" class="form-floating mb-3 hidden">
+                  <select id="add_person_crew" class="form-select" aria-label="Crew">
+                    <option value="">— no crew —</option>
+                  </select>
+                  <label for="add_person_crew">Crew</label>
+                </div>
               </div>
             </div>
           </div>
@@ -263,6 +272,17 @@ templ People(deployment, versionName, versionRef, eventName string, defaultPassw
                   <option value="ejected">ejected</option>
                 </select>
                 <label for="edit_person_participation">Role</label>
+              </div>
+              <!-- Crew picker (slice 10c PR 5): the person's crew for this event.
+                   Populated by people.ts with the crews the viewer may assign to and
+                   pre-set to the person's current (non-leader) crew among them; changing
+                   it moves/clears within that manageable set. Hidden when the viewer
+                   manages no crews. Leader memberships are managed on the Crews page. -->
+              <div id="edit_person_crew_wrap" class="form-floating mb-3 hidden">
+                <select id="edit_person_crew" class="form-select" aria-label="Crew">
+                  <option value="">— no crew —</option>
+                </select>
+                <label for="edit_person_crew">Crew</label>
               </div>
             </div>
           </div>
