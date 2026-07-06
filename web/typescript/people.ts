@@ -497,6 +497,11 @@ function buildPersonRow(
         if (person.is_admin) {
             entryItem.querySelector(".person-admin-badge")!.classList.remove("hidden");
         }
+        // Crew-leader badge: shown when the person leads at least one crew this event
+        // (slice 10c). crews is sent by the event-scoped roster endpoint.
+        if (person.crews?.some(c => c.is_leader)) {
+            entryItem.querySelector(".person-crew-leader-badge")!.classList.remove("hidden");
+        }
 
         const participationWrap: HTMLElement = entryItem.querySelector(".person-participation-dropdown")!;
         const participationButton: HTMLButtonElement = entryItem.querySelector(".person-participation")!;

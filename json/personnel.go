@@ -48,4 +48,16 @@ type Person struct {
 	// login directory and admin listings. See docs/plans/51-people-registry.md.
 	Wristband         string `json:"wristband,omitempty"`
 	ParticipationType string `json:"participation_type,omitempty"`
+	// Crews are the crews this person belongs to for the selected event, and whether
+	// they lead each (slice 10c). Populated only by the event-scoped roster and
+	// by-id (profile-card) endpoints; empty/omitted elsewhere. Crew membership is
+	// operational info (like the role), not contact PII, so it is not admin-gated.
+	Crews []PersonCrew `json:"crews,omitempty"`
+}
+
+// PersonCrew is one crew a person belongs to, with whether they lead it.
+type PersonCrew struct {
+	Name     string `json:"name"`
+	Slug     string `json:"slug"`
+	IsLeader bool   `json:"is_leader"`
 }

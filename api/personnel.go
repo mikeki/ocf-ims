@@ -17,6 +17,7 @@
 package api
 
 import (
+	"context"
 	"database/sql"
 	"errors"
 	"fmt"
@@ -116,6 +117,18 @@ func (action GetPersonnel) getPersonnel(req *http.Request) (GetPersonnelResponse
 			}
 		}
 
+		// Annotate each person with their crews for this event (slice 10c): one query
+		// for the whole roster (avoids an N+1), grouped by person id. Empty when no
+		// event is scoped — crews are per-event.
+		var crewsByPerson map[int32][]imsjson.PersonCrew
+		if eventID != 0 {
+			m, err := crewsByPersonForEvent(req.Context(), action.imsDBQ, eventID)
+			if err != nil {
+				return response, herr.InternalServerError("Failed to get crew memberships", err).From("[EventCrewMemberships]")
+			}
+			crewsByPerson = m
+		}
+
 		// With an event selected, the People page defaults to that event's roster
 		// (only people with a participation row). The "Show all people" toggle sends
 		// ?showAll=true to list every person instead; without an event there is no
@@ -132,6 +145,7 @@ func (action GetPersonnel) getPersonnel(req *http.Request) (GetPersonnelResponse
 					PersonID:          int64(person.ID),
 					Wristband:         person.Wristband.String,
 					ParticipationType: string(person.ParticipationType),
+					Crews:             crewsByPerson[person.ID],
 				}
 				// Email/phone + admin flag drive the admin-only profile/password/admin
 				// controls; a non-admin inviter has none of those, so don't leak them.
@@ -162,6 +176,7 @@ func (action GetPersonnel) getPersonnel(req *http.Request) (GetPersonnelResponse
 				HasPassword: person.HasPassword,
 				PersonID:    int64(person.ID),
 				Wristband:   person.Wristband.String,
+				Crews:       crewsByPerson[person.ID],
 			}
 			if person.ParticipationType.Valid {
 				p.ParticipationType = string(person.ParticipationType.PersonEventParticipationType)
@@ -258,10 +273,44 @@ func (action GetPersonnel) personnelByID(req *http.Request, pidStr string, globa
 		default:
 			return response, herr.InternalServerError("Failed to get participation", err).From("[PersonEvent]")
 		}
+
+		// The person's crews for this event (slice 10c), shown on the profile card.
+		crewRows, err := action.imsDBQ.PersonCrews(req.Context(), action.imsDBQ, imsdb.PersonCrewsParams{
+			Event:    event.ID,
+			PersonID: person.ID,
+		})
+		if err != nil {
+			return response, herr.InternalServerError("Failed to get crews", err).From("[PersonCrews]")
+		}
+		for _, cr := range crewRows {
+			p.Crews = append(p.Crews, imsjson.PersonCrew{
+				Name:     cr.CrewName,
+				Slug:     cr.CrewSlug,
+				IsLeader: cr.IsLeader,
+			})
+		}
 	}
 
 	response = append(response, p)
 	return response, nil
+}
+
+// crewsByPersonForEvent returns each person's crews for an event, keyed by person
+// id — one query for the whole roster (slice 10c).
+func crewsByPersonForEvent(ctx context.Context, imsDBQ *store.DBQ, eventID int32) (map[int32][]imsjson.PersonCrew, error) {
+	rows, err := imsDBQ.EventCrewMemberships(ctx, imsDBQ, eventID)
+	if err != nil {
+		return nil, err
+	}
+	out := make(map[int32][]imsjson.PersonCrew)
+	for _, r := range rows {
+		out[r.PersonID] = append(out[r.PersonID], imsjson.PersonCrew{
+			Name:     r.CrewName,
+			Slug:     r.CrewSlug,
+			IsLeader: r.IsLeader,
+		})
+	}
+	return out, nil
 }
 
 // searchPersonnel runs the typeahead query. With an event named (?event=), each

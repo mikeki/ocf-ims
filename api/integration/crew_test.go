@@ -251,6 +251,56 @@ func reportNumbers(reports imsjson.Reports) []int32 {
 	return nums
 }
 
+// TestPersonCrewsInPersonnel verifies the personnel API surfaces a person's crews
+// (with leader flags) on the profile-card (by-id) and roster endpoints — the data
+// behind the crew-leader badge and the profile card's Crews row (slice 10c).
+func TestPersonCrewsInPersonnel(t *testing.T) {
+	t.Parallel()
+	ctx := t.Context()
+	admin := ApiHelper{t: t, serverURL: shared.serverURL, jwt: jwtForAdmin(ctx, t)}
+	eventName := makeEvent(ctx, t, admin)
+
+	slug, resp := admin.editCrew(ctx, eventName, imsjson.Crew{Name: new("Ops")})
+	require.Equal(t, http.StatusNoContent, resp.StatusCode)
+	require.NoError(t, resp.Body.Close())
+	_, resp = admin.editCrew(ctx, eventName, imsjson.Crew{Slug: slug, Member: &imsjson.CrewMemberEdit{PersonID: davePersonID}})
+	require.Equal(t, http.StatusNoContent, resp.StatusCode)
+	require.NoError(t, resp.Body.Close())
+	_, resp = admin.editCrew(ctx, eventName, imsjson.Crew{Slug: slug, Member: &imsjson.CrewMemberEdit{PersonID: erinPersonID, IsLeader: true}})
+	require.Equal(t, http.StatusNoContent, resp.StatusCode)
+	require.NoError(t, resp.Body.Close())
+
+	// Profile card (by id): the leader's crew is tagged is_leader.
+	erinCard, resp := admin.getPersonnelByID(ctx, erinPersonID, eventName)
+	require.Equal(t, http.StatusOK, resp.StatusCode)
+	require.NoError(t, resp.Body.Close())
+	require.Len(t, erinCard, 1)
+	require.Len(t, erinCard[0].Crews, 1)
+	assert.Equal(t, slug, erinCard[0].Crews[0].Slug)
+	assert.Equal(t, "Ops", erinCard[0].Crews[0].Name)
+	assert.True(t, erinCard[0].Crews[0].IsLeader)
+
+	// A plain member's crew is present but not flagged leader.
+	daveCard, resp := admin.getPersonnelByID(ctx, davePersonID, eventName)
+	require.Equal(t, http.StatusOK, resp.StatusCode)
+	require.NoError(t, resp.Body.Close())
+	require.Len(t, daveCard, 1)
+	require.Len(t, daveCard[0].Crews, 1)
+	assert.False(t, daveCard[0].Crews[0].IsLeader)
+
+	// The roster (participation-scoped) carries the same crew annotation. Erin needs
+	// a participation row to appear on it.
+	resp = admin.setParticipation(ctx, erinPersonID, eventName, api.SetParticipationRequest{ParticipationType: "reporter"})
+	require.Equal(t, http.StatusNoContent, resp.StatusCode)
+	require.NoError(t, resp.Body.Close())
+	roster, resp := admin.getEventRoster(ctx, eventName)
+	require.Equal(t, http.StatusOK, resp.StatusCode)
+	require.NoError(t, resp.Body.Close())
+	erinRow := findPerson(t, roster, erinPersonID)
+	require.Len(t, erinRow.Crews, 1)
+	assert.True(t, erinRow.Crews[0].IsLeader)
+}
+
 // TestCrewLeaderDerivedAccess verifies the slice-10c derived role: marking a person
 // a crew leader (IS_LEADER) grants them the crew-leader access without any
 // participation row — read-only incident visibility and their crew's reports — and
