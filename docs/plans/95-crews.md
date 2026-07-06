@@ -253,6 +253,61 @@ unchanged, and new `TestCrewLeaderDerivedAccess` covers: a person made a crew le
 non-member's, cannot edit an incident; a plain crew member (not a leader) gets no incident
 read and sees only their own report. golangci-lint clean.
 
+## PR 4 — "My Crew": crew-leader self-service membership (follow-up)
+
+**Requested 2026-07 after PRs 1–3 merged.** PR 2 gave *admins* a Crews page to manage
+every crew; a **crew leader** still had no way to manage their own crew's roster. PR 4
+adds a **"My Crew" section on the People page** where a leader adds/removes the members
+of the crew(s) they lead — the self-service counterpart to the admin-only Crews page.
+
+**Scope (deliberately narrow):** members only. Creating / renaming / deleting a crew and
+**assigning or removing leaders stay admin-only** on the Crews page. A leader adds people
+as plain members and may remove a plain member, but **cannot mint a co-leader** (an add
+never sets/clears `IS_LEADER`) nor **remove a fellow leader** (403). This keeps
+leadership fully admin-controlled while letting leaders keep their own roster current.
+
+1. **New crew-leader-scoped endpoints (`api/crew.go`), NOT admin-gated.** Authorization
+   is *"the caller leads this crew"* (checked via `CrewsLedByPerson`), independent of
+   `GlobalAdministrateCrews`:
+   - `GET /ims/api/events/{event}/crews/mine` (`MyCrews`) → the crews the caller leads,
+     with members (reuses `loadCrewsJSON`, filtered to the led set). Empty for a
+     non-leader. `no-store` (per-caller, not shareable).
+   - `POST /ims/api/events/{event}/crews/mine` (`EditMyCrew`) → body `{slug, member:{…}}`.
+     Rejects an empty slug and any non-member edit (create/rename/delete) with 400; 403
+     unless the caller leads `slug` (a slug they don't lead — including a nonexistent one
+     — is forbidden, not 404, so crew existence isn't leaked). Adds via the new
+     `AddCrewMemberIfAbsent` (inserts a non-leader, no-ops on an existing row so an
+     existing member's leader flag is never disturbed; a missing person still surfaces the
+     FK violation → 404). Removes only after `CrewMembership` confirms the target is **not**
+     a leader (else 403). Invalidates the admin `crewsCache` so the Crews page reflects the
+     change.
+2. **New SQL (`store/queries.sql`).** `AddCrewMemberIfAbsent` (insert-if-absent, no-op
+   `ON DUPLICATE KEY` preserving `IS_LEADER`) and `CrewMembership :one` (a member's leader
+   flag, or no rows).
+3. **People page UI (`web/template/people.templ`, `web/typescript/people.ts`).** A "My
+   Crew" card above the roster, hidden unless the viewer leads ≥ 1 crew for the selected
+   event. One block per led crew: member list (a leader is tagged and has **no** Remove
+   button; a plain member gets Remove) + an add-member combobox scoped to the event
+   (reuses `setupPersonCombobox`, adds any registry person). It refreshes on every
+   `loadAndDrawPeople`, so role edits/removals and event switches keep it in sync, and each
+   membership change reloads people so the roster's crew-leader badges stay current. The
+   admin no-event doorway (no event) hides the section.
+
+**Decisions (proceeded with sensible defaults; all easy to revisit):**
+- **Add any registry person** (matches the admin Crews page; crew membership is decoupled
+  from the event roster — being on a crew is not event access).
+- **Data-driven visibility:** the section shows for anyone who leads a crew (admin or
+  not); admins keep the full Crews page separately.
+- **No co-leader minting / no leader removal** by a leader (safety default — leadership is
+  an admin act).
+
+**Verified:** full `go test ./...` incl. `./api/integration ./store/integration`;
+new `TestMyCrewLeaderManagesMembers` covers read-your-crews, add (incl. leader-request
+ignored), remove, can't-remove-a-leader (403), bad person (404), create/rename/delete
+rejected (400), non-leader gets an empty list + 403 on write, unknown slug 403, and that
+the admin crews view reflects the leader's change (cache invalidation). Build + full-module
+golangci-lint clean.
+
 ## Sequencing & risks
 
 - Order: **PR 1 → PR 2 → PR 3**. PR 1 is done. PR 2 and PR 3 share the membership tables

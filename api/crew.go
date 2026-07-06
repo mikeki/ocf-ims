@@ -303,3 +303,178 @@ func (action EditCrews) mustFindCrew(ctx context.Context, eventID int32, slug st
 	}
 	return existing[idx], nil
 }
+
+// MyCrews serves the crews the caller leads for an event, each with its membership.
+// Unlike GetCrews (the admin roster of *all* crews) it is not admin-gated: any
+// authenticated user may read it and the result is naturally scoped to the crews they
+// lead — empty when they lead none. It backs the crew-leader "My Crew" self-service
+// section on the People page (slice 10c).
+type MyCrews struct {
+	imsDBQ    *store.DBQ
+	userStore directory.UserStore
+}
+
+func (action MyCrews) ServeHTTP(w http.ResponseWriter, req *http.Request) {
+	resp, errHTTP := action.run(req)
+	if errHTTP != nil {
+		errHTTP.From("[run]").WriteResponse(w)
+		return
+	}
+	// The result is which crews *you* lead, so it isn't shareable — don't cache it.
+	w.Header().Set("Cache-Control", "no-store")
+	mustWriteJSON(w, req, resp)
+}
+
+func (action MyCrews) run(req *http.Request) (imsjson.Crews, *herr.HTTPError) {
+	ctx := req.Context()
+	event, jwtCtx, _, errHTTP := getEventPermissions(req, action.imsDBQ, action.userStore)
+	if errHTTP != nil {
+		return nil, errHTTP.From("[getEventPermissions]")
+	}
+	resp, err := loadLedCrewsJSON(ctx, action.imsDBQ, event.ID, jwtCtx.Claims.PersonID())
+	if err != nil {
+		return nil, herr.InternalServerError("Failed to fetch crews", err).From("[loadLedCrewsJSON]")
+	}
+	return resp, nil
+}
+
+// loadLedCrewsJSON returns the crews (with members) that leaderPersonID leads for an
+// event. It reuses loadCrewsJSON and filters to the led set, so the JSON shape matches
+// the admin crews list exactly.
+func loadLedCrewsJSON(ctx context.Context, imsDBQ *store.DBQ, eventID, leaderPersonID int32) (imsjson.Crews, error) {
+	ledSlugs, err := imsDBQ.CrewsLedByPerson(ctx, imsDBQ, imsdb.CrewsLedByPersonParams{
+		Event:    eventID,
+		PersonID: leaderPersonID,
+	})
+	if err != nil {
+		return nil, err
+	}
+	if len(ledSlugs) == 0 {
+		return imsjson.Crews{}, nil
+	}
+	led := make(map[string]bool, len(ledSlugs))
+	for _, s := range ledSlugs {
+		led[s] = true
+	}
+	all, err := loadCrewsJSON(ctx, imsDBQ, eventID)
+	if err != nil {
+		return nil, err
+	}
+	resp := make(imsjson.Crews, 0, len(led))
+	for _, c := range all {
+		if led[c.Slug] {
+			resp = append(resp, c)
+		}
+	}
+	return resp, nil
+}
+
+// EditMyCrew lets a crew leader add or remove members of a crew they lead (slice
+// 10c) — the self-service counterpart to the admin-only EditCrews. The caller must
+// lead the named crew, and the only mutations allowed are adding a plain member or
+// removing a non-leader member. Everything else — creating/renaming/deleting a crew
+// and assigning or removing leaders — stays admin-only on the Crews page. On success
+// it invalidates the admin crews cache so that page reflects the change.
+type EditMyCrew struct {
+	imsDBQ    *store.DBQ
+	userStore directory.UserStore
+	crews     *crewsCache
+}
+
+func (action EditMyCrew) ServeHTTP(w http.ResponseWriter, req *http.Request) {
+	errHTTP := action.run(req)
+	if errHTTP != nil {
+		errHTTP.From("[run]").WriteResponse(w)
+		return
+	}
+	action.crews.InvalidateEvent(req.PathValue("eventName"))
+	herr.WriteNoContentResponse(w, "Success")
+}
+
+func (action EditMyCrew) run(req *http.Request) *herr.HTTPError {
+	ctx := req.Context()
+	event, jwtCtx, _, errHTTP := getEventPermissions(req, action.imsDBQ, action.userStore)
+	if errHTTP != nil {
+		return errHTTP.From("[getEventPermissions]")
+	}
+	crewReq, errHTTP := readBodyAs[imsjson.Crew](req)
+	if errHTTP != nil {
+		return errHTTP.From("[readBodyAs]")
+	}
+	if crewReq.Slug == "" {
+		return herr.BadRequest("A crew slug is required", nil)
+	}
+	if crewReq.Member == nil {
+		return herr.BadRequest("Only member changes are allowed here", nil)
+	}
+
+	// Authz: the caller must lead this crew. Checking membership-as-leader also
+	// confirms the crew exists in the event — a slug they do not lead (including a
+	// nonexistent one) is forbidden rather than 404, so we don't leak which crews exist.
+	leaderID := jwtCtx.Claims.PersonID()
+	ledSlugs, err := action.imsDBQ.CrewsLedByPerson(ctx, action.imsDBQ, imsdb.CrewsLedByPersonParams{
+		Event:    event.ID,
+		PersonID: leaderID,
+	})
+	if err != nil {
+		return herr.InternalServerError("Failed to check crew leadership", err).From("[CrewsLedByPerson]")
+	}
+	if !slices.Contains(ledSlugs, crewReq.Slug) {
+		return herr.Forbidden("You do not lead this crew", nil)
+	}
+
+	return action.editMember(ctx, event.ID, crewReq.Slug, *crewReq.Member)
+}
+
+// editMember adds a plain member or removes a non-leader member. Leader flags are
+// never touched here: an add never promotes (nor demotes an existing member), and a
+// fellow leader may not be removed — that stays an admin act on the Crews page.
+func (action EditMyCrew) editMember(ctx context.Context, eventID int32, slug string, edit imsjson.CrewMemberEdit) *herr.HTTPError {
+	if edit.PersonID == 0 {
+		return herr.BadRequest("A person id is required to change crew membership", nil)
+	}
+
+	if edit.Remove {
+		isLeader, err := action.imsDBQ.CrewMembership(ctx, action.imsDBQ, imsdb.CrewMembershipParams{
+			Event:    eventID,
+			CrewSlug: slug,
+			PersonID: edit.PersonID,
+		})
+		switch {
+		case errors.Is(err, sql.ErrNoRows):
+			// Already not a member — nothing to do (idempotent).
+			return nil
+		case err != nil:
+			return herr.InternalServerError("Failed to look up crew member", err).From("[CrewMembership]")
+		}
+		if isLeader {
+			return herr.Forbidden("Crew leaders are managed by an admin and can't be removed here", nil)
+		}
+		err = action.imsDBQ.RemoveCrewMember(ctx, action.imsDBQ, imsdb.RemoveCrewMemberParams{
+			Event:    eventID,
+			CrewSlug: slug,
+			PersonID: edit.PersonID,
+		})
+		if err != nil {
+			return herr.InternalServerError("Failed to remove crew member", err).From("[RemoveCrewMember]")
+		}
+		return nil
+	}
+
+	// Add as a plain member without disturbing an existing membership's leader flag
+	// (AddCrewMemberIfAbsent no-ops on an existing row). A missing person surfaces as
+	// the FK violation → 404, like the admin path.
+	err := action.imsDBQ.AddCrewMemberIfAbsent(ctx, action.imsDBQ, imsdb.AddCrewMemberIfAbsentParams{
+		Event:    eventID,
+		CrewSlug: slug,
+		PersonID: edit.PersonID,
+	})
+	if err != nil {
+		var mysqlErr *mysql.MySQLError
+		if errors.As(err, &mysqlErr) && mysqlErr.Number == mySQLErNoReferencedRow {
+			return herr.NotFound("No such person", err)
+		}
+		return herr.InternalServerError("Failed to add crew member", err).From("[AddCrewMemberIfAbsent]")
+	}
+	return nil
+}

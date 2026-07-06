@@ -922,6 +922,34 @@ values
 on duplicate key update `IS_LEADER` = values(`IS_LEADER`)
 ;
 
+-- name: AddCrewMemberIfAbsent :exec
+-- Add a person to a crew as a plain member, leaving an existing membership (and its
+-- leader flag) untouched. Backs the crew-leader "My Crew" self-service path (slice
+-- 10c): a leader may add members but must never change who is a leader — that stays
+-- admin-only. The no-op ON DUPLICATE KEY UPDATE (re-setting IS_LEADER to itself)
+-- keeps a real FK violation (unknown person) surfacing as an error, unlike INSERT
+-- IGNORE which would swallow it.
+insert into CREW_MEMBERSHIP
+    (`EVENT`, `CREW_SLUG`, `PERSON_ID`, `IS_LEADER`)
+values
+    (?, ?, ?, false)
+on duplicate key update `IS_LEADER` = `IS_LEADER`
+;
+
+-- name: CrewMembership :one
+-- One person's membership row in a crew (its leader flag), or no rows if they are not
+-- a member. Used by the "My Crew" path to gate removal: a leader may remove a plain
+-- member but not a fellow leader.
+select
+    `IS_LEADER`
+from
+    CREW_MEMBERSHIP
+where
+    `EVENT` = ?
+    and `CREW_SLUG` = ?
+    and `PERSON_ID` = ?
+;
+
 -- name: SetCrewMemberLeader :exec
 update CREW_MEMBERSHIP set
     `IS_LEADER` = ?

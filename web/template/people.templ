@@ -329,6 +329,52 @@ templ People(deployment, versionName, versionRef, eventName string, defaultPassw
     </div>
   </div>
 
+  <!-- "My Crew" (slice 10c): the crews the viewer *leads* for the selected event,
+       with add/remove-member controls. Hidden unless people.ts finds the viewer leads
+       at least one crew here. Assigning leaders + creating/renaming/deleting crews
+       stays on the admin-only Crews page — this is member management only. -->
+  <div class="row hidden" id="my_crew_container">
+    <div class="col-sm-12">
+      <div class="card mb-3">
+        <div class="card-header">
+          <label>My Crew</label>
+        </div>
+        <div class="card-body pb-2">
+          <p class="text-body-secondary small mb-3">
+            Add or remove members of the crew<span id="my_crew_plural"></span> you lead for
+            <strong id="my_crew_event_name"></strong>. Crew leaders are assigned by an admin.
+          </p>
+          <div id="my_crews"></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- One crew the viewer leads, cloned per led crew. -->
+  <template id="my_crew_block_template">
+    <div class="mb-4 my-crew-block" data-crew-slug="">
+      <h2 class="h6 my-crew-name"></h2>
+      <ul class="list-group list-group-flush mb-2 my-crew-members"></ul>
+      <div class="position-relative col-sm-12 col-md-8 col-lg-6">
+        <input type="search" class="form-control form-control-sm my-crew-add-member"
+               autocomplete="off" placeholder="Add member — legal name or fair name…" />
+        <div class="list-group position-absolute w-100 shadow-sm hidden my-crew-add-member-results"
+             style="z-index: 1000;"></div>
+      </div>
+    </div>
+  </template>
+
+  <!-- One member row within a led crew. A leader is tagged and has no Remove button
+       (leaders are admin-managed); a plain member gets a Remove button. -->
+  <template id="my_crew_member_template">
+    <li class="list-group-item d-flex align-items-center gap-2 my-crew-member" data-person-id="">
+      <span class="my-crew-member-name"></span>
+      <span class="badge text-bg-success ms-auto my-crew-member-leader hidden">leader</span>
+      <button type="button" class="btn btn-outline-secondary btn-sm ms-auto my-crew-remove-member hidden"
+              onclick="removeMyCrewMember(this)">Remove</button>
+    </li>
+  </template>
+
   <div class="row" id="people_container">
     <div id="people" class="col-sm-12">
       <div class="card">
