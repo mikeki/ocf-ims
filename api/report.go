@@ -529,6 +529,10 @@ func (action EditReport) handleLinkToIncident(
 
 	var newIncident sql.NullInt32
 	var entryText string
+	// The incident whose journal should mirror this link, plus the line to write on
+	// it, so the change shows on both the report's and the incident's timelines.
+	var incidentForJournal sql.NullInt32
+	var incidentEntryText string
 	switch queryAction {
 	case "attach":
 		num, err := conv.ParseInt32(targetIncidentVal)
@@ -537,9 +541,14 @@ func (action EditReport) handleLinkToIncident(
 		}
 		newIncident = sql.NullInt32{Int32: num, Valid: true}
 		entryText = fmt.Sprintf("Attached to incident: %v", num)
+		incidentForJournal = sql.NullInt32{Int32: num, Valid: true}
+		incidentEntryText = fmt.Sprintf("Report added: %v", reportNumber)
 	case "detach":
 		newIncident = sql.NullInt32{Valid: false}
 		entryText = fmt.Sprintf("Detached from incident: %v", previousIncident.Int32)
+		// Mirror onto the previous incident — valid only if it was actually attached.
+		incidentForJournal = previousIncident
+		incidentEntryText = fmt.Sprintf("Report removed: %v", reportNumber)
 	default:
 		return herr.BadRequest("Invalid action", fmt.Errorf("provided bad action was %v", queryAction))
 	}
@@ -561,6 +570,14 @@ func (action EditReport) handleLinkToIncident(
 	_, errHTTP := addJournalEntry(ctx, action.imsDBQ, action.imsDBQ, event.ID, reportNumber, actorPersonID, entryText, true, "", "", "", sql.NullInt32{})
 	if errHTTP != nil {
 		return errHTTP.From("[addJournalEntry]")
+	}
+	// Mirror the link onto the incident's journal too (skip a detach from nothing —
+	// there is no incident to record it against).
+	if incidentForJournal.Valid {
+		_, errHTTP = addIncidentJournalEntry(ctx, action.imsDBQ, action.imsDBQ, event.ID, incidentForJournal.Int32, actorPersonID, incidentEntryText, true, "", "", "")
+		if errHTTP != nil {
+			return errHTTP.From("[addIncidentJournalEntry]")
+		}
 	}
 	defer action.eventSource.notifyReportUpdate(event.ID, reportNumber)
 	defer action.eventSource.notifyIncidentUpdates(event.ID, previousIncident.Int32, newIncident.Int32)
@@ -688,6 +705,12 @@ func (action NewReport) newReport(req *http.Request) (reportNumber int32, locati
 		_, errHTTP := addJournalEntry(ctx, action.imsDBQ, txn, event.ID, report.Number, authorPersonID, text, true, "", "", "", sql.NullInt32{})
 		if errHTTP != nil {
 			return 0, "", errHTTP.From("[addJournalEntry]")
+		}
+		// Mirror the link onto the incident's journal too, so it shows on both
+		// timelines (see EditReport.handleLinkToIncident).
+		_, errHTTP = addIncidentJournalEntry(ctx, action.imsDBQ, txn, event.ID, *report.Incident, authorPersonID, fmt.Sprintf("Report added: %v", report.Number), true, "", "", "")
+		if errHTTP != nil {
+			return 0, "", errHTTP.From("[addIncidentJournalEntry]")
 		}
 	}
 
