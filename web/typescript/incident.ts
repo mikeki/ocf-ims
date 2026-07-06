@@ -23,6 +23,7 @@ declare global {
         markClosed: ()=>Promise<void>;
         reopenIncident: ()=>Promise<void>;
         editPriority: ()=>Promise<void>;
+        editPrivate: ()=>Promise<void>;
         editOutcome: ()=>Promise<void>;
         editIncidentSummary: ()=>Promise<void>;
         editLocationArea: ()=>Promise<void>;
@@ -48,6 +49,12 @@ declare global {
 }
 
 let incident: ims.Incident|null = null;
+
+// The signed-in viewer, captured at init. Used to decide whether the privacy toggle
+// is editable (only an admin or the incident's creator may change privacy; the server
+// enforces this too).
+let viewerIsAdmin = false;
+let viewerPersonId: number|null = null;
 
 let allIncidentTypes: ims.IncidentType[] = [];
 
@@ -77,6 +84,7 @@ const el = {
     markClosed: ims.typedElement("mark_closed", HTMLButtonElement),
     reopen: ims.typedElement("reopen", HTMLButtonElement),
     incidentPriority: ims.typedElement("incident_priority", HTMLSelectElement),
+    incidentPrivate: ims.typedElement("incident_private", HTMLInputElement),
     incidentOutcome: ims.typedElement("incident_outcome", HTMLSelectElement),
     startedDatetime: ims.typedElement("started_datetime", HTMLInputElement) as ims.FlatpickrHTMLInputElement,
     startedDatetimeTz: ims.typedElement("started_datetime_tz", HTMLSpanElement),
@@ -138,9 +146,13 @@ async function initIncidentPage(): Promise<void> {
         return;
     }
 
+    viewerIsAdmin = initResult.authInfo.admin;
+    viewerPersonId = initResult.authInfo.person_id ?? null;
+
     window.markClosed = markClosed;
     window.reopenIncident = reopenIncident;
     window.editPriority = editPriority;
+    window.editPrivate = editPrivate;
     window.editOutcome = editOutcome;
     window.editIncidentSummary = editIncidentSummary;
     window.editLocationArea = editLocationArea;
@@ -625,6 +637,7 @@ function drawIncidentFields() {
     drawStarted();
     drawCreatedBy();
     drawPriority();
+    drawPrivate();
     drawIncidentSummary();
     drawPeople();
     drawIncidentTypes();
@@ -772,6 +785,33 @@ function drawPriority(): void {
         el.incidentPriority,
         (incident!.priority??"").toString(),
     )
+}
+
+//
+// Populate incident privacy
+//
+
+// mayEditPrivacy reports whether the viewer may toggle this incident's privacy.
+// Changing privacy needs incident write access AND being an admin or the creator —
+// the same rule the server enforces (a granted reporter or a non-creator writer
+// cannot flip it).
+function mayEditPrivacy(): boolean {
+    if (!ims.eventAccess?.writeIncidents) {
+        return false;
+    }
+    if (viewerIsAdmin) {
+        return true;
+    }
+    const creatorId = incident?.created_by?.person_id;
+    return creatorId != null && viewerPersonId != null && creatorId === viewerPersonId;
+}
+
+// drawPrivate reflects the stored privacy flag into the checkbox and gates whether it
+// can be changed. The checkbox class is form-check-input, which enableEditing() does
+// not touch, so this disabled state is authoritative for everyone.
+function drawPrivate(): void {
+    el.incidentPrivate.checked = incident!.private ?? false;
+    el.incidentPrivate.disabled = !mayEditPrivacy();
 }
 
 
@@ -1441,6 +1481,15 @@ async function reopenIncident(): Promise<void> {
 
 async function editPriority(): Promise<void> {
     await ims.editFromElement(el.incidentPriority, "priority", (v: string): number|null => ims.parseInt10(v));
+}
+
+async function editPrivate(): Promise<void> {
+    // The checkbox is only enabled for an admin or the creator, but the server is the
+    // source of truth; on rejection, revert the box to the stored value.
+    const {err} = await ims.editValue("private", el.incidentPrivate.checked);
+    if (err != null) {
+        el.incidentPrivate.checked = incident?.private ?? false;
+    }
 }
 
 async function editOutcome(): Promise<void> {

@@ -262,9 +262,17 @@ func buildMetrics(
 		if inc.OutcomeName.Valid &&
 			inc.OutcomeName.String == outcomeFollowUpRequired &&
 			inc.State != imsdb.IncidentStateClosed {
+			// A private incident still contributes to the counts and appears in the
+			// follow-ups list (by number/state/priority), but its brief summary is
+			// private, so withhold it — the dashboard is cached per-event, not tailored
+			// per-viewer, and a writer must not see private summary text here.
+			summary := inc.Summary.String
+			if inc.Private {
+				summary = ""
+			}
 			followUps = append(followUps, imsjson.MetricIncidentRef{
 				Number:  inc.Number,
-				Summary: inc.Summary.String,
+				Summary: summary,
 			})
 		}
 	}

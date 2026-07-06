@@ -51,6 +51,11 @@ type Incident struct {
 	LastModified time.Time `json:"last_modified,omitzero"`
 	CreatedBy    *Mention  `json:"created_by,omitzero"`
 	State        string    `json:"state"`
+	// Private marks the incident as visible only to admins, its creator, and people
+	// granted per-incident access; when set, event writers/crew-leaders cannot see
+	// it. On a write: nil leaves it unchanged, non-nil sets it (only an admin or the
+	// creator may change it). On a read: always populated with the stored value.
+	Private *bool `json:"private"`
 	// OutcomeID references an OUTCOME(ID) — the incident's disposition, promoted
 	// from the former hardcoded enum to a data-driven table (slice 10a). On a
 	// write: nil leaves it unchanged, 0 clears it, any other value must reference

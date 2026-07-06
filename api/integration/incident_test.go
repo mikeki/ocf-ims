@@ -704,6 +704,10 @@ func requireEqualIncident(t *testing.T, before, after imsjson.Incident) {
 	// cover their values.
 	before.ViewerMayAddJournal, after.ViewerMayAddJournal = false, false
 	before.CreatedBy, after.CreatedBy = nil, nil
+	// Private is always populated on read (a bool) but usually nil on a request; a
+	// create/update round-trip comparison shouldn't trip on it. Dedicated privacy
+	// tests assert its value directly.
+	before.Private, after.Private = nil, nil
 	for _, ppl := range []*[]imsjson.IncidentPerson{before.People, after.People} {
 		if ppl == nil {
 			continue

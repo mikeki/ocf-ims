@@ -537,7 +537,13 @@ function renderSummary(_data: string|null, type: ims.RenderType, incident: ims.I
                 summarized = summarized.substring(0, maxDisplayLength - 3) + "...";
             }
             // XSS prevention
-            return DataTable.render.text().display(summarized) as string;
+            const safe = DataTable.render.text().display(summarized) as string;
+            // Flag private incidents (only shown to viewers already authorized to see
+            // them). The badge is static, safe markup prefixed to the escaped summary.
+            const lock = incident.private
+                ? '<span class="badge text-bg-secondary me-1" title="Private — visible only to admins, the creator, and granted people">Private</span> '
+                : "";
+            return lock + safe;
         }
         case "filter":
             return ims.reportTextFromIncident(incident, eventReports, eventVisits);

@@ -129,18 +129,29 @@ func generateAddedToIncidentNotification(
 	return nil
 }
 
-// notificationToJSON maps a stored, enriched row to its API shape.
-func notificationToJSON(row imsdb.NotificationsForPersonRow) imsjson.Notification {
+// notificationToJSON maps a stored, enriched row to its API shape. The recipient
+// (callerPersonID / callerIsAdmin) is passed so a private incident's summary can be
+// withheld from a recipient who may no longer view it.
+func notificationToJSON(row imsdb.NotificationsForPersonRow, callerPersonID int32, callerIsAdmin bool) imsjson.Notification {
 	actor := row.ActorName.String
 	if actor == "" {
 		actor = row.ActorHandle.String
+	}
+	// Withhold a private incident's summary from a recipient who can't currently see
+	// it — not an admin, not the creator, and not currently granted access (e.g. the
+	// incident was made private, or their grant was revoked, after the notification).
+	incidentSummary := row.IncidentSummary.String
+	if row.IncidentPrivate.Valid && row.IncidentPrivate.Bool && !callerIsAdmin &&
+		!(row.IncidentCreatedBy.Valid && row.IncidentCreatedBy.Int32 == callerPersonID) &&
+		!row.IncidentRecipientHasGrant {
+		incidentSummary = ""
 	}
 	return imsjson.Notification{
 		ID:              row.ID,
 		Type:            string(row.Type),
 		Event:           row.EventName.String,
 		IncidentNumber:  conv.SqlToInt32(row.IncidentNumber),
-		IncidentSummary: row.IncidentSummary.String,
+		IncidentSummary: incidentSummary,
 		ReportNumber:    conv.SqlToInt32(row.ReportNumber),
 		ReportSummary:   row.ReportSummary.String,
 		JournalEntryID:  conv.SqlToInt32(row.JournalEntry),
@@ -192,7 +203,7 @@ func (action GetNotifications) getNotifications(req *http.Request) (imsjson.Noti
 		Unread:        unread,
 	}
 	for _, row := range rows {
-		resp.Notifications = append(resp.Notifications, notificationToJSON(row))
+		resp.Notifications = append(resp.Notifications, notificationToJSON(row, personID, jwtCtx.Claims.PersonAdmin()))
 	}
 	return resp, nil
 }
