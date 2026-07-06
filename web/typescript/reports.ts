@@ -266,23 +266,8 @@ function reportInitDataTables() {
                 "render": ims.renderIncidentNumber,
                 "responsivePriority": 3,
             },
-            {   // 2
-                "name": "report_created",
-                "className": "report_created text-center",
-                "data": "created",
-                "defaultContent": null,
-                "render": ims.renderDate,
-                "responsivePriority": 4,
-            },
-            {   // 3
-                "name": "report_created_by",
-                "className": "report_created_by",
-                "data": "created_by",
-                "defaultContent": "",
-                "render": ims.renderCreatedBy,
-                "responsivePriority": 5,
-            },
-            {   // 4
+            {   // 2 — summary sits ahead of the creation columns so the brief
+                //     description reads first, with Created / Created by to its right.
                 "name": "report_summary",
                 "className": "report_summary all",
                 "data": "summary",
@@ -290,10 +275,26 @@ function reportInitDataTables() {
                 "render": renderSummary,
                 "width": "70%",
             },
+            {   // 3
+                "name": "report_created",
+                "className": "report_created text-center",
+                "data": "created",
+                "defaultContent": null,
+                "render": ims.renderDate,
+                "responsivePriority": 4,
+            },
+            {   // 4
+                "name": "report_created_by",
+                "className": "report_created_by",
+                "data": "created_by",
+                "defaultContent": "",
+                "render": ims.renderCreatedBy,
+                "responsivePriority": 5,
+            },
         ],
         "order": [
-            // creation time descending
-            [2, "dsc"],
+            // creation time descending (report_created is now column 3)
+            [3, "dsc"],
         ],
         "createdRow": function (row: HTMLElement, report: ims.Report, _index: number) {
             const openLink = function(e: MouseEvent): void {

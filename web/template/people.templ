@@ -195,7 +195,7 @@ templ People(deployment, versionName, versionRef, eventName string, defaultPassw
                     <option value="volunteer">volunteer</option>
                     <option value="public">public</option>
                     <option value="not_present">not present</option>
-                    <option value="ejected">ejected</option>
+                    <option value="ejected">booted</option>
                   </select>
                   <label for="add_person_participation">Role</label>
                 </div>
@@ -269,7 +269,7 @@ templ People(deployment, versionName, versionRef, eventName string, defaultPassw
                   <option value="volunteer">volunteer</option>
                   <option value="public">public</option>
                   <option value="not_present">not present</option>
-                  <option value="ejected">ejected</option>
+                  <option value="ejected">booted</option>
                 </select>
                 <label for="edit_person_participation">Role</label>
               </div>
@@ -313,7 +313,7 @@ templ People(deployment, versionName, versionRef, eventName string, defaultPassw
                 <div class="small text-body-secondary">Known person, not participating this year. Kept on the roster, marked inactive.</div>
               </button>
               <button type="button" class="btn btn-outline-warning text-start" id="remove_mark_ejected" onclick="submitMarkParticipation('ejected')">
-                <strong>Mark as ejected</strong>
+                <strong>Mark as booted</strong>
                 <div class="small text-body-secondary">Removed from the event (kicked out). Kept for the record.</div>
               </button>
               <button type="button" class="btn btn-outline-danger text-start" id="remove_delete" onclick="submitRemoveFromEvent()">

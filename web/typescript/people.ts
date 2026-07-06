@@ -109,11 +109,15 @@ function targetAboveInviterCeiling(type: string|null|undefined): boolean {
 // reporter) pop, the kept-but-inactive states keep their slice-6j warning/secondary
 // cues.
 // participationLabel maps a raw participation-type identifier to its user-facing
-// label. Only "writer" diverges from its identifier (displayed as "FC/BUM"); every
-// other rung reads fine with the underscore swapped for a space.
+// label. Two rungs diverge from their identifier — "writer" displays as "FC/BUM"
+// and "ejected" as "booted"; every other rung reads fine with the underscore
+// swapped for a space.
 function participationLabel(type: string): string {
     if (type === "writer") {
         return "FC/BUM";
+    }
+    if (type === "ejected") {
+        return "booted";
     }
     return type.replace("_", " ");
 }
