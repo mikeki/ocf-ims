@@ -95,11 +95,15 @@ func (action GetReports) getReports(req *http.Request) (imsjson.Reports, *herr.H
 		return resp, herr.InternalServerError("Failed to fetch Reports", err).From("[Reports]")
 	}
 
+	callerPersonID := jwtCtx.Claims.PersonID()
+	callerHandle := jwtCtx.Claims.PersonHandle()
+	callerIsAdmin := jwtCtx.Claims.PersonAdmin()
+
 	var authorizedReports []imsdb.ReportsRow
 	if limitedAccess {
 		for _, storedReport := range storedReports {
 			entries := entriesByReport[storedReport.Report.Number]
-			if containsAuthor(entries, jwtCtx.Claims.PersonHandle()) {
+			if ownsReport(storedReport.Report, entries, callerPersonID, callerHandle) {
 				authorizedReports = append(authorizedReports, storedReport)
 			}
 		}
@@ -107,8 +111,6 @@ func (action GetReports) getReports(req *http.Request) (imsjson.Reports, *herr.H
 		authorizedReports = storedReports
 	}
 
-	callerPersonID := jwtCtx.Claims.PersonID()
-	callerIsAdmin := jwtCtx.Claims.PersonAdmin()
 	resp = make(imsjson.Reports, 0, len(authorizedReports))
 	for _, report := range authorizedReports {
 		mayEditSummary, mayAddEntry := reportEditRights(report.Report, callerPersonID, callerIsAdmin, eventPermissions)
@@ -126,6 +128,23 @@ func (action GetReports) getReports(req *http.Request) (imsjson.Reports, *herr.H
 	}
 
 	return resp, nil
+}
+
+// ownsReport reports whether a limited (own-reports-only) caller may see this
+// report. Ownership is anchored on REPORT.CREATED_BY — the deterministic creator
+// link (set on every report created since the CREATED_BY column landed) — so a
+// reporter always sees the reports they filed, even ones with no journal entry
+// they authored (e.g. a bare report, or one whose only entries are system
+// entries or were stricken). Authoring a journal entry is kept as a fallback so
+// legacy reports created before CREATED_BY existed, and reports a caller
+// contributed to but did not create, stay visible. This mirrors the edit-path
+// ownership floor (isCreator || isPreviousAuthor) in EditReport, keeping read and
+// write scoping consistent.
+func ownsReport(report imsdb.Report, entries []imsjson.JournalEntry, callerPersonID int32, callerHandle string) bool {
+	if report.CreatedBy.Valid && report.CreatedBy.Int32 == callerPersonID {
+		return true
+	}
+	return containsAuthor(entries, callerHandle)
 }
 
 func containsAuthor(entries []imsjson.JournalEntry, author string) bool {
@@ -177,13 +196,13 @@ func (action GetReport) getReport(req *http.Request) (imsjson.Report, *herr.HTTP
 		return response, errHTTP.From("[fetchReport]")
 	}
 
+	reportRow := imsdb.ReportsRow(report)
 	if limitedAccess {
-		if !containsAuthor(journalEntries, jwtCtx.Claims.PersonHandle()) {
+		if !ownsReport(reportRow.Report, journalEntries, jwtCtx.Claims.PersonID(), jwtCtx.Claims.PersonHandle()) {
 			return response, herr.Forbidden("The requestor does not have permission to access this particular Report", nil)
 		}
 	}
 
-	reportRow := imsdb.ReportsRow(report)
 	mayEditSummary, mayAddEntry := reportEditRights(
 		reportRow.Report, jwtCtx.Claims.PersonID(), jwtCtx.Claims.PersonAdmin(), eventPermissions)
 	return reportToJSON(reportRow, journalEntries, event, action.attachmentsEnabled, mayEditSummary, mayAddEntry), nil
