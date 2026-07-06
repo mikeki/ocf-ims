@@ -19,7 +19,7 @@ package template
 // QuickAddPersonModal is a reusable "add a new person" dialog for the
 // search-first person comboboxes on the incident and visit pages. When a search
 // finds no match, the combobox opens this modal (pre-filled with the typed text)
-// so the user can supply a handle/email/wristband/participation before the person
+// so the user can supply a handle/email/participation before the person
 // is created and attached — instead of the old silent name-only inline create.
 // Wired in ims.ts (setupQuickAddPersonModal); IDs are namespaced "quick_add_person_*"
 // to avoid colliding with the People page's own Add-Person modal.
@@ -85,10 +85,6 @@ templ QuickAddPersonModal() {
           <div id="quick_add_person_event_section" class="hidden mt-1">
             <hr class="my-3" />
             <p class="text-body-secondary small mb-2">At <strong id="quick_add_person_event_name"></strong></p>
-            <div class="form-floating mb-3">
-              <input id="quick_add_person_wristband" type="text" class="form-control" autocomplete="off" placeholder="Wristband" />
-              <label for="quick_add_person_wristband">Wristband (optional)</label>
-            </div>
             <div class="form-floating mb-3">
               <select id="quick_add_person_participation" class="form-select" aria-label="Role">
                 <option value="">— none —</option>

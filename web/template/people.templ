@@ -95,7 +95,7 @@ templ People(deployment, versionName, versionRef, eventName string, defaultPassw
             <div id="add_person_search_section" class="hidden">
               <label for="add_person_search" class="form-label fw-semibold">Search existing people</label>
               <div class="position-relative">
-                <input id="add_person_search" type="search" class="form-control" autocomplete="off" placeholder="Legal name, fair name, or wristband…" />
+                <input id="add_person_search" type="search" class="form-control" autocomplete="off" placeholder="Legal name or fair name…" />
                 <div id="add_person_search_results"
                      class="list-group position-absolute w-100 shadow-sm hidden"
                      style="z-index: 1100; max-height: 16rem; overflow-y: auto;"></div>
@@ -184,12 +184,8 @@ templ People(deployment, versionName, versionRef, eventName string, defaultPassw
                 <hr class="my-3" />
                 <p class="text-body-secondary small mb-2">At <strong id="add_person_event_name"></strong></p>
                 <!-- Inviter mode (53d): a non-admin inviter adds people only as reporters,
-                     so the wristband + role pickers are hidden and this note shows instead. -->
+                     so the role picker is hidden and this note shows instead. -->
                 <p id="add_person_invite_note" class="text-body-secondary small mb-2 hidden">They'll be added as a <strong>reporter</strong> on this event.</p>
-                <div id="add_person_wristband_wrap" class="form-floating mb-3">
-                  <input id="add_person_wristband" type="text" class="form-control" autocomplete="off" placeholder="Wristband" />
-                  <label for="add_person_wristband">Wristband (optional)</label>
-                </div>
                 <div id="add_person_participation_wrap" class="form-floating mb-3">
                   <select id="add_person_participation" class="form-select" aria-label="Role">
                     <option value="">— none —</option>
@@ -256,10 +252,6 @@ templ People(deployment, versionName, versionRef, eventName string, defaultPassw
               <hr />
               <p class="text-body-secondary small mb-2">Participation for <strong id="edit_person_event_name"></strong></p>
               <div class="form-floating mb-3">
-                <input id="edit_person_wristband" type="text" class="form-control" autocomplete="off" placeholder="Wristband" />
-                <label for="edit_person_wristband">Wristband</label>
-              </div>
-              <div class="form-floating mb-3">
                 <select id="edit_person_participation" class="form-select" aria-label="Participation">
                   <option value="">— none —</option>
                   <option value="writer">FC/BUM (full access)</option>
@@ -323,11 +315,11 @@ templ People(deployment, versionName, versionRef, eventName string, defaultPassw
       <select id="event-name" class="form-select" onchange="changeEvent();">
         <option value="">— no event —</option>
       </select>
-      <div class="form-text">Pick an event to show each person's wristband &amp; participation and to edit them.</div>
+      <div class="form-text">Pick an event to show each person's participation and to edit them.</div>
     </div>
     <div class="col-sm-6 col-md-4 mb-2">
       <label for="people-search" class="form-label">Search</label>
-      <input id="people-search" type="search" class="form-control" autocomplete="off" placeholder="Legal name, fair name, or wristband" oninput="filterPeople();" />
+      <input id="people-search" type="search" class="form-control" autocomplete="off" placeholder="Legal name or fair name" oninput="filterPeople();" />
     </div>
     <div class="col-sm-6 col-md-4 mb-2 align-self-end">
       <div id="show_all_people_wrap" class="form-check hidden">
@@ -347,7 +339,7 @@ templ People(deployment, versionName, versionRef, eventName string, defaultPassw
         <!-- A roster table (slice 53c) replaces the old flat list-group: one column
              per attribute keeps a long roster scannable, and every per-row action
              collapses into a single ⋯ kebab menu so the row isn't a wall of buttons.
-             The Wristband/Role columns only carry data when an event is selected. -->
+             The Role column only carries data when an event is selected. -->
         <div class="table-responsive">
           <table class="table table-sm table-striped table-hover align-middle mb-0">
             <thead>
@@ -356,7 +348,6 @@ templ People(deployment, versionName, versionRef, eventName string, defaultPassw
                      the roster no longer needs separate Legal Name / Fair Name columns. -->
                 <th scope="col">Name</th>
                 <th scope="col">Role</th>
-                <th scope="col">Wristband</th>
                 <th scope="col" class="text-end">Actions</th>
               </tr>
             </thead>
@@ -387,9 +378,6 @@ templ People(deployment, versionName, versionRef, eventName string, defaultPassw
                 <button type="button" class="person-participation badge text-bg-light dropdown-toggle border-0" data-bs-toggle="dropdown" aria-expanded="false" title="Change role"></button>
                 <ul class="person-participation-menu dropdown-menu"></ul>
               </span>
-            </td>
-            <td>
-              <span class="person-wristband badge text-bg-secondary hidden"></span>
             </td>
             <td class="text-end">
               <!-- Per-row actions kebab. people.ts shows/hides individual items per row
