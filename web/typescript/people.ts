@@ -48,11 +48,14 @@ type RoleRung = {value: string; label: string; hint: string};
 // removal rungs (not_present / ejected) are intentionally NOT here — those stay
 // behind the "Remove from event" modal, which frames them with explanatory copy.
 //
-// writer and crew_leader are admin-only (plan 53d): minting an inviter/writer stays
-// an admin act, so a non-admin inviter's menu tops out at reporter.
+// writer is admin-only (plan 53d): minting a writer stays an admin act, so a
+// non-admin inviter's menu tops out at reporter. crew_leader is intentionally NOT
+// offered here (slice 10c): the crew-leader role is derived from being marked a
+// leader on the event's Crews page, not hand-assigned as a participation rung. The
+// enum value survives for any legacy row, so the display helpers below still render
+// it, but it can no longer be picked.
 const adminOnlyRungs: RoleRung[] = [
     {value: "writer", label: "FC/BUM", hint: "full access"},
-    {value: "crew_leader", label: "Crew leader", hint: "own reports + invite"},
 ];
 const inviterRungs: RoleRung[] = [
     {value: "reporter", label: "Reporter", hint: "own reports"},

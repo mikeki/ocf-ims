@@ -214,41 +214,44 @@ toggle, rename-keeps-slug, delete-removes-membership, admin-only read+write 403,
 bad-person 404), golangci-lint clean. (eslint has no config in this repo — tsgo is the
 TS gate.)
 
-### PR 3 — Derive the `crew_leader` role from leadership + crew-scoped report review
+### PR 3 — Derive the `crew_leader` role from leadership + crew-scoped report review ✅ IMPLEMENTED
 
-1. **Derive the role (`lib/authz/permission.go`).** In `EventPermissions`, after
-   computing the participation-derived mask, **OR in** a `crewLeaderReadOnlyMask` when
-   the caller leads any crew for that event (`CrewsLedByPerson` non-empty):
-   ```
-   crewLeaderReadOnlyMask = EventReadEventName | EventReadIncidents | EventReadAreas
-   effective = participationToEventPerms(participationType)
-   if CrewsLedByPerson(event, caller) not empty: effective |= crewLeaderReadOnlyMask
-   ```
-   "Unless higher role" is automatic: a writer's mask already supersets these bits, and
-   admins bypass entirely. Report reading is **not** a flat bit here — it's crew-scoped
-   in step 2. Drop the now-unused `EventInviteReporters` from the static `crew_leader`
-   rung in `participationToEventPerms` (the derived path replaces it); keep the
-   `crew_leader` enum value.
-2. **Journal entries stay blocked** — journal creation is gated on `EventWriteIncidents`
-   (`api/incident.go:1060-1071`), which the read-only mask never grants. Add a test: a
-   crew leader (no other role) POST-ing an incident edit / journal payload → **403**.
-3. **Crew-scoped report review (`api/report.go`).** A crew leader may read reports whose
-   **creator is a member of a crew they lead**. Add a query joining
-   `REPORT.CREATED_BY → CREW_MEMBERSHIP` for the crews from `CrewsLedByPerson`, and a
-   branch in `getReports` that unions these with the caller's own reports. Least-
-   privilege: do **not** grant a flat `EventReadAllReports`; the crew branch is the scope.
-4. **People roster dropdown:** remove `crew_leader` from the assignable role options
-   (`web/typescript/people.ts`) — the role is now a consequence of being marked a crew
-   leader on the Crews page, not a hand-assigned rung. Update `mayAssignParticipation`/
-   `validParticipation` copy if they enumerate it.
-5. **Plan-53 note:** `crew_leader` no longer carries reporter-invite; writers still hold
-   `EventInviteReporters`, so invites survive. Update plan 53's status note.
+**Status: built and green** (this PR).
 
-**Verify:** `go test ./... ./api/integration` (a crew leader can GET incidents read-only,
-POST-edit/journal → 403, sees their crew's reports but not other crews'; a plain crew
-*member* who is not a leader gets no elevated access). `npx eslint`. Manual: log in as a
-crew leader → incidents visible read-only, no journal/edit controls, reports list shows
-the crew's reports.
+> **Scope correction (with the user).** An earlier draft made `crew_leader` a *read-only*
+> viewer. That was wrong: the crew-leader role **keeps its existing capabilities**
+> (reporter-level own-report access, invite-reporters, read-only incident visibility) and
+> merely **gains** the ability to read its crew's reports. It is not stripped down.
+
+1. **The crew-leader mask (`lib/authz/permission.go`).** `crewLeaderMask` = the original
+   plan-53 grant (`reporter` perms | `EventInviteReporters` | `EventReadIncidents`) **plus**
+   the new `EventReadCrewReports` bit. `participationToEventPerms` maps the `crew_leader`
+   rung to it (unchanged capabilities; only the crew-report bit is added). `crew_leader` can
+   view incidents but not edit them (no `EventWriteIncidents`, so no journal entries either).
+2. **Derive the role.** In `EventPermissions`, after the participation mask, **OR in**
+   `crewLeaderMask` when the caller leads any crew for that event (`CrewsLedByPerson`
+   non-empty). "Unless higher" is automatic: a writer (or someone already holding the
+   `crew_leader` rung) already has `EventReadIncidents`, so the lookup is **skipped** for
+   them; admins bypass entirely. So the extra `CREW_MEMBERSHIP` query runs only for
+   reporters/volunteers/etc. — the callers a crew-leadership grant could actually change.
+3. **Crew-scoped report review (`api/report.go`).** `EventReadCrewReports` is **not** a
+   blanket grant: the report handler scopes the visible set via the new
+   `CrewLeaderReportNumbers` query (reports whose `CREATED_BY` is a member of a crew the
+   caller leads). `getReports`/`getReport` union these with the caller's own reports; a
+   crew leader never gets a flat `EventReadAllReports`.
+4. **People roster dropdown.** `crew_leader` removed from the assignable role options
+   (`web/typescript/people.ts`) — the role is now a consequence of being marked a leader on
+   the Crews page, not hand-assigned. The enum value + `validParticipation` still accept it
+   so any legacy/hand-assigned row keeps working; only the UI stops offering it.
+5. **Plan-53 unchanged.** Because the crew-leader capabilities are preserved, the plan-53
+   invite path still works for crew leaders (and writers); no test rework was needed.
+
+**Verified:** `go test ./...` incl. `./api/integration` — the existing plan-53
+`TestCrewLeaderInvite` / `TestCrewLeaderReadsIncidents` / `TestInviterRosterRead` pass
+unchanged, and new `TestCrewLeaderDerivedAccess` covers: a person made a crew leader
+(no participation row) reads incidents read-only + sees their crew's reports but not a
+non-member's, cannot edit an incident; a plain crew member (not a leader) gets no incident
+read and sees only their own report. golangci-lint clean.
 
 ## Sequencing & risks
 
@@ -256,9 +259,9 @@ the crew's reports.
   but are otherwise independent (PR 2 = admin UI, PR 3 = authz + reports); PR 3 can even
   precede PR 2's UI since it only needs the schema, but building the assignment UI first
   makes PR 3 manually testable.
-- **Behavior change to a shipped feature:** the `crew_leader` rung changes meaning (was
-  reporter + invite; becomes a derived read-only viewer). Coordinate with anyone relying
-  on crew-leader invites and update plan 53's doc/status.
+- **`crew_leader` capabilities are preserved (no behavior loss):** the rung keeps its
+  plan-53 grant (reporter access + invite + read-only incident view) and only **gains**
+  crew-report read. Plan 53's invite path is unaffected — no coordination/rework needed.
 - **Decisions confirmed with the user (2026-07):**
   - Crew registry is **per-event** (mirrors AREA), for "that year".
   - **Membership join table** with **multiple crews per person** and **multiple leaders
@@ -266,5 +269,7 @@ the crew's reports.
     / `CREW.LEADER_PERSON_ID`.
   - **Admins alone** create/modify crews (no propose/approve); the **Crews page lives in
     the event nav next to People**.
-  - The `crew_leader` role is **derived** from `IS_LEADER`, capped by any higher role;
-    it is **removed from the People roster's role dropdown**.
+  - The `crew_leader` role is **derived** from `IS_LEADER`, capped by any higher role, and
+    is **removed from the People roster's role dropdown** (hand-assignment retired). It is
+    **not** read-only — a crew leader keeps reporter access + invite + read-only incident
+    visibility, and additionally reads its crew's reports.
