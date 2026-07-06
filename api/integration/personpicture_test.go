@@ -136,6 +136,12 @@ func TestPersonProfilePicture(t *testing.T) {
 	require.Equal(t, http.StatusBadRequest, resp.StatusCode)
 	require.NoError(t, resp.Body.Close())
 
+	// An over-large upload is rejected up front (413), before the image check — the
+	// bytes here exceed the per-picture cap but stay under the global request limit.
+	resp = admin.uploadProfilePicture(ctx, personID, make([]byte, 11<<20))
+	require.Equal(t, http.StatusRequestEntityTooLarge, resp.StatusCode)
+	require.NoError(t, resp.Body.Close())
+
 	// A non-admin may not upload (upload rights == person-edit rights == admin).
 	resp = alice.uploadProfilePicture(ctx, personID, onePixelPNG)
 	require.Equal(t, http.StatusForbidden, resp.StatusCode)

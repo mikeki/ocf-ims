@@ -72,6 +72,15 @@ var profilePictureMediaTypes = []string{
 // full-resolution photos.
 const maxProfilePictureEdge = 512
 
+// maxProfilePictureBytes caps the size of an uploaded profile picture. The browser
+// downscales most uploads to a small JPEG (downscaleImageForUpload) and the server
+// re-caps decodable images to maxProfilePictureEdge px — but formats we can't decode
+// server-side (HEIC, WebP, TIFF) and any direct, non-browser upload would otherwise be
+// bounded only by the 100 MiB global request limit. Reject anything larger up front so
+// a profile picture can't be an arbitrarily large blob. A phone photo (HEIC/JPEG) is a
+// few MB, so 10 MiB leaves ample headroom while keeping a single image reasonable.
+const maxProfilePictureBytes = 10 << 20 // 10 MiB
+
 // resizeProfilePicture decodes an image and, when it exceeds maxEdge on either side,
 // returns JPEG bytes scaled to fit within maxEdge (aspect preserved). It returns
 // ok=false — after rewinding fi to the start so the original can be stored unchanged —
@@ -187,6 +196,15 @@ func storeProfilePicture(
 		return herr.BadRequest("Failed to parse file", err)
 	}
 	defer shut(fi)
+
+	// Cap the stored image size up front — before sniffing/decoding — so an oversized
+	// or undecodable blob is rejected cheaply. fiHead.Size is the multipart part's
+	// length (computed by the parser, not client-declared), so it's a reliable gate.
+	if fiHead.Size > maxProfilePictureBytes {
+		return herr.RequestEntityTooLarge(
+			fmt.Sprintf("A profile picture must be under %v (got %v)",
+				format.HumanByteSize(maxProfilePictureBytes), format.HumanByteSize(fiHead.Size)), nil)
+	}
 
 	mtype, errHTTP := sniffFile(fi)
 	if errHTTP != nil {
