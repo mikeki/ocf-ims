@@ -387,7 +387,7 @@ var participationLadder = []struct {
 	{imsdb.PersonEventParticipationTypeVolunteer, "Volunteer"},
 	{imsdb.PersonEventParticipationTypePublic, "Public"},
 	{imsdb.PersonEventParticipationTypeNotPresent, "Not present"},
-	{imsdb.PersonEventParticipationTypeEjected, "Ejected"},
+	{imsdb.PersonEventParticipationTypeEjected, "Booted"},
 }
 
 func priorityKey(priority int8) string {

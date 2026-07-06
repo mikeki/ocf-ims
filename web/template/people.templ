@@ -195,7 +195,7 @@ templ People(deployment, versionName, versionRef, eventName string, defaultPassw
                     <option value="volunteer">volunteer</option>
                     <option value="public">public</option>
                     <option value="not_present">not present</option>
-                    <option value="ejected">ejected</option>
+                    <option value="ejected">booted</option>
                   </select>
                   <label for="add_person_participation">Role</label>
                 </div>
@@ -269,7 +269,7 @@ templ People(deployment, versionName, versionRef, eventName string, defaultPassw
                   <option value="volunteer">volunteer</option>
                   <option value="public">public</option>
                   <option value="not_present">not present</option>
-                  <option value="ejected">ejected</option>
+                  <option value="ejected">booted</option>
                 </select>
                 <label for="edit_person_participation">Role</label>
               </div>
@@ -313,7 +313,7 @@ templ People(deployment, versionName, versionRef, eventName string, defaultPassw
                 <div class="small text-body-secondary">Known person, not participating this year. Kept on the roster, marked inactive.</div>
               </button>
               <button type="button" class="btn btn-outline-warning text-start" id="remove_mark_ejected" onclick="submitMarkParticipation('ejected')">
-                <strong>Mark as ejected</strong>
+                <strong>Mark as booted</strong>
                 <div class="small text-body-secondary">Removed from the event (kicked out). Kept for the record.</div>
               </button>
               <button type="button" class="btn btn-outline-danger text-start" id="remove_delete" onclick="submitRemoveFromEvent()">
@@ -414,6 +414,9 @@ templ People(deployment, versionName, versionRef, eventName string, defaultPassw
                      the roster no longer needs separate Legal Name / Fair Name columns. -->
                 <th scope="col">Name</th>
                 <th scope="col">Role</th>
+                <!-- Crew carries data only when an event is selected (crews are
+                     per-event, slice 10c); otherwise the cell is blank. -->
+                <th scope="col">Crew</th>
                 <th scope="col" class="text-end">Actions</th>
               </tr>
             </thead>
@@ -450,6 +453,12 @@ templ People(deployment, versionName, versionRef, eventName string, defaultPassw
                 <button type="button" class="person-participation badge text-bg-light dropdown-toggle border-0" data-bs-toggle="dropdown" aria-expanded="false" title="Change role"></button>
                 <ul class="person-participation-menu dropdown-menu"></ul>
               </span>
+            </td>
+            <td>
+              <!-- The person's crews for the selected event (slice 10c). people.ts
+                   fills this with one badge per crew (a led crew highlighted), mirroring
+                   the profile card. Empty when no event is selected. -->
+              <span class="person-crew small"></span>
             </td>
             <td class="text-end">
               <!-- Per-row actions kebab. people.ts shows/hides individual items per row
