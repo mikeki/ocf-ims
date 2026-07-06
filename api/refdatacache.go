@@ -169,3 +169,49 @@ func (c *areasCache) get(
 	}
 	return *v, nil
 }
+
+// crewsCache memoizes the built crew list (with membership) per event, exactly like
+// areasCache. Crews are per-event and only read on the admin Crews page, so a
+// per-event cache.InMemory keyed by event name gives the same TTL + single-flight
+// behavior; EditCrews invalidates the event's entry on every write.
+type crewsCache struct {
+	mu      sync.Mutex
+	byEvent map[string]*cache.InMemory[imsjson.Crews]
+}
+
+func newCrewsCache() *crewsCache {
+	return &crewsCache{byEvent: map[string]*cache.InMemory[imsjson.Crews]{}}
+}
+
+// InvalidateEvent drops one event's cached crew list after any crew or membership
+// write so the change is visible on the next read. A no-op if never cached.
+func (c *crewsCache) InvalidateEvent(eventName string) {
+	c.mu.Lock()
+	entry, ok := c.byEvent[eventName]
+	c.mu.Unlock()
+	if ok {
+		entry.Invalidate()
+	}
+}
+
+// get returns the cached crew list for eventName, loading it via refresh on a miss
+// or after the TTL. refresh captures the event id; a given event name always maps
+// to the same id, so the first caller's refresh is safe to reuse.
+func (c *crewsCache) get(
+	ctx context.Context,
+	eventName string,
+	refresh func(context.Context) (imsjson.Crews, error),
+) (imsjson.Crews, error) {
+	c.mu.Lock()
+	entry, ok := c.byEvent[eventName]
+	if !ok {
+		entry = cache.New(refDataCacheTTL, refresh)
+		c.byEvent[eventName] = entry
+	}
+	c.mu.Unlock()
+	v, err := entry.Get(ctx)
+	if err != nil {
+		return nil, err
+	}
+	return *v, nil
+}

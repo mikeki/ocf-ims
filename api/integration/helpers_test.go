@@ -291,6 +291,19 @@ func (a ApiHelper) getAreas(ctx context.Context, eventName string) (imsjson.Area
 	return *bod.(*imsjson.Areas), resp
 }
 
+func (a ApiHelper) editCrew(ctx context.Context, eventName string, req imsjson.Crew) (slug string, resp *http.Response) {
+	a.t.Helper()
+	httpResp := a.imsPost(ctx, req, a.serverURL.JoinPath("/ims/api/events/", eventName, "/crews").String())
+	return httpResp.Header.Get("IMS-Crew-Slug"), httpResp
+}
+
+func (a ApiHelper) getCrews(ctx context.Context, eventName string) (imsjson.Crews, *http.Response) {
+	a.t.Helper()
+	path := a.serverURL.JoinPath("/ims/api/events/", eventName, "/crews").String()
+	bod, resp := a.imsGet(ctx, path, &imsjson.Crews{})
+	return *bod.(*imsjson.Crews), resp
+}
+
 func (a ApiHelper) newReport(ctx context.Context, req imsjson.Report) *http.Response {
 	a.t.Helper()
 	return a.imsPost(ctx, req, a.serverURL.JoinPath("/ims/api/events/"+req.Event+"/reports").String())

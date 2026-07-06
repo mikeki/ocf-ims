@@ -166,6 +166,13 @@ templ Nav(eventName string) {
         <li class="nav-item">
           <a id="active-event-people" class="nav-link hidden" href="">People</a>
         </li>
+        <!-- Crews: admin-only (managing crews is an admin act). Like People, sits
+             next to it and stays hidden until setupNav reveals it only when an
+             event is active AND the viewer is an admin. Not tagged .if-admin (that
+             auto-unhides on every admin page, with no event context). See 10c. -->
+        <li class="nav-item">
+          <a id="active-event-crews" class="nav-link hidden" href="">Crews</a>
+        </li>
         <!-- Areas: admin-only (managing areas is an admin act). Like People, stays
              hidden until setupNav reveals it only when an event is active AND the
              viewer is an admin. Not tagged .if-admin (that auto-unhides on every

@@ -74,6 +74,7 @@ func AddToMux(
 	// they are memoized here and invalidated by their write handlers.
 	incidentTypesCache := newIncidentTypesCache()
 	areasCache := newAreasCache()
+	crewsCache := newCrewsCache()
 	outcomesCache := newOutcomesCache()
 
 	// Failed-login throttle/lockout for POST /ims/api/auth (plan 90, findings H1 +
@@ -459,6 +460,26 @@ func AddToMux(
 	mux.Handle("POST /ims/api/events/{eventName}/areas",
 		Adapt(
 			EditAreas{db, userStore, metricsCache, areasCache},
+			RecoverFromPanic(),
+			RequireAuthN(jwter),
+			LogRequest(true, actionLogger, userStore),
+			LimitRequestBytes(cfg.Core.MaxRequestBytes),
+		),
+	)
+
+	mux.Handle("GET /ims/api/events/{eventName}/crews",
+		Adapt(
+			GetCrews{db, userStore, crewsCache, cfg.Core.CacheControlShort},
+			RecoverFromPanic(),
+			RequireAuthN(jwter),
+			LogRequest(false, actionLogger, userStore),
+			LimitRequestBytes(cfg.Core.MaxRequestBytes),
+		),
+	)
+
+	mux.Handle("POST /ims/api/events/{eventName}/crews",
+		Adapt(
+			EditCrews{db, userStore, crewsCache},
 			RecoverFromPanic(),
 			RequireAuthN(jwter),
 			LogRequest(true, actionLogger, userStore),

@@ -95,11 +95,16 @@ const (
 	// hide / approve proposals); held by Administrators today. Mirrors
 	// GlobalAdministrateIncidentTypes.
 	GlobalAdministrateOutcomes
+	// GlobalAdministrateCrews allows managing an event's crews and their membership
+	// (the per-event CREW / CREW_MEMBERSHIP tables, slice 10c). Held only by
+	// Administrators — unlike Areas there is no writer propose/approve flow, so crews
+	// are admin-only end to end.
+	GlobalAdministrateCrews
 )
 
 var RolesToGlobalPerms = map[Role]GlobalPermissionMask{
 	AnyAuthenticatedUser: GlobalListEvents | GlobalReadIncidentTypes | GlobalReadPersonnel | GlobalReadOutcomes,
-	Administrator:        GlobalAdministrateEvents | GlobalAdministrateIncidentTypes | GlobalAdministrateDebugging | GlobalAdministratePersonnel | GlobalAdministrateAreas | GlobalAdministrateOutcomes,
+	Administrator:        GlobalAdministrateEvents | GlobalAdministrateIncidentTypes | GlobalAdministrateDebugging | GlobalAdministratePersonnel | GlobalAdministrateAreas | GlobalAdministrateOutcomes | GlobalAdministrateCrews,
 }
 
 // RolesToEventPerms maps an access role to the event permissions it grants. Only the
