@@ -3416,7 +3416,7 @@ export function applyJournalFilters(): void {
 // Send a single fixed-value field edit, for button-driven edits that aren't tied
 // to an input element's value (e.g. Mark Closed / Reopen). Mirrors the dotted-key
 // object-building of editFromElement, minus the element error/success styling.
-export async function editValue(jsonKey: string, value: string|number|null): Promise<{err:string|null}> {
+export async function editValue(jsonKey: string, value: string|number|boolean|null): Promise<{err:string|null}> {
     const edits: EditMap = {};
     const keyPath: string[] = jsonKey.split(".");
     const lastKey: string = keyPath.pop()!;
@@ -3987,6 +3987,10 @@ export type Incident = {
     number?: number|null;
     event?: string|null;
     state?: IncidentState|null;
+    // private (privacy): when true, the incident is visible only to admins, its
+    // creator, and people granted per-incident access. Always present on read; on a
+    // write only an admin or the creator may change it (the server enforces this).
+    private?: boolean|null;
     // outcome_id references an OUTCOME(id) — the incident's disposition (slice 10a,
     // data-driven). null means no outcome recorded; 0 clears it on a write.
     outcome_id?: number|null;
@@ -4301,7 +4305,7 @@ export type VisitBroadcast = {
 }
 
 interface EditMap {
-    [index: string]: EditMap|string|number;
+    [index: string]: EditMap|string|number|boolean;
 }
 
 export type FetchRes<T> = {

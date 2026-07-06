@@ -122,6 +122,21 @@ templ Incident(deployment, versionName, versionRef, eventName string) {
           <span id="incident_created_by" class="input-group-text auto-width"></span>
         </div>
       </div>
+      <!-- Privacy (private incidents). When checked, only admins, the creator, and
+           people granted per-incident access can see this incident. incident.ts
+           enables the checkbox only for an admin or the creator; for everyone else it
+           stays read-only, reflecting the current state. -->
+      <div class="col-sm-6 py-1">
+        <div class="input-group">
+          <span class="control-label input-group-text">Visibility</span>
+          <span class="input-group-text auto-width">
+            <label class="form-check-label mb-0" title="When private, only admins, the incident's creator, and people granted per-incident access can see this incident.">
+              <input type="checkbox" id="incident_private" class="form-check-input me-2" onchange="editPrivate()" disabled />
+              Private
+            </label>
+          </span>
+        </div>
+      </div>
     </div>
 
     <!-- Outcome (disposition; orthogonal to state) -->

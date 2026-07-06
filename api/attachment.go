@@ -111,12 +111,9 @@ func (action GetIncidentAttachment) ServeHTTP(w http.ResponseWriter, req *http.R
 func (action GetIncidentAttachment) getIncidentAttachment(
 	req *http.Request,
 ) (fi io.ReadSeeker, contentType string, errHTTP *herr.HTTPError) {
-	event, _, eventPermissions, errHTTP := getEventPermissions(req, action.imsDBQ, action.userStore)
+	event, jwtCtx, eventPermissions, errHTTP := getEventPermissions(req, action.imsDBQ, action.userStore)
 	if errHTTP != nil {
 		return nil, "", errHTTP.From("[getEventPermissions]")
-	}
-	if eventPermissions&authz.EventReadIncidents == 0 {
-		return nil, "", herr.Forbidden("The requestor does not have EventReadIncidents permission on this Event", nil)
 	}
 	ctx := req.Context()
 
@@ -129,9 +126,44 @@ func (action GetIncidentAttachment) getIncidentAttachment(
 		return nil, "", herr.BadRequest("Failed to parse attachment number", err).From("[ParseInt32]")
 	}
 
-	_, _, errHTTP = fetchIncident(ctx, action.imsDBQ, event.ID, incidentNumber, action.attachmentsStore.Type != conf.AttachmentsStoreNone)
+	hasEventRead := eventPermissions&authz.EventReadIncidents != 0
+	viewerPersonID := jwtCtx.Claims.PersonID()
+	viewerIsAdmin := jwtCtx.Claims.PersonAdmin()
+
+	// Mirror the incident read rules for attachment downloads: without event-wide
+	// read, require a per-incident grant (52f), denied before the fetch so existence
+	// isn't leaked.
+	hasGrant := false
+	if !hasEventRead {
+		hasGrant, err = action.imsDBQ.IncidentPersonHasGrant(ctx, action.imsDBQ, imsdb.IncidentPersonHasGrantParams{
+			Event: event.ID, IncidentNumber: incidentNumber, PersonID: viewerPersonID,
+		})
+		if err != nil {
+			return nil, "", herr.InternalServerError("Failed to check incident grant", err).From("[IncidentPersonHasGrant]")
+		}
+		if !hasGrant {
+			return nil, "", herr.Forbidden("The requestor does not have EventReadIncidents permission on this Event", nil)
+		}
+	}
+
+	storedRow, _, errHTTP := fetchIncident(ctx, action.imsDBQ, event.ID, incidentNumber, action.attachmentsStore.Type != conf.AttachmentsStoreNone)
 	if errHTTP != nil {
 		return nil, "", errHTTP.From("[fetchIncident]")
+	}
+
+	// A private incident's attachments are off-limits to event-wide readers who
+	// aren't its creator, an admin, or a grant-holder; hide with 404.
+	if storedRow.Incident.Private && !hasGrant && !viewerIsAdmin &&
+		!(storedRow.Incident.CreatedBy.Valid && storedRow.Incident.CreatedBy.Int32 == viewerPersonID) {
+		hasGrant, err = action.imsDBQ.IncidentPersonHasGrant(ctx, action.imsDBQ, imsdb.IncidentPersonHasGrantParams{
+			Event: event.ID, IncidentNumber: incidentNumber, PersonID: viewerPersonID,
+		})
+		if err != nil {
+			return nil, "", herr.InternalServerError("Failed to check incident grant", err).From("[IncidentPersonHasGrant]")
+		}
+		if !hasGrant {
+			return nil, "", herr.NotFound("Incident not found", nil)
+		}
 	}
 
 	// The internal attached-file name lives only on the stored row, not the JSON

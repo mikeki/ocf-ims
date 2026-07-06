@@ -311,6 +311,22 @@ Event-based access control defined in `lib/authz/`:
   `Administrator` role holds the admin-level globals; a future roles model may grant
   individual globals to non-admins (e.g. crew leaders) without changing the handlers
   that check them.
+- **Private incidents** (`INCIDENT.PRIVATE`): an incident marked private is visible
+  only to an admin, its creator (`CREATED_BY`), and people granted per-incident access
+  (the 52f `INCIDENT__PERSON.GRANTED_ACCESS` grant) — **event-wide read is not
+  sufficient**, so writers/crew-leaders can't see it. The shared helper
+  `mayViewIncident` in `api/incident.go` encodes this; an unauthorized single read
+  returns **404** (not 403) so the incident's existence stays hidden. Only an admin or
+  the creator may toggle the flag (enforced in `updateIncident`; `isJournalOnly`
+  excludes `Private` so a granted reporter can't flip it). **When adding any new
+  endpoint that surfaces incident content (summary, people, journal entries,
+  attachments), it must honor privacy** — see how `getIncident`/`getIncidents`/
+  `GetIncidentAttachment`/notifications/metrics/linked-incident summaries were gated.
+  Non-sensitive attributes (state, priority, type, area) may still feed aggregate
+  dashboard counts. **Known follow-up:** the SSE "poke" stream (`api/eventsource.go`)
+  still broadcasts a private incident's number + change-timing (content stays safe —
+  clients re-fetch through the gated API); authenticating that endpoint and filtering
+  per-subscriber is deferred.
 
 ### Action Logging
 

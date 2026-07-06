@@ -44,7 +44,8 @@ update INCIDENT set
     SUMMARY = ?,
     LOCATION_DESCRIPTION = ?,
     LOCATION_AREA_SLUG = ?,
-    LOCATION_BOOTH = ?
+    LOCATION_BOOTH = ?,
+    PRIVATE = ?
 where
     EVENT = ?
     and NUMBER = ?
@@ -166,7 +167,9 @@ select
     ili.EVENT_2 as LINKED_EVENT,
     e.NAME as LINKED_EVENT_NAME,
     ili.INCIDENT_NUMBER_2 as LINKED_INCIDENT,
-    i2.SUMMARY as LINKED_INCIDENT_SUMMARY
+    i2.SUMMARY as LINKED_INCIDENT_SUMMARY,
+    i2.PRIVATE as LINKED_INCIDENT_PRIVATE,
+    i2.CREATED_BY as LINKED_INCIDENT_CREATED_BY
 from
     INCIDENT__LINKED_INCIDENT ili
     join `EVENT` e
@@ -417,6 +420,16 @@ select
     n.ACTOR_PERSON_ID, n.CREATED, n.READ_AT,
     e.NAME as EVENT_NAME,
     i.SUMMARY as INCIDENT_SUMMARY,
+    i.PRIVATE as INCIDENT_PRIVATE,
+    i.CREATED_BY as INCIDENT_CREATED_BY,
+    -- Whether the recipient still has per-incident access (52f) to the linked
+    -- incident, so the handler can withhold a now-private incident's summary from a
+    -- recipient who no longer may see it.
+    exists (
+        select 1 from INCIDENT__PERSON ip
+        where ip.EVENT = n.EVENT and ip.INCIDENT_NUMBER = n.INCIDENT_NUMBER
+            and ip.PERSON_ID = n.RECIPIENT_PERSON_ID and ip.GRANTED_ACCESS = true
+    ) as INCIDENT_RECIPIENT_HAS_GRANT,
     r.SUMMARY as REPORT_SUMMARY,
     actor.HANDLE as ACTOR_HANDLE,
     actor.NAME as ACTOR_NAME
@@ -1355,7 +1368,11 @@ select
     i.CREATED,
     i.CLOSED,
     o.NAME as OUTCOME_NAME,
-    i.SUMMARY
+    i.SUMMARY,
+    -- PRIVATE so the handler can withhold a private incident's brief summary from the
+    -- follow-ups list. Non-sensitive attributes (state, priority, type, area) still
+    -- feed the aggregate counts; only the summary text is private.
+    i.PRIVATE
 from INCIDENT i
     left join OUTCOME o on o.ID = i.OUTCOME_ID
 where i.EVENT = ?

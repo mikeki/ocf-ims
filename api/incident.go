@@ -60,21 +60,25 @@ func (action GetIncidents) getIncidents(req *http.Request) (imsjson.Incidents, *
 	if errHTTP != nil {
 		return resp, errHTTP.From("[getEventPermissions]")
 	}
-	// grantedSet is nil when the caller has event-wide incident read (sees everything).
-	// Otherwise it's the set of incident numbers a reporter has been granted access to
-	// (52f); the listing is filtered to those. A caller with neither the bit nor any
-	// grant stays forbidden, so volunteer/public access isn't loosened.
-	var grantedSet map[int32]bool
-	if eventPermissions&authz.EventReadIncidents == 0 {
+	hasEventRead := eventPermissions&authz.EventReadIncidents != 0
+	viewerPersonID := jwt.Claims.PersonID()
+	viewerIsAdmin := jwt.Claims.PersonAdmin()
+
+	// Per-incident grants (52f) now do double duty: they're the only incidents a
+	// reporter without event-wide read may see, AND they reveal a private incident to
+	// a granted viewer who otherwise couldn't. Admins bypass both (mayViewIncident),
+	// so skip the query for them. A non-admin with neither the read bit nor any grant
+	// stays forbidden, so volunteer/public access isn't loosened.
+	grantedSet := map[int32]bool{}
+	if !viewerIsAdmin {
 		grantedNums, err := action.imsDBQ.GrantedIncidentNumbersForPerson(req.Context(), action.imsDBQ,
-			imsdb.GrantedIncidentNumbersForPersonParams{Event: event.ID, PersonID: jwt.Claims.PersonID()})
+			imsdb.GrantedIncidentNumbersForPersonParams{Event: event.ID, PersonID: viewerPersonID})
 		if err != nil {
 			return nil, herr.InternalServerError("Failed to fetch granted incidents", err).From("[GrantedIncidentNumbersForPerson]")
 		}
-		if len(grantedNums) == 0 {
+		if !hasEventRead && len(grantedNums) == 0 {
 			return nil, herr.Forbidden("The requestor does not have EventReadIncidents permission", nil)
 		}
-		grantedSet = make(map[int32]bool, len(grantedNums))
 		for _, n := range grantedNums {
 			grantedSet[n] = true
 		}
@@ -140,8 +144,10 @@ func (action GetIncidents) getIncidents(req *http.Request) (imsjson.Incidents, *
 	}
 
 	for _, r := range incidentsRows {
-		// 52f: a granted reporter sees only the incidents they were granted.
-		if grantedSet != nil && !grantedSet[r.Incident.Number] {
+		// One check covers both the granted-reporter scope (52f) and the private flag:
+		// a private incident is dropped for anyone who isn't its creator, an admin, or
+		// a grant-holder; a reporter without event read still sees only granted ones.
+		if !mayViewIncident(r.Incident.Private, r.Incident.CreatedBy, viewerPersonID, viewerIsAdmin, hasEventRead, grantedSet[r.Incident.Number]) {
 			continue
 		}
 		// The conversion from IncidentsRow to IncidentRow works because the Incident and Incidents
@@ -192,13 +198,18 @@ func (action GetIncident) getIncident(req *http.Request) (imsjson.Incident, *her
 		return resp, herr.BadRequest("Failed to parse incident number", err)
 	}
 
+	hasEventRead := eventPermissions&authz.EventReadIncidents != 0
+	viewerPersonID := jwt.Claims.PersonID()
+	viewerIsAdmin := jwt.Claims.PersonAdmin()
+
 	// 52f: without event-wide incident read, allow only if the caller has a
-	// per-incident grant (an involved reporter). hasGrant also decides whether the
-	// detail page may show the journal-add box (viewer_may_add_journal below).
+	// per-incident grant (an involved reporter). Deny before the DB fetch so we
+	// don't leak the incident's existence. hasGrant also decides whether the detail
+	// page may show the journal-add box (viewer_may_add_journal below).
 	hasGrant := false
-	if eventPermissions&authz.EventReadIncidents == 0 {
+	if !hasEventRead {
 		hasGrant, err = action.imsDBQ.IncidentPersonHasGrant(ctx, action.imsDBQ, imsdb.IncidentPersonHasGrantParams{
-			Event: event.ID, IncidentNumber: incidentNumber, PersonID: jwt.Claims.PersonID(),
+			Event: event.ID, IncidentNumber: incidentNumber, PersonID: viewerPersonID,
 		})
 		if err != nil {
 			return resp, herr.InternalServerError("Failed to check incident grant", err).From("[IncidentPersonHasGrant]")
@@ -211,6 +222,23 @@ func (action GetIncident) getIncident(req *http.Request) (imsjson.Incident, *her
 	storedRow, journalEntries, errHTTP := fetchIncident(ctx, action.imsDBQ, event.ID, incidentNumber, action.attachmentsEnabled)
 	if errHTTP != nil {
 		return resp, errHTTP.From("[fetchIncident]")
+	}
+
+	// A private incident is off-limits to event-wide readers who aren't its creator,
+	// an admin, or a grant-holder. If a grant hasn't already been confirmed (i.e. the
+	// caller reached here via event-wide read), check for one now; still no access →
+	// 404 so the incident's very existence stays hidden.
+	if storedRow.Incident.Private && !hasGrant && !viewerIsAdmin &&
+		!(storedRow.Incident.CreatedBy.Valid && storedRow.Incident.CreatedBy.Int32 == viewerPersonID) {
+		hasGrant, err = action.imsDBQ.IncidentPersonHasGrant(ctx, action.imsDBQ, imsdb.IncidentPersonHasGrantParams{
+			Event: event.ID, IncidentNumber: incidentNumber, PersonID: viewerPersonID,
+		})
+		if err != nil {
+			return resp, herr.InternalServerError("Failed to check incident grant", err).From("[IncidentPersonHasGrant]")
+		}
+		if !hasGrant {
+			return resp, herr.NotFound("Incident not found", nil)
+		}
 	}
 
 	permsByEvent, errHTTP := permissionsByEvent(req.Context(), jwt, action.imsDBQ, action.userStore)
@@ -238,7 +266,14 @@ func (action GetIncident) getIncident(req *http.Request) (imsjson.Incident, *her
 		return resp, herr.InternalServerError("Failed to fetch linked incidents", err)
 	}
 	for i := range linkedIncidents {
-		if permsByEvent[linkedIncidents[i].LinkedEvent]&authz.EventReadIncidents == 0 {
+		li := linkedIncidents[i]
+		noEventRead := permsByEvent[li.LinkedEvent]&authz.EventReadIncidents == 0
+		// Withhold a private linked incident's summary from anyone who isn't an admin
+		// or its creator. The link's event/number stay visible (a grant-holder can open
+		// it directly); only the summary content is hidden here.
+		privateHidden := li.LinkedIncidentPrivate && !viewerIsAdmin &&
+			!(li.LinkedIncidentCreatedBy.Valid && li.LinkedIncidentCreatedBy.Int32 == viewerPersonID)
+		if noEventRead || privateHidden {
 			linkedIncidents[i].LinkedIncidentSummary = sql.NullString{}
 		}
 	}
@@ -290,6 +325,7 @@ func incidentToJSON(storedRow imsdb.IncidentRow, incidentPeople []imsjson.Incide
 		LastModified: lastModified,
 		CreatedBy:    createdByJSON(storedRow.Incident.CreatedBy, storedRow.CreatedByHandle, storedRow.CreatedByName),
 		State:        string(storedRow.Incident.State),
+		Private:      &storedRow.Incident.Private,
 		OutcomeID:    conv.SqlToInt32(storedRow.Incident.OutcomeID),
 		Started:      conv.FloatToTime(storedRow.Incident.Started),
 		Closed:       conv.NullFloatToTime(storedRow.Incident.Closed),
@@ -308,6 +344,18 @@ func incidentToJSON(storedRow imsdb.IncidentRow, incidentPeople []imsjson.Incide
 		LinkedIncidents: &linkedIncidentJson,
 	}
 	return resp, nil
+}
+
+// mayViewIncident reports whether a caller may see an incident, honoring the
+// PRIVATE flag. A non-private incident follows the normal rule: event-wide
+// incident read, or a per-incident grant (52f). A private incident is visible
+// ONLY to an admin, its creator, or someone granted per-incident access —
+// event-wide read (a writer/crew-leader) is deliberately not sufficient.
+func mayViewIncident(private bool, createdBy sql.NullInt32, viewerPersonID int32, viewerIsAdmin, hasEventRead, hasGrant bool) bool {
+	if private {
+		return viewerIsAdmin || (createdBy.Valid && createdBy.Int32 == viewerPersonID) || hasGrant
+	}
+	return hasEventRead || hasGrant
 }
 
 func fetchIncident(ctx context.Context, imsDBQ *store.DBQ, eventID, incidentNumber int32, attachmentsEnabled bool) (
@@ -565,7 +613,7 @@ func (action NewIncident) newIncident(req *http.Request) (incidentNumber int32, 
 		return 0, "", herr.InternalServerError("Failed to create incident", err).From("[CreateIncident]")
 	}
 
-	errHTTP = updateIncident(ctx, action.imsDBQ, action.userStore, action.es, action.pusher, newIncident, authorPersonID)
+	errHTTP = updateIncident(ctx, action.imsDBQ, action.userStore, action.es, action.pusher, newIncident, authorPersonID, jwtCtx.Claims.PersonAdmin())
 	if errHTTP != nil {
 		return 0, "", errHTTP.From("[updateIncident]")
 	}
@@ -616,6 +664,7 @@ func isJournalOnly(inc imsjson.Incident) bool {
 		inc.OutcomeID == nil &&
 		inc.Started.IsZero() &&
 		inc.Summary == nil &&
+		inc.Private == nil &&
 		inc.Location.AreaSlug == nil &&
 		inc.Location.Description == nil &&
 		inc.Location.Booth == nil &&
@@ -626,7 +675,7 @@ func isJournalOnly(inc imsjson.Incident) bool {
 		inc.LinkedIncidents == nil
 }
 
-func updateIncident(ctx context.Context, imsDBQ *store.DBQ, userStore directory.UserStore, es *EventSourcerer, pusher *Pusher, newIncident imsjson.Incident, authorPersonID int32,
+func updateIncident(ctx context.Context, imsDBQ *store.DBQ, userStore directory.UserStore, es *EventSourcerer, pusher *Pusher, newIncident imsjson.Incident, authorPersonID int32, callerIsAdmin bool,
 ) *herr.HTTPError {
 	storedIncidentRow, err := imsDBQ.Incident(ctx, imsDBQ,
 		imsdb.IncidentParams{
@@ -699,9 +748,28 @@ func updateIncident(ctx context.Context, imsDBQ *store.DBQ, userStore directory.
 		LocationDescription: storedIncident.LocationDescription,
 		LocationAreaSlug:    storedIncident.LocationAreaSlug,
 		LocationBooth:       storedIncident.LocationBooth,
+		Private:             storedIncident.Private,
 	}
 
 	var logs []string
+
+	// Privacy is writable only by an admin or the incident's creator (at create time
+	// the caller is the creator). A granted reporter never reaches here for a privacy
+	// change — isJournalOnly treats a Private payload as a non-journal edit, so the
+	// write-permission gate rejects it first.
+	if newIncident.Private != nil {
+		if !callerIsAdmin && !(storedIncident.CreatedBy.Valid && storedIncident.CreatedBy.Int32 == authorPersonID) {
+			return herr.Forbidden("Only an admin or the incident creator may change incident privacy", nil)
+		}
+		if *newIncident.Private != storedIncident.Private {
+			update.Private = *newIncident.Private
+			if *newIncident.Private {
+				logs = append(logs, "Marked incident private")
+			} else {
+				logs = append(logs, "Marked incident public")
+			}
+		}
+	}
 
 	// Scalar fields log a "Changed …" entry only when the submitted value actually
 	// differs from what's stored. The edit form re-submits every field, so a
@@ -1165,7 +1233,7 @@ func (action EditIncident) editIncident(req *http.Request) *herr.HTTPError {
 
 	authorPersonID := jwtCtx.Claims.PersonID()
 
-	errHTTP = updateIncident(ctx, action.imsDBQ, action.userStore, action.es, action.pusher, newIncident, authorPersonID)
+	errHTTP = updateIncident(ctx, action.imsDBQ, action.userStore, action.es, action.pusher, newIncident, authorPersonID, jwtCtx.Claims.PersonAdmin())
 	if errHTTP != nil {
 		return errHTTP.From("[updateIncident]")
 	}
