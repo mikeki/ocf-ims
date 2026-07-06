@@ -487,6 +487,30 @@ func AddToMux(
 		),
 	)
 
+	// The crew-leader "My Crew" self-service pair (slice 10c): read the crews you
+	// lead, and add/remove their members. Not admin-gated — authorization is that the
+	// caller leads the crew (checked in the handler), so any authenticated user may
+	// reach these and only ever act on crews they lead.
+	mux.Handle("GET /ims/api/events/{eventName}/crews/mine",
+		Adapt(
+			MyCrews{db, userStore},
+			RecoverFromPanic(),
+			RequireAuthN(jwter),
+			LogRequest(false, actionLogger, userStore),
+			LimitRequestBytes(cfg.Core.MaxRequestBytes),
+		),
+	)
+
+	mux.Handle("POST /ims/api/events/{eventName}/crews/mine",
+		Adapt(
+			EditMyCrew{db, userStore, crewsCache},
+			RecoverFromPanic(),
+			RequireAuthN(jwter),
+			LogRequest(true, actionLogger, userStore),
+			LimitRequestBytes(cfg.Core.MaxRequestBytes),
+		),
+	)
+
 	mux.Handle("GET /ims/api/events/{eventName}/metrics",
 		Adapt(
 			GetMetrics{db, userStore, metricsCache},

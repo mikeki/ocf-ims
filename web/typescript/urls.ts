@@ -63,6 +63,7 @@ const url_visitAttachmentNumber = "/ims/api/events/<event_id>/visits/<visit_numb
 const url_visitPerson = "/ims/api/events/<event_id>/visits/<visit_number>/people/<person_id>";
 const url_areas = "/ims/api/events/<event_id>/areas";
 const url_crews = "/ims/api/events/<event_id>/crews";
+const url_myCrews = "/ims/api/events/<event_id>/crews/mine";
 const url_eventSource = "/ims/api/eventsource";
 const url_pushSubscribe = "/ims/api/push/subscribe";
 const url_serviceWorker = "/ims/sw.js";

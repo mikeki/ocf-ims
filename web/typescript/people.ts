@@ -35,8 +35,23 @@ declare global {
         removePersonPicture: ()=>Promise<void>;
         submitMarkParticipation: (participation: string)=>Promise<void>;
         submitRemoveFromEvent: ()=>Promise<void>;
+        removeMyCrewMember: (el: HTMLButtonElement)=>void;
     }
 }
+
+// A crew the viewer leads, as returned by the "My Crew" endpoint (slice 10c). Mirrors
+// the admin crews shape, but the client only ever gets the crews they lead.
+type MyCrewMember = {
+    person_id: number;
+    handle?: string|null;
+    name?: string|null;
+    is_leader: boolean;
+};
+type MyCrew = {
+    slug: string;
+    name?: string|null;
+    members?: MyCrewMember[]|null;
+};
 
 const minPasswordLength = 8;
 
@@ -192,6 +207,12 @@ const el = {
     removeFromEventModal: ims.typedElement("removeFromEventModal", HTMLElement),
     removePersonLabel: ims.typedElement("remove_person_label", HTMLElement),
     removeEventName: ims.typedElement("remove_event_name", HTMLElement),
+    myCrewContainer: ims.typedElement("my_crew_container", HTMLElement),
+    myCrews: ims.typedElement("my_crews", HTMLElement),
+    myCrewEventName: ims.typedElement("my_crew_event_name", HTMLElement),
+    myCrewPlural: ims.typedElement("my_crew_plural", HTMLElement),
+    myCrewBlockTemplate: ims.typedElement("my_crew_block_template", HTMLTemplateElement),
+    myCrewMemberTemplate: ims.typedElement("my_crew_member_template", HTMLTemplateElement),
 };
 
 // Whether the server has a shared default password configured (IMS_DEFAULT_PASSWORD).
@@ -254,6 +275,7 @@ async function initPeoplePage(): Promise<void> {
     window.removePersonPicture = removePersonPicture;
     window.submitMarkParticipation = submitMarkParticipation;
     window.submitRemoveFromEvent = submitRemoveFromEvent;
+    window.removeMyCrewMember = removeMyCrewMember;
 
     // The top button is a full "Add person" form for admins, a scoped "Invite
     // reporter" for a non-admin inviter (53d).
@@ -369,6 +391,10 @@ function reflectEventSelection(): void {
 async function loadAndDrawPeople(): Promise<void> {
     await loadPeople();
     drawPeople();
+    // Keep the "My Crew" section in step with the roster: any change that reloads
+    // people (a role edit, a removal, or switching events) may also change who is on
+    // the crews you lead.
+    await loadAndDrawMyCrews();
 }
 
 async function loadPeople(): Promise<{err:string|null}> {
@@ -1173,4 +1199,128 @@ async function submitRemoveFromEvent(): Promise<void> {
     ims.bsModal(el.removeFromEventModal).hide();
     ims.clearErrorMessage();
     await loadAndDrawPeople();
+}
+
+// myCrewsURL builds the "My Crew" endpoint for the current event. Unlike the admin
+// crews URL it is per-caller (only the crews you lead), so it is fetched no-cache.
+function myCrewsURL(): string {
+    return url_myCrews.replace("<event_id>", encodeURIComponent(currentEvent));
+}
+
+// loadAndDrawMyCrews fetches the crews the viewer leads for the selected event and
+// renders the "My Crew" section, revealing it only when they lead at least one. With
+// no event selected (the admin no-event doorway) there are no crews to lead, so the
+// section stays hidden. A fetch error hides the section rather than disrupting the
+// People page — this is a secondary panel, not the page's reason for being.
+async function loadAndDrawMyCrews(): Promise<void> {
+    if (!currentEvent) {
+        el.myCrewContainer.classList.add("hidden");
+        el.myCrews.replaceChildren();
+        return;
+    }
+    const {json, err} = await ims.fetchNoThrow<MyCrew[]>(
+        myCrewsURL(), {headers: {"Cache-Control": "no-cache"}},
+    );
+    if (err != null || json == null) {
+        console.error(`Failed to load your crews: ${err}`);
+        el.myCrewContainer.classList.add("hidden");
+        el.myCrews.replaceChildren();
+        return;
+    }
+    drawMyCrews(json);
+}
+
+function drawMyCrews(myCrews: MyCrew[]): void {
+    el.myCrews.replaceChildren();
+    if (myCrews.length === 0) {
+        el.myCrewContainer.classList.add("hidden");
+        return;
+    }
+    el.myCrewEventName.textContent = currentEvent;
+    el.myCrewPlural.textContent = myCrews.length === 1 ? "" : "s";
+    for (const crew of myCrews) {
+        el.myCrews.append(buildMyCrewBlock(crew));
+    }
+    el.myCrewContainer.classList.remove("hidden");
+}
+
+function buildMyCrewBlock(crew: MyCrew): DocumentFragment {
+    const frag = el.myCrewBlockTemplate.content.cloneNode(true) as DocumentFragment;
+    const block = frag.querySelector(".my-crew-block") as HTMLElement;
+    block.dataset["crewSlug"] = crew.slug;
+    (block.querySelector(".my-crew-name") as HTMLElement).textContent = crew.name ?? "";
+
+    const membersUl = block.querySelector(".my-crew-members") as HTMLElement;
+    const members = crew.members ?? [];
+    if (members.length === 0) {
+        const li = document.createElement("li");
+        li.className = "list-group-item text-body-secondary fst-italic";
+        li.textContent = "No members yet.";
+        membersUl.append(li);
+    } else {
+        for (const m of members) {
+            membersUl.append(buildMyCrewMemberRow(m));
+        }
+    }
+
+    // A per-crew person combobox to add members, scoped to this event. Adds land as
+    // plain members; the server refuses any leader change on this path.
+    const input = block.querySelector(".my-crew-add-member") as HTMLInputElement;
+    const results = block.querySelector(".my-crew-add-member-results") as HTMLElement;
+    ims.setupPersonCombobox({
+        input: input,
+        results: results,
+        eventName: currentEvent,
+        allowCreate: false,
+        onPick: (person) => addMyCrewMember(crew.slug, person.person_id ?? 0),
+    });
+    return frag;
+}
+
+function buildMyCrewMemberRow(m: MyCrewMember): DocumentFragment {
+    const frag = el.myCrewMemberTemplate.content.cloneNode(true) as DocumentFragment;
+    const li = frag.querySelector(".my-crew-member") as HTMLElement;
+    li.dataset["personId"] = String(m.person_id);
+    (li.querySelector(".my-crew-member-name") as HTMLElement).textContent =
+        ims.personDisplayLabel({handle: m.handle, name: m.name});
+    // A leader is tagged and has no Remove button (leaders are admin-managed); a plain
+    // member can be removed.
+    if (m.is_leader) {
+        li.querySelector(".my-crew-member-leader")!.classList.remove("hidden");
+    } else {
+        li.querySelector(".my-crew-remove-member")!.classList.remove("hidden");
+    }
+    return frag;
+}
+
+// sendMyCrewEdit POSTs one member change to the "My Crew" endpoint and, on success,
+// reloads people (which also redraws this section and the roster's crew badges).
+async function sendMyCrewEdit(edit: {slug: string; member: {person_id: number; remove?: boolean}}): Promise<void> {
+    const {err} = await ims.fetchNoThrow(myCrewsURL(), {body: JSON.stringify(edit)});
+    if (err != null) {
+        const message = `Crew update failed:\n${err}`;
+        console.error(message);
+        ims.setErrorMessage(message);
+        return;
+    }
+    ims.clearErrorMessage();
+    await loadAndDrawPeople();
+}
+
+function addMyCrewMember(slug: string, personID: number): void {
+    if (personID <= 0) {
+        return;
+    }
+    void sendMyCrewEdit({slug: slug, member: {person_id: personID}});
+}
+
+function removeMyCrewMember(btn: HTMLButtonElement): void {
+    const block = btn.closest(".my-crew-block") as HTMLElement|null;
+    const li = btn.closest(".my-crew-member") as HTMLElement|null;
+    const slug = block?.dataset["crewSlug"] ?? "";
+    const personID = ims.parseInt10(li?.dataset["personId"]) ?? 0;
+    if (!slug || personID <= 0) {
+        return;
+    }
+    void sendMyCrewEdit({slug: slug, member: {person_id: personID, remove: true}});
 }

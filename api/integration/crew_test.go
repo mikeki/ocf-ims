@@ -301,6 +301,121 @@ func TestPersonCrewsInPersonnel(t *testing.T) {
 	assert.True(t, erinRow.Crews[0].IsLeader)
 }
 
+// TestMyCrewLeaderManagesMembers exercises the crew-leader "My Crew" self-service
+// path (slice 10c): a leader reads the crews they lead and adds/removes their plain
+// members, while leader assignment, other crews, and create/rename/delete all stay
+// off-limits.
+func TestMyCrewLeaderManagesMembers(t *testing.T) {
+	t.Parallel()
+	ctx := t.Context()
+	admin := ApiHelper{t: t, serverURL: shared.serverURL, jwt: jwtForAdmin(ctx, t)}
+	erin := ApiHelper{t: t, serverURL: shared.serverURL, jwt: jwtForErin(t, ctx)}   // the crew leader
+	alice := ApiHelper{t: t, serverURL: shared.serverURL, jwt: jwtForAlice(t, ctx)} // leads nothing here
+
+	eventName := makeEvent(ctx, t, admin)
+
+	// Admin creates the crew and appoints Erin its leader.
+	slug, resp := admin.editCrew(ctx, eventName, imsjson.Crew{Name: new("Gate")})
+	require.Equal(t, http.StatusNoContent, resp.StatusCode)
+	require.NoError(t, resp.Body.Close())
+	_, resp = admin.editCrew(ctx, eventName, imsjson.Crew{Slug: slug, Member: &imsjson.CrewMemberEdit{PersonID: erinPersonID, IsLeader: true}})
+	require.Equal(t, http.StatusNoContent, resp.StatusCode)
+	require.NoError(t, resp.Body.Close())
+
+	// Erin sees exactly the crew she leads, with herself as its (leader) member.
+	mine, resp := erin.getMyCrews(ctx, eventName)
+	require.Equal(t, http.StatusOK, resp.StatusCode)
+	require.NoError(t, resp.Body.Close())
+	require.Len(t, mine, 1)
+	require.Equal(t, slug, mine[0].Slug)
+	require.Len(t, mine[0].Members, 1)
+	assert.EqualValues(t, erinPersonID, mine[0].Members[0].PersonID)
+	assert.True(t, mine[0].Members[0].IsLeader)
+
+	// Erin adds Bob as a plain member.
+	resp = erin.editMyCrew(ctx, eventName, imsjson.Crew{Slug: slug, Member: &imsjson.CrewMemberEdit{PersonID: bobPersonID}})
+	require.Equal(t, http.StatusNoContent, resp.StatusCode)
+	require.NoError(t, resp.Body.Close())
+
+	// Even asking for leader is ignored on this path — Carol lands as a plain member.
+	resp = erin.editMyCrew(ctx, eventName, imsjson.Crew{Slug: slug, Member: &imsjson.CrewMemberEdit{PersonID: carolPersonID, IsLeader: true}})
+	require.Equal(t, http.StatusNoContent, resp.StatusCode)
+	require.NoError(t, resp.Body.Close())
+
+	mine, resp = erin.getMyCrews(ctx, eventName)
+	require.Equal(t, http.StatusOK, resp.StatusCode)
+	require.NoError(t, resp.Body.Close())
+	require.Len(t, mine, 1)
+	bob, ok := crewMember(mine[0], bobPersonID)
+	require.True(t, ok, "Bob was added")
+	assert.False(t, bob.IsLeader)
+	carol, ok := crewMember(mine[0], carolPersonID)
+	require.True(t, ok, "Carol was added")
+	assert.False(t, carol.IsLeader, "a leader may not mint co-leaders via My Crew")
+
+	// The admin crews view reflects the leader's change (cache was invalidated).
+	adminCrews, resp := admin.getCrews(ctx, eventName)
+	require.Equal(t, http.StatusOK, resp.StatusCode)
+	require.NoError(t, resp.Body.Close())
+	gate, ok := findCrew(adminCrews, slug)
+	require.True(t, ok)
+	_, ok = crewMember(gate, bobPersonID)
+	assert.True(t, ok, "the admin page sees the member the leader added")
+
+	// Erin removes Bob.
+	resp = erin.editMyCrew(ctx, eventName, imsjson.Crew{Slug: slug, Member: &imsjson.CrewMemberEdit{PersonID: bobPersonID, Remove: true}})
+	require.Equal(t, http.StatusNoContent, resp.StatusCode)
+	require.NoError(t, resp.Body.Close())
+	mine, resp = erin.getMyCrews(ctx, eventName)
+	require.Equal(t, http.StatusOK, resp.StatusCode)
+	require.NoError(t, resp.Body.Close())
+	_, ok = crewMember(mine[0], bobPersonID)
+	assert.False(t, ok, "Bob was removed")
+
+	// A leader may not remove a fellow leader (herself) — that stays an admin act.
+	resp = erin.editMyCrew(ctx, eventName, imsjson.Crew{Slug: slug, Member: &imsjson.CrewMemberEdit{PersonID: erinPersonID, Remove: true}})
+	assert.Equal(t, http.StatusForbidden, resp.StatusCode)
+	require.NoError(t, resp.Body.Close())
+
+	// Adding a nonexistent person is a friendly 404.
+	resp = erin.editMyCrew(ctx, eventName, imsjson.Crew{Slug: slug, Member: &imsjson.CrewMemberEdit{PersonID: 999999}})
+	assert.Equal(t, http.StatusNotFound, resp.StatusCode)
+	require.NoError(t, resp.Body.Close())
+
+	// Create / rename / delete are not member changes → rejected on this path.
+	resp = erin.editMyCrew(ctx, eventName, imsjson.Crew{Name: new("Sneaky")}) // empty slug = would-be create
+	assert.Equal(t, http.StatusBadRequest, resp.StatusCode)
+	require.NoError(t, resp.Body.Close())
+	resp = erin.editMyCrew(ctx, eventName, imsjson.Crew{Slug: slug, Name: new("Renamed")})
+	assert.Equal(t, http.StatusBadRequest, resp.StatusCode)
+	require.NoError(t, resp.Body.Close())
+	resp = erin.editMyCrew(ctx, eventName, imsjson.Crew{Slug: slug, Delete: true})
+	assert.Equal(t, http.StatusBadRequest, resp.StatusCode)
+	require.NoError(t, resp.Body.Close())
+
+	// Someone who leads nothing here: an empty My Crew list, and no power over Erin's
+	// crew (forbidden, not 404 — we don't leak which crews exist).
+	aliceMine, resp := alice.getMyCrews(ctx, eventName)
+	require.Equal(t, http.StatusOK, resp.StatusCode)
+	require.NoError(t, resp.Body.Close())
+	assert.Empty(t, aliceMine)
+	resp = alice.editMyCrew(ctx, eventName, imsjson.Crew{Slug: slug, Member: &imsjson.CrewMemberEdit{PersonID: bobPersonID}})
+	assert.Equal(t, http.StatusForbidden, resp.StatusCode)
+	require.NoError(t, resp.Body.Close())
+	resp = erin.editMyCrew(ctx, eventName, imsjson.Crew{Slug: "no-such-crew", Member: &imsjson.CrewMemberEdit{PersonID: bobPersonID}})
+	assert.Equal(t, http.StatusForbidden, resp.StatusCode)
+	require.NoError(t, resp.Body.Close())
+}
+
+// crewMember finds a member of a crew by person id.
+func crewMember(crew imsjson.Crew, personID int32) (imsjson.CrewMember, bool) {
+	idx := slices.IndexFunc(crew.Members, func(m imsjson.CrewMember) bool { return m.PersonID == personID })
+	if idx < 0 {
+		return imsjson.CrewMember{}, false
+	}
+	return crew.Members[idx], true
+}
+
 // TestCrewLeaderDerivedAccess verifies the slice-10c derived role: marking a person
 // a crew leader (IS_LEADER) grants them the crew-leader access without any
 // participation row — read-only incident visibility and their crew's reports — and
