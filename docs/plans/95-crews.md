@@ -174,31 +174,45 @@ change yet — schema, generated queries, and dead-code removal only.
 **Verified:** `go run bin/build/build.go`, `go vet ./...`, `go test ./...`,
 `go test ./store/integration` (migrations apply to real MariaDB), golangci-lint clean.
 
-### PR 2 — Crews page in the event nav + membership management (admin-only)
+### PR 2 — Crews page in the event nav + membership management (admin-only) ✅ IMPLEMENTED
+
+**Status: built and green** (this PR). Admin-only crew management, no authz-derivation
+yet (that is PR 3).
 
 1. **API `api/crew.go`** (mirror `api/area.go`, minus propose/approve):
    - `GetCrews` — `GET /ims/api/events/{eventName}/crews`, served from a per-event
-     `crewsCache`. Include each crew's members + leader flags (or a sibling members
-     endpoint) so the page can render membership.
-   - `EditCrews` — `POST /ims/api/events/{eventName}/crews`: create / update / delete
-     crews **and** manage membership (add/remove a person, toggle `IS_LEADER`). **Admin
-     only** — gate on a new `GlobalAdministrateCrews` (add to `lib/authz/permission.go`
-     + `RolesToGlobalPerms[Administrator]`, mirror `GlobalAdministrateAreas`); there is
-     **no** non-admin propose branch. Deleting a crew calls `RemoveAllCrewMembers` then
-     `DeleteCrew`. **Mutating routes register `LogRequest(true, …)`.**
-   - Routes in `api/mux.go` next to the areas routes.
+     `crewsCache`. Each crew carries its members + leader flags (`CrewMembers`), so the
+     page renders membership in one request.
+   - `EditCrews` — `POST /ims/api/events/{eventName}/crews`: body-keyed like `EditAreas`.
+     Empty `slug` → create; `delete:true` → delete (RemoveAllCrewMembers + DeleteCrew in
+     one tx); `member:{person_id, remove?, is_leader?}` → add/remove/toggle-leader
+     (`AddCrewMember` upserts, so add and leader-toggle are the same call; a bad person
+     id → friendly 404); else → rename/reorder. **Admin only** — both handlers gate on
+     the new `GlobalAdministrateCrews` bit; there is **no** non-admin branch. POST
+     registers `LogRequest(true, …)`, GET `LogRequest(false, …)`.
+   - Routes + `crewsCache` wired in `api/mux.go` next to the areas routes.
+   - `json/crew.go`: `Crew{Slug, Name, SortOrder, Members, Delete, Member}` +
+     `CrewMember{PersonID, Handle, Name, IsLeader}` + `CrewMemberEdit{PersonID, Remove,
+     IsLeader}`.
 2. **Event Crews page** `web/template/crews.templ` + `web/typescript/crews.ts` — mounted
-   at **`/ims/app/events/{event}/crews`**, linked from the **event nav next to People**
-   (`web/template/nav.templ`), **not** the global admin root. List crews (create/rename/
-   delete), and per crew a member list with an add-person combobox (scoped to the event)
-   and a per-member **leader** checkbox. Gate the whole page on `GlobalAdministrateCrews`.
-3. **Show crew on the person views (read-only):** surface a person's crew(s) on the
-   People roster and/or the profile card (`personprofile.templ` + `openPersonProfileModal`)
-   via `PersonCrews`. Display-only; management stays on the Crews page.
+   at **`/ims/app/events/{event}/crews`** (`web/mux.go`), linked from the **event nav
+   next to People** (`nav.templ` `active-event-crews`, revealed admin-only in `ims.ts`
+   `setupNav`), **not** the global admin root. Lists crews (inline create / rename via an
+   editable name field / delete), each with a member list, a per-member **leader** toggle
+   (form-switch), a remove button, and a per-crew add-person combobox
+   (`setupPersonCombobox`, scoped to the event). Page gate: non-admins see an access
+   message, no controls. `url_crews` / `url_viewCrews` added to `urls.ts`.
+3. **Deferred — show crew on the person views (read-only):** surfacing a person's crew(s)
+   on the People roster / profile card (via `PersonCrews`) is **not** in this PR, to keep
+   it focused on crew management. It touches the personnel JSON contract + the profile
+   modal, so it lands as a small follow-up (or folds into PR 3, which already reworks the
+   person/authz surface).
 
-**Verify:** `go test ./... ./api/integration`; `npx eslint`. Manual: as an admin, create
-a crew from the event's Crews page, add members, mark one or more as leader; a non-admin
-gets no Crews link and a 403 from the API.
+**Verified:** `go run bin/build/build.go` (templ + tsgo + go build), `go test ./...`
+including `./api/integration` (`crew_test.go`: create/list, membership + leader
+toggle, rename-keeps-slug, delete-removes-membership, admin-only read+write 403,
+bad-person 404), golangci-lint clean. (eslint has no config in this repo — tsgo is the
+TS gate.)
 
 ### PR 3 — Derive the `crew_leader` role from leadership + crew-scoped report review
 

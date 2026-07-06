@@ -1,0 +1,94 @@
+//
+// See the file COPYRIGHT for copyright information.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+//
+
+package template
+
+// Crews is the per-event admin page for managing crews and their membership
+// (feedback round 10, slice 10c). It sits in the event nav next to People and is
+// admin-only: the nav link + this page's client gate + the crews API all require
+// GlobalAdministrateCrews. See docs/plans/95-crews.md.
+templ Crews(deployment, versionName, versionRef, eventName string) {
+<!DOCTYPE html>
+<html lang="en">
+@Head("Crews", "crews.js", false, false, versionRef)
+
+<body>
+<div class="container-fluid">
+@Header(deployment)
+@Nav(eventName)
+<h1 id="doc-title">Crews</h1>
+@LoadingOverlay()
+@ErrorInfo()
+
+  <!-- Add a crew. Hidden until the client confirms the viewer is an admin. -->
+  <div class="row hidden no-print" id="add_crew_container">
+    <div class="col-sm-12 col-md-8 col-lg-6">
+      <div class="input-group mb-3">
+        <span class="input-group-text">New crew</span>
+        <input id="add_crew_name" type="text" class="form-control form-control-sm"
+               autocomplete="off" placeholder="Crew name…" />
+        <button id="add_crew_button" type="button" class="btn btn-outline-primary btn-sm"
+                onclick="createCrew()">Add</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- The crew list. Each crew card is cloned from #crew_template. -->
+  <div class="row hidden" id="crews_container">
+    <div id="crews" class="col-sm-12 col-md-10 col-lg-8"></div>
+  </div>
+
+  <!-- A single crew card. -->
+  <template id="crew_template">
+    <div class="card mb-3 crew-card" data-crew-slug="">
+      <div class="card-header d-flex align-items-center gap-2">
+        <input type="text" class="form-control form-control-sm crew-name"
+               aria-label="Crew name" onchange="renameCrew(this)" />
+        <button type="button" class="btn btn-outline-danger btn-sm ms-auto delete-crew"
+                onclick="deleteCrew(this)">Delete</button>
+      </div>
+      <ul class="list-group list-group-flush crew-members"></ul>
+      <div class="card-footer">
+        <label class="form-label fw-semibold mb-1">Add member</label>
+        <div class="position-relative">
+          <input type="search" class="form-control form-control-sm crew-add-member"
+                 autocomplete="off" placeholder="Legal name or fair name…" />
+          <div class="list-group position-absolute w-100 shadow-sm hidden crew-add-member-results"
+               style="z-index: 1000;"></div>
+        </div>
+      </div>
+    </div>
+  </template>
+
+  <!-- One member row within a crew card. -->
+  <template id="crew_member_template">
+    <li class="list-group-item d-flex align-items-center gap-2 crew-member" data-person-id="">
+      <span class="crew-member-name"></span>
+      <div class="form-check form-switch ms-auto mb-0">
+        <input class="form-check-input crew-member-leader" type="checkbox"
+               role="switch" onchange="toggleLeader(this)" />
+        <label class="form-check-label small">Leader</label>
+      </div>
+      <button type="button" class="btn btn-outline-secondary btn-sm remove-member"
+              onclick="removeMember(this)">Remove</button>
+    </li>
+  </template>
+
+@Footer(versionName, versionRef)
+</div>
+</body>
+</html>
+}

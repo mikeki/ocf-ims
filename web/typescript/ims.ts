@@ -844,6 +844,18 @@ function renderCommonPageItems(authInfo: AuthInfo): void {
             }
         }
 
+        // Crews: admin-only (10c). Reveal it only when an event is active AND the
+        // viewer is an admin; the page and its API both require GlobalAdministrateCrews.
+        const activeEventCrews = document.getElementById("active-event-crews") as HTMLAnchorElement|null;
+        if (activeEventCrews != null && authInfo.authenticated && authInfo.admin) {
+            activeEventCrews.href = urlReplace(url_viewCrews);
+            activeEventCrews.classList.remove("hidden");
+
+            if (window.location.pathname.startsWith(urlReplace(url_viewCrews))) {
+                activeEventCrews.classList.add("active");
+            }
+        }
+
         // Areas: visible to everyone with event access (round 7). Reveal it when an
         // event is active AND the viewer is an admin OR has area-read on that event
         // (reporters and up). The page shows a read-only list to non-editors and

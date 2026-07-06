@@ -201,6 +201,16 @@ func AddToMux(mux *http.ServeMux, cfg *conf.IMSConfig) *http.ServeMux {
 			).ServeHTTP(w, r)
 		},
 	)
+	// Crews: an event-scoped page beside People (admin-only via the nav-link + page
+	// gate + the crews API's GlobalAdministrateCrews check). See
+	// docs/plans/95-crews.md.
+	mux.HandleFunc("GET /ims/app/events/{eventName}/crews",
+		func(w http.ResponseWriter, r *http.Request) {
+			AdaptTempl(
+				template.Crews(deployment, versionName, versionRef, r.PathValue("eventName")),
+			).ServeHTTP(w, r)
+		},
+	)
 	mux.HandleFunc("GET /ims/app/events/{eventName}",
 		func(w http.ResponseWriter, r *http.Request) {
 			ev := url.PathEscape(r.PathValue("eventName"))
