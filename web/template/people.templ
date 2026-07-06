@@ -238,6 +238,20 @@ templ People(deployment, versionName, versionRef, eventName string, defaultPassw
               <input id="edit_person_phone" type="tel" class="form-control" autocomplete="off" placeholder="Phone" />
               <label for="edit_person_phone">Phone (contact)</label>
             </div>
+            <!-- Profile picture: a preview of the current picture (hidden when none),
+                 a file picker to set/replace it, and a Remove button (shown only when
+                 a picture exists). The picture is uploaded separately from the JSON
+                 save (multipart), on Save. -->
+            <div class="mb-3">
+              <label class="form-label mb-1" for="edit_person_picture">Profile picture</label>
+              <div class="d-flex align-items-center gap-3">
+                <img id="edit_person_picture_preview" alt="Current profile picture"
+                     class="rounded img-fluid hidden" style="max-height: 4rem; object-fit: cover;" />
+                <input id="edit_person_picture" type="file" accept="image/*" class="form-control" />
+                <button type="button" id="edit_person_picture_remove"
+                        class="btn btn-outline-danger btn-sm hidden" onclick="removePersonPicture()">Remove</button>
+              </div>
+            </div>
             <div id="edit_person_event_section" class="hidden mt-3">
               <hr />
               <p class="text-body-secondary small mb-2">Participation for <strong id="edit_person_event_name"></strong></p>

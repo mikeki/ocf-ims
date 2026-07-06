@@ -32,7 +32,8 @@ templ Incident(deployment, versionName, versionRef, eventName string) {
 
 @QuickAddPersonModal()
 
-@PersonProfileModal()
+    <!-- PersonProfileModal now lives in Nav (present on every page), so it is no
+         longer included here — a second copy would duplicate its element IDs. -->
 
     <!-- Help modal for incident page -->
     <div class="modal no-print" id="helpModal" tabindex="-1" aria-labelledby="helpModalLabel" aria-hidden="true">

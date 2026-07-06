@@ -16,14 +16,18 @@
 
 package template
 
-// PersonProfileModal is a read-only "who is this person" card, opened by clicking
-// a person in an incident's People list (ims.ts openPersonProfileModal). It fetches
-// GET /ims/api/personnel?person_id=&event= and shows the fields the viewer's role is
-// allowed to see: fair name + full legal name + this event's role/wristband for
-// anyone, and email/phone only for a personnel admin (the server withholds contact
-// info for everyone else, so hiding the rows here just avoids blank labels). IDs are
-// namespaced "person_profile_*". Fields with no value have their row hidden by the
-// client.
+// PersonProfileModal is the "who is this person" card, opened by clicking a person in
+// an incident's People list or via the user menu's "Edit Profile" (ims.ts
+// openPersonProfileModal). It fetches GET /ims/api/personnel?person_id=&event= and
+// shows the fields the viewer's role is allowed to see: fair name + full legal name +
+// this event's role/wristband for anyone, and email/phone only for a personnel admin
+// OR the person viewing their own card (the server withholds contact info from
+// everyone else, so hiding the rows here just avoids blank labels).
+//
+// When the card is the viewer's OWN profile it becomes editable: an Edit button
+// reveals a form over identity/contact fields + a profile-picture picker, saved via
+// the self-service /ims/api/auth/{profile,picture} endpoints. IDs are namespaced
+// "person_profile_*". Fields with no value have their row hidden by the client.
 templ PersonProfileModal() {
   <div class="modal no-print" id="personProfileModal" tabindex="-1" aria-labelledby="personProfileModalLabel" aria-hidden="true">
     <div class="modal-dialog">
@@ -35,6 +39,17 @@ templ PersonProfileModal() {
         <div class="modal-body">
           <div id="person_profile_loading" class="text-body-secondary small">Loading…</div>
           <div id="person_profile_error" class="text-danger small hidden"></div>
+          <!-- Profile picture: shown at the top of the card when the person has one.
+               The image is loaded via an authenticated fetch → blob URL (the serve
+               endpoint needs the Authorization header, so a bare <img src> would 401),
+               and sized with CSS — there is no server-side thumbnailing. -->
+          <div id="person_profile_picture_wrap" class="text-center mb-3 hidden">
+            <img id="person_profile_picture" alt="Profile picture" class="rounded img-fluid"
+                 role="button" title="Click to enlarge"
+                 style="max-height: 12rem; object-fit: cover; cursor: zoom-in;" />
+          </div>
+
+          <!-- View mode: read-only field list. -->
           <dl id="person_profile_fields" class="row mb-0 hidden">
             <dt class="col-sm-4 text-body-secondary" id="person_profile_fair_name_row">Fair Name</dt>
             <dd class="col-sm-8" id="person_profile_fair_name"></dd>
@@ -48,18 +63,68 @@ templ PersonProfileModal() {
             <dt class="col-sm-4 text-body-secondary hidden" id="person_profile_wristband_row">Wristband</dt>
             <dd class="col-sm-8 hidden" id="person_profile_wristband"></dd>
 
-            <!-- Contact info: only sent to (and shown for) a personnel admin. -->
+            <!-- Contact info: sent to (and shown for) a personnel admin or the person's
+                 own card. -->
             <dt class="col-sm-4 text-body-secondary hidden" id="person_profile_email_row">Email</dt>
             <dd class="col-sm-8 hidden" id="person_profile_email"></dd>
 
             <dt class="col-sm-4 text-body-secondary hidden" id="person_profile_phone_row">Phone</dt>
             <dd class="col-sm-8 hidden" id="person_profile_phone"></dd>
           </dl>
+
+          <!-- Edit mode (self only): a form over the caller's own editable fields plus
+               a profile-picture picker. Hidden until Edit is pressed. -->
+          <form id="person_profile_edit" class="hidden" onsubmit="return false;">
+            <div class="mb-2">
+              <label class="form-label mb-1" for="person_profile_edit_fair_name">Fair Name</label>
+              <input id="person_profile_edit_fair_name" type="text" class="form-control" autocomplete="off" />
+            </div>
+            <div class="mb-2">
+              <label class="form-label mb-1" for="person_profile_edit_legal_name">Full Legal Name</label>
+              <input id="person_profile_edit_legal_name" type="text" class="form-control" autocomplete="off" />
+            </div>
+            <div class="mb-2">
+              <label class="form-label mb-1" for="person_profile_edit_email">Email</label>
+              <input id="person_profile_edit_email" type="email" class="form-control" autocomplete="off" />
+            </div>
+            <div class="mb-2">
+              <label class="form-label mb-1" for="person_profile_edit_phone">Phone</label>
+              <input id="person_profile_edit_phone" type="tel" class="form-control" autocomplete="off" />
+            </div>
+            <div class="mb-1">
+              <label class="form-label mb-1" for="person_profile_edit_picture">Profile picture</label>
+              <div class="d-flex align-items-center gap-2">
+                <input id="person_profile_edit_picture" type="file" accept="image/*" class="form-control" />
+                <button type="button" id="person_profile_edit_picture_remove"
+                        class="btn btn-outline-danger btn-sm hidden">Remove</button>
+              </div>
+            </div>
+          </form>
         </div>
         <div class="modal-footer">
-          <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+          <!-- View-mode footer. The Edit button is revealed only on the viewer's own card. -->
+          <div id="person_profile_view_footer" class="d-flex gap-2">
+            <button type="button" id="person_profile_edit_button" class="btn btn-primary hidden">Edit</button>
+            <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+          </div>
+          <!-- Edit-mode footer. -->
+          <div id="person_profile_edit_footer" class="d-flex gap-2 hidden">
+            <button type="button" id="person_profile_save_button" class="btn btn-primary">Save</button>
+            <button type="button" id="person_profile_cancel_button" class="btn btn-secondary">Cancel</button>
+          </div>
         </div>
       </div>
     </div>
+  </div>
+  <!-- Full-screen zoom for the profile picture. The stored image is kept at up to
+       ~1536px on its longest edge (downscaleImageForUpload / maxProfilePictureEdge),
+       so showing it here at natural size lets a viewer zoom in on a face. It reuses
+       the blob URL already fetched for the card; a click anywhere (or Esc) dismisses
+       it. z-index sits above the Bootstrap modal. -->
+  <div id="person_profile_picture_zoom"
+       class="hidden position-fixed top-0 start-0 w-100 h-100 d-flex align-items-center justify-content-center"
+       style="z-index: 2000; background: rgba(0,0,0,0.85); cursor: zoom-out;">
+    <img id="person_profile_picture_zoom_img" alt="Profile picture (enlarged)"
+         class="img-fluid rounded" style="max-width: 92vw; max-height: 92vh;" />
   </div>
 }

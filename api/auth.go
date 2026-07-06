@@ -185,7 +185,11 @@ type GetAuth struct {
 type GetAuthResponse struct {
 	Authenticated bool   `json:"authenticated"`
 	User          string `json:"user,omitzero"`
-	Admin         bool   `json:"admin"`
+	// PersonID is the signed-in user's own PERSON.ID (the JWT subject). The client
+	// uses it to open its own profile card ("Edit Profile") and to decide when a
+	// card being viewed is the viewer's own (so it may show self-edit controls).
+	PersonID int64 `json:"person_id,omitzero"`
+	Admin    bool  `json:"admin"`
 	// CanManagePersonnel reports whether the user holds GlobalAdministratePersonnel
 	// (e.g. may set/reset another person's password). Drives UI gating; the endpoints
 	// themselves remain the authoritative check.
@@ -254,6 +258,7 @@ func (action GetAuth) getAuth(req *http.Request) (GetAuthResponse, *herr.HTTPErr
 	resp = GetAuthResponse{
 		Authenticated:      true,
 		User:               handle,
+		PersonID:           int64(claims.PersonID()),
 		Admin:              claims.PersonAdmin(),
 		CanManagePersonnel: globalPermissions&authz.GlobalAdministratePersonnel != 0,
 		PushVAPIDPublicKey: action.pushVAPIDPublicKey,
