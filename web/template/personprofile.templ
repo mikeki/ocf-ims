@@ -20,7 +20,7 @@ package template
 // an incident's People list or via the user menu's "Edit Profile" (ims.ts
 // openPersonProfileModal). It fetches GET /ims/api/personnel?person_id=&event= and
 // shows the fields the viewer's role is allowed to see: fair name + full legal name +
-// this event's role/wristband for anyone, and email/phone only for a personnel admin
+// this event's role for anyone, and email/phone only for a personnel admin
 // OR the person viewing their own card (the server withholds contact info from
 // everyone else, so hiding the rows here just avoids blank labels).
 //
@@ -59,9 +59,6 @@ templ PersonProfileModal() {
 
             <dt class="col-sm-4 text-body-secondary hidden" id="person_profile_role_row">Role</dt>
             <dd class="col-sm-8 hidden" id="person_profile_role"></dd>
-
-            <dt class="col-sm-4 text-body-secondary hidden" id="person_profile_wristband_row">Wristband</dt>
-            <dd class="col-sm-8 hidden" id="person_profile_wristband"></dd>
 
             <!-- Contact info: sent to (and shown for) a personnel admin or the person's
                  own card. -->

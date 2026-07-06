@@ -1287,7 +1287,6 @@ export function openQuickAddPersonModal(prefillName: string, eventName: string):
     const passwordEl = typedElement("quick_add_person_password", HTMLInputElement);
     const eventSectionEl = typedElement("quick_add_person_event_section", HTMLElement);
     const eventNameEl = typedElement("quick_add_person_event_name", HTMLElement);
-    const wristbandEl = typedElement("quick_add_person_wristband", HTMLInputElement);
     const participationEl = typedElement("quick_add_person_participation", HTMLSelectElement);
     const errorEl = typedElement("quick_add_person_error", HTMLElement);
     const submitEl = typedElement("quick_add_person_submit", HTMLButtonElement);
@@ -1307,7 +1306,6 @@ export function openQuickAddPersonModal(prefillName: string, eventName: string):
     phoneEl.value = "";
     passwordEl.value = "";
     passwordConfirmEl.value = "";
-    wristbandEl.value = "";
     // Default a new event person to "volunteer" (the common at-the-fair role).
     participationEl.value = "volunteer";
     errorEl.textContent = "";
@@ -1416,7 +1414,6 @@ export function openQuickAddPersonModal(prefillName: string, eventName: string):
             };
             if (eventName) {
                 body["event"] = eventName;
-                body["wristband"] = wristbandEl.value.trim();
                 body["participation_type"] = participationEl.value;
             }
             submitEl.disabled = true;
@@ -1659,7 +1656,6 @@ export async function openPersonProfileModal(
     // Per-event + contact rows only render when populated (the server withholds
     // contact info from non-admins, so those rows just stay hidden for them).
     setRow("role", person.participation_type ?? "", true);
-    setRow("wristband", person.wristband ?? "", true);
     setRow("email", person.email ?? "", true);
     setRow("phone", person.phone ?? "", true);
     fieldsEl.classList.remove("hidden");
@@ -1801,12 +1797,6 @@ export function setupPersonCombobox(cfg: PersonComboboxConfig): void {
                 const label: HTMLSpanElement = document.createElement("span");
                 label.textContent = personDisplayLabel(row.person);
                 item.append(label);
-                if (row.person.wristband) {
-                    const wb: HTMLSpanElement = document.createElement("span");
-                    wb.classList.add("badge", "text-bg-secondary", "ms-2");
-                    wb.textContent = row.person.wristband;
-                    item.append(wb);
-                }
                 if (row.person.participation_type) {
                     const pt: HTMLSpanElement = document.createElement("span");
                     pt.classList.add("badge", "text-bg-light", "ms-2");
@@ -3154,12 +3144,6 @@ export function setupJournalMentionAutocomplete(eventName: string): void {
                 h.classList.add("text-body-secondary", "font-monospace", "small", "ms-2");
                 h.textContent = "@" + p.handle;
                 item.append(h);
-            }
-            if (p.wristband) {
-                const wb: HTMLSpanElement = document.createElement("span");
-                wb.classList.add("badge", "text-bg-secondary", "ms-2");
-                wb.textContent = p.wristband;
-                item.append(wb);
             }
             // mousedown (not click) so it fires before the textarea blurs.
             item.addEventListener("mousedown", (e: MouseEvent): void => {

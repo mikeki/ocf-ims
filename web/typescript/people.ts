@@ -147,7 +147,6 @@ const el = {
     addPersonModalLabel: ims.typedElement("addPersonModalLabel", HTMLElement),
     addPersonSubmit: ims.typedElement("add_person_submit", HTMLButtonElement),
     addPersonInviteNote: ims.typedElement("add_person_invite_note", HTMLElement),
-    addPersonWristbandWrap: ims.typedElement("add_person_wristband_wrap", HTMLElement),
     addPersonParticipationWrap: ims.typedElement("add_person_participation_wrap", HTMLElement),
     addPersonName: ims.typedElement("add_person_name", HTMLInputElement),
     addPersonHandle: ims.typedElement("add_person_handle", HTMLInputElement),
@@ -169,7 +168,6 @@ const el = {
     addPersonBackToSearch: ims.typedElement("add_person_back_to_search", HTMLButtonElement),
     addPersonEventSection: ims.typedElement("add_person_event_section", HTMLElement),
     addPersonEventName: ims.typedElement("add_person_event_name", HTMLElement),
-    addPersonWristband: ims.typedElement("add_person_wristband", HTMLInputElement),
     addPersonParticipation: ims.typedElement("add_person_participation", HTMLSelectElement),
     editPersonModal: ims.typedElement("editPersonModal", HTMLElement),
     editPersonHandle: ims.typedElement("edit_person_handle", HTMLInputElement),
@@ -178,7 +176,6 @@ const el = {
     editPersonPhone: ims.typedElement("edit_person_phone", HTMLInputElement),
     editPersonEventSection: ims.typedElement("edit_person_event_section", HTMLElement),
     editPersonEventName: ims.typedElement("edit_person_event_name", HTMLElement),
-    editPersonWristband: ims.typedElement("edit_person_wristband", HTMLInputElement),
     editPersonParticipation: ims.typedElement("edit_person_participation", HTMLSelectElement),
     editPersonPicture: ims.typedElement("edit_person_picture", HTMLInputElement),
     editPersonPicturePreview: ims.typedElement("edit_person_picture_preview", HTMLImageElement),
@@ -488,7 +485,7 @@ function buildPersonRow(
         entryItem.dataset["personId"] = (person.person_id ?? "").toString();
         // Lowercased haystack for the client-side search box (both identifiers).
         entryItem.dataset["search"] =
-            `${legalName} ${fairName} ${person.wristband ?? ""}`.toLowerCase();
+            `${legalName} ${fairName}`.toLowerCase();
 
         entryItem.getElementsByClassName("person-name")[0]!.textContent = displayLabel;
 
@@ -498,11 +495,6 @@ function buildPersonRow(
             entryItem.querySelector(".person-admin-badge")!.classList.remove("hidden");
         }
 
-        const wristband: HTMLElement = entryItem.querySelector(".person-wristband")!;
-        if (person.wristband) {
-            wristband.textContent = person.wristband;
-            wristband.classList.remove("hidden");
-        }
         const participationWrap: HTMLElement = entryItem.querySelector(".person-participation-dropdown")!;
         const participationButton: HTMLButtonElement = entryItem.querySelector(".person-participation")!;
         const participationMenu: HTMLElement = entryItem.querySelector(".person-participation-menu")!;
@@ -531,7 +523,10 @@ function buildPersonRow(
                     el.editPersonName.value = person.name ?? "";
                     el.editPersonEmail.value = person.email ?? "";
                     el.editPersonPhone.value = person.phone ?? "";
-                    el.editPersonWristband.value = person.wristband ?? "";
+                    // Wristband is no longer editable in the UI, but the per-event save
+                    // upserts and would clear an omitted wristband — so carry the current
+                    // value on the modal and send it back unchanged (see submitEditPerson).
+                    el.editPersonModal.dataset["wristband"] = person.wristband ?? "";
                     el.editPersonParticipation.value = person.participation_type ?? "";
                     void showEditPicturePreview(person.person_id ?? null);
                     ims.bsModal(el.editPersonModal).show();
@@ -796,13 +791,12 @@ async function submitSetPassword(): Promise<void> {
 function showAddPersonModal(): void {
     resetAddPersonForm();
 
-    // Admins get the full Add-person form (all rungs, wristband). A non-admin inviter
-    // gets the scoped "Invite reporter" form: identity + initial password, role fixed
-    // to reporter — so the wristband + role pickers are hidden and a note explains it
-    // (53d). The server enforces the same ceiling regardless of the UI.
+    // Admins get the full Add-person form (all rungs). A non-admin inviter gets the
+    // scoped "Invite reporter" form: identity + initial password, role fixed to
+    // reporter — so the role picker is hidden and a note explains it (53d). The server
+    // enforces the same ceiling regardless of the UI.
     el.addPersonModalLabel.textContent = isAdmin ? "Add Person" : "Invite reporter";
     el.addPersonSubmit.textContent = isAdmin ? "Add person" : "Invite";
-    el.addPersonWristbandWrap.classList.toggle("hidden", !isAdmin);
     el.addPersonParticipationWrap.classList.toggle("hidden", !isAdmin);
     el.addPersonInviteNote.classList.toggle("hidden", isAdmin);
 
@@ -822,7 +816,6 @@ function resetAddPersonForm(): void {
     el.addPersonEmail.value = "";
     el.addPersonPassword.value = "";
     el.addPersonPasswordConfirm.value = "";
-    el.addPersonWristband.value = "";
     // Default a new event participant to "volunteer" (the common at-the-fair role).
     el.addPersonParticipation.value = "volunteer";
     resetPasswordToggle(el.addPersonPassword, el.addPersonPasswordToggle);
@@ -973,7 +966,6 @@ async function submitCreatePerson(): Promise<void> {
     if (currentEvent) {
         body["event"] = currentEvent;
         if (isAdmin) {
-            body["wristband"] = el.addPersonWristband.value.trim();
             body["participation_type"] = el.addPersonParticipation.value;
         } else {
             // Invite flow: role is fixed to reporter (the server enforces this too).
@@ -1009,7 +1001,9 @@ async function submitEditPerson(): Promise<void> {
     };
     if (currentEvent) {
         body["event"] = currentEvent;
-        body["wristband"] = el.editPersonWristband.value.trim();
+        // Wristband is no longer edited in the UI; resend the current value (stashed
+        // when the modal opened) so the per-event upsert doesn't clear it.
+        body["wristband"] = el.editPersonModal.dataset["wristband"] ?? "";
         body["participation_type"] = el.editPersonParticipation.value;
     }
 
@@ -1113,7 +1107,9 @@ async function enrollPerson(person: ims.PersonSearchResult): Promise<void> {
         body: JSON.stringify({
             // Invite flow fixes the role to reporter; admins use the modal's picker.
             "participation_type": isAdmin ? el.addPersonParticipation.value : "reporter",
-            "wristband": isAdmin ? el.addPersonWristband.value.trim() : "",
+            // Wristband is no longer set in the UI; preserve any existing value for this
+            // event so the upsert doesn't clear it.
+            "wristband": person.wristband ?? "",
         }),
     });
     if (err != null) {
