@@ -114,6 +114,76 @@ func TestPrivateIncidentVisibility(t *testing.T) {
 	requireSeesIncident(t, ctx, dave, eventName, num)
 }
 
+// findIncidentPerson returns the involved-person entry for personID, or nil.
+func findIncidentPerson(people *[]imsjson.IncidentPerson, personID int64) *imsjson.IncidentPerson {
+	if people == nil {
+		return nil
+	}
+	for i := range *people {
+		if (*people)[i].PersonID == personID {
+			return &(*people)[i]
+		}
+	}
+	return nil
+}
+
+// TestPrivateIncidentPeopleHasEventAccess covers the People editor's "has access"
+// hint: a plain writer has event-wide access to a public incident, but marking the
+// incident private revokes that (only the creator/admin keep automatic access), so
+// the editor should offer a per-incident grant for that writer instead.
+func TestPrivateIncidentPeopleHasEventAccess(t *testing.T) {
+	t.Parallel()
+	ctx := t.Context()
+
+	admin := ApiHelper{t: t, serverURL: shared.serverURL, jwt: jwtForAdmin(ctx, t)}
+	alice := ApiHelper{t: t, serverURL: shared.serverURL, jwt: jwtForAlice(t, ctx)} // creator (writer)
+
+	eventName := rand.NonCryptoText()
+	_, resp := admin.createEvent(ctx, imsjson.Event{Name: &eventName})
+	require.Equal(t, http.StatusNoContent, resp.StatusCode)
+	require.NoError(t, resp.Body.Close())
+	for _, handle := range []string{userAliceHandle, userErinHandle} {
+		resp = admin.addWriter(ctx, eventName, handle)
+		require.Equal(t, http.StatusNoContent, resp.StatusCode)
+		require.NoError(t, resp.Body.Close())
+	}
+
+	num := alice.newIncidentSuccess(ctx, imsjson.Incident{Event: eventName, Summary: new("op")})
+	// Attach Erin (a plain writer) and Alice (the creator) as involved people.
+	for _, pid := range []int64{userErinPersonID, userAlicePersonID} {
+		resp = alice.attachPersonToIncident(ctx, eventName, num, pid)
+		require.Equal(t, http.StatusNoContent, resp.StatusCode)
+		require.NoError(t, resp.Body.Close())
+	}
+
+	// Public: both writers have automatic (event-wide) access.
+	got, resp := admin.getIncident(ctx, eventName, num)
+	require.Equal(t, http.StatusOK, resp.StatusCode)
+	require.NoError(t, resp.Body.Close())
+	erin := findIncidentPerson(got.People, userErinPersonID)
+	require.NotNil(t, erin)
+	require.True(t, erin.HasEventAccess, "a writer should have access to a public incident")
+
+	// Mark it private.
+	resp = alice.updateIncident(ctx, eventName, num, imsjson.Incident{
+		Event: eventName, Number: num, Private: new(true),
+	})
+	require.Equal(t, http.StatusNoContent, resp.StatusCode)
+	require.NoError(t, resp.Body.Close())
+
+	// Private: the plain writer no longer has automatic access (grant needed), but the
+	// creator still does.
+	got, resp = admin.getIncident(ctx, eventName, num)
+	require.Equal(t, http.StatusOK, resp.StatusCode)
+	require.NoError(t, resp.Body.Close())
+	erin = findIncidentPerson(got.People, userErinPersonID)
+	require.NotNil(t, erin)
+	require.False(t, erin.HasEventAccess, "a writer must NOT count as having access to a private incident")
+	creator := findIncidentPerson(got.People, userAlicePersonID)
+	require.NotNil(t, creator)
+	require.True(t, creator.HasEventAccess, "the creator keeps access to their private incident")
+}
+
 // TestPrivateIncidentToggleAuthorization covers who may change the privacy flag:
 // only an admin or the incident's creator. A non-creator writer is refused, and a
 // granted reporter (who may append journal entries) cannot flip it either.

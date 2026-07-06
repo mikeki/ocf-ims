@@ -115,13 +115,20 @@ select
     sqlc.embed(ip),
     p.HANDLE,
     p.NAME,
-    -- HAS_EVENT_ACCESS: the involved person already has event-wide incident access
-    -- (admin, or a 'writer' PERSON__EVENT role), so a per-incident grant (52f) is
-    -- moot for them. The People editor uses this to show "has access" vs offer a grant.
-    (p.IS_ADMIN or coalesce(pe.PARTICIPATION_TYPE = 'writer', false)) as HAS_EVENT_ACCESS
+    -- HAS_EVENT_ACCESS: whether this involved person can already see the incident
+    -- without a per-incident grant (52f), so the People editor shows "has access"
+    -- instead of offering the grant toggle. An admin always can; a 'writer' can too —
+    -- but NOT for a private incident (event-wide read doesn't cover private incidents),
+    -- where among non-admins only the creator qualifies.
+    (
+        p.IS_ADMIN
+        or (not i.PRIVATE and coalesce(pe.PARTICIPATION_TYPE = 'writer', false))
+        or (i.PRIVATE and coalesce(i.CREATED_BY = p.ID, false))
+    ) as HAS_EVENT_ACCESS
 from
     INCIDENT__PERSON ip
     join PERSON p on p.ID = ip.PERSON_ID
+    join INCIDENT i on i.EVENT = ip.EVENT and i.NUMBER = ip.INCIDENT_NUMBER
     left join PERSON__EVENT pe on pe.PERSON_ID = ip.PERSON_ID and pe.EVENT = ip.EVENT
 where
     ip.EVENT = ?;
@@ -131,10 +138,17 @@ select
     sqlc.embed(ip),
     p.HANDLE,
     p.NAME,
-    (p.IS_ADMIN or coalesce(pe.PARTICIPATION_TYPE = 'writer', false)) as HAS_EVENT_ACCESS
+    -- See Incidents_People: a private incident excludes plain writers (only admin or
+    -- the creator have access without a per-incident grant).
+    (
+        p.IS_ADMIN
+        or (not i.PRIVATE and coalesce(pe.PARTICIPATION_TYPE = 'writer', false))
+        or (i.PRIVATE and coalesce(i.CREATED_BY = p.ID, false))
+    ) as HAS_EVENT_ACCESS
 from
     INCIDENT__PERSON ip
     join PERSON p on p.ID = ip.PERSON_ID
+    join INCIDENT i on i.EVENT = ip.EVENT and i.NUMBER = ip.INCIDENT_NUMBER
     left join PERSON__EVENT pe on pe.PERSON_ID = ip.PERSON_ID and pe.EVENT = ip.EVENT
 where
     ip.EVENT = ?

@@ -85,6 +85,7 @@ const el = {
     reopen: ims.typedElement("reopen", HTMLButtonElement),
     incidentPriority: ims.typedElement("incident_priority", HTMLSelectElement),
     incidentPrivate: ims.typedElement("incident_private", HTMLInputElement),
+    incidentPrivateIndicator: ims.typedElement("incident_private_indicator", HTMLSpanElement),
     incidentOutcome: ims.typedElement("incident_outcome", HTMLSelectElement),
     startedDatetime: ims.typedElement("started_datetime", HTMLInputElement) as ims.FlatpickrHTMLInputElement,
     startedDatetimeTz: ims.typedElement("started_datetime_tz", HTMLSpanElement),
@@ -810,8 +811,11 @@ function mayEditPrivacy(): boolean {
 // can be changed. The checkbox class is form-check-input, which enableEditing() does
 // not touch, so this disabled state is authoritative for everyone.
 function drawPrivate(): void {
-    el.incidentPrivate.checked = incident!.private ?? false;
+    const isPrivate = incident!.private ?? false;
+    el.incidentPrivate.checked = isPrivate;
     el.incidentPrivate.disabled = !mayEditPrivacy();
+    // Lock badge next to the IMS # — a quick visual cue that visibility is restricted.
+    el.incidentPrivateIndicator.classList.toggle("hidden", !isPrivate);
 }
 
 
