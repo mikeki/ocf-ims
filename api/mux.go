@@ -869,7 +869,7 @@ func LogRequest(enable bool, actionLogger *actionlog.Logger, userStore directory
 				userID = sql.NullInt64{Int64: int64(jwtCtx.Claims.PersonID()), Valid: true}
 				if posID := jwtCtx.Claims.PersonOnDutyPosition(); posID != nil {
 					positionID = sql.NullInt64{Int64: *posID, Valid: true}
-					positions, _, _ := userStore.GetPositionsAndTeams(r.Context())
+					positions, _ := userStore.GetPositions(r.Context())
 					if positions != nil {
 						posName := positions[*posID]
 						positionName = conv.StringToSql(conv.EmptyToNil(posName), 128)

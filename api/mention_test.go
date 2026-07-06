@@ -45,8 +45,8 @@ func (f *fakeUserStore) GetAllUsers(context.Context) (map[int64]*directory.User,
 	return f.users, nil
 }
 func (f *fakeUserStore) GetPeople(context.Context) ([]imsjson.Person, error) { return nil, nil }
-func (f *fakeUserStore) GetPositionsAndTeams(context.Context) (map[int64]string, map[int64]string, error) {
-	return nil, nil, nil
+func (f *fakeUserStore) GetPositions(context.Context) (map[int64]string, error) {
+	return map[int64]string{}, nil
 }
 func (f *fakeUserStore) InvalidateUsers() {}
 

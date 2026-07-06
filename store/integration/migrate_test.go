@@ -49,8 +49,12 @@ func TestMigrateFreshDB(t *testing.T) {
 	// Re-running is a clean no-op.
 	require.NoError(t, store.MigrateDB(ctx, db))
 
-	for _, table := range []string{"EVENT", "PERSON", "INCIDENT", "REPORT", "VISIT"} {
+	for _, table := range []string{"EVENT", "PERSON", "INCIDENT", "REPORT", "VISIT", "CREW", "CREW_MEMBERSHIP"} {
 		assert.Truef(t, tableExists(t, ctx, db, table), "expected table %s to exist", table)
+	}
+	// The dormant TEAM tables were retired (00027); confirm they're gone at head.
+	for _, table := range []string{"TEAM", "PERSON__TEAM"} {
+		assert.Falsef(t, tableExists(t, ctx, db, table), "expected table %s to be dropped", table)
 	}
 }
 

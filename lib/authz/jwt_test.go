@@ -31,7 +31,6 @@ func TestCreateAndGetValidJWT(t *testing.T) {
 		"Hardware",
 		12345,
 		[]int64{10, 20, 40, 150},
-		[]int64{15, 25, 45, 155},
 		true,
 		new(int64(20)),
 		time.Now().Add(1*time.Hour),
@@ -44,7 +43,6 @@ func TestCreateAndGetValidJWT(t *testing.T) {
 	require.Equal(t, "Hardware", claims.PersonHandle())
 	require.Equal(t, "12345", sub)
 	require.Equal(t, []int64{10, 20, 40, 150}, claims.PersonPositions())
-	require.Equal(t, []int64{15, 25, 45, 155}, claims.PersonTeams())
 	require.True(t, claims.PersonAdmin())
 }
 
@@ -55,7 +53,6 @@ func TestCreateAndGetInvalidJWTs(t *testing.T) {
 		expiredJWT, err := jwter.CreateAccessToken(
 			"Hardware",
 			1,
-			nil,
 			nil,
 			false,
 			new(int64(20)),
@@ -72,7 +69,6 @@ func TestCreateAndGetInvalidJWTs(t *testing.T) {
 			"Hardware",
 			1,
 			nil,
-			nil,
 			false,
 			new(int64(20)),
 			time.Now().Add(1*time.Hour),
@@ -87,7 +83,6 @@ func TestCreateAndGetInvalidJWTs(t *testing.T) {
 			// empty PersonHandle
 			"",
 			12345,
-			nil,
 			nil,
 			false,
 			new(int64(20)),
@@ -107,7 +102,6 @@ func TestTokenTypesAreNotInterchangeable(t *testing.T) {
 	accessToken, err := jwter.CreateAccessToken(
 		"Hardware",
 		12345,
-		nil,
 		nil,
 		false,
 		new(int64(20)),

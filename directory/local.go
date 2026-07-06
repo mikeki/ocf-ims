@@ -25,8 +25,8 @@ import (
 )
 
 // NewLocalUserStore builds a UserStore backed by the local IMS-DB people tables
-// (PERSON/POSITION/TEAM and their membership tables) instead of the external
-// Clubhouse directory. See docs/plans/31-local-people-directory.md.
+// (PERSON/POSITION and their membership table) instead of the external Clubhouse
+// directory. See docs/plans/31-local-people-directory.md.
 func NewLocalUserStore(imsDBQ *store.DBQ, cacheTTL time.Duration) UserStore {
 	return newUserStore(&localPersonSource{dbq: imsDBQ}, cacheTTL)
 }
@@ -47,17 +47,9 @@ func (s *localPersonSource) users(ctx context.Context) (map[int64]*User, error) 
 	if err != nil {
 		return nil, err
 	}
-	teams, err := s.teams(ctx)
-	if err != nil {
-		return nil, err
-	}
 	personPositions, err := s.dbq.PeoplePositions(ctx, s.dbq)
 	if err != nil {
 		return nil, fmt.Errorf("[PeoplePositions]: %w", err)
-	}
-	personTeams, err := s.dbq.PeopleTeams(ctx, s.dbq)
-	if err != nil {
-		return nil, fmt.Errorf("[PeopleTeams]: %w", err)
 	}
 
 	m := make(map[int64]*User, len(people))
@@ -77,12 +69,6 @@ func (s *localPersonSource) users(ctx context.Context) (map[int64]*User, error) 
 			person.PositionNames = append(person.PositionNames, positions[int64(pp.PositionID)])
 		}
 	}
-	for _, pt := range personTeams {
-		if person, ok := m[int64(pt.PersonID)]; ok {
-			person.TeamIDs = append(person.TeamIDs, int64(pt.TeamID))
-			person.TeamNames = append(person.TeamNames, teams[int64(pt.TeamID)])
-		}
-	}
 	// On-duty has no local equivalent yet (no timesheet table), so onduty: access
 	// expressions are inert until a later Phase 3 slice. See the design doc.
 	return m, nil
@@ -98,16 +84,4 @@ func (s *localPersonSource) positions(ctx context.Context) (map[int64]string, er
 		positions[int64(row.ID)] = row.Name
 	}
 	return positions, nil
-}
-
-func (s *localPersonSource) teams(ctx context.Context) (map[int64]string, error) {
-	rows, err := s.dbq.PeopleTeamsList(ctx, s.dbq)
-	if err != nil {
-		return nil, fmt.Errorf("[PeopleTeamsList]: %w", err)
-	}
-	teams := make(map[int64]string, len(rows))
-	for _, row := range rows {
-		teams[int64(row.ID)] = row.Name
-	}
-	return teams, nil
 }
