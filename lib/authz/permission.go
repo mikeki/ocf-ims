@@ -120,8 +120,12 @@ func participationToEventPerms(pt imsdb.PersonEventParticipationType) EventPermi
 	case imsdb.PersonEventParticipationTypeWriter:
 		return RolesToEventPerms[EventWriter]
 	case imsdb.PersonEventParticipationTypeCrewLeader:
-		// reporter-level access plus the ability to invite reporters (plan 53a).
-		return RolesToEventPerms[EventReporter] | EventInviteReporters
+		// Reporter-level access (own reports), the ability to invite reporters (plan
+		// 53a), plus read-only visibility into incidents: a crew leader can view the
+		// Incidents list/detail but gets no EventWriteIncidents, so they cannot create
+		// or edit incidents (nor add incident journal entries, which are gated on the
+		// write bit). See docs/plans/95-crews.md (item 4).
+		return RolesToEventPerms[EventReporter] | EventInviteReporters | EventReadIncidents
 	case imsdb.PersonEventParticipationTypeReporter:
 		return RolesToEventPerms[EventReporter]
 	default:

@@ -763,8 +763,9 @@ func jwtForErin(t *testing.T, ctx context.Context) string {
 	return token
 }
 
-// addCrewLeader grants the crew_leader tier (plan 53b: reporter-level access plus
-// the invite-reporters power) by setting the person's PERSON__EVENT participation.
+// addCrewLeader grants the crew_leader tier (reporter-level access, the
+// invite-reporters power, and read-only incident access) by setting the person's
+// PERSON__EVENT participation.
 func (a ApiHelper) addCrewLeader(ctx context.Context, eventName, handle string) *http.Response {
 	a.t.Helper()
 	return a.setParticipation(ctx, personIDForHandle(a.t, handle), eventName,

@@ -197,6 +197,64 @@ func TestCrewLeaderInvite(t *testing.T) {
 	require.NoError(t, resp.Body.Close())
 }
 
+// TestCrewLeaderReadsIncidents verifies the crew_leader rung's read-only incident
+// access (docs/plans/95-crews.md item 4): a crew leader may view the incident list
+// and detail, but holds no EventWriteIncidents — so creating or editing an incident
+// (including adding a journal entry via incident-edit) is forbidden.
+func TestCrewLeaderReadsIncidents(t *testing.T) {
+	t.Parallel()
+	ctx := t.Context()
+
+	apisAdmin := ApiHelper{t: t, serverURL: shared.serverURL, jwt: jwtForAdmin(ctx, t)}
+	apisErin := ApiHelper{t: t, serverURL: shared.serverURL, jwt: jwtForErin(t, ctx)}   // crew leader
+	apisAlice := ApiHelper{t: t, serverURL: shared.serverURL, jwt: jwtForAlice(t, ctx)} // writer (creates the incident)
+
+	eventName := rand.NonCryptoText()
+	_, resp := apisAdmin.createEvent(ctx, imsjson.Event{Name: &eventName})
+	require.Equal(t, http.StatusNoContent, resp.StatusCode)
+	require.NoError(t, resp.Body.Close())
+	resp = apisAdmin.addCrewLeader(ctx, eventName, userErinHandle)
+	require.Equal(t, http.StatusNoContent, resp.StatusCode)
+	require.NoError(t, resp.Body.Close())
+	resp = apisAdmin.addWriter(ctx, eventName, userAliceHandle)
+	require.Equal(t, http.StatusNoContent, resp.StatusCode)
+	require.NoError(t, resp.Body.Close())
+
+	// A writer creates an incident on the event.
+	incNum := apisAlice.newIncidentSuccess(ctx, imsjson.Incident{Event: eventName})
+
+	// The crew leader can read the incident list and the incident detail.
+	list, resp := apisErin.getIncidents(ctx, eventName)
+	require.Equal(t, http.StatusOK, resp.StatusCode)
+	require.NoError(t, resp.Body.Close())
+	found := false
+	for _, inc := range list {
+		if inc.Number == incNum {
+			found = true
+			break
+		}
+	}
+	require.True(t, found, "crew leader must see the event's incidents in the list")
+
+	_, resp = apisErin.getIncident(ctx, eventName, incNum)
+	require.Equal(t, http.StatusOK, resp.StatusCode)
+	require.NoError(t, resp.Body.Close())
+
+	// But the crew leader cannot create an incident...
+	resp = apisErin.newIncident(ctx, imsjson.Incident{Event: eventName})
+	require.Equal(t, http.StatusForbidden, resp.StatusCode)
+	require.NoError(t, resp.Body.Close())
+
+	// ...nor edit one (no EventWriteIncidents, and no per-incident grant).
+	resp = apisErin.updateIncident(ctx, eventName, incNum, imsjson.Incident{
+		Event:   eventName,
+		Number:  incNum,
+		Summary: new("crew leader edit attempt"),
+	})
+	require.Equal(t, http.StatusForbidden, resp.StatusCode)
+	require.NoError(t, resp.Body.Close())
+}
+
 // TestInviterRosterRead covers the 53d read-gating change: a non-admin inviter may
 // read the People roster for an event they hold the invite bit on (so the People tab
 // works for them), but the global / "show all" listings stay admin-only, and the

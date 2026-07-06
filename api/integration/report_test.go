@@ -301,6 +301,66 @@ func TestReportEditSummaryAndEntryAuthz(t *testing.T) {
 	require.True(t, daveView.MayAddJournalEntry) // writer → may add entries
 }
 
+// TestReporterSeesOwnReport verifies own-report visibility is anchored on
+// REPORT.CREATED_BY, not journal-entry authorship: a reporter always sees a report
+// they created — even a bare one with no journal entry they authored — while a
+// different reporter on the same event cannot see it. Regression guard for the
+// report-visibility fix: the old journal-authorship heuristic hid a creator's own
+// report when it carried no entry they authored.
+func TestReporterSeesOwnReport(t *testing.T) {
+	t.Parallel()
+	ctx := t.Context()
+
+	apisAdmin := ApiHelper{t: t, serverURL: shared.serverURL, jwt: jwtForAdmin(ctx, t)}
+	apisAlice := ApiHelper{t: t, serverURL: shared.serverURL, jwt: jwtForAlice(t, ctx)} // creator (reporter)
+	apisErin := ApiHelper{t: t, serverURL: shared.serverURL, jwt: jwtForErin(t, ctx)}   // other reporter
+
+	eventName := rand.NonCryptoText()
+	_, resp := apisAdmin.createEvent(ctx, imsjson.Event{Name: &eventName})
+	require.Equal(t, http.StatusNoContent, resp.StatusCode)
+	require.NoError(t, resp.Body.Close())
+	resp = apisAdmin.addReporter(ctx, eventName, userAliceHandle)
+	require.Equal(t, http.StatusNoContent, resp.StatusCode)
+	require.NoError(t, resp.Body.Close())
+	resp = apisAdmin.addReporter(ctx, eventName, userErinHandle)
+	require.Equal(t, http.StatusNoContent, resp.StatusCode)
+	require.NoError(t, resp.Body.Close())
+
+	// Alice creates a bare report: no Summary, no journal entries. She authors no
+	// journal entry on it, so only REPORT.CREATED_BY marks it as hers.
+	num := apisAlice.newReportSuccess(ctx, imsjson.Report{Event: eventName})
+
+	// The creator can read it directly...
+	got, resp := apisAlice.getReport(ctx, eventName, num)
+	require.Equal(t, http.StatusOK, resp.StatusCode)
+	require.NoError(t, resp.Body.Close())
+	require.Equal(t, num, got.Number)
+
+	// ...and it shows up in her list of reports.
+	list, resp := apisAlice.getReports(ctx, eventName)
+	require.Equal(t, http.StatusOK, resp.StatusCode)
+	require.NoError(t, resp.Body.Close())
+	require.True(t, containsReport(list, num), "creator's own report must appear in their list")
+
+	// A different reporter on the same event cannot see it (own-reports scope).
+	_, resp = apisErin.getReport(ctx, eventName, num)
+	require.Equal(t, http.StatusForbidden, resp.StatusCode)
+	require.NoError(t, resp.Body.Close())
+	erinList, resp := apisErin.getReports(ctx, eventName)
+	require.Equal(t, http.StatusOK, resp.StatusCode)
+	require.NoError(t, resp.Body.Close())
+	require.False(t, containsReport(erinList, num), "another reporter must not see a report they didn't create")
+}
+
+func containsReport(reports imsjson.Reports, number int32) bool {
+	for _, r := range reports {
+		if r.Number == number {
+			return true
+		}
+	}
+	return false
+}
+
 // TestCreateReportAttachedToIncident covers 10e: a reporter may create a Report
 // already attached to an incident, with no Summary yet (an IMS# can be added
 // before/without a Summary). A bad incident number is a friendly 404, not a 500.
