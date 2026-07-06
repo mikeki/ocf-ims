@@ -67,10 +67,11 @@ var profilePictureMediaTypes = []string{
 	"image/webp",
 }
 
-// maxProfilePictureEdge bounds the longest side of a stored profile picture (px). A
-// profile card renders at ~12rem; 512 leaves headroom for high-DPI without storing
-// full-resolution photos.
-const maxProfilePictureEdge = 512
+// maxProfilePictureEdge bounds the longest side of a stored profile picture (px). The
+// card renders it small (~12rem) but it's click-to-zoom, so we keep enough resolution
+// to zoom in on a face — 1536 gives crisp detail while still bounding storage well
+// under the byte cap below.
+const maxProfilePictureEdge = 1536
 
 // maxProfilePictureBytes caps the size of an uploaded profile picture. The browser
 // downscales most uploads to a small JPEG (downscaleImageForUpload) and the server

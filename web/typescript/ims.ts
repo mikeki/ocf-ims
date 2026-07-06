@@ -1440,6 +1440,39 @@ async function loadProfilePicture(
     imgEl.src = profilePictureObjectUrl;
     imgEl.alt = `Profile picture for ${altLabel}`;
     wrapEl.classList.remove("hidden");
+    // Click the card image to view it full-screen at natural size (the stored image
+    // keeps up to ~1536px, so this is a real zoom). Idempotent assignment — the single
+    // modal's <img> is reused across people, and the handler reads the current blob URL.
+    imgEl.onclick = openProfilePictureZoom;
+}
+
+// openProfilePictureZoom shows the profile picture full-screen at natural size, reusing
+// the blob URL already fetched for the card. closeProfilePictureZoom (a click anywhere
+// on the overlay, or Esc) dismisses it.
+function openProfilePictureZoom(): void {
+    const overlay = document.getElementById("person_profile_picture_zoom");
+    const zoomImg = document.getElementById("person_profile_picture_zoom_img") as HTMLImageElement|null;
+    if (overlay == null || zoomImg == null || profilePictureObjectUrl == null) {
+        return;
+    }
+    zoomImg.src = profilePictureObjectUrl;
+    overlay.classList.remove("hidden");
+    overlay.onclick = closeProfilePictureZoom;
+    document.addEventListener("keydown", profilePictureZoomOnKey);
+}
+
+function closeProfilePictureZoom(): void {
+    const overlay = document.getElementById("person_profile_picture_zoom");
+    const zoomImg = document.getElementById("person_profile_picture_zoom_img") as HTMLImageElement|null;
+    overlay?.classList.add("hidden");
+    zoomImg?.removeAttribute("src");
+    document.removeEventListener("keydown", profilePictureZoomOnKey);
+}
+
+function profilePictureZoomOnKey(e: KeyboardEvent): void {
+    if (e.key === "Escape") {
+        closeProfilePictureZoom();
+    }
 }
 
 // downscaleImageForUpload shrinks a chosen image to fit within maxEdge px (longest
@@ -1450,7 +1483,7 @@ async function loadProfilePicture(
 // HEIC on non-Safari) or is already within bounds; the server re-caps decodable
 // formats as a backstop, so nothing depends on this running.
 export async function downscaleImageForUpload(
-    file: File, maxEdge = 512, quality = 0.85,
+    file: File, maxEdge = 1536, quality = 0.85,
 ): Promise<Blob> {
     try {
         const bitmap = await createImageBitmap(file, {imageOrientation: "from-image"});

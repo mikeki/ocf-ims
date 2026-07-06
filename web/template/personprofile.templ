@@ -45,7 +45,8 @@ templ PersonProfileModal() {
                and sized with CSS — there is no server-side thumbnailing. -->
           <div id="person_profile_picture_wrap" class="text-center mb-3 hidden">
             <img id="person_profile_picture" alt="Profile picture" class="rounded img-fluid"
-                 style="max-height: 12rem; object-fit: cover;" />
+                 role="button" title="Click to enlarge"
+                 style="max-height: 12rem; object-fit: cover; cursor: zoom-in;" />
           </div>
 
           <!-- View mode: read-only field list. -->
@@ -114,5 +115,16 @@ templ PersonProfileModal() {
         </div>
       </div>
     </div>
+  </div>
+  <!-- Full-screen zoom for the profile picture. The stored image is kept at up to
+       ~1536px on its longest edge (downscaleImageForUpload / maxProfilePictureEdge),
+       so showing it here at natural size lets a viewer zoom in on a face. It reuses
+       the blob URL already fetched for the card; a click anywhere (or Esc) dismisses
+       it. z-index sits above the Bootstrap modal. -->
+  <div id="person_profile_picture_zoom"
+       class="hidden position-fixed top-0 start-0 w-100 h-100 d-flex align-items-center justify-content-center"
+       style="z-index: 2000; background: rgba(0,0,0,0.85); cursor: zoom-out;">
+    <img id="person_profile_picture_zoom_img" alt="Profile picture (enlarged)"
+         class="img-fluid rounded" style="max-width: 92vw; max-height: 92vh;" />
   </div>
 }
