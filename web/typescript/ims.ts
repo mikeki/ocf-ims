@@ -133,14 +133,25 @@ export function compareJournalEntries(a: JournalEntry, b: JournalEntry): number 
 async function maybeRefreshAuth(): Promise<void> {
     if (getAccessToken()) {
         if ((refreshTokenAfter()??0) < new Date().getTime()) {
-            const {json, err} = await fetchNoThrow<AuthRefreshResponse>(url_authRefresh, {body: JSON.stringify({})});
-            if (err != null || json == null) {
-                clearLocalStorage();
-                clearSessionStorage();
-            } else {
+            const {json, resp, err} = await fetchNoThrow<AuthRefreshResponse>(url_authRefresh, {body: JSON.stringify({})});
+            if (err == null && json != null) {
                 setAccessToken(json.token);
                 setRefreshTokenBy(json.expires_unix_ms);
                 console.log("Refreshed access token");
+            } else if (resp != null && resp.status === 401) {
+                // Only a definitive 401 means the refresh token was actually rejected
+                // (missing/expired cookie, or the user no longer exists) — i.e. the session
+                // is genuinely over, so clear it.
+                clearLocalStorage();
+                clearSessionStorage();
+            } else {
+                // Transient failure: the server was unreachable (resp == null) or returned a
+                // 5xx — e.g. a 502 while the container is briefly redeploying. The refresh
+                // token is very likely still valid (it lasts days), so DO NOT destroy the
+                // session. Keep the tokens and let the next request retry once the server is
+                // back. This is what stops a brief restart or network blip from logging the
+                // user out of an otherwise-valid session.
+                console.log(`Keeping session on transient refresh failure: ${err}, ${resp?.status}`);
             }
         }
     }
@@ -349,7 +360,7 @@ export async function commonPageInit(): Promise<PageInitResult> {
     let authInfo: AuthInfo|null = null;
     pathIds = idsFromPath();
     {
-        const {json, resp, err} = await getAuthInfo();
+        const {json, resp, err} = await fetchAuthInfoWithRetry();
         if (err != null || json == null) {
             console.log(`Failed to fetch auth info: ${err}, ${resp?.status}`);
             setErrorMessage(`Failed to fetch auth info: ${err}, ${resp?.status}`);
@@ -473,6 +484,27 @@ async function submitChangeDefaultPassword(): Promise<void> {
 export async function getAuthInfo(): Promise<FetchRes<AuthInfo>> {
     const url = url_auth + (pathIds.eventName ? `?event_id=${pathIds.eventName}` : "");
     return await fetchNoThrow<AuthInfo>(url, null);
+}
+
+// fetchAuthInfoWithRetry fetches the auth info, retrying a few times on a transient
+// failure — the server unreachable (resp == null) or a 5xx, e.g. a 502 during a brief
+// container redeploy. A definitive answer returns immediately: the /auth endpoint is
+// unauthenticated and replies 200 with {authenticated:false} for an expired session, so
+// a real "logged out" is never a transient error and is not retried. This keeps a page
+// load that happens to land during a restart from bouncing an authenticated user to the
+// login page; total added delay when the server is down is ~5s, and zero when it's up.
+async function fetchAuthInfoWithRetry(): Promise<FetchRes<AuthInfo>> {
+    const backoffsMs = [500, 1500, 3000];
+    let result = await getAuthInfo();
+    for (const backoffMs of backoffsMs) {
+        const transient = result.json == null && (result.resp == null || result.resp.status >= 500);
+        if (!transient) {
+            break;
+        }
+        await new Promise(res => setTimeout(res, backoffMs));
+        result = await getAuthInfo();
+    }
+    return result;
 }
 
 export async function redirectToLogin(): Promise<void> {
