@@ -54,6 +54,9 @@ air_tmp
 .claude/scheduled_tasks.lock
 .playwright-mcp/
 
+# local editor workspace config (Obsidian, for reading docs/plans as a vault)
+.obsidian/
+
 # local monitoring config (log viewer + localhost compose override)
 docker-compose.monitoring.localhost.yml
 dozzle-users.yml
