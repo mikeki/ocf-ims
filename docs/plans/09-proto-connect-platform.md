@@ -61,7 +61,7 @@ document upstream.
 
 | # | Deviation | Target | Disposition |
 |---|---|---|---|
-| V1 | Web UI served by the same binary at `/ims/app` | client is a separate package | **Accepted.** templ is the web interface; the mobile client is its peer over the same contract. One binary, one deploy, no bundler |
+| V1 | Web UI served by the same binary at `/ims/app` | client is a separate package | **Resolved in Phase 4.** The templ UI is legacy: it runs frozen until the Expo client replaces it, then it and the REST layer are deleted together |
 | V2 | **MariaDB**, sqlc `mysql` engine, `database/sql` | Postgres, pgx/v5, `pgtype` | **Accepted.** See M2 |
 | V3 | Flat packages at the repo root, no `internal/` | one module at `go/`, `internal/`, `cmd/<service>/` | Phase 1a |
 | V4 | Hand-written JSON DTOs + 65 REST routes | proto contract + Connect | Phase 0 (contract), Phase 1 (handlers), Phase 2 (retire REST) |
@@ -74,7 +74,7 @@ document upstream.
 | V11 | Business logic in `api/` handlers; `store/` is a thin sqlc wrapper | ≤20-line handlers, logic in domain packages | Phase 1c — **the bulk of the work** |
 | V12 | Web push + `/ims/sw.js` served by the binary | — | Stays; the Expo client gets native push instead (Phase 3) |
 | V13 | One `store/queries.sql`; migrations at `store/schema/migrations` | `db/queries/<resource>.sql`, `db/migrations/` | Phase 1a, mechanical |
-| V14 | **No bundler, by design.** tsgo compiles `web/typescript` file-by-file to ES modules; third-party JS vendored as `.min.js` into `web/static/ext/`. No npm at runtime | — | **Accepted, and satisfiable.** See M12 |
+| V14 | **No bundler, by design.** tsgo compiles `web/typescript` file-by-file to ES modules; third-party JS vendored as `.min.js` into `web/static/ext/`. No npm at runtime | — | **Moot.** The legacy UI keeps its current pipeline untouched until it is retired; the Expo client bundles normally. Nothing has to bridge the two |
 
 V2 and V6 are permanent. V11 is the multi-month effort.
 
@@ -83,29 +83,26 @@ V2 and V6 are permanent. V11 is the multi-month effort.
 | # | Decision | Call | Rationale |
 |---|---|---|---|
 | M1 | Repo shape | One module at **`go/`**, `cmd/ocf-ims/main.go` delegating to `run(ctx, cfg) error`, and **`internal/<domain>/` packages — by feature, not by technical layer**. `internal/server/` holds only what is genuinely cross-cutting: mux, interceptors, context helpers | Current Go guidance is to package by feature. A `server/` + `store/` split scatters one feature across three packages and makes the import graph a star. Supersedes plan 06's `go/ims/`. |
-| M2 | Database | **Stay on MariaDB.** Postgres is a separate decision, not part of this plan | Conflating a wire-protocol migration with a storage-engine migration on live fair data doubles the risk and halves the attributability of anything that breaks. Known cost: sqlc's MySQL support is second-tier (no MariaDB `UUID` type; we don't use one). Revisit triggers in §8 Q4. |
+| M2 | Database | **MariaDB. Settled, not deferred.** | It is what we run, it works, and the migration cost is real (134 named queries to review, 8 `:execlastid` inserts to rewrite against `RETURNING`, every `sql.Null*` to `pgtype`, plus the data). No requirement we have points at Postgres; the only argument for it was that the maybloom blueprint assumes it, which is not a reason. The MySQL flavour of the Go path becomes a finding we contribute (§7), not a gap we close. |
 | M3 | Proto layout | `proto/ocfims/{common,resources,service}/v1`; a **single `ImsService`** in `ocfims.service.v1` | One service per backend is what makes the generated handler interface an exhaustiveness check. `resources/v1` holds messages with no RPCs; `common/v1` stays small and gains a type only on its second consumer. |
 | M4 | Codegen | **Go plugins via hermetic `go tool`**; TypeScript via pnpm `protoc-gen-es`; **`protoc-gen-connect-openapi`** for docs. buf itself as `go tool buf` | Our CI runs under a hardened-runner egress allow-list, so `remote:` BSR plugins are a liability; the local-plugin form is already proven here (PR #8). OpenAPI output costs one block and makes the API browsable by people who never learn protobuf. |
 | M5 | **Validation lives in the contract** | **protovalidate** (v1.0) constraints written into the protos as messages are modelled, enforced by one `connectrpc.com/validate` interceptor | Presence, range, length, enum-membership and format become CEL in the proto with **no generated validation code** and identical semantics in every language. Targets **114 hand-written validation sites** in `api/` (24 in `person.go` alone). Authorization and business rules stay in Go. Decided here because it changes how the protos are written. |
 | M6 | pnpm arrives in **Phase 0** | with the contract | The TS target serves both the existing web UI (M12) and the Expo client (M7). Deferring it means building Phase 0 twice. Also gives the deferred Vitest harness a home. |
-| M7 | **Clients: templ for web, Expo for mobile** | The web UI stays server-rendered templ with a typed TS client over Connect. Mobile is **one deliberately small Expo app** — iOS and Android — scoped to the field subset | See §5. |
+| M7 | **One client: Expo, on web and mobile** | Build a **modern replacement client** — iOS, Android and web — with its own UI and UX rather than a port of the current screens. The templ UI runs **frozen** alongside it until the replacement is ready, then is deleted | See §5. |
 | M8 | Non-RPC surfaces | Attachment blob I/O and `sw.js` **stay plain HTTP**. The **SSE stream is a candidate for Connect server-streaming** | Streaming binary through proto is a bad fit, so blobs stay out. Streaming is available to us: `expo/fetch` has supported it since SDK 52, so the "unary-only" constraint often quoted for React Native no longer holds. A live-updating incident feed is exactly what a field client wants. |
 | M9 | Cross-cutting behaviour | **Interceptors, declared once, defaulting on** — request ID, slog, panic recovery, auth, action log | CLAUDE.md already documents the current design's failure mode: the per-route `LogRequest` flag "is easy to omit and fails closed (unlogged)". Default-on removes the footgun instead of documenting it. |
-| M10 | Extraction discipline | **Extract by need, not by rule.** ≤20-line handlers; real logic goes to its domain package; a handler that reads a row and returns it calls the sqlc `Querier` directly | A repository layer wrapping an already-generated data layer is the shape current Go practice criticises as boilerplate. But 11.6k LOC of logic inline in transport handlers is the opposite failure. The handler size rule is what keeps the discipline without the ceremony. |
+| M10 | Extraction discipline | **Extract everything, as part of this migration.** Every handler becomes a thin transport shim; **all** business logic moves into its domain package. Enforced, not aspirational: a path-scoped `funlen` on the handler files | "Extract when it gets complicated" is precisely the policy that produced today's `api/` — `updateIncident` is **470 lines**, `AddToMux` is **799**, and nobody set out to write them. A judgment call is unreviewable and drifts; a line count is a build failure. Note `funlen` is currently disabled repo-wide in `.golangci.yml` (`# meh`) — this is the narrower, path-scoped form, and it is the mechanism that makes the rule real. Extracting uniformly also makes M13 nearly free: REST and Connect handlers become two thin shims over one set of domain functions. |
 | M11 | Module path | Keep `github.com/mikeki/ocf-ims` | Unchanged by the move to `go/` — Go module paths are directory-independent. So `go_package` lines written in Phase 0 need no edit in Phase 1a: `gen/` at the module root resolves to `github.com/mikeki/ocf-ims/gen/…` both before and after. Only buf's `out:` path changes. |
-| M12 | The web client is **types-only, zero-runtime** | Generate with `protoc-gen-es` `json_types`, import with `import type` (erased by tsgo, no runtime import), and speak Connect with a ~150-line `fetch` wrapper | The Connect protocol is POST + JSON over HTTP/1.1 — a browser needs no runtime library. This satisfies V14 exactly: a fully typed client with **no npm at runtime and no bundler**. The archived branch already wrote the transport (`web/typescript/connectrpc.ts`, 146 lines). |
-| M13 | Transport rollout | **Strangler.** Connect alongside REST; REST retired when nothing calls it | There is exactly one consumer today, which makes the strangler cheap and the cutover verifiable. |
+| M12 | **The legacy web UI is not ported** | `web/typescript` keeps calling REST and keeps its current build. It is not migrated to the generated client | Porting 14k lines of TypeScript onto the contract is investment in a UI that M7 replaces — the same objection that rules out hypermedia (§5). With M10 extracting all logic into domain packages, the REST handlers become thin shims over the same functions the Connect handlers call, so keeping REST alive costs one transport layer, not a second implementation. |
+| M13 | Transport rollout | **Strangler, with REST frozen.** Connect runs alongside REST; **no new REST endpoints, and no new features in the legacy UI.** New functionality lands in Connect plus the new client only. REST and `json/` are deleted with the templ UI in Phase 4 | Freezing the old surface is what bounds the dual-transport cost and creates pull toward the replacement. It also continues 05 §6's standing rule not to over-invest in the UI we are replacing. |
 | M14 | Verification | **Continuous** — a findings log appended per slice (§7), contributed upstream | A report written at the end is written from memory. |
 
-## 5. Clients: templ for web, Expo for mobile
+## 5. Clients: one Expo client, replacing the templ UI
 
-**The web stays templ.** It works, it is dense-table-friendly, and the dispatch
-tent runs on laptops. Phase 2 ports it onto the generated contract (M12) without
-touching its rendering model. Replacing it would be months of work for parity
-with something that already works.
-
-**Mobile is Expo** — one React Native codebase to iOS and Android, talking to the
-same contract through a generated Connect client. Why Expo over the alternatives:
+**Expo is the client — web, iOS and Android from one codebase.** It is a
+**replacement, not a port**: the point is a better interface than the current
+screens, so the two will deliberately diverge rather than track each other. Why
+Expo over the alternatives:
 
 - **We already write TypeScript.** Dart costs an experienced developer roughly two
   to three weeks of ramp-up; that is a real price for a team this size, paid
@@ -113,9 +110,12 @@ same contract through a generated Connect client. Why Expo over the alternatives
   forms-and-tables ops app (Flutter holds ~58–60 fps to React Native's ~51 on
   complex UIs and uses less memory; React Native starts ~200 ms faster and drains
   ~12% less battery).
-- **Flutter web is canvas-rendered** with no real DOM text, so it could never
-  absorb the dispatch UI. Expo web could, eventually — an option worth keeping
-  even though this plan does not exercise it (§8 Q5).
+- **Flutter web is canvas-rendered** with no real DOM text, so it could never take
+  over the dispatch UI. That rules it out here, because taking over the web is
+  the destination.
+- **Expo's web target is a first-class one**, not a consolation prize — Expo
+  Router runs the same file-based routes on web with static rendering, which is
+  what makes one codebase across all three surfaces credible.
 - **The React Native transport caveat is gone.** `expo/fetch` has supported
   streaming since SDK 52 and is the global `fetch` on iOS and Android, so the
   client is not restricted to unary calls (M8).
@@ -123,10 +123,17 @@ same contract through a generated Connect client. Why Expo over the alternatives
   is still beta. Separate native Swift + Kotlin apps are twice the work for a
   two-person team.
 
-**Scope it deliberately small.** Field volunteers need: my incidents, file and
-append a report, attach a photo, receive notifications. Dispatch, admin,
-taxonomies and metrics stay on the web. A small mobile client is what makes two
-clients affordable.
+**The templ UI runs frozen in the meantime.** It keeps serving today's users on
+today's REST endpoints, with its current build pipeline untouched. It gets no new
+features and no port to the contract (M12, M13) — every hour spent on it is an
+hour spent on something being deleted. Phase 4 removes it, along with REST and
+`json/`, once the replacement covers what people actually rely on.
+
+**Sequence the replacement mobile-first.** Start with what has no incumbent —
+field use on a phone: my incidents, file and append a report, attach a photo,
+notifications. That ships value early, exercises the contract against a real
+client, and builds the client's foundations before it has to take on dispatch,
+admin, taxonomies and metrics.
 
 **Rejected: hypermedia (HTMX/Datastar) as a client strategy.** It is the most
 Go-native option on paper and would delete the most TypeScript, but it is
@@ -196,17 +203,22 @@ generate from a clean tree; CI reproduces it; the mapping table has no gaps.
   identity into the context), **protovalidate**, and the action log — declared
   once at handler construction, on by default (M9, M5). Register the Connect
   handler on the existing mux. Prove with one RPC end-to-end.
-- **1c — Domain-logic extraction.** Resource by resource, business logic moves out
-  of the ex-`api/` handlers into its domain package, accepting and returning proto
-  messages and speaking Connect error codes directly. Extract by need (M10). Also
-  lands a MySQL-flavoured `RunInTx` retrying error **1213** (deadlock) and **1205**
-  (lock wait timeout), matched via `errors.As` into `*mysql.MySQLError` — never by
-  string — which should retire the known `TestCreateAndGetIncident` flake.
-  **This is the bulk of the work**: ~11.6k LOC of handler code has to find its
-  real home.
+- **1c — Domain-logic extraction — *all* of it** (M10). Resource by resource,
+  **every** piece of business logic moves out of the ex-`api/` handlers into its
+  domain package, accepting and returning proto messages and speaking Connect
+  error codes directly. Nothing is left inline because it "looked simple"; that is
+  how `updateIncident` reached 470 lines. Land the path-scoped `funlen` on the
+  handler files in the same slice, so the rule is enforced from the moment it
+  exists rather than argued about later. Also lands a MySQL-flavoured `RunInTx`
+  retrying error **1213** (deadlock) and **1205** (lock wait timeout), matched via
+  `errors.As` into `*mysql.MySQLError` — never by string — which should retire the
+  known `TestCreateAndGetIncident` flake. **This is the bulk of the work**:
+  ~11.6k LOC of handler code has to find its real home.
 - **1d — Handlers.** One thin method per RPC. Order: incidents → reports →
-  people/auth → taxonomies → events/areas/crews → metrics/action log. REST stays
-  live throughout (M13).
+  people/auth → taxonomies → events/areas/crews → metrics/action log. As each
+  resource lands, **its REST handler is reduced to a shim over the same domain
+  functions**, so the two transports never carry two implementations. REST stays
+  live and frozen throughout (M13).
 - **1e — The M8 surfaces.** Attachment blob I/O and `sw.js` keep plain-HTTP
   endpoints, documented as deliberate. Decide whether the event stream becomes a
   Connect server-streaming RPC. Either way, fix the known private-incident leak
@@ -218,44 +230,59 @@ generate from a clean tree; CI reproduces it; the mapping table has no gaps.
 **Gate:** the generated handler interface is satisfied with no `Unimplemented…`
 embedding outside tests — the compiler is the checklist; integration tests talk to
 the server through the **generated connect-go client**; a spot-check set returns
-identical data over REST and Connect.
+identical data over REST and Connect; **no business logic remains in either
+transport layer**, enforced by `funlen`; the existing web UI and Playwright suite
+are untouched and still green.
 
-### Phase 2 — The web UI onto the generated client (retires REST)
+### Phase 2 — Freeze REST, start the replacement client
 
-- **2a — Prove the types-only path** (M12), an afternoon. Generate with
-  `json_types`, import with `import type` only, confirm tsgo resolves types from
-  the workspace package and keeps the generated `_pb.ts` runtime half out of its
-  output. Port the `connectUnary` transport from the archived
-  `web/typescript/connectrpc.ts`. Prove on one module end to end.
-- **2b — Port module by module** from `fetch('/ims/api/…')` to the typed client.
-  Order by risk, incidents last.
-- **2c — Delete `json/` and the REST mux** once nothing calls them.
+There is **no port of the legacy web UI** (M12). Phase 1 already leaves the REST
+handlers as thin shims over the domain packages, so the old transport costs a
+layer rather than a second implementation, and it can simply be left alone.
 
-**Gate:** playwright suite green; `json/` gone; the HTTP surface is Connect plus
-the M8 exceptions plus static assets; **zero npm at runtime**.
+- **2a — Freeze the REST surface.** No new endpoints, no new features in
+  `web/typescript` or the templ pages (M13). Write the rule down where a
+  contributor will hit it — `CLAUDE.md` and the api mux — because the freeze is
+  what bounds the dual-transport cost.
+- **2b — Client foundations.** `packages/interface`: Expo Router, React Query, the
+  singleton Connect transport with a Bearer interceptor and a synchronous token
+  cache, session storage, and the design direction for the new UI. One real screen
+  against live data proves the whole path.
 
-### Phase 3 — The Expo mobile client
+**Gate:** the new client authenticates and renders live data from the contract on
+all three targets (web, iOS, Android); the legacy UI is unchanged and green.
 
-- **3a — Skeleton.** `packages/interface`, Expo Router, React Query, the singleton
-  Connect transport with a Bearer interceptor and a synchronous token cache, and
-  one real screen (my incidents) against live data.
-- **3b — The field subset.** My incidents, file and append a report, attach a
-  photo, notifications. Dispatch, admin, taxonomies and metrics stay on the web.
-- **3c — Ship.** EAS builds for iOS and Android; native push replacing the iOS PWA
+### Phase 3 — Build the replacement
+
+Sequenced mobile-first, because that is the surface with no incumbent — value
+reaches people immediately, instead of waiting on the surfaces where something
+already works.
+
+- **3a — The field app.** My incidents, file and append a report, attach a photo,
+  notifications. Ship to both app stores; native push replaces the iOS PWA
   home-screen-install requirement. **Field numbers freeze here** (Phase 0).
+- **3b — Dispatch on web.** The incident and report surfaces the dispatch tent
+  actually lives in — the hardest UI in the system and the reason the replacement
+  is a redesign rather than a port.
+- **3c — Admin and the long tail.** People, crews, taxonomies, areas, metrics,
+  action logs. Coverage here is what unblocks Phase 4.
 
-Auth needs a decision at 3a: the web UI keeps the **refresh token in an HttpOnly
-cookie** and sends the **access token as a Bearer header**. The Bearer half
-carries over unchanged; the cookie half has no native equivalent, so mobile needs
-a body-carried refresh into `expo-secure-store`.
+Auth needs a decision at 2b/3a: the legacy UI keeps the **refresh token in an
+HttpOnly cookie** and sends the **access token as a Bearer header**. The Bearer
+half carries over unchanged; the cookie half has no native equivalent, so the new
+client needs a body-carried refresh into `expo-secure-store`.
 
 ### Phase 4 — Cleanup
 
-- **4a** — Tidy the HTTP boundary: static assets behind Caddy if that proves
-  better (§8 Q1), blob and stream endpoints documented as the deliberate
+- **4a — Retire the legacy UI.** Once the replacement covers what people actually
+  rely on, delete the templ pages, `web/typescript`, the REST mux and `json/`
+  together. They live and die as one unit (V1, V14). The binary then serves
+  Connect, blobs, the event stream and the client's static build.
+- **4b — Tidy the HTTP boundary:** static assets behind Caddy if that proves
+  better (§8 Q1); blob and stream endpoints documented as the deliberate
   exceptions they are.
-- **4b** — Revisit the accepted divergences on their own merits: Postgres (M2),
-  lower_snake schema (V6), anything the findings log has escalated.
+- **4c — Revisit what is left:** the lower_snake schema question (V6) and anything
+  the findings log has escalated. **Not Postgres** — M2 is settled.
 
 ## 7. Findings log — the upstream deliverable
 
@@ -285,9 +312,11 @@ Queued before any code is written:
 6. **Non-RPC surfaces.** The blueprint is silent on file upload and server-push. A
    real product needs both, and "documented plain-HTTP exceptions beside the
    contract" is an answer the stack does not currently give.
-7. **The bundler-free typed client** (M12) — `json_types` plus a `fetch` wrapper.
-   Both of the stack's client blueprints assume a bundled SPA; a server-rendered
-   UI serving unbundled ES modules has no documented story.
+7. **Freezing the old transport instead of porting it** (M12, M13). Once all
+   logic sits in domain packages, a legacy REST surface costs one shim layer, not
+   a second implementation — so it can be frozen and outlived rather than
+   migrated. That is a cheaper strangler than the stack describes, and it only
+   works because the extraction (M10) is total.
 8. **Hypermedia and contract-first are substitutes** (§5). If a Go service's
    primary client is server-rendered HTML it produces itself, the contract has no
    client and its value collapses. Worth stating where the stack discusses client
@@ -311,18 +340,19 @@ Queued before any code is written:
    here and has never blocked a fair. If the Expo client is expected to work
    through a connectivity outage, that is a local-store-and-sync design, and it
    belongs in its own plan rather than being smuggled into Phase 3.
-3. **What happens to the Playwright suite.** It drives the running server over
-   HTTP and is location-independent, but Phase 2 changes every call it observes.
-4. **Postgres — what would actually trigger it?** Named so the question stops
-   recurring: a feature needing Postgres-only capabilities, sqlc dropping MySQL
-   from its Go path, or MariaDB's operational cost exceeding the migration cost.
-   None are true today.
-5. **Does the web UI ever converge onto Expo web?** Expo preserves the option;
-   this plan does not exercise it. Revisit only if maintaining two clients proves
-   more expensive than the migration.
-6. **Vitest and the frontend test harness.** M6 gives it a home in Phase 0;
-   whether it targets `web/typescript` during Phase 2 or waits for the Expo client
-   is a Phase 2 call.
+3. **What happens to the Playwright suite.** It drives the legacy UI, which stays
+   frozen and green through Phases 1–3 — so it keeps earning its keep as a
+   regression net for exactly as long as that UI lives, then retires with it. The
+   new client needs its own tests; that is a Phase 2b call.
+4. **How much coverage retires the legacy UI?** Phase 4a needs a threshold, and
+   "parity" is the wrong one — the replacement is a redesign, so some screens will
+   never have a counterpart. Decide it as a list of what people actually rely on,
+   written down during Phase 3c rather than argued at the end.
+5. **Vitest and the frontend test harness.** M6 gives it a home in Phase 0; it
+   targets the new client, not the frozen `web/typescript`.
+6. **Offline capture** — see Q2. Worth deciding early enough to shape the client's
+   data layer, since retrofitting a sync model is far more expensive than
+   designing for one.
 
 ## 9. Exit criteria
 
@@ -334,12 +364,15 @@ Queued before any code is written:
       handler with no `Unimplemented` embedding; cross-cutting behaviour is
       interceptors, on by default; integration tests run through the generated
       client; the `TestCreateAndGetIncident` deadlock flake is gone.
-- [ ] **Phase 2:** `json/` deleted; no REST route remains; the web UI runs on the
-      generated TypeScript client with **zero npm at runtime**.
-- [ ] **Phase 3:** the Expo client ships to both app stores against the same
-      contract the web UI uses; field numbers frozen.
-- [ ] **Phase 4:** the deviation ledger has no open rows except the accepted ones
-      (V1, V2, V6, V10, V14), each documented upstream.
+- [ ] **Phase 2:** the REST surface is frozen and the rule is written where a
+      contributor will hit it; the new client authenticates and renders live
+      contract data on web, iOS and Android.
+- [ ] **Phase 3:** the replacement ships to both app stores and covers dispatch,
+      admin and the long tail on web; field numbers frozen; the list of what must
+      exist before the legacy UI can go is written down.
+- [ ] **Phase 4:** the templ pages, `web/typescript`, the REST mux and `json/` are
+      deleted together; the deviation ledger has no open rows except the accepted
+      ones (V2, V6, V10), each documented upstream.
 - [ ] **Continuous:** the findings log has been contributed upstream, and the Go
       path is documented as validated rather than blueprinted.
 
