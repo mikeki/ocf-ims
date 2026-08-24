@@ -1,5 +1,18 @@
 # Proto Integration: proto-first API contract (buf + Connect-Go)
 
+> ## ▶️ Park lifted (2026-08-24) — resumed under [09-proto-connect-platform.md](09-proto-connect-platform.md)
+>
+> The fair is over, which was the stated resume condition. Proto work continues as
+> **plan 09 Phase 0**, restructured to `proto/ocfims/{common,resources,service}/v1`
+> with a single `ImsService` (09 M3), not the flat `ocf.ims.v1` + per-resource
+> service described below. The decisions in this document that carried forward are
+> **PI1** (hermetic `go tool` plugins, 09 M4), **PI3** (generated code uncommitted
+> — since extended to all four generators) and **PI5** (strangler rollout, 09 M13).
+> **PI7 is reversed**: the browser client is now generated (types only, erased at
+> compile time — 09 M12) rather than hand-typed, which keeps the zero-npm-at-runtime
+> property PI7 was protecting. `archive/proto-integration` is **reference only**;
+> see 09's Appendix A for what is worth reading off it.
+
 > ## ⏸️ PARKED until post-fair (decided 2026-06-05)
 > Adopting Protobuf for beta would mean standing up a JS/TS proto-codegen
 > (`protoc-gen-es`) + browser bundler toolchain the repo deliberately avoids — too

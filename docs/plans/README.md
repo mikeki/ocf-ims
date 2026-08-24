@@ -29,10 +29,11 @@ management system.
 | Plan | Phase | Status |
 |------|-------|--------|
 | [00-master-plan.md](00-master-plan.md) | Master roadmap | Draft — Phase 1 ✅ done, Phase 2 next |
-| [05-platform-stack.md](05-platform-stack.md) | Foundation — proto-first polyglot monorepo | Decisions locked (incl. D8: defer frontend test harness to pnpm, PR #65) |
-| [06-go-workspace-restructure.md](06-go-workspace-restructure.md) | Platform — move Go into `go/ims` + `go.work` | Deferred (after beta) |
-| [07-proto-integration.md](07-proto-integration.md) | Platform — proto-first API contract (buf + Connect-Go) | ⏸️ PARKED post-fair — reverted from master; preserved on `archive/proto-integration`. generate-at-build convention kept on master. |
+| [05-platform-stack.md](05-platform-stack.md) | Foundation — proto-first polyglot monorepo | Superseded by [09](09-proto-connect-platform.md); kept as the record of D1–D8 |
+| [06-go-workspace-restructure.md](06-go-workspace-restructure.md) | Platform — move Go into `go/ims` + `go.work` | Superseded by [09](09-proto-connect-platform.md) M1 (target is `go/`, not `go/ims/`); its gotcha list still applies to slice 09-1a |
+| [07-proto-integration.md](07-proto-integration.md) | Platform — proto-first API contract (buf + Connect-Go) | ⏸️ Park lifted (fair is over) — resumed under [09](09-proto-connect-platform.md). `archive/proto-integration` is reference only. |
 | [08-db-migration-tooling.md](08-db-migration-tooling.md) | Platform — DB migration tooling (goose, single source of truth) | ✅ Done (A #56, B #57, C #58, D #59, E #60) |
+| [09-proto-connect-platform.md](09-proto-connect-platform.md) | Platform — proto-first Connect architecture + an Expo mobile client (supersedes 05/06/07) | Plan — for review |
 | [10-cleanup-pass.md](10-cleanup-pass.md) | Phase 1 — Preparation & clean-up | ✅ Done (PRs #1–#5) |
 | [11-remove-concentric-streets.md](11-remove-concentric-streets.md) | Phase 1 — Remove Concentric Streets | ✅ Done (PR #1) |
 | [20-terminology.md](20-terminology.md) | Phase 2 — Terminology | 2a ✅ (PR #13), 2c ✅ (PR #14); 2b → Phase 3; 2d awaiting OCF wording |
