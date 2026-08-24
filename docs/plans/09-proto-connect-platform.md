@@ -84,7 +84,7 @@ V2 and V6 are permanent. V11 is the multi-month effort.
 |---|---|---|---|
 | M1 | Repo shape | One module at **`go/`**, `cmd/ocf-ims/main.go` delegating to `run(ctx, cfg) error`, and **`internal/<domain>/` packages — by feature, not by technical layer**. `internal/server/` holds only what is genuinely cross-cutting: mux, interceptors, context helpers | Current Go guidance is to package by feature. A `server/` + `store/` split scatters one feature across three packages and makes the import graph a star. Supersedes plan 06's `go/ims/`. |
 | M2 | Database | **MariaDB. Settled, not deferred.** | It is what we run, it works, and the migration cost is real (134 named queries to review, 8 `:execlastid` inserts to rewrite against `RETURNING`, every `sql.Null*` to `pgtype`, plus the data). No requirement we have points at Postgres; the only argument for it was that the maybloom blueprint assumes it, which is not a reason. The MySQL flavour of the Go path becomes a finding we contribute (§7), not a gap we close. |
-| M3 | Proto layout | `proto/ocfims/{common,resources,service}/v1`; a **single `ImsService`** in `ocfims.service.v1` | One service per backend is what makes the generated handler interface an exhaustiveness check. `resources/v1` holds messages with no RPCs; `common/v1` stays small and gains a type only on its second consumer. |
+| M3 | Proto layout | `proto/ocf/ims/{common,resources,service}/v1` (packages `ocf.ims.common.v1`, `ocf.ims.resources.v1`, `ocf.ims.service.v1`); a **single `ImsService`** in `ocf.ims.service.v1` | One service per backend is what makes the generated handler interface an exhaustiveness check. `resources/v1` holds messages with no RPCs; `common/v1` stays small and gains a type only on its second consumer. The dotted `ocf.ims` package (not `ocfims`) matches the archive's `ocf.ims.v1` and the `proto/ocf/ims/` directory. |
 | M4 | Codegen | **Go plugins via hermetic `go tool`**; TypeScript via pnpm `protoc-gen-es`; **`protoc-gen-connect-openapi`** for docs. buf itself as `go tool buf` | Our CI runs under a hardened-runner egress allow-list, so `remote:` BSR plugins are a liability; the local-plugin form is already proven here (PR #8). OpenAPI output costs one block and makes the API browsable by people who never learn protobuf. |
 | M5 | **Validation lives in the contract** | **protovalidate** (v1.0) constraints written into the protos as messages are modelled, enforced by one `connectrpc.com/validate` interceptor | Presence, range, length, enum-membership and format become CEL in the proto with **no generated validation code** and identical semantics in every language. Targets **114 hand-written validation sites** in `api/` (24 in `person.go` alone). Authorization and business rules stay in Go. Decided here because it changes how the protos are written. |
 | M6 | pnpm arrives in **Phase 0** | with the contract | The TS target serves both the existing web UI (M12) and the Expo client (M7). Deferring it means building Phase 0 twice. Also gives the deferred Vitest harness a home. |
@@ -202,6 +202,13 @@ generate from a clean tree; CI reproduces it; the mapping table has no gaps.
   migrations to `go/db/migrations/`. Mechanical and behaviour-preserving. Plan
   06's gotcha list (`go env GOMOD` under a workspace, embed paths, Docker context,
   CI working dirs) still applies verbatim — **read it before executing.**
+  **Why the restructure comes before the server work:** the bulk extraction (1c)
+  should land in its final `internal/<domain>/` home *once* — extracting into the
+  flat root and then relocating would double the churn. The one risk this ordering
+  carries is that connect-go, the interceptor chain and protovalidate are unproven
+  in *this* server until after the move (Phase 0 proved only that codegen emits).
+  Retire it cheaply first: stand up a single throwaway Connect RPC on the current
+  tree to confirm the transport wires up, *then* start the move.
 - **1b — Interceptor spine.** Request ID, slog, panic recovery, auth (populating
   identity into the context), **protovalidate**, and the action log — declared
   once at handler construction, on by default (M9, M5). Register the Connect
@@ -370,7 +377,7 @@ Queued before any code is written:
 
 ## 9. Exit criteria
 
-- [ ] **Phase 0:** `proto/ocfims/**` models the full current API surface with
+- [ ] **Phase 0:** `proto/ocf/ims/**` models the full current API surface with
       protovalidate constraints; buf lint and breaking clean; Go, TypeScript and
       OpenAPI generate hermetically in CI; every one of the 65 REST routes is
       mapped to an RPC or a named M8 exception.
@@ -400,8 +407,10 @@ a merge source**. Worth reading before writing the equivalent:
 - `buf.gen.yaml` — the `local: ["go", "tool", "protoc-gen-go"]` plugin form M4
   keeps. Needs the `protoc-gen-es` and `protoc-gen-connect-openapi` blocks added.
 - `proto/ocf/ims/v1/incident.proto` — the first cut at modelling Incident. Its
-  *field* modelling is a useful starting point; its structure is superseded by M3
-  (flat package, per-resource service, no `resources`/`service` split).
+  *field* modelling is a useful starting point; its **structure** — a flat
+  `ocf.ims.v1` package with a per-resource `IncidentService` — is superseded by
+  M3, which keeps the same dotted `ocf.ims` root but splits it into
+  `common`/`resources`/`service` (`ocf.ims.*.v1`) under a single `ImsService`.
 - `web/typescript/connectrpc.ts` (146 lines) — the browser Connect transport M12
   builds on.
 - The `bin/build/build.go` and CI wiring for the buf generate step (PR #8).
