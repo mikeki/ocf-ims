@@ -1,5 +1,16 @@
 # Platform Track — Go workspace restructure (`go/ims` + `go.work`)
 
+> ## 📌 Superseded by [09-proto-connect-platform.md](09-proto-connect-platform.md) (2026-08-24)
+>
+> The restructure is now **slice 1a of plan 09**, and the target changed: the Go
+> module moves to **`go/`** with `cmd/ocf-ims/` and everything under `internal/`
+> — the maybloom stack's documented shape — rather than `go/ims/` with a
+> `go.work` (09 M1). Slice 1a also splits `store/queries.sql` into
+> `go/db/queries/` and moves migrations to `go/db/migrations/`.
+>
+> **The "Known gotchas" and "Verification gate" sections below remain accurate
+> and load-bearing** — read them before executing 09-1a.
+
 > **Status:** Deferred — execute *after* the OCF beta/event (decision 2026-06-05).
 > &nbsp;·&nbsp; **Parent:** [05-platform-stack.md](05-platform-stack.md)
 > &nbsp;·&nbsp; **Last updated:** 2026-06-05

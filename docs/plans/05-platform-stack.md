@@ -1,5 +1,15 @@
 # Platform Stack: proto-first polyglot monorepo
 
+> ## 📌 Superseded by [09-proto-connect-platform.md](09-proto-connect-platform.md) (2026-08-24)
+>
+> The platform track is now executed by plan 09, with OCF IMS as the first
+> production service on the maybloom stack's Go path. This document stays as the
+> record of decisions **D1–D8** and the reasoning behind them; where 09 disagrees,
+> 09 wins. Notably: **D1** now targets `go/` rather than `go/ims/` (09 M1),
+> **D5** was already superseded by 07's PI4, **D6/D8**'s pnpm-and-Biome workspace
+> and the deferred test harness land in 09's Phase 0 (09 M6), and the Expo
+> interface is now **mobile only** — the templ web UI stays (09 M7).
+
 > **Status:** Draft / architecture proposal &nbsp;·&nbsp; **Parent:** [00-master-plan.md](00-master-plan.md)
 > &nbsp;·&nbsp; **Last updated:** 2026-06-22
 
