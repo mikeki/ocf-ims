@@ -37,9 +37,12 @@ message JournalEntry {
   optional ocf.ims.common.v1.PersonRef on_behalf_of = 9;
 }
 
-// Attachment is a file attached to a journal entry. name is the stored object
-// name; previewable indicates the server can render an inline preview.
+// Attachment is a file attached to a journal entry. id is the opaque storage key
+// the server generates for the file (a crypto-random token, e.g.
+// "event_00001_incident_00042_<random>.jpg" — collision-resistant, and what the
+// blob-download endpoint is addressed by); previewable indicates the server can
+// render an inline preview. Mirrors json.Attachment (whose field was "name").
 message Attachment {
-  string name = 1;
+  string id = 1;
   bool previewable = 2;
 }

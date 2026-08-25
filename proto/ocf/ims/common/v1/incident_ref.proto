@@ -1,0 +1,18 @@
+// SPDX-License-Identifier: Apache-2.0
+
+syntax = "proto3";
+
+package ocf.ims.common.v1;
+
+option go_package = "github.com/mikeki/ocf-ims/gen/ocf/ims/common/v1;commonv1";
+
+// IncidentRef is a lightweight reference to an incident, denormalized for display
+// (event name + id, the per-event number, and a summary). It lives in common/v1
+// alongside PersonRef as a shared cross-resource reference type. Mirrors
+// json.LinkedIncident.
+message IncidentRef {
+  string event_name = 1;
+  int32 event_id = 2;
+  int32 number = 3;
+  string summary = 4;
+}

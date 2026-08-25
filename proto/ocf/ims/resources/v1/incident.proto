@@ -6,6 +6,7 @@ package ocf.ims.resources.v1;
 
 import "buf/validate/validate.proto";
 import "google/protobuf/timestamp.proto";
+import "ocf/ims/common/v1/incident_ref.proto";
 import "ocf/ims/common/v1/person_ref.proto";
 import "ocf/ims/resources/v1/journal_entry.proto";
 
@@ -66,7 +67,8 @@ message Incident {
   // visits are the White Bird visit ids (backend intact; UI disabled for 2026).
   repeated int32 visits = 17;
   repeated IncidentPerson people = 18;
-  repeated LinkedIncident linked_incidents = 19;
+  // linked_incidents are other incidents linked to this one (see common.IncidentRef).
+  repeated ocf.ims.common.v1.IncidentRef linked_incidents = 19;
   repeated JournalEntry journal_entries = 20;
 }
 
@@ -94,13 +96,4 @@ message IncidentPerson {
   // granted_access records a per-incident read + journal-append grant (52f);
   // writable on attach (writer-gated), echoed on read.
   bool granted_access = 3;
-}
-
-// LinkedIncident is a lightweight reference to another incident linked to this
-// one, denormalized for display. Mirrors json.LinkedIncident.
-message LinkedIncident {
-  string event_name = 1;
-  int32 event_id = 2;
-  int32 number = 3;
-  string summary = 4;
 }
