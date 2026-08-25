@@ -4,7 +4,6 @@ go 1.26.7
 
 require (
 	buf.build/gen/go/bufbuild/protovalidate/protocolbuffers/go v1.36.11-20260415201107-50325440f8f2.1
-	connectrpc.com/connect v1.20.0
 	github.com/SherClockHolmes/webpush-go v1.4.0
 	github.com/a-h/templ v0.3.1020
 	github.com/aws/aws-sdk-go-v2/config v1.32.22
@@ -40,6 +39,7 @@ require (
 	buf.build/go/spdx v0.2.0 // indirect
 	buf.build/go/standard v0.1.1-0.20260325175353-2b287e071df5 // indirect
 	cel.dev/expr v0.25.2 // indirect
+	connectrpc.com/connect v1.20.0 // indirect
 	connectrpc.com/otelconnect v0.9.0 // indirect
 	dario.cat/mergo v1.0.2 // indirect
 	filippo.io/edwards25519 v1.2.0 // indirect
