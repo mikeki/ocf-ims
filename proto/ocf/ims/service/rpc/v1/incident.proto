@@ -2,20 +2,15 @@
 
 syntax = "proto3";
 
-package ocf.ims.service.v1;
+package ocf.ims.service.rpc.v1;
 
 import "buf/validate/validate.proto";
 import "ocf/ims/resources/v1/incident.proto";
 import "ocf/ims/resources/v1/journal_entry.proto";
-import "ocf/ims/resources/v1/report.proto";
 
-option go_package = "github.com/mikeki/ocf-ims/gen/ocf/ims/service/v1;servicev1";
+option go_package = "github.com/mikeki/ocf-ims/gen/ocf/ims/service/rpc/v1;servicerpcv1";
 
-// Request/response envelopes for the operational records: incidents, field reports,
-// and their journal entries. The ImsService methods that use them are declared in
-// service.proto.
-
-// --- Incidents ---
+// Request/response envelopes for the incident RPCs (declared in ../../v1/service.proto).
 
 // IncidentView wraps the Incident resource with the caller-dependent, read-only
 // decorations that 0b deliberately kept off the resource (json.Incident carried
@@ -101,58 +96,3 @@ message UpdateIncidentJournalEntryRequest {
 }
 
 message UpdateIncidentJournalEntryResponse {}
-
-// --- Field reports ---
-
-// ReportView wraps the Report resource with the caller-dependent edit-gating flags
-// json.Report carried inline. Response-only.
-message ReportView {
-  ocf.ims.resources.v1.Report report = 1;
-  // may_edit_summary: summary edits are limited to the report's creator and admins.
-  bool may_edit_summary = 2;
-  // may_add_journal_entry: additionally allows the writer role.
-  bool may_add_journal_entry = 3;
-}
-
-message ListReportsRequest {
-  string event_name = 1 [(buf.validate.field).string.min_len = 1];
-}
-
-message ListReportsResponse {
-  repeated ReportView reports = 1;
-}
-
-message GetReportRequest {
-  string event_name = 1 [(buf.validate.field).string.min_len = 1];
-  int32 number = 2 [(buf.validate.field).int32.gt = 0];
-}
-
-message GetReportResponse {
-  ReportView report = 1;
-}
-
-message CreateReportRequest {
-  string event_name = 1 [(buf.validate.field).string.min_len = 1];
-  ocf.ims.resources.v1.Report report = 2;
-}
-
-message CreateReportResponse {
-  int32 number = 1;
-}
-
-message UpdateReportRequest {
-  string event_name = 1 [(buf.validate.field).string.min_len = 1];
-  int32 number = 2 [(buf.validate.field).int32.gt = 0];
-  ocf.ims.resources.v1.Report report = 3;
-}
-
-message UpdateReportResponse {}
-
-message UpdateReportJournalEntryRequest {
-  string event_name = 1 [(buf.validate.field).string.min_len = 1];
-  int32 number = 2 [(buf.validate.field).int32.gt = 0];
-  int32 journal_entry_id = 3 [(buf.validate.field).int32.gt = 0];
-  ocf.ims.resources.v1.JournalEntry entry = 4;
-}
-
-message UpdateReportJournalEntryResponse {}

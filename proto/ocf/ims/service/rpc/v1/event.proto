@@ -1,0 +1,25 @@
+// SPDX-License-Identifier: Apache-2.0
+
+syntax = "proto3";
+
+package ocf.ims.service.rpc.v1;
+
+import "ocf/ims/resources/v1/event.proto";
+
+option go_package = "github.com/mikeki/ocf-ims/gen/ocf/ims/service/rpc/v1;servicerpcv1";
+
+// Request/response envelopes for the event RPCs (declared in ../../v1/service.proto).
+
+message ListEventsRequest {}
+
+message ListEventsResponse {
+  repeated ocf.ims.resources.v1.Event events = 1;
+}
+
+// SaveEventRequest upserts an event (POST /events; the admin Events page creates
+// events). Carries the whole resource per the Phase-0 rule.
+message SaveEventRequest {
+  ocf.ims.resources.v1.Event event = 1;
+}
+
+message SaveEventResponse {}

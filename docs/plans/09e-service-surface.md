@@ -20,16 +20,22 @@ deliberately-excluded visits subsystem). Zero unclassified routes.
 ## What landed
 
 - `service/v1/service.proto` — the single **`ImsService`** (M3), **49 unary RPCs**, and
-  nothing else: it is the readable index of the whole API.
-- **Four domain-grouped envelope files** holding the request/response messages —
-  `auth.proto` (auth & self-service), `incidents.proto` (incidents, field reports,
-  journal entries), `people.proto` (personnel & crews), `admin.proto` (events, areas,
-  taxonomies, notifications, metrics, action log, push). A dedicated request and
-  response per RPC (including empty ones — buf's `RPC_REQUEST_RESPONSE_UNIQUE` forbids
-  sharing, so each empty message is its own type). *(An earlier cut split these into
-  one file per resource — 13 siblings that buried `service.proto`; grouping by domain
-  keeps the service file distinct and the message files few. buf only requires files to
-  match their package, not one-per-resource.)*
+  **nothing else**: `service/v1/` holds only this file, so the API index stands alone.
+- `service/rpc/v1/*.proto` (package `ocf.ims.service.rpc.v1`) — the request/response
+  envelopes, **one file per resource** (`auth`, `incident`, `report`, `event`, `area`,
+  `crew`, `person`, `incident_type`, `outcome`, `notification`, `metrics`,
+  `action_log`, `push`), each keeping its RPCs' **request and response paired**. A
+  dedicated request and response per RPC (including empty ones — buf's
+  `RPC_REQUEST_RESPONSE_UNIQUE` forbids sharing, so each empty message is its own type).
+  `service.proto` references them as `rpc.v1.<Name>`.
+  *(Layout history: first cut put these envelopes in `service/v1/` alongside
+  `service.proto` — 14 look-alike siblings that buried the index; a second cut grouped
+  them into four domain files but one became an `admin.proto` grab-bag, which is
+  grouping by caller/authorization — the very thing 0d rejected for packages. Splitting
+  the service into its own directory and the envelopes into a per-resource
+  `service/rpc/v1` package fixes both: the index is isolated, and every envelope file is
+  a clean single resource. buf only requires files to match their package, not
+  one-file-per-service.)*
 - Response wrappers for the derived read-only decorations 0b kept off the resources:
   `IncidentView` (`viewer_may_add_journal`, `person_has_event_access`), `ReportView`
   (`may_edit_summary`, `may_add_journal_entry`), `AccessForEvent` (the per-viewer

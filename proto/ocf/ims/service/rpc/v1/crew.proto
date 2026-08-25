@@ -1,0 +1,77 @@
+// SPDX-License-Identifier: Apache-2.0
+
+syntax = "proto3";
+
+package ocf.ims.service.rpc.v1;
+
+import "buf/validate/validate.proto";
+import "ocf/ims/resources/v1/crew.proto";
+
+option go_package = "github.com/mikeki/ocf-ims/gen/ocf/ims/service/rpc/v1;servicerpcv1";
+
+// Request/response envelopes for the crew RPCs (declared in ../../v1/service.proto).
+//
+// The REST POST /crews multiplexes create/rename, delete, and a single-member
+// mutation on one json.Crew body (via its delete/member write-selectors). The RPC
+// surface splits that into three explicit calls (0c decision: crew delete/member
+// become RPCs, not resource fields).
+
+message ListCrewsRequest {
+  string event_name = 1 [(buf.validate.field).string.min_len = 1];
+}
+
+message ListCrewsResponse {
+  repeated ocf.ims.resources.v1.Crew crews = 1;
+}
+
+// SaveCrewRequest creates (empty slug → server generates) or renames/reorders
+// (slug set) a crew. Membership is not touched here.
+message SaveCrewRequest {
+  string event_name = 1 [(buf.validate.field).string.min_len = 1];
+  ocf.ims.resources.v1.Crew crew = 2;
+}
+
+// SaveCrewResponse echoes the crew (with its server-generated slug on create).
+message SaveCrewResponse {
+  ocf.ims.resources.v1.Crew crew = 1;
+}
+
+message DeleteCrewRequest {
+  string event_name = 1 [(buf.validate.field).string.min_len = 1];
+  string slug = 2 [(buf.validate.field).string.min_len = 1];
+}
+
+message DeleteCrewResponse {}
+
+// SetCrewMembershipRequest is one membership mutation (json.CrewMemberEdit): remove,
+// or add/update with a leader flag. Admin-gated.
+message SetCrewMembershipRequest {
+  string event_name = 1 [(buf.validate.field).string.min_len = 1];
+  string slug = 2 [(buf.validate.field).string.min_len = 1];
+  int32 person_id = 3 [(buf.validate.field).int32.gt = 0];
+  bool remove = 4;
+  bool is_leader = 5;
+}
+
+message SetCrewMembershipResponse {}
+
+// ListMyCrews / SetMyCrewMembership are the crew-leader self-service pair (slice 10c):
+// the caller reads/edits only crews they lead (authz is leadership, checked in the
+// handler), distinct from the admin crew RPCs above.
+message ListMyCrewsRequest {
+  string event_name = 1 [(buf.validate.field).string.min_len = 1];
+}
+
+message ListMyCrewsResponse {
+  repeated ocf.ims.resources.v1.Crew crews = 1;
+}
+
+message SetMyCrewMembershipRequest {
+  string event_name = 1 [(buf.validate.field).string.min_len = 1];
+  string slug = 2 [(buf.validate.field).string.min_len = 1];
+  int32 person_id = 3 [(buf.validate.field).int32.gt = 0];
+  bool remove = 4;
+  bool is_leader = 5;
+}
+
+message SetMyCrewMembershipResponse {}

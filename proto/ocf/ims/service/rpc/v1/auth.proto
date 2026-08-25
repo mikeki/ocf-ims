@@ -2,17 +2,18 @@
 
 syntax = "proto3";
 
-package ocf.ims.service.v1;
+package ocf.ims.service.rpc.v1;
 
 import "buf/validate/validate.proto";
 import "google/protobuf/timestamp.proto";
 
-option go_package = "github.com/mikeki/ocf-ims/gen/ocf/ims/service/v1;servicev1";
+option go_package = "github.com/mikeki/ocf-ims/gen/ocf/ims/service/rpc/v1;servicerpcv1";
 
-// Auth envelopes (deferred here from slice 0c: these are pure service surface —
-// there is no backing resource, and the whoami response is computed per-viewer
-// permissions). Presence/required constraints that a resource cannot carry live on
-// these request messages.
+// Request/response envelopes for the auth & self-service RPCs (deferred here from
+// slice 0c: pure service surface — no backing resource, and the whoami response is
+// computed per-viewer permissions). The ImsService methods are declared in
+// ../../v1/service.proto. Presence/required constraints that a resource cannot carry
+// live on these request messages.
 
 // LoginRequest mirrors api.PostAuthRequest. identification is the email (the sole
 // login identifier, feedback round 9).

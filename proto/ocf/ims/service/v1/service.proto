@@ -4,17 +4,29 @@ syntax = "proto3";
 
 package ocf.ims.service.v1;
 
-import "ocf/ims/service/v1/admin.proto";
-import "ocf/ims/service/v1/auth.proto";
-import "ocf/ims/service/v1/incidents.proto";
-import "ocf/ims/service/v1/people.proto";
+import "ocf/ims/service/rpc/v1/action_log.proto";
+import "ocf/ims/service/rpc/v1/area.proto";
+import "ocf/ims/service/rpc/v1/auth.proto";
+import "ocf/ims/service/rpc/v1/crew.proto";
+import "ocf/ims/service/rpc/v1/event.proto";
+import "ocf/ims/service/rpc/v1/incident.proto";
+import "ocf/ims/service/rpc/v1/incident_type.proto";
+import "ocf/ims/service/rpc/v1/metrics.proto";
+import "ocf/ims/service/rpc/v1/notification.proto";
+import "ocf/ims/service/rpc/v1/outcome.proto";
+import "ocf/ims/service/rpc/v1/person.proto";
+import "ocf/ims/service/rpc/v1/push.proto";
+import "ocf/ims/service/rpc/v1/report.proto";
 
 option go_package = "github.com/mikeki/ocf-ims/gen/ocf/ims/service/v1;servicev1";
 
 // ImsService is the single Connect service for the whole IMS API (M3 — one service,
-// not service-per-resource). Each RPC maps to a current REST route; the route→RPC
-// mapping table (with the M8 plain-HTTP exceptions and the deliberately-excluded
-// visits subsystem) lives in docs/plans/09e-service-surface.md.
+// not service-per-resource). This file is the readable index of the API: it holds
+// only the service. Each RPC's request/response messages live in ocf.ims.service.rpc.v1
+// (proto/ocf/ims/service/rpc/v1/<resource>.proto), one file per resource with the
+// request and response paired. The route→RPC mapping table (with the M8 plain-HTTP
+// exceptions and the deliberately-excluded visits subsystem) lives in
+// docs/plans/09e-service-surface.md.
 //
 // All RPCs are unary. SSE (GET /ims/api/eventsource) stays plain HTTP for now (M8),
 // a candidate for Connect server-streaming later. Blob upload/download (attachments,
@@ -22,73 +34,73 @@ option go_package = "github.com/mikeki/ocf-ims/gen/ocf/ims/service/v1;servicev1"
 // plain-HTTP exceptions.
 service ImsService {
   // --- Auth & self-service ---
-  rpc Login(LoginRequest) returns (LoginResponse);
-  rpc RefreshToken(RefreshTokenRequest) returns (RefreshTokenResponse);
-  rpc GetAuthStatus(GetAuthStatusRequest) returns (GetAuthStatusResponse);
-  rpc ChangeOwnPassword(ChangeOwnPasswordRequest) returns (ChangeOwnPasswordResponse);
-  rpc UpdateOwnProfile(UpdateOwnProfileRequest) returns (UpdateOwnProfileResponse);
-  rpc DeleteOwnProfilePicture(DeleteOwnProfilePictureRequest) returns (DeleteOwnProfilePictureResponse);
+  rpc Login(rpc.v1.LoginRequest) returns (rpc.v1.LoginResponse);
+  rpc RefreshToken(rpc.v1.RefreshTokenRequest) returns (rpc.v1.RefreshTokenResponse);
+  rpc GetAuthStatus(rpc.v1.GetAuthStatusRequest) returns (rpc.v1.GetAuthStatusResponse);
+  rpc ChangeOwnPassword(rpc.v1.ChangeOwnPasswordRequest) returns (rpc.v1.ChangeOwnPasswordResponse);
+  rpc UpdateOwnProfile(rpc.v1.UpdateOwnProfileRequest) returns (rpc.v1.UpdateOwnProfileResponse);
+  rpc DeleteOwnProfilePicture(rpc.v1.DeleteOwnProfilePictureRequest) returns (rpc.v1.DeleteOwnProfilePictureResponse);
 
   // --- Incidents ---
-  rpc ListIncidents(ListIncidentsRequest) returns (ListIncidentsResponse);
-  rpc GetIncident(GetIncidentRequest) returns (GetIncidentResponse);
-  rpc CreateIncident(CreateIncidentRequest) returns (CreateIncidentResponse);
-  rpc UpdateIncident(UpdateIncidentRequest) returns (UpdateIncidentResponse);
-  rpc AttachPersonToIncident(AttachPersonToIncidentRequest) returns (AttachPersonToIncidentResponse);
-  rpc DetachPersonFromIncident(DetachPersonFromIncidentRequest) returns (DetachPersonFromIncidentResponse);
-  rpc UpdateIncidentJournalEntry(UpdateIncidentJournalEntryRequest) returns (UpdateIncidentJournalEntryResponse);
+  rpc ListIncidents(rpc.v1.ListIncidentsRequest) returns (rpc.v1.ListIncidentsResponse);
+  rpc GetIncident(rpc.v1.GetIncidentRequest) returns (rpc.v1.GetIncidentResponse);
+  rpc CreateIncident(rpc.v1.CreateIncidentRequest) returns (rpc.v1.CreateIncidentResponse);
+  rpc UpdateIncident(rpc.v1.UpdateIncidentRequest) returns (rpc.v1.UpdateIncidentResponse);
+  rpc AttachPersonToIncident(rpc.v1.AttachPersonToIncidentRequest) returns (rpc.v1.AttachPersonToIncidentResponse);
+  rpc DetachPersonFromIncident(rpc.v1.DetachPersonFromIncidentRequest) returns (rpc.v1.DetachPersonFromIncidentResponse);
+  rpc UpdateIncidentJournalEntry(rpc.v1.UpdateIncidentJournalEntryRequest) returns (rpc.v1.UpdateIncidentJournalEntryResponse);
 
   // --- Field reports ---
-  rpc ListReports(ListReportsRequest) returns (ListReportsResponse);
-  rpc GetReport(GetReportRequest) returns (GetReportResponse);
-  rpc CreateReport(CreateReportRequest) returns (CreateReportResponse);
-  rpc UpdateReport(UpdateReportRequest) returns (UpdateReportResponse);
-  rpc UpdateReportJournalEntry(UpdateReportJournalEntryRequest) returns (UpdateReportJournalEntryResponse);
+  rpc ListReports(rpc.v1.ListReportsRequest) returns (rpc.v1.ListReportsResponse);
+  rpc GetReport(rpc.v1.GetReportRequest) returns (rpc.v1.GetReportResponse);
+  rpc CreateReport(rpc.v1.CreateReportRequest) returns (rpc.v1.CreateReportResponse);
+  rpc UpdateReport(rpc.v1.UpdateReportRequest) returns (rpc.v1.UpdateReportResponse);
+  rpc UpdateReportJournalEntry(rpc.v1.UpdateReportJournalEntryRequest) returns (rpc.v1.UpdateReportJournalEntryResponse);
 
   // --- Events ---
-  rpc ListEvents(ListEventsRequest) returns (ListEventsResponse);
-  rpc SaveEvent(SaveEventRequest) returns (SaveEventResponse);
+  rpc ListEvents(rpc.v1.ListEventsRequest) returns (rpc.v1.ListEventsResponse);
+  rpc SaveEvent(rpc.v1.SaveEventRequest) returns (rpc.v1.SaveEventResponse);
 
   // --- Areas ---
-  rpc ListAreas(ListAreasRequest) returns (ListAreasResponse);
-  rpc SaveArea(SaveAreaRequest) returns (SaveAreaResponse);
+  rpc ListAreas(rpc.v1.ListAreasRequest) returns (rpc.v1.ListAreasResponse);
+  rpc SaveArea(rpc.v1.SaveAreaRequest) returns (rpc.v1.SaveAreaResponse);
 
   // --- Crews ---
-  rpc ListCrews(ListCrewsRequest) returns (ListCrewsResponse);
-  rpc SaveCrew(SaveCrewRequest) returns (SaveCrewResponse);
-  rpc DeleteCrew(DeleteCrewRequest) returns (DeleteCrewResponse);
-  rpc SetCrewMembership(SetCrewMembershipRequest) returns (SetCrewMembershipResponse);
-  rpc ListMyCrews(ListMyCrewsRequest) returns (ListMyCrewsResponse);
-  rpc SetMyCrewMembership(SetMyCrewMembershipRequest) returns (SetMyCrewMembershipResponse);
+  rpc ListCrews(rpc.v1.ListCrewsRequest) returns (rpc.v1.ListCrewsResponse);
+  rpc SaveCrew(rpc.v1.SaveCrewRequest) returns (rpc.v1.SaveCrewResponse);
+  rpc DeleteCrew(rpc.v1.DeleteCrewRequest) returns (rpc.v1.DeleteCrewResponse);
+  rpc SetCrewMembership(rpc.v1.SetCrewMembershipRequest) returns (rpc.v1.SetCrewMembershipResponse);
+  rpc ListMyCrews(rpc.v1.ListMyCrewsRequest) returns (rpc.v1.ListMyCrewsResponse);
+  rpc SetMyCrewMembership(rpc.v1.SetMyCrewMembershipRequest) returns (rpc.v1.SetMyCrewMembershipResponse);
 
   // --- Personnel ---
-  rpc ListPersonnel(ListPersonnelRequest) returns (ListPersonnelResponse);
-  rpc CreatePerson(CreatePersonRequest) returns (CreatePersonResponse);
-  rpc UpdatePerson(UpdatePersonRequest) returns (UpdatePersonResponse);
-  rpc SetPersonPassword(SetPersonPasswordRequest) returns (SetPersonPasswordResponse);
-  rpc SetPersonAdmin(SetPersonAdminRequest) returns (SetPersonAdminResponse);
-  rpc SetPersonParticipation(SetPersonParticipationRequest) returns (SetPersonParticipationResponse);
-  rpc RemovePersonFromEvent(RemovePersonFromEventRequest) returns (RemovePersonFromEventResponse);
-  rpc DeletePersonProfilePicture(DeletePersonProfilePictureRequest) returns (DeletePersonProfilePictureResponse);
+  rpc ListPersonnel(rpc.v1.ListPersonnelRequest) returns (rpc.v1.ListPersonnelResponse);
+  rpc CreatePerson(rpc.v1.CreatePersonRequest) returns (rpc.v1.CreatePersonResponse);
+  rpc UpdatePerson(rpc.v1.UpdatePersonRequest) returns (rpc.v1.UpdatePersonResponse);
+  rpc SetPersonPassword(rpc.v1.SetPersonPasswordRequest) returns (rpc.v1.SetPersonPasswordResponse);
+  rpc SetPersonAdmin(rpc.v1.SetPersonAdminRequest) returns (rpc.v1.SetPersonAdminResponse);
+  rpc SetPersonParticipation(rpc.v1.SetPersonParticipationRequest) returns (rpc.v1.SetPersonParticipationResponse);
+  rpc RemovePersonFromEvent(rpc.v1.RemovePersonFromEventRequest) returns (rpc.v1.RemovePersonFromEventResponse);
+  rpc DeletePersonProfilePicture(rpc.v1.DeletePersonProfilePictureRequest) returns (rpc.v1.DeletePersonProfilePictureResponse);
 
   // --- Taxonomies ---
-  rpc ListIncidentTypes(ListIncidentTypesRequest) returns (ListIncidentTypesResponse);
-  rpc SaveIncidentType(SaveIncidentTypeRequest) returns (SaveIncidentTypeResponse);
-  rpc ProposeIncidentType(ProposeIncidentTypeRequest) returns (ProposeIncidentTypeResponse);
-  rpc ListOutcomes(ListOutcomesRequest) returns (ListOutcomesResponse);
-  rpc SaveOutcome(SaveOutcomeRequest) returns (SaveOutcomeResponse);
-  rpc ProposeOutcome(ProposeOutcomeRequest) returns (ProposeOutcomeResponse);
+  rpc ListIncidentTypes(rpc.v1.ListIncidentTypesRequest) returns (rpc.v1.ListIncidentTypesResponse);
+  rpc SaveIncidentType(rpc.v1.SaveIncidentTypeRequest) returns (rpc.v1.SaveIncidentTypeResponse);
+  rpc ProposeIncidentType(rpc.v1.ProposeIncidentTypeRequest) returns (rpc.v1.ProposeIncidentTypeResponse);
+  rpc ListOutcomes(rpc.v1.ListOutcomesRequest) returns (rpc.v1.ListOutcomesResponse);
+  rpc SaveOutcome(rpc.v1.SaveOutcomeRequest) returns (rpc.v1.SaveOutcomeResponse);
+  rpc ProposeOutcome(rpc.v1.ProposeOutcomeRequest) returns (rpc.v1.ProposeOutcomeResponse);
 
   // --- Notifications ---
-  rpc ListNotifications(ListNotificationsRequest) returns (ListNotificationsResponse);
-  rpc MarkAllNotificationsRead(MarkAllNotificationsReadRequest) returns (MarkAllNotificationsReadResponse);
-  rpc MarkNotificationRead(MarkNotificationReadRequest) returns (MarkNotificationReadResponse);
+  rpc ListNotifications(rpc.v1.ListNotificationsRequest) returns (rpc.v1.ListNotificationsResponse);
+  rpc MarkAllNotificationsRead(rpc.v1.MarkAllNotificationsReadRequest) returns (rpc.v1.MarkAllNotificationsReadResponse);
+  rpc MarkNotificationRead(rpc.v1.MarkNotificationReadRequest) returns (rpc.v1.MarkNotificationReadResponse);
 
   // --- Metrics & audit ---
-  rpc GetMetrics(GetMetricsRequest) returns (GetMetricsResponse);
-  rpc ListActionLogs(ListActionLogsRequest) returns (ListActionLogsResponse);
+  rpc GetMetrics(rpc.v1.GetMetricsRequest) returns (rpc.v1.GetMetricsResponse);
+  rpc ListActionLogs(rpc.v1.ListActionLogsRequest) returns (rpc.v1.ListActionLogsResponse);
 
   // --- Web push ---
-  rpc SubscribePush(SubscribePushRequest) returns (SubscribePushResponse);
-  rpc UnsubscribePush(UnsubscribePushRequest) returns (UnsubscribePushResponse);
+  rpc SubscribePush(rpc.v1.SubscribePushRequest) returns (rpc.v1.SubscribePushResponse);
+  rpc UnsubscribePush(rpc.v1.UnsubscribePushRequest) returns (rpc.v1.UnsubscribePushResponse);
 }
