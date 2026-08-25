@@ -1,0 +1,13 @@
+# buf module config — the proto contract is the source of truth for the OCF IMS
+# API (see docs/plans/09-proto-connect-platform.md). Generated code (Go,
+# TypeScript, OpenAPI) is produced by `buf generate` (see buf.gen.yaml and
+# buf.gen.web.yaml) and is never committed. Proto source lives under proto/.
+version: v2
+modules:
+  - path: proto
+lint:
+  use:
+    - STANDARD
+breaking:
+  use:
+    - FILE

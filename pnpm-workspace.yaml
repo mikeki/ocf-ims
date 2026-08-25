@@ -1,0 +1,6 @@
+# pnpm workspace. The proto-generated TypeScript lives in
+# packages/protocol-buffers; future packages (the Expo client in Phase 3) join
+# here. pnpm is a build-time codegen dependency only — there is no npm at runtime
+# (plan 09, V14/M12).
+packages:
+  - "packages/*"

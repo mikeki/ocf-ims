@@ -351,6 +351,31 @@ Queued before any code is written:
 
 *(Entries below this line are added as slices land.)*
 
+### 0a — Codegen skeleton (2026-08-24)
+
+- **Finding #5 confirmed (hermetic local codegen plugins).** All four generators
+  run as hermetic locals under a restricted-egress CI: `protoc-gen-go`,
+  `protoc-gen-connect-go` and **`protoc-gen-connect-openapi`** as `go tool`
+  binaries, and `protoc-gen-es` via pnpm. No `remote:` BSR plugin, and — because
+  the throwaway proto imports no `buf/validate` — no BSR *module* dependency
+  either, so generation needs no `buf.build` egress. The only registry the CI
+  lint job gained is `registry.npmjs.org` (for the one pnpm plugin). *Documented
+  variant, works as blueprinted.*
+- **New: the Go build image needs no JS toolchain.** Splitting codegen into a
+  hermetic Go-tool template (`buf.gen.yaml`) and a pnpm template
+  (`buf.gen.web.yaml`), and gating the latter on `pnpm` being present, keeps the
+  server's `golang:alpine` Docker build free of node/pnpm — the generated
+  TypeScript is a client artifact, never a compile input for the binary. The
+  stack's blueprints assume one toolchain per repo; a Go server + a TS client in
+  one monorepo wants this split. *Candidate addition to the brownfield/adoption
+  guidance (finding #10).*
+- **Repo quirk worth noting: put the license header in the `.proto`.**
+  protoc-gen-{go,connect-go,es} copy the proto's leading comments into their
+  output, so the Apache header propagates to every generated artifact and this
+  repo's `prependlicense` hook skips them all with no change — while golangci-lint
+  still classifies the files as generated. A pgx/Postgres shop wouldn't hit this;
+  it's specific to repos that stamp source headers.
+
 ## 8. Open questions
 
 1. **Does the Go binary keep serving static assets in production**, or does Caddy?

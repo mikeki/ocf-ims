@@ -1,0 +1,50 @@
+//
+// See the file COPYRIGHT for copyright information.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+//
+
+// Package ocf.ims.example.v1 is a THROWAWAY proto used only to prove the codegen
+// toolchain (plan 09, slice 0a): it exercises every generator target — Go
+// messages, connect-go handlers/clients, TypeScript, and OpenAPI. It carries no
+// real API surface and is deleted when slice 0b lands the first real resources.
+syntax = "proto3";
+
+package ocf.ims.example.v1;
+
+option go_package = "github.com/mikeki/ocf-ims/gen/ocf/ims/example/v1;examplev1";
+
+import "google/protobuf/timestamp.proto";
+
+// Example is a placeholder message. Timestamps are google.protobuf.Timestamp,
+// never epoch numbers — the contract convention from the first file (plan 09).
+message Example {
+  string id = 1;
+  string name = 2;
+  google.protobuf.Timestamp created = 3;
+}
+
+// ExampleService exists only so the connect-go and OpenAPI generators have a
+// service to emit from.
+service ExampleService {
+  // Ping is a trivial unary RPC.
+  rpc Ping(PingRequest) returns (PingResponse) {}
+}
+
+message PingRequest {
+  string message = 1;
+}
+
+message PingResponse {
+  string message = 1;
+}
