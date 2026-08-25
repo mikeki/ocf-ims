@@ -130,6 +130,13 @@ contract.
 
 1. **One `ImsService`** (M3), not service-per-resource. connect-go emits one client and
    one handler interface; the interceptor spine (1b) is declared once.
+1a. **Selector keys are qualified** (`incident_number`, `report_number`, `person_id`,
+   `notification_id`) rather than a bare `number`/`id`, matching how the ref types name
+   their keys (`common.IncidentRef.incident_number`) and disambiguating requests that
+   carry more than one id (e.g. `UpdateIncidentJournalEntryRequest` has both
+   `incident_number` and `journal_entry_id`). The resources keep their own key as
+   `number` (a resource's own field is unqualified in its own context; a
+   selector/reference to it is qualified).
 2. **Presence vs derived, resolved per 0b–0d.** Required/presence constraints
    (`string.min_len`, `int32.gt = 0` on path keys) live on the **request** messages;
    the derived viewer-dependent fields live on the **response** wrappers

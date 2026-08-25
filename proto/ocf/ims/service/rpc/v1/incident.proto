@@ -39,7 +39,7 @@ message ListIncidentsResponse {
 
 message GetIncidentRequest {
   string event_name = 1 [(buf.validate.field).string.min_len = 1];
-  int32 number = 2 [(buf.validate.field).int32.gt = 0];
+  int32 incident_number = 2 [(buf.validate.field).int32.gt = 0];
 }
 
 message GetIncidentResponse {
@@ -53,14 +53,14 @@ message CreateIncidentRequest {
   ocf.ims.resources.v1.Incident incident = 2;
 }
 
-// CreateIncidentResponse returns the server-assigned per-event number.
+// CreateIncidentResponse returns the server-assigned per-event incident number.
 message CreateIncidentResponse {
-  int32 number = 1;
+  int32 incident_number = 1;
 }
 
 message UpdateIncidentRequest {
   string event_name = 1 [(buf.validate.field).string.min_len = 1];
-  int32 number = 2 [(buf.validate.field).int32.gt = 0];
+  int32 incident_number = 2 [(buf.validate.field).int32.gt = 0];
   ocf.ims.resources.v1.Incident incident = 3;
 }
 
@@ -70,7 +70,7 @@ message UpdateIncidentResponse {}
 // path keys. granted_access is writer-gated (52f).
 message AttachPersonToIncidentRequest {
   string event_name = 1 [(buf.validate.field).string.min_len = 1];
-  int32 number = 2 [(buf.validate.field).int32.gt = 0];
+  int32 incident_number = 2 [(buf.validate.field).int32.gt = 0];
   int32 person_id = 3 [(buf.validate.field).int32.gt = 0];
   optional string involvement = 4 [(buf.validate.field).string.max_len = 128];
   bool granted_access = 5;
@@ -80,7 +80,7 @@ message AttachPersonToIncidentResponse {}
 
 message DetachPersonFromIncidentRequest {
   string event_name = 1 [(buf.validate.field).string.min_len = 1];
-  int32 number = 2 [(buf.validate.field).int32.gt = 0];
+  int32 incident_number = 2 [(buf.validate.field).int32.gt = 0];
   int32 person_id = 3 [(buf.validate.field).int32.gt = 0];
 }
 
@@ -90,7 +90,7 @@ message DetachPersonFromIncidentResponse {}
 // new entries are added via UpdateIncident. entry carries the mutable fields.
 message UpdateIncidentJournalEntryRequest {
   string event_name = 1 [(buf.validate.field).string.min_len = 1];
-  int32 number = 2 [(buf.validate.field).int32.gt = 0];
+  int32 incident_number = 2 [(buf.validate.field).int32.gt = 0];
   int32 journal_entry_id = 3 [(buf.validate.field).int32.gt = 0];
   ocf.ims.resources.v1.JournalEntry entry = 4;
 }

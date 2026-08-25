@@ -32,7 +32,7 @@ message ListReportsResponse {
 
 message GetReportRequest {
   string event_name = 1 [(buf.validate.field).string.min_len = 1];
-  int32 number = 2 [(buf.validate.field).int32.gt = 0];
+  int32 report_number = 2 [(buf.validate.field).int32.gt = 0];
 }
 
 message GetReportResponse {
@@ -45,12 +45,12 @@ message CreateReportRequest {
 }
 
 message CreateReportResponse {
-  int32 number = 1;
+  int32 report_number = 1;
 }
 
 message UpdateReportRequest {
   string event_name = 1 [(buf.validate.field).string.min_len = 1];
-  int32 number = 2 [(buf.validate.field).int32.gt = 0];
+  int32 report_number = 2 [(buf.validate.field).int32.gt = 0];
   ocf.ims.resources.v1.Report report = 3;
 }
 
@@ -58,7 +58,7 @@ message UpdateReportResponse {}
 
 message UpdateReportJournalEntryRequest {
   string event_name = 1 [(buf.validate.field).string.min_len = 1];
-  int32 number = 2 [(buf.validate.field).int32.gt = 0];
+  int32 report_number = 2 [(buf.validate.field).int32.gt = 0];
   int32 journal_entry_id = 3 [(buf.validate.field).int32.gt = 0];
   ocf.ims.resources.v1.JournalEntry entry = 4;
 }
