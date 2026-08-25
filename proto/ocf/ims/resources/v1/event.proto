@@ -1,0 +1,38 @@
+//
+// See the file COPYRIGHT for copyright information.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+//
+
+syntax = "proto3";
+
+package ocf.ims.resources.v1;
+
+import "buf/validate/validate.proto";
+
+option go_package = "github.com/mikeki/ocf-ims/gen/ocf/ims/resources/v1;resourcesv1";
+
+// Event is a fair/instance under which incidents and reports are tracked (the
+// EVENT table). An event may be an ordinary event or a "group" that parents other
+// events. Mirrors json.Event.
+message Event {
+  int32 id = 1;
+  // name is the human identifier (e.g. "OCF 2026"). Present on read; required on
+  // create/update (enforced on the request in 0e).
+  optional string name = 2 [(buf.validate.field).string.max_len = 128];
+  // is_group marks this event as a container that parents other events rather
+  // than one that holds incidents directly.
+  optional bool is_group = 3;
+  // parent_group is the id of the group event this one belongs to, if any.
+  optional int32 parent_group = 4;
+}

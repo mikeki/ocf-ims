@@ -1,0 +1,33 @@
+//
+// See the file COPYRIGHT for copyright information.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+//
+
+syntax = "proto3";
+
+package ocf.ims.common.v1;
+
+option go_package = "github.com/mikeki/ocf-ims/gen/ocf/ims/common/v1;commonv1";
+
+// Mention is a person referenced for display — an incident/report creator, a
+// journal-entry @mention, an area proposer, an "on behalf of" person.
+// person_id is the authoritative registry key; handle and name are for rendering
+// and may be empty (a login-less person has no handle). It lives in common/v1
+// because several resources reference it (M3: a type earns common/v1 on its
+// second consumer). Mirrors json.Mention.
+message Mention {
+  int32 person_id = 1;
+  string handle = 2;
+  string name = 3;
+}

@@ -376,6 +376,28 @@ Queued before any code is written:
   still classifies the files as generated. A pgx/Postgres shop wouldn't hit this;
   it's specific to repos that stamp source headers.
 
+### 0b — Core domain (2026-08-24)
+
+- **protovalidate can be vendored, keeping generation fully hermetic.** Exporting
+  `buf/validate/validate.proto` into a second, lint-excluded buf module and
+  generating with the first-party module as the explicit input (`buf generate
+  proto`) resolves the constraints with **no BSR dependency and no `buf.build`
+  egress** — in CI or in the Docker build. The blueprint reaches for a BSR
+  `deps:` entry; that would pull `buf.build` egress into every build. *Documented
+  variant for restricted-egress repos (extends finding #5).*
+- **protovalidate constraints distribute by message role.** When create/update
+  reuse the whole resource message, resource-level constraints must also hold for
+  create input (mostly-unset), so only always-valid invariants (length,
+  enum-membership) belong on the resource; presence/required constraints belong on
+  the create/update request envelopes. The blueprint's "constraints in the proto"
+  is right but silent on *which* message carries which constraint. *Refinement to
+  finding #2.*
+- **A brownfield contract carries REST-isms to resolve.** The hand-written DTOs
+  mix stored state, viewer-dependent read-only decorations, and split
+  write-id/read-object pairs in one struct; the proto separates these into resource
+  (state) vs response (derived) vs collapsed resolved objects. *Adoption-path
+  detail (finding #10).*
+
 ## 8. Open questions
 
 1. **Does the Go binary keep serving static assets in production**, or does Caddy?

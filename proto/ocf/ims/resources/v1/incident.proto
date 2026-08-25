@@ -1,0 +1,120 @@
+//
+// See the file COPYRIGHT for copyright information.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+//
+
+syntax = "proto3";
+
+package ocf.ims.resources.v1;
+
+import "buf/validate/validate.proto";
+import "google/protobuf/timestamp.proto";
+import "ocf/ims/common/v1/mention.proto";
+import "ocf/ims/resources/v1/journal_entry.proto";
+
+option go_package = "github.com/mikeki/ocf-ims/gen/ocf/ims/resources/v1;resourcesv1";
+
+// IncidentState is the collapsed two-value lifecycle (migration 00018). The
+// four former active states folded into OPEN.
+enum IncidentState {
+  INCIDENT_STATE_UNSPECIFIED = 0;
+  INCIDENT_STATE_OPEN = 1;
+  INCIDENT_STATE_CLOSED = 2;
+}
+
+// IncidentPriority mirrors the stored tinyint (1/3/5), so the enum numbers are
+// the wire values rather than a dense 0..N sequence.
+enum IncidentPriority {
+  INCIDENT_PRIORITY_UNSPECIFIED = 0;
+  INCIDENT_PRIORITY_LOW = 1;
+  INCIDENT_PRIORITY_NORMAL = 3;
+  INCIDENT_PRIORITY_HIGH = 5;
+}
+
+// Incident is the core tracked record (the INCIDENT table), keyed by
+// (event, number). Mirrors json.Incident.
+//
+// Viewer-dependent read-only decorations from json.Incident (e.g.
+// viewer_may_add_journal) are not resource state; they belong on the read
+// response envelope (0e). Presence/required constraints likewise live on the
+// create/update requests (0e), since those reuse this whole message and a
+// freshly-created incident has many fields unset — so only always-valid
+// invariants (length, enum-membership) are constrained here.
+message Incident {
+  // event is the event name; event_id is its numeric id (both denormalized here,
+  // as in json.Incident).
+  string event = 1;
+  int32 event_id = 2;
+  // number is the per-event incident number, server-assigned on create.
+  int32 number = 3;
+  // created is immutable; last_modified tracks the most recent change.
+  google.protobuf.Timestamp created = 4;
+  google.protobuf.Timestamp last_modified = 5;
+  optional ocf.ims.common.v1.Mention created_by = 6;
+  IncidentState state = 7 [(buf.validate.field).enum.defined_only = true];
+  // private restricts visibility to admins, the creator, and per-incident grants.
+  optional bool private = 8;
+  // outcome_id references an OUTCOME(ID) (0d taxonomy); unset means none recorded.
+  optional int32 outcome_id = 9;
+  google.protobuf.Timestamp started = 10;
+  // closed is set only once the incident is closed.
+  optional google.protobuf.Timestamp closed = 11;
+  IncidentPriority priority = 12 [(buf.validate.field).enum.defined_only = true];
+  optional string summary = 13 [(buf.validate.field).string.max_len = 1024];
+  Location location = 14;
+  // incident_type_ids reference INCIDENT_TYPE rows (0d taxonomy).
+  repeated int32 incident_type_ids = 15;
+  // reports are the field-report numbers linked to this incident.
+  repeated int32 reports = 16;
+  // visits are the White Bird visit ids (backend intact; UI disabled for 2026).
+  repeated int32 visits = 17;
+  repeated IncidentPerson people = 18;
+  repeated LinkedIncident linked_incidents = 19;
+  repeated JournalEntry journal_entries = 20;
+}
+
+// Location is the structured place of an incident: an optional per-event area,
+// a freeform description, and an optional booth. Mirrors json.Location; each
+// field is optional so a client can distinguish "clear" from "leave unchanged"
+// on write.
+message Location {
+  // area_slug references an AREA(EVENT, SLUG) in the incident's event.
+  optional string area_slug = 1 [(buf.validate.field).string.max_len = 128];
+  optional string description = 2 [(buf.validate.field).string.max_len = 1024];
+  optional string booth = 3 [(buf.validate.field).string.max_len = 32];
+}
+
+// IncidentPerson is a person's involvement in an incident (the INCIDENT__PERSON
+// table). person_id is the registry key (json.IncidentPerson used int64; the
+// contract standardizes on int32, matching common.v1.Mention). Mirrors
+// json.IncidentPerson, minus the derived read-only has_event_access flag (0e).
+message IncidentPerson {
+  int32 person_id = 1;
+  string handle = 2;
+  string name = 3;
+  // involvement is a freeform role note (e.g. "reporter", "witness").
+  optional string involvement = 4 [(buf.validate.field).string.max_len = 128];
+  // granted_access records a per-incident read + journal-append grant (52f);
+  // writable on attach (writer-gated), echoed on read.
+  bool granted_access = 5;
+}
+
+// LinkedIncident is a lightweight reference to another incident linked to this
+// one, denormalized for display. Mirrors json.LinkedIncident.
+message LinkedIncident {
+  string event_name = 1;
+  int32 event_id = 2;
+  int32 number = 3;
+  string summary = 4;
+}
