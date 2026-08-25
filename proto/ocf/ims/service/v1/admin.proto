@@ -1,0 +1,167 @@
+// SPDX-License-Identifier: Apache-2.0
+
+syntax = "proto3";
+
+package ocf.ims.service.v1;
+
+import "buf/validate/validate.proto";
+import "ocf/ims/resources/v1/action_log.proto";
+import "ocf/ims/resources/v1/area.proto";
+import "ocf/ims/resources/v1/event.proto";
+import "ocf/ims/resources/v1/incident_type.proto";
+import "ocf/ims/resources/v1/metrics.proto";
+import "ocf/ims/resources/v1/notification.proto";
+import "ocf/ims/resources/v1/outcome.proto";
+
+option go_package = "github.com/mikeki/ocf-ims/gen/ocf/ims/service/v1;servicev1";
+
+// Request/response envelopes for the configuration, taxonomy and admin surfaces:
+// events, areas, incident types, outcomes, notifications, metrics, the action log,
+// and web push. The ImsService methods that use them are declared in service.proto.
+
+// --- Events ---
+
+message ListEventsRequest {}
+
+message ListEventsResponse {
+  repeated ocf.ims.resources.v1.Event events = 1;
+}
+
+// SaveEventRequest upserts an event (POST /events; the admin Events page creates
+// events). Carries the whole resource per the Phase-0 rule.
+message SaveEventRequest {
+  ocf.ims.resources.v1.Event event = 1;
+}
+
+message SaveEventResponse {}
+
+// --- Areas ---
+
+message ListAreasRequest {
+  string event_name = 1 [(buf.validate.field).string.min_len = 1];
+}
+
+message ListAreasResponse {
+  repeated ocf.ims.resources.v1.Area areas = 1;
+}
+
+// SaveAreaRequest handles the single-area write (propose / approve / rename / merge);
+// api.EditAreas reads one json.Area per call.
+message SaveAreaRequest {
+  string event_name = 1 [(buf.validate.field).string.min_len = 1];
+  ocf.ims.resources.v1.Area area = 2;
+}
+
+message SaveAreaResponse {}
+
+// --- Incident types ---
+
+message ListIncidentTypesRequest {}
+
+message ListIncidentTypesResponse {
+  repeated ocf.ims.resources.v1.IncidentType incident_types = 1;
+}
+
+// SaveIncidentTypeRequest is the admin create/edit/approve write (POST /incident_types;
+// api.EditIncidentTypes reads one json.IncidentType). To approve, an admin sends id +
+// approved=true.
+message SaveIncidentTypeRequest {
+  ocf.ims.resources.v1.IncidentType incident_type = 1;
+}
+
+message SaveIncidentTypeResponse {}
+
+// ProposeIncidentTypeRequest is a writer's proposal from the incident form. The route
+// is event-scoped only to authorize the caller as a writer; the type itself is global.
+message ProposeIncidentTypeRequest {
+  string event_name = 1 [(buf.validate.field).string.min_len = 1];
+  ocf.ims.resources.v1.IncidentType incident_type = 2;
+}
+
+message ProposeIncidentTypeResponse {}
+
+// --- Outcomes ---
+
+message ListOutcomesRequest {}
+
+message ListOutcomesResponse {
+  repeated ocf.ims.resources.v1.Outcome outcomes = 1;
+}
+
+// SaveOutcomeRequest is the admin create/edit/approve write (POST /outcomes;
+// api.EditOutcomes reads one json.Outcome).
+message SaveOutcomeRequest {
+  ocf.ims.resources.v1.Outcome outcome = 1;
+}
+
+message SaveOutcomeResponse {}
+
+// ProposeOutcomeRequest is a writer's proposal from the incident form; event-scoped
+// only to authorize the caller (the outcome is global).
+message ProposeOutcomeRequest {
+  string event_name = 1 [(buf.validate.field).string.min_len = 1];
+  ocf.ims.resources.v1.Outcome outcome = 2;
+}
+
+message ProposeOutcomeResponse {}
+
+// --- Notifications ---
+
+message ListNotificationsRequest {}
+
+// ListNotificationsResponse mirrors json.NotificationList: the caller's recent
+// notifications plus the unread count (a derived aggregate, hence response-only), so
+// the nav badge and list come from one call.
+message ListNotificationsResponse {
+  repeated ocf.ims.resources.v1.Notification notifications = 1;
+  int64 unread = 2;
+}
+
+message MarkAllNotificationsReadRequest {}
+
+message MarkAllNotificationsReadResponse {}
+
+message MarkNotificationReadRequest {
+  int32 notification_id = 1 [(buf.validate.field).int32.gt = 0];
+}
+
+message MarkNotificationReadResponse {}
+
+// --- Metrics & audit ---
+
+message GetMetricsRequest {
+  string event_name = 1 [(buf.validate.field).string.min_len = 1];
+}
+
+message GetMetricsResponse {
+  ocf.ims.resources.v1.Metrics metrics = 1;
+}
+
+// ListActionLogsRequest is the admin audit read (GET /actionlogs). No filters are
+// exposed by the REST endpoint today; kept empty (add pagination/filters here when
+// the endpoint grows them).
+message ListActionLogsRequest {}
+
+message ListActionLogsResponse {
+  repeated ocf.ims.resources.v1.ActionLog action_logs = 1;
+}
+
+// --- Web push ---
+
+// Web-push subscription RPCs (plan 84): per-person, per-device, so only
+// authentication is required. api.PushSubscribeRequest nests keys under a "keys"
+// object; the contract flattens them to p256dh/auth.
+
+message SubscribePushRequest {
+  string endpoint = 1 [(buf.validate.field).string.min_len = 1];
+  string p256dh = 2 [(buf.validate.field).string.min_len = 1];
+  string auth = 3 [(buf.validate.field).string.min_len = 1];
+}
+
+message SubscribePushResponse {}
+
+message UnsubscribePushRequest {
+  string endpoint = 1 [(buf.validate.field).string.min_len = 1];
+}
+
+message UnsubscribePushResponse {}

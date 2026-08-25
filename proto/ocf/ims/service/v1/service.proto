@@ -4,19 +4,10 @@ syntax = "proto3";
 
 package ocf.ims.service.v1;
 
-import "ocf/ims/service/v1/action_log.proto";
-import "ocf/ims/service/v1/area.proto";
+import "ocf/ims/service/v1/admin.proto";
 import "ocf/ims/service/v1/auth.proto";
-import "ocf/ims/service/v1/crew.proto";
-import "ocf/ims/service/v1/event.proto";
-import "ocf/ims/service/v1/incident.proto";
-import "ocf/ims/service/v1/incident_type.proto";
-import "ocf/ims/service/v1/metrics.proto";
-import "ocf/ims/service/v1/notification.proto";
-import "ocf/ims/service/v1/outcome.proto";
-import "ocf/ims/service/v1/person.proto";
-import "ocf/ims/service/v1/push.proto";
-import "ocf/ims/service/v1/report.proto";
+import "ocf/ims/service/v1/incidents.proto";
+import "ocf/ims/service/v1/people.proto";
 
 option go_package = "github.com/mikeki/ocf-ims/gen/ocf/ims/service/v1;servicev1";
 

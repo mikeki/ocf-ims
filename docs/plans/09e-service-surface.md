@@ -19,12 +19,17 @@ deliberately-excluded visits subsystem). Zero unclassified routes.
 
 ## What landed
 
-- `service/v1/service.proto` — the single **`ImsService`** (M3), **49 unary RPCs**.
-- 13 envelope files (`auth`, `incident`, `report`, `event`, `area`, `crew`, `person`,
-  `incident_type`, `outcome`, `notification`, `metrics`, `action_log`, `push`) holding
-  the request/response messages. A dedicated request and response per RPC (including
-  empty ones — buf's `RPC_REQUEST_RESPONSE_UNIQUE` forbids sharing, so each empty
-  message is its own type).
+- `service/v1/service.proto` — the single **`ImsService`** (M3), **49 unary RPCs**, and
+  nothing else: it is the readable index of the whole API.
+- **Four domain-grouped envelope files** holding the request/response messages —
+  `auth.proto` (auth & self-service), `incidents.proto` (incidents, field reports,
+  journal entries), `people.proto` (personnel & crews), `admin.proto` (events, areas,
+  taxonomies, notifications, metrics, action log, push). A dedicated request and
+  response per RPC (including empty ones — buf's `RPC_REQUEST_RESPONSE_UNIQUE` forbids
+  sharing, so each empty message is its own type). *(An earlier cut split these into
+  one file per resource — 13 siblings that buried `service.proto`; grouping by domain
+  keeps the service file distinct and the message files few. buf only requires files to
+  match their package, not one-per-resource.)*
 - Response wrappers for the derived read-only decorations 0b kept off the resources:
   `IncidentView` (`viewer_may_add_journal`, `person_has_event_access`), `ReportView`
   (`may_edit_summary`, `may_add_journal_entry`), `AccessForEvent` (the per-viewer
