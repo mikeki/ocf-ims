@@ -1,0 +1,96 @@
+// SPDX-License-Identifier: Apache-2.0
+
+syntax = "proto3";
+
+package ocf.ims.service.v1;
+
+import "buf/validate/validate.proto";
+import "ocf/ims/resources/v1/incident.proto";
+import "ocf/ims/resources/v1/journal_entry.proto";
+
+option go_package = "github.com/mikeki/ocf-ims/gen/ocf/ims/service/v1;servicev1";
+
+// IncidentView wraps the Incident resource with the caller-dependent, read-only
+// decorations that 0b deliberately kept off the resource (json.Incident carried
+// them inline). Response-only.
+message IncidentView {
+  ocf.ims.resources.v1.Incident incident = 1;
+  // viewer_may_add_journal (52f): the caller may append journal entries (event
+  // writer, or an involved reporter with a per-incident grant).
+  bool viewer_may_add_journal = 2;
+  // person_has_event_access maps an involved person's id to whether they already
+  // hold event-wide incident access (so a per-incident grant is moot). This carries
+  // json.IncidentPerson.has_event_access, which was left off the resource
+  // IncidentPerson as a derived per-viewer flag; a map keeps the resource clean
+  // while still delivering the flag per person. Open question for review: fold this
+  // back onto a response-side person view instead of a parallel map?
+  map<int32, bool> person_has_event_access = 3;
+}
+
+message ListIncidentsRequest {
+  string event_name = 1 [(buf.validate.field).string.min_len = 1];
+}
+
+message ListIncidentsResponse {
+  repeated IncidentView incidents = 1;
+}
+
+message GetIncidentRequest {
+  string event_name = 1 [(buf.validate.field).string.min_len = 1];
+  int32 number = 2 [(buf.validate.field).int32.gt = 0];
+}
+
+message GetIncidentResponse {
+  IncidentView incident = 1;
+}
+
+// CreateIncidentRequest carries the whole resource (Phase-0 rule). Server-assigned
+// fields on the incident (number, created, last_modified) are ignored on create.
+message CreateIncidentRequest {
+  string event_name = 1 [(buf.validate.field).string.min_len = 1];
+  ocf.ims.resources.v1.Incident incident = 2;
+}
+
+// CreateIncidentResponse returns the server-assigned per-event number.
+message CreateIncidentResponse {
+  int32 number = 1;
+}
+
+message UpdateIncidentRequest {
+  string event_name = 1 [(buf.validate.field).string.min_len = 1];
+  int32 number = 2 [(buf.validate.field).int32.gt = 0];
+  ocf.ims.resources.v1.Incident incident = 3;
+}
+
+message UpdateIncidentResponse {}
+
+// AttachPersonToIncidentRequest mirrors the json.IncidentPerson write body plus the
+// path keys. granted_access is writer-gated (52f).
+message AttachPersonToIncidentRequest {
+  string event_name = 1 [(buf.validate.field).string.min_len = 1];
+  int32 number = 2 [(buf.validate.field).int32.gt = 0];
+  int32 person_id = 3 [(buf.validate.field).int32.gt = 0];
+  optional string involvement = 4 [(buf.validate.field).string.max_len = 128];
+  bool granted_access = 5;
+}
+
+message AttachPersonToIncidentResponse {}
+
+message DetachPersonFromIncidentRequest {
+  string event_name = 1 [(buf.validate.field).string.min_len = 1];
+  int32 number = 2 [(buf.validate.field).int32.gt = 0];
+  int32 person_id = 3 [(buf.validate.field).int32.gt = 0];
+}
+
+message DetachPersonFromIncidentResponse {}
+
+// UpdateIncidentJournalEntryRequest edits an existing entry (e.g. strike/unstrike);
+// new entries are added via UpdateIncident. entry carries the mutable fields.
+message UpdateIncidentJournalEntryRequest {
+  string event_name = 1 [(buf.validate.field).string.min_len = 1];
+  int32 number = 2 [(buf.validate.field).int32.gt = 0];
+  int32 journal_entry_id = 3 [(buf.validate.field).int32.gt = 0];
+  ocf.ims.resources.v1.JournalEntry entry = 4;
+}
+
+message UpdateIncidentJournalEntryResponse {}

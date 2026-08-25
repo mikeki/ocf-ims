@@ -1,0 +1,25 @@
+// SPDX-License-Identifier: Apache-2.0
+
+syntax = "proto3";
+
+package ocf.ims.service.v1;
+
+import "ocf/ims/resources/v1/event.proto";
+
+option go_package = "github.com/mikeki/ocf-ims/gen/ocf/ims/service/v1;servicev1";
+
+message ListEventsRequest {}
+
+message ListEventsResponse {
+  repeated ocf.ims.resources.v1.Event events = 1;
+}
+
+// SaveEventRequest upserts an event (POST /events; the admin Events page creates
+// events). Carries the whole resource per the Phase-0 rule. Presence of the event's
+// required fields (name) is constrained on the resource where it is always valid, or
+// here if it becomes create-only — left to the handler for now, see 09e notes.
+message SaveEventRequest {
+  ocf.ims.resources.v1.Event event = 1;
+}
+
+message SaveEventResponse {}

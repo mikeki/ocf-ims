@@ -1,0 +1,30 @@
+// SPDX-License-Identifier: Apache-2.0
+
+syntax = "proto3";
+
+package ocf.ims.service.v1;
+
+import "buf/validate/validate.proto";
+import "ocf/ims/resources/v1/notification.proto";
+
+option go_package = "github.com/mikeki/ocf-ims/gen/ocf/ims/service/v1;servicev1";
+
+message ListNotificationsRequest {}
+
+// ListNotificationsResponse mirrors json.NotificationList: the caller's recent
+// notifications plus the unread count (a derived aggregate, hence response-only), so
+// the nav badge and list come from one call.
+message ListNotificationsResponse {
+  repeated ocf.ims.resources.v1.Notification notifications = 1;
+  int64 unread = 2;
+}
+
+message MarkAllNotificationsReadRequest {}
+
+message MarkAllNotificationsReadResponse {}
+
+message MarkNotificationReadRequest {
+  int32 notification_id = 1 [(buf.validate.field).int32.gt = 0];
+}
+
+message MarkNotificationReadResponse {}

@@ -432,6 +432,35 @@ Queued before any code is written:
   contract" is a real adoption-path decision, not a mechanical port of everything in
   `json/`. *Adoption-path detail (#10).*
 
+### 0e — Service surface (2026-08-25)
+
+- **A REST endpoint that multiplexes on its body is a 1→N map onto RPCs.** `POST
+  /crews` carries create/rename, delete, and a membership mutation on one JSON body
+  (via write-selector fields); the RPC surface splits it into `SaveCrew` /
+  `DeleteCrew` / `SetCrewMembership`. Contract-first surfaces these hidden verbs that
+  a body-multiplexing REST handler hides — the mapping is not always 1:1, and the
+  gap is a finding, not noise. *Adoption-path detail (#10).*
+- **"Blobs stay plain HTTP" cuts across a resource, not around it.** Picture/attachment
+  *upload* and *download* are plain-HTTP (M8), but the picture *delete* — no blob —
+  becomes an RPC. So one resource's operations straddle two transports; the M8
+  exception is per-operation, not per-resource. Worth stating where the stack draws
+  the RPC/plain-HTTP line (extends finding #6).
+- **The mapping table needs a third disposition: deliberately-excluded.** The gate
+  ("every route is an RPC or a plain-HTTP exception") has no bucket for a route whose
+  subsystem is being deleted (visits). Forcing those into "plain-HTTP exception" would
+  be a lie (they are not staying). A brownfield adoption needs an explicit "retiring,
+  not modelled" disposition, distinct from the M8 exceptions. *Adoption-path detail
+  (#10).*
+- **The connect dependency flips to direct exactly at the first service.** Through
+  0b–0d (messages only) `connectrpc.com/connect` sat indirect; 0e's `ImsService` makes
+  `go mod tidy` promote it to a direct require — the predicted, self-documenting
+  signal that the first service landed.
+- **buf's `RPC_REQUEST_RESPONSE_UNIQUE` forbids a shared `Empty`.** Every empty request
+  or response must be its own named type (`MarkAllNotificationsReadRequest{}`, …). More
+  verbose than a `google.protobuf.Empty`, but it keeps each RPC's schema independently
+  evolvable — a deliberate STANDARD-lint stance worth noting for teams reaching for a
+  shared empty message.
+
 ## 8. Open questions
 
 1. **Does the Go binary keep serving static assets in production**, or does Caddy?

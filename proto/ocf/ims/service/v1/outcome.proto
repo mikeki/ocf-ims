@@ -1,0 +1,33 @@
+// SPDX-License-Identifier: Apache-2.0
+
+syntax = "proto3";
+
+package ocf.ims.service.v1;
+
+import "buf/validate/validate.proto";
+import "ocf/ims/resources/v1/outcome.proto";
+
+option go_package = "github.com/mikeki/ocf-ims/gen/ocf/ims/service/v1;servicev1";
+
+message ListOutcomesRequest {}
+
+message ListOutcomesResponse {
+  repeated ocf.ims.resources.v1.Outcome outcomes = 1;
+}
+
+// SaveOutcomeRequest is the admin create/edit/approve write (POST /outcomes;
+// api.EditOutcomes reads one json.Outcome).
+message SaveOutcomeRequest {
+  ocf.ims.resources.v1.Outcome outcome = 1;
+}
+
+message SaveOutcomeResponse {}
+
+// ProposeOutcomeRequest is a writer's proposal from the incident form; event-scoped
+// only to authorize the caller (the outcome is global).
+message ProposeOutcomeRequest {
+  string event_name = 1 [(buf.validate.field).string.min_len = 1];
+  ocf.ims.resources.v1.Outcome outcome = 2;
+}
+
+message ProposeOutcomeResponse {}

@@ -1,0 +1,103 @@
+// SPDX-License-Identifier: Apache-2.0
+
+syntax = "proto3";
+
+package ocf.ims.service.v1;
+
+import "ocf/ims/service/v1/action_log.proto";
+import "ocf/ims/service/v1/area.proto";
+import "ocf/ims/service/v1/auth.proto";
+import "ocf/ims/service/v1/crew.proto";
+import "ocf/ims/service/v1/event.proto";
+import "ocf/ims/service/v1/incident.proto";
+import "ocf/ims/service/v1/incident_type.proto";
+import "ocf/ims/service/v1/metrics.proto";
+import "ocf/ims/service/v1/notification.proto";
+import "ocf/ims/service/v1/outcome.proto";
+import "ocf/ims/service/v1/person.proto";
+import "ocf/ims/service/v1/push.proto";
+import "ocf/ims/service/v1/report.proto";
+
+option go_package = "github.com/mikeki/ocf-ims/gen/ocf/ims/service/v1;servicev1";
+
+// ImsService is the single Connect service for the whole IMS API (M3 — one service,
+// not service-per-resource). Each RPC maps to a current REST route; the route→RPC
+// mapping table (with the M8 plain-HTTP exceptions and the deliberately-excluded
+// visits subsystem) lives in docs/plans/09e-service-surface.md.
+//
+// All RPCs are unary. SSE (GET /ims/api/eventsource) stays plain HTTP for now (M8),
+// a candidate for Connect server-streaming later. Blob upload/download (attachments,
+// profile pictures) and the liveness/readiness/debug endpoints are the other
+// plain-HTTP exceptions.
+service ImsService {
+  // --- Auth & self-service ---
+  rpc Login(LoginRequest) returns (LoginResponse);
+  rpc RefreshToken(RefreshTokenRequest) returns (RefreshTokenResponse);
+  rpc GetAuthStatus(GetAuthStatusRequest) returns (GetAuthStatusResponse);
+  rpc ChangeOwnPassword(ChangeOwnPasswordRequest) returns (ChangeOwnPasswordResponse);
+  rpc UpdateOwnProfile(UpdateOwnProfileRequest) returns (UpdateOwnProfileResponse);
+  rpc DeleteOwnProfilePicture(DeleteOwnProfilePictureRequest) returns (DeleteOwnProfilePictureResponse);
+
+  // --- Incidents ---
+  rpc ListIncidents(ListIncidentsRequest) returns (ListIncidentsResponse);
+  rpc GetIncident(GetIncidentRequest) returns (GetIncidentResponse);
+  rpc CreateIncident(CreateIncidentRequest) returns (CreateIncidentResponse);
+  rpc UpdateIncident(UpdateIncidentRequest) returns (UpdateIncidentResponse);
+  rpc AttachPersonToIncident(AttachPersonToIncidentRequest) returns (AttachPersonToIncidentResponse);
+  rpc DetachPersonFromIncident(DetachPersonFromIncidentRequest) returns (DetachPersonFromIncidentResponse);
+  rpc UpdateIncidentJournalEntry(UpdateIncidentJournalEntryRequest) returns (UpdateIncidentJournalEntryResponse);
+
+  // --- Field reports ---
+  rpc ListReports(ListReportsRequest) returns (ListReportsResponse);
+  rpc GetReport(GetReportRequest) returns (GetReportResponse);
+  rpc CreateReport(CreateReportRequest) returns (CreateReportResponse);
+  rpc UpdateReport(UpdateReportRequest) returns (UpdateReportResponse);
+  rpc UpdateReportJournalEntry(UpdateReportJournalEntryRequest) returns (UpdateReportJournalEntryResponse);
+
+  // --- Events ---
+  rpc ListEvents(ListEventsRequest) returns (ListEventsResponse);
+  rpc SaveEvent(SaveEventRequest) returns (SaveEventResponse);
+
+  // --- Areas ---
+  rpc ListAreas(ListAreasRequest) returns (ListAreasResponse);
+  rpc SaveArea(SaveAreaRequest) returns (SaveAreaResponse);
+
+  // --- Crews ---
+  rpc ListCrews(ListCrewsRequest) returns (ListCrewsResponse);
+  rpc SaveCrew(SaveCrewRequest) returns (SaveCrewResponse);
+  rpc DeleteCrew(DeleteCrewRequest) returns (DeleteCrewResponse);
+  rpc SetCrewMembership(SetCrewMembershipRequest) returns (SetCrewMembershipResponse);
+  rpc ListMyCrews(ListMyCrewsRequest) returns (ListMyCrewsResponse);
+  rpc SetMyCrewMembership(SetMyCrewMembershipRequest) returns (SetMyCrewMembershipResponse);
+
+  // --- Personnel ---
+  rpc ListPersonnel(ListPersonnelRequest) returns (ListPersonnelResponse);
+  rpc CreatePerson(CreatePersonRequest) returns (CreatePersonResponse);
+  rpc UpdatePerson(UpdatePersonRequest) returns (UpdatePersonResponse);
+  rpc SetPersonPassword(SetPersonPasswordRequest) returns (SetPersonPasswordResponse);
+  rpc SetPersonAdmin(SetPersonAdminRequest) returns (SetPersonAdminResponse);
+  rpc SetPersonParticipation(SetPersonParticipationRequest) returns (SetPersonParticipationResponse);
+  rpc RemovePersonFromEvent(RemovePersonFromEventRequest) returns (RemovePersonFromEventResponse);
+  rpc DeletePersonProfilePicture(DeletePersonProfilePictureRequest) returns (DeletePersonProfilePictureResponse);
+
+  // --- Taxonomies ---
+  rpc ListIncidentTypes(ListIncidentTypesRequest) returns (ListIncidentTypesResponse);
+  rpc SaveIncidentType(SaveIncidentTypeRequest) returns (SaveIncidentTypeResponse);
+  rpc ProposeIncidentType(ProposeIncidentTypeRequest) returns (ProposeIncidentTypeResponse);
+  rpc ListOutcomes(ListOutcomesRequest) returns (ListOutcomesResponse);
+  rpc SaveOutcome(SaveOutcomeRequest) returns (SaveOutcomeResponse);
+  rpc ProposeOutcome(ProposeOutcomeRequest) returns (ProposeOutcomeResponse);
+
+  // --- Notifications ---
+  rpc ListNotifications(ListNotificationsRequest) returns (ListNotificationsResponse);
+  rpc MarkAllNotificationsRead(MarkAllNotificationsReadRequest) returns (MarkAllNotificationsReadResponse);
+  rpc MarkNotificationRead(MarkNotificationReadRequest) returns (MarkNotificationReadResponse);
+
+  // --- Metrics & audit ---
+  rpc GetMetrics(GetMetricsRequest) returns (GetMetricsResponse);
+  rpc ListActionLogs(ListActionLogsRequest) returns (ListActionLogsResponse);
+
+  // --- Web push ---
+  rpc SubscribePush(SubscribePushRequest) returns (SubscribePushResponse);
+  rpc UnsubscribePush(UnsubscribePushRequest) returns (UnsubscribePushResponse);
+}

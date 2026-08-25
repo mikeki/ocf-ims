@@ -1,0 +1,107 @@
+// SPDX-License-Identifier: Apache-2.0
+
+syntax = "proto3";
+
+package ocf.ims.service.v1;
+
+import "buf/validate/validate.proto";
+import "google/protobuf/timestamp.proto";
+
+option go_package = "github.com/mikeki/ocf-ims/gen/ocf/ims/service/v1;servicev1";
+
+// Auth envelopes (deferred here from slice 0c: these are pure service surface —
+// there is no backing resource, and the whoami response is computed per-viewer
+// permissions). Presence/required constraints that a resource cannot carry live on
+// these request messages.
+
+// LoginRequest mirrors api.PostAuthRequest. identification is the email (the sole
+// login identifier, feedback round 9).
+message LoginRequest {
+  string identification = 1 [(buf.validate.field).string.min_len = 1];
+  string password = 2 [(buf.validate.field).string.min_len = 1];
+}
+
+// LoginResponse mirrors api.PostAuthResponse. expires_at is the suggested
+// early-refresh time (api used epoch millis; the contract uses a Timestamp).
+message LoginResponse {
+  string token = 1;
+  google.protobuf.Timestamp expires_at = 2;
+}
+
+// RefreshTokenRequest is empty — the refresh token rides in the HttpOnly cookie
+// (unchanged under Connect; the handler still reads it from the request headers).
+message RefreshTokenRequest {}
+
+// RefreshTokenResponse mirrors api.RefreshAccessTokenResponse.
+message RefreshTokenResponse {
+  string token = 1;
+  google.protobuf.Timestamp expires_at = 2;
+}
+
+// GetAuthStatusRequest mirrors GET /auth's optional event_id query param — when set,
+// the response's event_access carries the caller's permissions for that one event.
+message GetAuthStatusRequest {
+  optional string event_name = 1;
+}
+
+// GetAuthStatusResponse mirrors api.GetAuthResponse (the whoami / profile response).
+// Every field is a per-viewer derived value, which is why this lives on the response
+// envelope rather than a resource.
+message GetAuthStatusResponse {
+  bool authenticated = 1;
+  string user = 2;
+  int32 person_id = 3;
+  bool admin = 4;
+  // can_manage_personnel reports the GlobalAdministratePersonnel global (drives UI
+  // gating; the endpoints remain authoritative).
+  bool can_manage_personnel = 5;
+  // event_access is keyed by event name; populated only for the requested event.
+  map<string, AccessForEvent> event_access = 6;
+  // push_vapid_public_key is present only when web push is configured.
+  string push_vapid_public_key = 7;
+  bool using_default_password = 8;
+}
+
+// AccessForEvent is the caller's computed per-event permission set (api.AccessForEvent).
+// Derived, viewer-dependent — response-only.
+message AccessForEvent {
+  int32 event_id = 1;
+  bool read_incidents = 2;
+  bool write_incidents = 3;
+  bool write_reports = 4;
+  bool read_visits = 5;
+  bool write_visits = 6;
+  bool attach_files = 7;
+  bool read_areas = 8;
+  // read_incidents_via_grant (52f): lacks event-wide incident read but has at least
+  // one per-incident grant in this event.
+  bool read_incidents_via_grant = 9;
+  // invite_reporters (53a): may invite reporters to this event.
+  bool invite_reporters = 10;
+}
+
+// ChangeOwnPasswordRequest mirrors api.SetOwnPasswordRequest (the caller sets their
+// own password; identity resolved from the JWT).
+message ChangeOwnPasswordRequest {
+  string password = 1 [(buf.validate.field).string.min_len = 1];
+}
+
+message ChangeOwnPasswordResponse {}
+
+// UpdateOwnProfileRequest mirrors api.SetOwnProfileRequest — each field optional so
+// an unset field is left unchanged (the JWT identifies the caller).
+message UpdateOwnProfileRequest {
+  optional string handle = 1 [(buf.validate.field).string.max_len = 64];
+  optional string name = 2 [(buf.validate.field).string.max_len = 255];
+  optional string email = 3 [(buf.validate.field).string.max_len = 128];
+  optional string phone = 4 [(buf.validate.field).string.max_len = 32];
+}
+
+message UpdateOwnProfileResponse {}
+
+// DeleteOwnProfilePictureRequest removes the caller's own picture (the JWT
+// identifies them). The upload (POST /auth/picture) is a plain-HTTP multipart
+// endpoint (M8); only the delete is an RPC.
+message DeleteOwnProfilePictureRequest {}
+
+message DeleteOwnProfilePictureResponse {}

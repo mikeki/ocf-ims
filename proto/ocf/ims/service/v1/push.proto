@@ -1,0 +1,27 @@
+// SPDX-License-Identifier: Apache-2.0
+
+syntax = "proto3";
+
+package ocf.ims.service.v1;
+
+import "buf/validate/validate.proto";
+
+option go_package = "github.com/mikeki/ocf-ims/gen/ocf/ims/service/v1;servicev1";
+
+// Web-push subscription RPCs (plan 84): per-person, per-device, so only
+// authentication is required. api.PushSubscribeRequest nests keys under a "keys"
+// object; the contract flattens them to p256dh/auth.
+
+message SubscribePushRequest {
+  string endpoint = 1 [(buf.validate.field).string.min_len = 1];
+  string p256dh = 2 [(buf.validate.field).string.min_len = 1];
+  string auth = 3 [(buf.validate.field).string.min_len = 1];
+}
+
+message SubscribePushResponse {}
+
+message UnsubscribePushRequest {
+  string endpoint = 1 [(buf.validate.field).string.min_len = 1];
+}
+
+message UnsubscribePushResponse {}
