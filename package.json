@@ -1,0 +1,16 @@
+{
+  "name": "ocf-ims",
+  "version": "0.0.0",
+  "private": true,
+  "packageManager": "pnpm@9.9.0",
+  "engines": {
+    "node": ">=24"
+  },
+  "scripts": {
+    "lint": "biome check ."
+  },
+  "devDependencies": {
+    "@biomejs/biome": "^2.5.10",
+    "@bufbuild/protoc-gen-es": "^2.14.0"
+  }
+}

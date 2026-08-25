@@ -1,0 +1,27 @@
+# Codegen for the proto contract — the HERMETIC, Go-tool-only targets.
+#
+# Every plugin here is a local `go tool` binary (pinned in go.mod), so this
+# template generates with no remote calls and no JS toolchain. That is what lets
+# it run everywhere the Go binary is built, including the `golang:alpine` Docker
+# build stage (see Dockerfile) — the server's compile inputs are all produced
+# here.
+#
+# The TypeScript target (protoc-gen-es, which needs pnpm) lives separately in
+# buf.gen.web.yaml so it never has to run in the server's build image. See
+# docs/plans/09a-codegen-skeleton.md.
+#
+# Run via `go tool buf generate` (wired into bin/build/build.go). Output under
+# gen/ is gitignored and produced at build time.
+version: v2
+plugins:
+  - local: ["go", "tool", "protoc-gen-go"]
+    out: gen
+    opt: paths=source_relative
+  - local: ["go", "tool", "protoc-gen-connect-go"]
+    out: gen
+    opt: paths=source_relative
+  # OpenAPI so the contract is browsable by people who never learn protobuf (M4).
+  - local: ["go", "tool", "protoc-gen-connect-openapi"]
+    out: gen/openapi
+    opt:
+      - format=yaml

@@ -45,10 +45,13 @@ air_tmp
 #   sqlc  -> store/imsdb/, directory/clubhousedb/
 #   templ -> web/template/*_templ.go
 #   tsgo  -> web/static/*.js
+#   buf   -> gen/ (Go + connect-go + OpenAPI), packages/protocol-buffers/src/ (TS)
 /store/imsdb/
 /directory/clubhousedb/
 /web/template/*_templ.go
 /web/static/*.js
+/gen/
+/packages/protocol-buffers/src/
 
 # session/tool artifacts
 .claude/scheduled_tasks.lock

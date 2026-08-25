@@ -46,6 +46,7 @@ jobs:
             go.dev:443
             golang.org:443
             pypi.org:443
+            registry.npmjs.org:443
             storage.googleapis.com:443
 
       - name: Checkout source code
@@ -56,12 +57,22 @@ jobs:
         with:
           go-version-file: "go.mod"
 
-      - name: Generate code (sqlc, templ, tsgo)
+      - name: Set up pnpm
+        # pnpm supplies the protoc-gen-es plugin for the buf TypeScript target
+        # (buf.gen.web.yaml). The version comes from the packageManager field in
+        # package.json. This is the only job that runs the TS proto codegen; the
+        # `build` job has no pnpm, so build.go skips that target there.
+        uses: pnpm/action-setup@v4
+
+      - name: Generate code (sqlc, templ, tsgo, buf)
         # None of the generated code is committed, so it must be produced before
         # pre-commit's golangci-lint/govulncheck/go-vet compile ./.... build.go
         # -generate-only runs the generators (and fetches build deps) without the
         # final `go build`.
         run: go run bin/build/build.go -generate-only
+
+      - name: Lint protobuf (buf)
+        run: go tool buf lint
 
       - name: Install Python
         uses: actions/setup-python@v6
@@ -113,11 +124,13 @@ jobs:
         with:
           go-version-file: "go.mod"
 
-      - name: Generate code (sqlc, templ, tsgo)
+      - name: Generate code (sqlc, templ, tsgo, buf)
         # None of the generated code is committed, so it must be produced before
         # `go test ./...` can compile any package that imports it. build.go
         # -generate-only runs the generators (and fetches build deps) without the
-        # final `go build`.
+        # final `go build`. This job has no pnpm, so build.go generates the
+        # hermetic Go proto targets (gen/) and skips the TypeScript target — the
+        # latter is a client artifact, not a compile input for the server.
         run: go run bin/build/build.go -generate-only
 
       - name: Compile, test, and cover
@@ -142,7 +155,10 @@ jobs:
     name: Build Docker image
 
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    # buf is compiled from source inside the golang:alpine build stage (a `go
+    # tool` local), which adds ~4 min of one-time compilation to `build.go
+    # -generate-only`. Give the job headroom over the old 10-minute limit.
+    timeout-minutes: 15
 
     steps:
 

@@ -67,6 +67,29 @@ func main() {
 		return nil
 	})
 	eg.Go(func() error {
+		// Proto codegen (see docs/plans/09-proto-connect-platform.md). The
+		// hermetic Go-tool targets in buf.gen.yaml (protoc-gen-go,
+		// protoc-gen-connect-go, protoc-gen-connect-openapi) always run — they
+		// need no JS toolchain, so this also works in the `golang:alpine` Docker
+		// build stage.
+		mustRunInDir(exec.CommandContext(gCtx, "go", "tool", "buf", "generate"), repo.Name())
+		// The TypeScript target (buf.gen.web.yaml: protoc-gen-es) comes from pnpm,
+		// so it runs only where a JS toolchain exists (dev machines, the CI lint
+		// job) and is skipped otherwise (e.g. the Docker build image). The
+		// generated TypeScript is a client artifact, never a compile input for the
+		// Go binary. See docs/plans/09a-codegen-skeleton.md.
+		if !pnpmAvailable() {
+			log.Printf("`pnpm` not on PATH; skipping TypeScript proto codegen (buf.gen.web.yaml).")
+			return nil
+		}
+		mustRunInDir(exec.CommandContext(gCtx, "pnpm", "install", "--frozen-lockfile"), repo.Name())
+		mustRunInDir(
+			exec.CommandContext(gCtx, "go", "tool", "buf", "generate", "--template", "buf.gen.web.yaml"),
+			repo.Name(),
+		)
+		return nil
+	})
+	eg.Go(func() error {
 		mustRunInDir(
 			exec.CommandContext(gCtx, "go", "run", "fetchbuilddeps.go"),
 			filepath.Join(repo.Name(), "bin", "fetchbuilddeps"),
@@ -75,9 +98,9 @@ func main() {
 	})
 	must(eg.Wait())
 
-	// The generated code (sqlc, templ, tsgo) is intentionally not committed to the
-	// repo, so it is produced at build time everywhere it's needed: locally, in CI,
-	// and in the Docker build. `-generate-only` lets those callers run the
+	// The generated code (sqlc, templ, tsgo, buf) is intentionally not committed to
+	// the repo, so it is produced at build time everywhere it's needed: locally, in
+	// CI, and in the Docker build. `-generate-only` lets those callers run the
 	// generators without the final `go build` (e.g. Docker builds the binary itself
 	// with its own flags; CI compiles via `go test`).
 	if *generateOnly {
@@ -88,6 +111,15 @@ func main() {
 	// #nosec G204
 	mustRunInDir(exec.CommandContext(ctx, "go", "build", "-o", *outputApp), repo.Name())
 	log.Printf("All done in %v. You can now run ./%v", time.Since(start), *outputApp)
+}
+
+// pnpmAvailable reports whether the pnpm executable is on PATH. It gates the
+// TypeScript proto codegen (buf.gen.web.yaml), which needs a JS toolchain: dev
+// machines and the CI lint job have pnpm; the golang:alpine Docker build stage
+// does not, and skips that target.
+func pnpmAvailable() bool {
+	_, err := exec.LookPath("pnpm")
+	return err == nil
 }
 
 func addTSGeneratedHeader(repo *os.Root, filename string) {

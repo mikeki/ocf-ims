@@ -1,0 +1,21 @@
+# Codegen for the proto contract — the TypeScript target (protoc-gen-es).
+#
+# This plugin comes from pnpm (@bufbuild/protoc-gen-es), so — unlike the Go-tool
+# plugins in buf.gen.yaml — it needs a JS toolchain. It is kept in a separate
+# template so the server's `golang:alpine` Docker build never has to install
+# node/pnpm: bin/build/build.go runs this template only when `pnpm` is on PATH
+# (dev machines and the CI lint job), and skips it otherwise. The generated
+# TypeScript is a client artifact, never a compile input for the Go binary.
+#
+# `json_types=true` emits the `<Message>Json` types that the legacy web UI will
+# consume with `import type` only — the zero-runtime, no-bundler path (plan 09
+# M12). Output under packages/protocol-buffers/src/ is gitignored.
+#
+# Run via `go tool buf generate --template buf.gen.web.yaml`.
+version: v2
+plugins:
+  - local: ["pnpm", "exec", "protoc-gen-es"]
+    out: packages/protocol-buffers/src
+    opt:
+      - target=ts
+      - json_types=true
