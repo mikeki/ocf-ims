@@ -1,6 +1,6 @@
 module github.com/mikeki/ocf-ims
 
-go 1.26.4
+go 1.26.7
 
 require (
 	connectrpc.com/connect v1.20.0
