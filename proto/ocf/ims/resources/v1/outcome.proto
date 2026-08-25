@@ -1,0 +1,27 @@
+// SPDX-License-Identifier: Apache-2.0
+
+syntax = "proto3";
+
+package ocf.ims.resources.v1;
+
+import "buf/validate/validate.proto";
+import "ocf/ims/common/v1/person_ref.proto";
+
+option go_package = "github.com/mikeki/ocf-ims/gen/ocf/ims/resources/v1;resourcesv1";
+
+// Outcome is a disposition an incident can be assigned (slice 10a; the OUTCOME table),
+// promoted from the former hardcoded INCIDENT.OUTCOME enum. Mirrors json.Outcome. Like
+// IncidentType it is admin-managed reference data with a writer-proposes / admin-approves
+// workflow. Incident.outcome_id references OUTCOME(ID).
+message Outcome {
+  int32 id = 1;
+  optional string name = 2 [(buf.validate.field).string.max_len = 128];
+  // hidden retires an outcome from the incident-form picker without deleting it
+  // (historical incidents keep referencing it).
+  optional bool hidden = 3;
+  // approved is false while an outcome is a writer's pending proposal.
+  optional bool approved = 4;
+  // proposer is who proposed a still-unapproved outcome; read-only, unset for
+  // seeded / admin-created / approved outcomes.
+  optional ocf.ims.common.v1.PersonRef proposer = 5;
+}

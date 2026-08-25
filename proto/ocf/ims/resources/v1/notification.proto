@@ -1,0 +1,28 @@
+// SPDX-License-Identifier: Apache-2.0
+
+syntax = "proto3";
+
+package ocf.ims.resources.v1;
+
+import "google/protobuf/timestamp.proto";
+
+option go_package = "github.com/mikeki/ocf-ims/gen/ocf/ims/resources/v1;resourcesv1";
+
+// Notification is one in-app notification for the current user (plan 82), enriched for
+// display. Mirrors json.Notification. type is the trigger ("mentioned",
+// "added_to_incident"). The list wrapper (json.NotificationList, which pairs the list
+// with an unread count) is a read-response aggregate and belongs on the 0e response
+// envelope, not here.
+message Notification {
+  int32 id = 1;
+  string type = 2;
+  string event = 3;
+  optional int32 incident_number = 4;
+  optional string incident_summary = 5;
+  optional int32 report_number = 6;
+  optional string report_summary = 7;
+  optional int32 journal_entry_id = 8;
+  optional string actor = 9;
+  google.protobuf.Timestamp created = 10;
+  bool read = 11;
+}

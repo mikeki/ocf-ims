@@ -398,6 +398,33 @@ Queued before any code is written:
   (state) vs response (derived) vs collapsed resolved objects. *Adoption-path
   detail (finding #10).*
 
+### 0c / 0d — People, access, taxonomies, admin (2026-08-25)
+
+- **The resource/envelope split absorbs the auth slice.** The plan put "auth
+  envelopes (login, refresh, profile)" in 0c, but once 0b drew the line "every
+  request/response envelope lives in the service surface," the auth shapes fall on
+  the 0e side: they have no backing resource, and the profile response is *computed*
+  per-viewer permissions. Only the person/crew **nouns** are resource state. This is
+  the same tension the blueprint leaves implicit whenever it says "model the domain"
+  without distinguishing the nouns from the RPC envelopes that carry them.
+  *Refinement to findings #2 and #10 — a brownfield's endpoint-shaped DTOs don't map
+  one-to-one onto resources; some are pure service surface.*
+- **Closed MySQL string-enums become proto enums; a stored tinyint keeps its wire
+  values.** `PARTICIPATION_TYPE` and `INCIDENT_TYPE.GROUP` are MySQL string enums,
+  so the proto enums are dense ladder-ordered sequences (the string↔number mapping
+  is a server concern); `IncidentPriority` mirrors a stored tinyint, so *its* enum
+  numbers are the wire values. Same proto construct, two different relationships to
+  storage — worth stating where the stack covers enum modelling.
+- **A raw audit mirror keeps its own id widths.** `ActionLog` deliberately does *not*
+  adopt the contract's `int32` person id: `user_id`/`position_id` are raw ids
+  captured at request time in an append-only, high-volume log, not resolved typed
+  references. Standardizing id widths across the contract is right, but an audit
+  read-model is a documented exception, not a miss. *Adoption-path detail (#10).*
+- **"No epoch numbers" is a real migration cost, not a style rule.** `Metrics`
+  carried a Unix-millis `generated_at_ms` and `Visit` epoch-double arrival times;
+  both became `Timestamp`. Cheap here because nothing consumes the contract yet, but
+  worth flagging as a conversion the adoption path pays per numeric-time field.
+
 ## 8. Open questions
 
 1. **Does the Go binary keep serving static assets in production**, or does Caddy?

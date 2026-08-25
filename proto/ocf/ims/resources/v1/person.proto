@@ -1,0 +1,70 @@
+// SPDX-License-Identifier: Apache-2.0
+
+syntax = "proto3";
+
+package ocf.ims.resources.v1;
+
+import "buf/validate/validate.proto";
+
+option go_package = "github.com/mikeki/ocf-ims/gen/ocf/ims/resources/v1;resourcesv1";
+
+// ParticipationType is the per-event access ladder (PERSON__EVENT.PARTICIPATION_TYPE),
+// most→least privileged. Unlike IncidentPriority (whose enum numbers mirror a stored
+// tinyint), participation is stored as a MySQL string-enum, so these numbers are just a
+// dense ladder-ordered sequence, not wire values. EJECTED is the stored value; the UI
+// relabels it "booted" (round-10 item, enum unchanged).
+enum ParticipationType {
+  PARTICIPATION_TYPE_UNSPECIFIED = 0;
+  PARTICIPATION_TYPE_WRITER = 1;
+  PARTICIPATION_TYPE_CREW_LEADER = 2;
+  PARTICIPATION_TYPE_REPORTER = 3;
+  PARTICIPATION_TYPE_VOLUNTEER = 4;
+  PARTICIPATION_TYPE_PUBLIC = 5;
+  PARTICIPATION_TYPE_NOT_PRESENT = 6;
+  PARTICIPATION_TYPE_EJECTED = 7;
+}
+
+// Person is a row in the unified people registry (the PERSON table). Mirrors
+// json.Person. A person may be login-less (a fair/legal name is identity, not a
+// login), so handle and has_password can be false/empty.
+//
+// json.Person populates its fields selectively per endpoint (email/phone only on
+// the admin listing, wristband/participation_type/crews only on event-scoped reads);
+// that gating is a server concern, not contract shape. The password hash
+// (json:"-") is never on the wire, so it has no field here. Viewer-derived flags
+// (e.g. can_edit) belong on the 0e response envelopes.
+message Person {
+  // handle is the login callsign (the "fair name"); unset for login-less people.
+  optional string handle = 1 [(buf.validate.field).string.max_len = 64];
+  optional string name = 2 [(buf.validate.field).string.max_len = 255];
+  // email is the sole login identifier (feedback round 9). Sent only on the admin
+  // listing; unset elsewhere.
+  optional string email = 3 [(buf.validate.field).string.max_len = 128];
+  // phone is a contact number, collectable for anyone; admin-listing only.
+  optional string phone = 4 [(buf.validate.field).string.max_len = 32];
+  // has_password reports whether the person can actually sign in. Never exposes the
+  // hash itself.
+  bool has_password = 5;
+  bool is_admin = 6;
+  // person_id is the PERSON.ID. (json.Person typed it int64; PERSON.ID is a plain
+  // integer and the contract standardizes person ids on int32, as in PersonRef.)
+  int32 person_id = 7;
+  // profile_picture_url points at the person's picture serve endpoint; unset means
+  // no picture. Unlike email/phone it is not admin-gated (a face aids identification).
+  optional string profile_picture_url = 8;
+  // wristband and participation_type are per-event, populated only on event-scoped
+  // reads. participation_type UNSPECIFIED means "not populated / not in event scope".
+  optional string wristband = 9 [(buf.validate.field).string.max_len = 32];
+  ParticipationType participation_type = 10 [(buf.validate.field).enum.defined_only = true];
+  // crews are the crews this person belongs to for the selected event, with whether
+  // they lead each (slice 10c); populated only on event-scoped / by-id reads.
+  repeated PersonCrew crews = 11;
+}
+
+// PersonCrew is one crew a person belongs to, with whether they lead it. Mirrors
+// json.PersonCrew (the person-side view of a CREW_MEMBERSHIP row).
+message PersonCrew {
+  string name = 1 [(buf.validate.field).string.max_len = 255];
+  string slug = 2 [(buf.validate.field).string.max_len = 128];
+  bool is_leader = 3;
+}

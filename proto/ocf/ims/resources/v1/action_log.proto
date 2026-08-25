@@ -1,0 +1,36 @@
+// SPDX-License-Identifier: Apache-2.0
+
+syntax = "proto3";
+
+package ocf.ims.resources.v1;
+
+import "google/protobuf/timestamp.proto";
+
+option go_package = "github.com/mikeki/ocf-ims/gen/ocf/ims/resources/v1;resourcesv1";
+
+// ActionLog is one audit record of a mutating request (the ACTION_LOG table; see
+// store/actionlog). Mirrors json.ActionLog. It captures metadata only — never request
+// or response bodies — so credential payloads are never logged. Read-only, admin-gated.
+//
+// The id/user_id/position_id fields keep json.ActionLog's int64 width: this is a raw
+// audit mirror (an append-only, potentially high-volume log with its own row ids), and
+// user_id/position_id are the raw ids recorded at request time, not the resolved typed
+// person/position references the contract uses elsewhere.
+message ActionLog {
+  int64 id = 1;
+  google.protobuf.Timestamp created_at = 2;
+  string action_type = 3;
+  optional string method = 4;
+  optional string path = 5;
+  optional string referrer = 6;
+  optional int64 user_id = 7;
+  string user_name = 8;
+  optional int64 position_id = 9;
+  string position_name = 10;
+  optional string client_address = 11;
+  // http_status is the response status (json.ActionLog stored it as int16; proto has no
+  // 16-bit type, so int32).
+  optional int32 http_status = 12;
+  // duration is a formatted duration string (e.g. "1.2ms"), as in json.ActionLog.
+  optional string duration = 13;
+}
