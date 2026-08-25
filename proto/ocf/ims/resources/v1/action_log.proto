@@ -30,7 +30,7 @@ message ActionLog {
   optional string path = 5;
   optional string referrer = 6;
   optional int32 person_id = 7;
-  string person_name = 8;
+  optional string person_name = 8;
   optional string client_ip_address = 9;
   // http_status is the response status (json.ActionLog stored it as int16; proto has no
   // 16-bit type, so int32).

@@ -64,8 +64,9 @@ message MetricDay {
 
 // MetricIncidentRef is a minimal pointer to an incident for the open-follow-ups list.
 // It is intentionally narrower than common.IncidentRef: the metrics context already
-// knows the event, so only the per-event number and a summary are carried.
+// knows the event, so only the per-event incident_number and a summary are carried
+// (incident_number named to match common.IncidentRef).
 message MetricIncidentRef {
-  int32 number = 1;
+  int32 incident_number = 1;
   string summary = 2;
 }
