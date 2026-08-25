@@ -1,18 +1,4 @@
-//
-// See the file COPYRIGHT for copyright information.
-//
-// Licensed under the Apache License, Version 2.0 (the "License");
-// you may not use this file except in compliance with the License.
-// You may obtain a copy of the License at
-//
-//     http://www.apache.org/licenses/LICENSE-2.0
-//
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the License is distributed on an "AS IS" BASIS,
-// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-// See the License for the specific language governing permissions and
-// limitations under the License.
-//
+// SPDX-License-Identifier: Apache-2.0
 
 syntax = "proto3";
 
@@ -20,7 +6,7 @@ package ocf.ims.resources.v1;
 
 import "buf/validate/validate.proto";
 import "google/protobuf/timestamp.proto";
-import "ocf/ims/common/v1/mention.proto";
+import "ocf/ims/common/v1/person_ref.proto";
 import "ocf/ims/resources/v1/journal_entry.proto";
 
 option go_package = "github.com/mikeki/ocf-ims/gen/ocf/ims/resources/v1;resourcesv1";
@@ -61,7 +47,7 @@ message Incident {
   // created is immutable; last_modified tracks the most recent change.
   google.protobuf.Timestamp created = 4;
   google.protobuf.Timestamp last_modified = 5;
-  optional ocf.ims.common.v1.Mention created_by = 6;
+  optional ocf.ims.common.v1.PersonRef created_by = 6;
   IncidentState state = 7 [(buf.validate.field).enum.defined_only = true];
   // private restricts visibility to admins, the creator, and per-incident grants.
   optional bool private = 8;
@@ -72,7 +58,7 @@ message Incident {
   optional google.protobuf.Timestamp closed = 11;
   IncidentPriority priority = 12 [(buf.validate.field).enum.defined_only = true];
   optional string summary = 13 [(buf.validate.field).string.max_len = 1024];
-  Location location = 14;
+  IncidentLocation location = 14;
   // incident_type_ids reference INCIDENT_TYPE rows (0d taxonomy).
   repeated int32 incident_type_ids = 15;
   // reports are the field-report numbers linked to this incident.
@@ -84,11 +70,11 @@ message Incident {
   repeated JournalEntry journal_entries = 20;
 }
 
-// Location is the structured place of an incident: an optional per-event area,
-// a freeform description, and an optional booth. Mirrors json.Location; each
-// field is optional so a client can distinguish "clear" from "leave unchanged"
-// on write.
-message Location {
+// IncidentLocation is the structured place of an incident: an optional per-event
+// area, a freeform description, and an optional booth. Mirrors json.Location;
+// each field is optional so a client can distinguish "clear" from "leave
+// unchanged" on write.
+message IncidentLocation {
   // area_slug references an AREA(EVENT, SLUG) in the incident's event.
   optional string area_slug = 1 [(buf.validate.field).string.max_len = 128];
   optional string description = 2 [(buf.validate.field).string.max_len = 1024];
@@ -96,18 +82,18 @@ message Location {
 }
 
 // IncidentPerson is a person's involvement in an incident (the INCIDENT__PERSON
-// table). person_id is the registry key (json.IncidentPerson used int64; the
-// contract standardizes on int32, matching common.v1.Mention). Mirrors
+// table): the referenced person plus their role and access grant. Mirrors
 // json.IncidentPerson, minus the derived read-only has_event_access flag (0e).
 message IncidentPerson {
-  int32 person_id = 1;
-  string handle = 2;
-  string name = 3;
+  // person references the involved person. person_id is required on write;
+  // handle/name are read-only display echoes. (json.IncidentPerson used int64
+  // for the id; the contract standardizes on PersonRef's int32.)
+  ocf.ims.common.v1.PersonRef person = 1;
   // involvement is a freeform role note (e.g. "reporter", "witness").
-  optional string involvement = 4 [(buf.validate.field).string.max_len = 128];
+  optional string involvement = 2 [(buf.validate.field).string.max_len = 128];
   // granted_access records a per-incident read + journal-append grant (52f);
   // writable on attach (writer-gated), echoed on read.
-  bool granted_access = 5;
+  bool granted_access = 3;
 }
 
 // LinkedIncident is a lightweight reference to another incident linked to this

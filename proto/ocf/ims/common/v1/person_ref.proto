@@ -1,0 +1,19 @@
+// SPDX-License-Identifier: Apache-2.0
+
+syntax = "proto3";
+
+package ocf.ims.common.v1;
+
+option go_package = "github.com/mikeki/ocf-ims/gen/ocf/ims/common/v1;commonv1";
+
+// PersonRef is a lightweight reference to a person, resolved for display — an
+// incident/report creator, a journal-entry @mention, an area proposer, an
+// "on behalf of" person. person_id is the authoritative registry key; handle and
+// name are for rendering and may be empty (a login-less person has no handle). It
+// lives in common/v1 because several resources reference it (M3: a type earns
+// common/v1 on its second consumer). Mirrors json.Mention.
+message PersonRef {
+  int32 person_id = 1;
+  string handle = 2;
+  string name = 3;
+}
