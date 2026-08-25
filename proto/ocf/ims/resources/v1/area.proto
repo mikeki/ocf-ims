@@ -20,11 +20,10 @@ message Area {
   optional string name = 2 [(buf.validate.field).string.max_len = 255];
   // parent_slug is unset for a top-level area.
   optional string parent_slug = 3 [(buf.validate.field).string.max_len = 128];
-  optional int32 sort_order = 4;
   // approved is false while an area is a writer's pending proposal awaiting an
   // admin's review; true for canonical/approved areas.
-  optional bool approved = 5;
+  optional bool approved = 4;
   // proposer is the person who proposed a still-unapproved area; read-only, and
   // unset for canonical/admin-created/approved areas.
-  optional ocf.ims.common.v1.PersonRef proposer = 6;
+  optional ocf.ims.common.v1.PersonRef proposer = 5;
 }

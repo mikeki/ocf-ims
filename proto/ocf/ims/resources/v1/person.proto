@@ -61,10 +61,12 @@ message Person {
   repeated PersonCrew crews = 11;
 }
 
-// PersonCrew is one crew a person belongs to, with whether they lead it. Mirrors
-// json.PersonCrew (the person-side view of a CREW_MEMBERSHIP row).
+// PersonCrew is one crew a person belongs to, with whether they lead it — the
+// person-side view of a CREW_MEMBERSHIP row (json.PersonCrew). Kept a flat message
+// rather than a shared CrewRef (single consumer); the crew_ prefix disambiguates the
+// fields where the message is embedded in Person.crews.
 message PersonCrew {
-  string name = 1 [(buf.validate.field).string.max_len = 255];
-  string slug = 2 [(buf.validate.field).string.max_len = 128];
+  string crew_name = 1 [(buf.validate.field).string.max_len = 255];
+  string crew_slug = 2 [(buf.validate.field).string.max_len = 128];
   bool is_leader = 3;
 }

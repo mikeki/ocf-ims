@@ -13,6 +13,6 @@ option go_package = "github.com/mikeki/ocf-ims/gen/ocf/ims/common/v1;commonv1";
 message IncidentRef {
   string event_name = 1;
   int32 event_id = 2;
-  int32 number = 3;
+  int32 incident_number = 3;
   string summary = 4;
 }

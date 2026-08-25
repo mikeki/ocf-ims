@@ -38,11 +38,18 @@ conventions throughout. No RPCs.
    metrics context already knows the event, so carrying `IncidentRef`'s event fields
    would only add empty values. The list/aggregate response wrappers
    (`json.NotificationList`'s `unread` count) likewise stay a 0e response concern.
-3. **`ActionLog` keeps `json.ActionLog`'s `int64` ids** (`id`, `user_id`,
-   `position_id`) rather than the contract's usual `int32` person id. It is a raw
-   audit mirror — an append-only, potentially high-volume log with its own row ids —
-   and `user_id`/`position_id` are the raw ids recorded at request time, not the
-   resolved typed references used elsewhere. `http_status` was `int16`; proto has no
+3. **`ActionLog` uses the domain's "person" vocabulary and a lean field set** (revised
+   in review). `json.ActionLog` named the actor `user_id`/`user_name` after the DB
+   columns; the contract uses `person_id`/`person_name` to match the rest of the domain,
+   with `person_id` as `int32` like every other person id (the `bigint` column only ever
+   holds a `PERSON.ID`). They are a point-in-time snapshot, **not** a live `PersonRef` —
+   an audit record must not imply a resolvable, current reference. `id` stays `int64`
+   (the log's own row id in an append-only, high-volume table). The former
+   `position_id`/`position_name` are **dropped**: positions are not an implemented
+   feature (no assignment path exists), so — like the visits subsystem — the contract
+   does not carry them. `action_type` stays a plain `string` ("api" is the only value
+   today; not enough of a closed set to justify an enum). `client_address` →
+   `client_ip_address` (it is always an IP). `http_status` was `int16`; proto has no
    16-bit type, so `int32`. Metadata only — bodies are never logged.
 4. **`Notification.type` is a proto enum** (`NotificationType`), not the free string
    `json.Notification` used — `NOTIFICATION.TYPE` is a closed MySQL enum, designed

@@ -51,9 +51,15 @@ No RPCs.
    one type for reads and writes, carrying `delete` (remove the crew) and `member`
    (a single membership mutation) besides its fields. Those are RPC operations, not
    resource state, so they belong on 0e request envelopes; the resource carries only
-   `slug`/`name`/`sort_order`/`members`. Crews are admin-managed only (no
+   `slug`/`name`/`members`. Crews are admin-managed only (no
    propose/approve workflow), so — unlike area / incident-type / outcome — there are
-   no `approved`/`proposer` fields.
+   no `approved`/`proposer` fields. `CREW.SORT_ORDER` is **not** surfaced (revised in
+   review): the server returns crews already ordered and the contract exposes no
+   client-side reordering, so a `sort_order` field would be dead weight (same call on
+   `Area`). `CrewMember` **embeds `common.v1.PersonRef`** rather than repeating flat
+   `person_id`/`handle`/`name` — consistent with how `IncidentPerson` references a
+   person; `PersonCrew` keeps flat fields but names them `crew_name`/`crew_slug` so they
+   read unambiguously where embedded in `Person.crews`.
 
 ## Verification
 

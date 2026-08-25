@@ -5,6 +5,7 @@ syntax = "proto3";
 package ocf.ims.resources.v1;
 
 import "buf/validate/validate.proto";
+import "ocf/ims/common/v1/person_ref.proto";
 
 option go_package = "github.com/mikeki/ocf-ims/gen/ocf/ims/resources/v1;resourcesv1";
 
@@ -16,22 +17,21 @@ option go_package = "github.com/mikeki/ocf-ims/gen/ocf/ims/resources/v1;resource
 // single membership mutation). Those are RPC operations, not resource state, so they
 // belong on the 0e request envelopes (e.g. DeleteCrew / a membership-mutation RPC),
 // not here. slug is server-generated from name at create time and immutable after.
+// (CREW.SORT_ORDER is not surfaced: the server returns crews in order; there is no
+// client-facing reordering in the contract.)
 message Crew {
   // slug is empty on create (server generates it) and set to address an existing crew.
   optional string slug = 1 [(buf.validate.field).string.max_len = 128];
   optional string name = 2 [(buf.validate.field).string.max_len = 255];
-  optional int32 sort_order = 3;
   // members is the crew's roster; read-only (membership is changed one person at a
   // time via the 0e membership RPC).
-  repeated CrewMember members = 4;
+  repeated CrewMember members = 3;
 }
 
 // CrewMember is one person's membership in a crew, as returned on a read (a
-// CREW_MEMBERSHIP row joined to PERSON). Mirrors json.CrewMember. handle/name are
-// display echoes; is_leader marks a crew leader.
+// CREW_MEMBERSHIP row joined to PERSON). Mirrors json.CrewMember: the referenced
+// person plus whether they lead the crew.
 message CrewMember {
-  int32 person_id = 1;
-  optional string handle = 2 [(buf.validate.field).string.max_len = 64];
-  optional string name = 3 [(buf.validate.field).string.max_len = 255];
-  bool is_leader = 4;
+  ocf.ims.common.v1.PersonRef person = 1;
+  bool is_leader = 2;
 }
