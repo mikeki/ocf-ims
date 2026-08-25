@@ -421,9 +421,16 @@ Queued before any code is written:
   references. Standardizing id widths across the contract is right, but an audit
   read-model is a documented exception, not a miss. *Adoption-path detail (#10).*
 - **"No epoch numbers" is a real migration cost, not a style rule.** `Metrics`
-  carried a Unix-millis `generated_at_ms` and `Visit` epoch-double arrival times;
-  both became `Timestamp`. Cheap here because nothing consumes the contract yet, but
-  worth flagging as a conversion the adoption path pays per numeric-time field.
+  carried a Unix-millis `generated_at_ms` that became a `Timestamp`. Cheap here
+  because nothing consumes the contract yet, but worth flagging as a conversion the
+  adoption path pays per numeric-time field.
+- **A contract for a brownfield is also a chance to *not* carry dead weight.** The
+  White Bird visits subsystem is slated for removal, so it was left out of the
+  contract entirely — `visit.proto` dropped and 0b's `Incident.visits` reference
+  removed — rather than faithfully modelled and then deleted. Modelling a DTO is not
+  free (it invites downstream code to depend on it), so "which DTOs deserve a
+  contract" is a real adoption-path decision, not a mechanical port of everything in
+  `json/`. *Adoption-path detail (#10).*
 
 ## 8. Open questions
 

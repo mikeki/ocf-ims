@@ -7,9 +7,8 @@
 
 ## Objective
 
-Model the taxonomy and admin read-models as `resources/v1` messages, and — since
-the user asked to land *all* resource nouns before the 0e service surface — the one
-remaining resource DTO (`Visit`). Same 0b conventions throughout. No RPCs.
+Model the taxonomy and admin read-models as `resources/v1` messages. Same 0b
+conventions throughout. No RPCs.
 
 ## What landed
 
@@ -18,12 +17,8 @@ remaining resource DTO (`Visit`). Same 0b conventions throughout. No RPCs.
 | `resources/v1/incident_type.proto` | `IncidentType`, enum `IncidentTypeGroup` | `json.IncidentType` |
 | `resources/v1/outcome.proto` | `Outcome` | `json.Outcome` |
 | `resources/v1/action_log.proto` | `ActionLog` | `json.ActionLog` |
-| `resources/v1/notification.proto` | `Notification` | `json.Notification` |
+| `resources/v1/notification.proto` | `Notification`, enum `NotificationType` | `json.Notification` |
 | `resources/v1/metrics.proto` | `Metrics`, `MetricCount`, `MetricDay`, `MetricIncidentRef` | `json.Metrics` et al. |
-| `resources/v1/visit.proto` | `Visit`, `VisitPerson` | `json.Visit`, `json.VisitPerson` |
-
-With this, **every `json/` DTO now has a `resources/v1` (or `common/v1`)
-counterpart** — `resources/v1` is complete ahead of 0e.
 
 ## Key decisions
 
@@ -49,20 +44,34 @@ counterpart** — `resources/v1` is complete ahead of 0e.
    and `user_id`/`position_id` are the raw ids recorded at request time, not the
    resolved typed references used elsewhere. `http_status` was `int16`; proto has no
    16-bit type, so `int32`. Metadata only — bodies are never logged.
-4. **`Visit` is included to complete `resources/v1`**, though the plan's slice text
-   places it in no slice (the White Bird Visits UI is disabled for 2026 (#61), the
-   backend intact). `Incident.visits` already references visit ids, so the contract
-   would be incomplete without it. Guest identity collapses from
-   `json.Visit`'s write-id-plus-read-echo pair (`guest_person_id` +
-   `guest_name`/`guest_handle`) into a single `guest` `PersonRef`, the same pattern
-   0b used for journal mentions; the epoch-double arrival/departure times become
-   `Timestamp`s. **Flagged for review** — easy to drop if it should wait.
+4. **`Notification.type` is a proto enum** (`NotificationType`), not the free string
+   `json.Notification` used — `NOTIFICATION.TYPE` is a closed MySQL enum, designed
+   "type-first ... so it grows to cover more" (migration 00008). The message stays
+   **flat, not a `oneof`**: the two current types (`mentioned`, `added_to_incident`)
+   are near-identical in shape (both point at an incident/report + actor, differing
+   only in a couple of type-dependent fields), matching the single flat backing
+   table. Revisit the `oneof` if a materially different-shaped type is added — cheap
+   while the contract is unreleased.
+5. **White Bird visits are deliberately excluded** (user decision 2026-08-25). An
+   earlier draft of this slice added `visit.proto` (and 0b's `Incident.visits`
+   referenced visit ids), but the visits subsystem is being removed from the system
+   soon, so the forward-looking contract does not model it. `visit.proto` was dropped
+   and the `Incident.visits` field removed (0b's incident renumbered to stay dense;
+   nothing has shipped, so field-number reuse is free). Consequently `json.Visit` /
+   `json.VisitPerson` intentionally have **no** `resources/v1` counterpart.
+6. **`resources/admin/v1` was considered and rejected** — resources are packaged by
+   domain (M1), not by who may call them. Admin-ness is fuzzy as a partition
+   (`IncidentType`/`Outcome` are admin-managed but writer-read; `Metrics` is
+   admin-gated today but a plain read-model), authorization already lives in the
+   interceptor spine / service methods (0e/1b), and a package split would force a
+   resource to change import paths when its access rule changes. Grouping admin
+   *RPCs* is a service-surface concern for 0e, not a resource-package split.
 
 ## Verification
 
 - `buf lint` clean (vendored protovalidate module excluded); `go tool buf generate
   proto` emits Go + OpenAPI, and `--template buf.gen.web.yaml proto` emits the
-  `…Json` TypeScript, for all 13 `resources/v1` messages plus the 2 `common/v1`
+  `…Json` TypeScript, for all 12 `resources/v1` messages plus the 2 `common/v1`
   refs — **no `gen/buf/validate/**`**.
 - `go build ./...` green; `go mod tidy` leaves `go.mod`/`go.sum` unchanged (the 0b
   connect-indirect / protovalidate-direct state is unaffected — still no services

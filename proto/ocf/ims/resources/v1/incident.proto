@@ -64,12 +64,10 @@ message Incident {
   repeated int32 incident_type_ids = 15;
   // reports are the field-report numbers linked to this incident.
   repeated int32 reports = 16;
-  // visits are the White Bird visit ids (backend intact; UI disabled for 2026).
-  repeated int32 visits = 17;
-  repeated IncidentPerson people = 18;
+  repeated IncidentPerson people = 17;
   // linked_incidents are other incidents linked to this one (see common.IncidentRef).
-  repeated ocf.ims.common.v1.IncidentRef linked_incidents = 19;
-  repeated JournalEntry journal_entries = 20;
+  repeated ocf.ims.common.v1.IncidentRef linked_incidents = 18;
+  repeated JournalEntry journal_entries = 19;
 }
 
 // IncidentLocation is the structured place of an incident: an optional per-event
