@@ -1,0 +1,72 @@
+// SPDX-License-Identifier: Apache-2.0
+
+syntax = "proto3";
+
+package ocf.ims.resources.v1;
+
+import "google/protobuf/timestamp.proto";
+
+option go_package = "github.com/mikeki/ocf-ims/gen/ocf/ims/resources/v1;resourcesv1";
+
+// Metrics is the dashboard aggregate for a single event (Phase 7; see
+// docs/plans/70-dashboards.md). Mirrors json.Metrics. It is a computed read-model — the
+// metrics RPC returns it; its request (the event selector) is a 0e concern.
+//
+// Read the breakdowns per their json.Metrics docs: by_state/by_priority sum to total,
+// by_category/by_type can exceed total (an incident may carry several types), by_role and
+// by_area partition the roster / incidents respectively.
+message Metrics {
+  string event = 1;
+  int32 event_id = 2;
+
+  // total is the incident count; open + closed == total.
+  int64 total = 3;
+  int64 open = 4;
+  int64 closed = 5;
+
+  repeated MetricCount by_state = 6;
+  repeated MetricCount by_priority = 7;
+  repeated MetricCount by_category = 8;
+  repeated MetricCount by_type = 9;
+  repeated MetricCount by_role = 10;
+  repeated MetricCount by_area = 11;
+  repeated MetricDay by_day = 12;
+
+  // open_follow_ups lists incidents still needing follow-up (OUTCOME =
+  // follow_up_required and STATE != closed), each as a link target.
+  repeated MetricIncidentRef open_follow_ups = 13;
+
+  // avg_time_to_close_seconds is the mean CLOSED-CREATED over closed_count closed
+  // incidents; unset when none are closed (no meaningful average).
+  optional double avg_time_to_close_seconds = 14;
+  int64 closed_count = 15;
+
+  // generated_at is when the aggregate was computed on the server. The endpoint caches
+  // per event, so this reflects the true age of the data ("last updated"). (json.Metrics
+  // sent this as Unix-millis; the contract uses a Timestamp — no epoch numbers.)
+  google.protobuf.Timestamp generated_at = 16;
+}
+
+// MetricCount is one labelled bucket. key is a stable identifier (an enum value,
+// incident-type id, or area slug) for client logic; label is the human-facing name.
+message MetricCount {
+  string key = 1;
+  string label = 2;
+  int64 count = 3;
+}
+
+// MetricDay is the incident count for one calendar day, keyed YYYY-MM-DD in the server's
+// local time zone. date stays a string (a calendar-day key, not an instant).
+message MetricDay {
+  string date = 1;
+  int64 count = 2;
+}
+
+// MetricIncidentRef is a minimal pointer to an incident for the open-follow-ups list.
+// It is intentionally narrower than common.IncidentRef: the metrics context already
+// knows the event, so only the per-event incident_number and a summary are carried
+// (incident_number named to match common.IncidentRef).
+message MetricIncidentRef {
+  int32 incident_number = 1;
+  string summary = 2;
+}

@@ -1,0 +1,37 @@
+// SPDX-License-Identifier: Apache-2.0
+
+syntax = "proto3";
+
+package ocf.ims.resources.v1;
+
+import "buf/validate/validate.proto";
+import "ocf/ims/common/v1/person_ref.proto";
+
+option go_package = "github.com/mikeki/ocf-ims/gen/ocf/ims/resources/v1;resourcesv1";
+
+// Crew is a per-event crew (the CREW table, keyed (EVENT, SLUG)). Mirrors json.Crew's
+// resource fields. Crews are admin-managed only — there is no propose/approve workflow.
+//
+// json.Crew overloads one type for reads and writes: besides the fields below it
+// carries write-only operation selectors — delete (remove the crew) and member (a
+// single membership mutation). Those are RPC operations, not resource state, so they
+// belong on the 0e request envelopes (e.g. DeleteCrew / a membership-mutation RPC),
+// not here. slug is server-generated from name at create time and immutable after.
+// (CREW.SORT_ORDER is not surfaced: the server returns crews in order; there is no
+// client-facing reordering in the contract.)
+message Crew {
+  // slug is empty on create (server generates it) and set to address an existing crew.
+  optional string slug = 1 [(buf.validate.field).string.max_len = 128];
+  optional string name = 2 [(buf.validate.field).string.max_len = 255];
+  // members is the crew's roster; read-only (membership is changed one person at a
+  // time via the 0e membership RPC).
+  repeated CrewMember members = 3;
+}
+
+// CrewMember is one person's membership in a crew, as returned on a read (a
+// CREW_MEMBERSHIP row joined to PERSON). Mirrors json.CrewMember: the referenced
+// person plus whether they lead the crew.
+message CrewMember {
+  ocf.ims.common.v1.PersonRef person = 1;
+  bool is_leader = 2;
+}

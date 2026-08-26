@@ -1,0 +1,48 @@
+// SPDX-License-Identifier: Apache-2.0
+
+syntax = "proto3";
+
+package ocf.ims.resources.v1;
+
+import "google/protobuf/timestamp.proto";
+import "ocf/ims/common/v1/person_ref.proto";
+
+option go_package = "github.com/mikeki/ocf-ims/gen/ocf/ims/resources/v1;resourcesv1";
+
+// JournalEntry is an append-only note on an incident or field report (the
+// JOURNAL_ENTRY table). Mirrors json.JournalEntry.
+//
+// json.JournalEntry carries two shapes for people — write-input id lists
+// (mentioned_person_ids, on_behalf_of_person_id) and read-output resolved
+// objects (mentions, on_behalf_of). The contract collapses each pair into the
+// resolved form below: on write the client sets person_id on the PersonRef(s) and
+// the server resolves handle/name.
+message JournalEntry {
+  int32 id = 1;
+  google.protobuf.Timestamp created = 2;
+  // author is the handle of the account that wrote the entry.
+  string author = 3;
+  // system_entry marks an entry the server generated (a change record) rather
+  // than a human-authored note.
+  bool system_entry = 4;
+  string text = 5;
+  // stricken hides the entry from the default journal view without deleting it.
+  optional bool stricken = 6;
+  // attachment is unset when the entry has no attached file.
+  optional Attachment attachment = 7;
+  // mentions are the people @mentioned in the entry (plan 81).
+  repeated ocf.ims.common.v1.PersonRef mentions = 8;
+  // on_behalf_of is the person the entry is *about* when filed for someone else
+  // (6m); unset when the author is reporting for themselves.
+  optional ocf.ims.common.v1.PersonRef on_behalf_of = 9;
+}
+
+// Attachment is a file attached to a journal entry. id is the opaque storage key
+// the server generates for the file (a crypto-random token, e.g.
+// "event_00001_incident_00042_<random>.jpg" — collision-resistant, and what the
+// blob-download endpoint is addressed by); previewable indicates the server can
+// render an inline preview. Mirrors json.Attachment (whose field was "name").
+message Attachment {
+  string id = 1;
+  bool previewable = 2;
+}

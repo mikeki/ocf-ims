@@ -1,0 +1,29 @@
+// SPDX-License-Identifier: Apache-2.0
+
+syntax = "proto3";
+
+package ocf.ims.resources.v1;
+
+import "buf/validate/validate.proto";
+import "google/protobuf/timestamp.proto";
+import "ocf/ims/common/v1/person_ref.proto";
+import "ocf/ims/resources/v1/journal_entry.proto";
+
+option go_package = "github.com/mikeki/ocf-ims/gen/ocf/ims/resources/v1;resourcesv1";
+
+// Report is a field report (the REPORT table), keyed by (event, number). It may
+// stand alone or be linked to one incident. Mirrors json.Report, minus the
+// viewer-dependent read-only edit flags (may_edit_summary, may_add_journal_entry),
+// which belong on the read response envelope (0e).
+message Report {
+  string event = 1;
+  // number is the per-event field-report number, server-assigned on create.
+  int32 number = 2;
+  google.protobuf.Timestamp created = 3;
+  optional ocf.ims.common.v1.PersonRef created_by = 4;
+  optional string summary = 5 [(buf.validate.field).string.max_len = 1024];
+  // incident is the incident number this report is linked to; unset when the
+  // report stands alone.
+  optional int32 incident = 6;
+  repeated JournalEntry journal_entries = 7;
+}

@@ -2,12 +2,22 @@
 # API (see docs/plans/09-proto-connect-platform.md). Generated code (Go,
 # TypeScript, OpenAPI) is produced by `buf generate` (see buf.gen.yaml and
 # buf.gen.web.yaml) and is never committed. Proto source lives under proto/.
+#
+# third_party/protovalidate vendors buf/validate/validate.proto (exported from
+# buf.build/bufbuild/protovalidate) so protovalidate constraints (M5) resolve with
+# no BSR dependency and no `buf.build` egress — generation stays fully hermetic in
+# CI and in the golang:alpine Docker build. It is excluded from lint/breaking.
 version: v2
 modules:
   - path: proto
+  - path: third_party/protovalidate
 lint:
   use:
     - STANDARD
+  ignore:
+    - third_party/protovalidate
 breaking:
   use:
     - FILE
+  ignore:
+    - third_party/protovalidate

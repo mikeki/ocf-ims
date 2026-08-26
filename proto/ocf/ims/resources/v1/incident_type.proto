@@ -1,0 +1,40 @@
+// SPDX-License-Identifier: Apache-2.0
+
+syntax = "proto3";
+
+package ocf.ims.resources.v1;
+
+import "buf/validate/validate.proto";
+import "ocf/ims/common/v1/person_ref.proto";
+
+option go_package = "github.com/mikeki/ocf-ims/gen/ocf/ims/resources/v1;resourcesv1";
+
+// IncidentTypeGroup is the OCF category an incident type belongs to (Phase 4a),
+// stored as the INCIDENT_TYPE.GROUP MySQL enum. UNSPECIFIED corresponds to the
+// nullable column being null (ungrouped).
+enum IncidentTypeGroup {
+  INCIDENT_TYPE_GROUP_UNSPECIFIED = 0;
+  INCIDENT_TYPE_GROUP_SAFETY = 1;
+  INCIDENT_TYPE_GROUP_CONDUCT = 2;
+  INCIDENT_TYPE_GROUP_OPERATIONS = 3;
+  INCIDENT_TYPE_GROUP_COMPLIANCE = 4;
+}
+
+// IncidentType is an entry in the admin-managed incident taxonomy (the INCIDENT_TYPE
+// table). Mirrors json.IncidentType. Types support a writer-proposes / admin-approves
+// workflow (round-7 item 2): a fresh proposal starts approved=false with a proposer.
+message IncidentType {
+  int32 id = 1;
+  optional string name = 2 [(buf.validate.field).string.max_len = 128];
+  optional string description = 3 [(buf.validate.field).string.max_len = 1024];
+  // hidden retires a type from the incident-form picker without deleting it.
+  optional bool hidden = 4;
+  // group is the OCF category (json.IncidentType used a free string; the column is a
+  // closed MySQL enum, so the contract models it as an enum). UNSPECIFIED = ungrouped.
+  IncidentTypeGroup group = 5 [(buf.validate.field).enum.defined_only = true];
+  // approved is false while a type is a writer's pending proposal.
+  optional bool approved = 6;
+  // proposer is who proposed a still-unapproved type; read-only, unset for
+  // seeded / admin-created / approved types.
+  optional ocf.ims.common.v1.PersonRef proposer = 7;
+}

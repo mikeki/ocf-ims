@@ -1,0 +1,24 @@
+// SPDX-License-Identifier: Apache-2.0
+
+syntax = "proto3";
+
+package ocf.ims.resources.v1;
+
+import "buf/validate/validate.proto";
+
+option go_package = "github.com/mikeki/ocf-ims/gen/ocf/ims/resources/v1;resourcesv1";
+
+// Event is a fair/instance under which incidents and reports are tracked (the
+// EVENT table). An event may be an ordinary event or a "group" that parents other
+// events. Mirrors json.Event.
+message Event {
+  int32 id = 1;
+  // name is the human identifier (e.g. "OCF 2026"). Present on read; required on
+  // create/update (enforced on the request in 0e).
+  optional string name = 2 [(buf.validate.field).string.max_len = 128];
+  // is_group marks this event as a container that parents other events rather
+  // than one that holds incidents directly.
+  optional bool is_group = 3;
+  // parent_group is the id of the group event this one belongs to, if any.
+  optional int32 parent_group = 4;
+}

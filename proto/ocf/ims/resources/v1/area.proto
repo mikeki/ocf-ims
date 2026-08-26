@@ -1,0 +1,29 @@
+// SPDX-License-Identifier: Apache-2.0
+
+syntax = "proto3";
+
+package ocf.ims.resources.v1;
+
+import "buf/validate/validate.proto";
+import "ocf/ims/common/v1/person_ref.proto";
+
+option go_package = "github.com/mikeki/ocf-ims/gen/ocf/ims/resources/v1;resourcesv1";
+
+// Area is a per-event location (the AREA table). slug is server-generated from
+// name at create time and immutable thereafter. Mirrors json.Area.
+//
+// The write-only "duplicate_of" merge action from json.Area is not a property of
+// the resource; it belongs on the update request envelope (0e).
+message Area {
+  // slug is the stable per-event identifier (empty when proposing a new area).
+  string slug = 1 [(buf.validate.field).string.max_len = 128];
+  optional string name = 2 [(buf.validate.field).string.max_len = 255];
+  // parent_slug is unset for a top-level area.
+  optional string parent_slug = 3 [(buf.validate.field).string.max_len = 128];
+  // approved is false while an area is a writer's pending proposal awaiting an
+  // admin's review; true for canonical/approved areas.
+  optional bool approved = 4;
+  // proposer is the person who proposed a still-unapproved area; read-only, and
+  // unset for canonical/admin-created/approved areas.
+  optional ocf.ims.common.v1.PersonRef proposer = 5;
+}

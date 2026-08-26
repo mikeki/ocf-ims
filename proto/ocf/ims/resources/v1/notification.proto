@@ -1,0 +1,40 @@
+// SPDX-License-Identifier: Apache-2.0
+
+syntax = "proto3";
+
+package ocf.ims.resources.v1;
+
+import "buf/validate/validate.proto";
+import "google/protobuf/timestamp.proto";
+
+option go_package = "github.com/mikeki/ocf-ims/gen/ocf/ims/resources/v1;resourcesv1";
+
+// NotificationType is the trigger for a notification (the NOTIFICATION.TYPE MySQL enum,
+// deliberately designed type-first so it grows to cover more triggers). json.Notification
+// carried this as a free string.
+enum NotificationType {
+  NOTIFICATION_TYPE_UNSPECIFIED = 0;
+  NOTIFICATION_TYPE_MENTIONED = 1;
+  NOTIFICATION_TYPE_ADDED_TO_INCIDENT = 2;
+}
+
+// Notification is one in-app notification for the current user (plan 82), enriched for
+// display. Mirrors json.Notification. The fields populated depend on the type (a
+// "mentioned" notification carries a journal_entry_id, etc.); the two current types are
+// near-identical in shape, so this stays a flat message rather than a oneof — revisit if
+// a materially different-shaped type is added. The list wrapper (json.NotificationList,
+// which pairs the list with an unread count) is a read-response aggregate and belongs on
+// the 0e response envelope, not here.
+message Notification {
+  int32 id = 1;
+  NotificationType type = 2 [(buf.validate.field).enum.defined_only = true];
+  string event = 3;
+  optional int32 incident_number = 4;
+  optional string incident_summary = 5;
+  optional int32 report_number = 6;
+  optional string report_summary = 7;
+  optional int32 journal_entry_id = 8;
+  optional string actor = 9;
+  google.protobuf.Timestamp created = 10;
+  bool read = 11;
+}

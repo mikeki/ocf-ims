@@ -71,8 +71,10 @@ func main() {
 		// hermetic Go-tool targets in buf.gen.yaml (protoc-gen-go,
 		// protoc-gen-connect-go, protoc-gen-connect-openapi) always run — they
 		// need no JS toolchain, so this also works in the `golang:alpine` Docker
-		// build stage.
-		mustRunInDir(exec.CommandContext(gCtx, "go", "tool", "buf", "generate"), repo.Name())
+		// build stage. The `proto` input generates only the first-party module;
+		// the vendored third_party/protovalidate is import-only (it resolves the
+		// buf/validate constraints but is never itself generated).
+		mustRunInDir(exec.CommandContext(gCtx, "go", "tool", "buf", "generate", "proto"), repo.Name())
 		// The TypeScript target (buf.gen.web.yaml: protoc-gen-es) comes from pnpm,
 		// so it runs only where a JS toolchain exists (dev machines, the CI lint
 		// job) and is skipped otherwise (e.g. the Docker build image). The
@@ -84,7 +86,7 @@ func main() {
 		}
 		mustRunInDir(exec.CommandContext(gCtx, "pnpm", "install", "--frozen-lockfile"), repo.Name())
 		mustRunInDir(
-			exec.CommandContext(gCtx, "go", "tool", "buf", "generate", "--template", "buf.gen.web.yaml"),
+			exec.CommandContext(gCtx, "go", "tool", "buf", "generate", "--template", "buf.gen.web.yaml", "proto"),
 			repo.Name(),
 		)
 		return nil
