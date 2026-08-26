@@ -1,6 +1,6 @@
 # 09e — Service surface (Phase 0, slice 0e)
 
-> **Status:** In progress — for review (separate PR, stacked on #203)
+> **Status:** In progress — for review (PR #204, rebased onto `master` after #203 merged)
 > **Parent:** [09-proto-connect-platform.md](09-proto-connect-platform.md) (Phase 0)
 > **Follows:** [09d-taxonomies-admin.md](09d-taxonomies-admin.md)
 > **Last updated:** 2026-08-25
@@ -177,10 +177,8 @@ contract.
 
 ## Verification
 
-- `buf lint` clean. `buf breaking` clean against the parent branch
-  `feat/0b-core-domain` (0e only adds). *(Against `origin/master` it errors on image
-  count — master (0a) predates the second protovalidate buf module and the whole
-  domain model, so it is not a meaningful 0e baseline.)*
+- `buf lint` clean. `buf breaking` clean against `master` — now at 0b–0d after #203
+  merged, so master is a meaningful baseline and 0e only adds.
 - `buf generate proto` now emits the connect stubs
   (`gen/ocf/ims/service/v1/servicev1connect/service.connect.go`) — 0a–0d produced none,
   as no service existed. OpenAPI regenerated. The pnpm template emits 14 service TS
