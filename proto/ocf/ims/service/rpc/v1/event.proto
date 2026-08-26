@@ -17,9 +17,16 @@ message ListEventsResponse {
 }
 
 // SaveEventRequest upserts an event (POST /events; the admin Events page creates
-// events). Carries the whole resource per the Phase-0 rule.
+// events). Kept a single upsert (event.id == 0 creates, else updates) rather than
+// split Create/Update: the caller identifies the event by name and the numeric id is
+// a surrogate the server returns. Carries the whole resource per the Phase-0 rule.
 message SaveEventRequest {
   ocf.ims.resources.v1.Event event = 1;
 }
 
-message SaveEventResponse {}
+// SaveEventResponse returns the event's id — the server assigns it on create (REST
+// returned it in the IMS-Event-ID header, which an empty response would have
+// dropped); echoed on update.
+message SaveEventResponse {
+  int32 event_id = 1;
+}

@@ -434,12 +434,25 @@ Queued before any code is written:
 
 ### 0e — Service surface (2026-08-25)
 
-- **A REST endpoint that multiplexes on its body is a 1→N map onto RPCs.** `POST
-  /crews` carries create/rename, delete, and a membership mutation on one JSON body
-  (via write-selector fields); the RPC surface splits it into `SaveCrew` /
-  `DeleteCrew` / `SetCrewMembership`. Contract-first surfaces these hidden verbs that
-  a body-multiplexing REST handler hides — the mapping is not always 1:1, and the
-  gap is a finding, not noise. *Adoption-path detail (#10).*
+- **Body-multiplexing REST endpoints are a *systematic* 1→N map onto RPCs, not a
+  one-off.** `POST /crews` was the first spotted (create/rename + delete + membership →
+  `SaveCrew`/`DeleteCrew`/`SetCrewMembership`), but the 0e review found the same shape
+  across the whole admin-taxonomy write surface: `POST /areas`, `POST /incident_types`
+  and `POST /outcomes` each dispatch create / update / approve / (set-hidden |
+  mark-duplicate) off body selector fields (`id == 0`, `Approved`, `Hidden`,
+  `DuplicateOf`). Contract-first decomposes all four into explicit verbs (58 RPCs vs the
+  49 the single-`Save*` first cut showed) — a brownfield's "one POST does everything"
+  handlers routinely hide a fistful of verbs, and finding them is a *repeatable* audit
+  (grep the handler for its selector `switch`), not luck. *Adoption-path detail (#10).*
+- **A derived read-only field's home is decided by *whom it describes*, and a per-member
+  flag belongs on the resource, not a parallel response map.** 0b pushed *all* derived
+  fields onto response wrappers; the 0e review split that: a **caller**-relative flag
+  (`viewer_may_add_journal`) stays on the view, but a flag about a **resource member**
+  (`IncidentPerson.has_event_access`) belongs on the resource as **output-only** —
+  matching AIP-203 and the echoes (`created_by`, `PersonRef.handle`/`name`) already
+  carried there. The rejected alternative — a `map<int32,bool>` on the wrapper keyed by
+  member id — needs a client join and doesn't extend. *Refines finding #2; the blueprint
+  says "constraints/derived fields in the proto" but not which message owns each.*
 - **"Blobs stay plain HTTP" cuts across a resource, not around it.** Picture/attachment
   *upload* and *download* are plain-HTTP (M8), but the picture *delete* — no blob —
   becomes an RPC. So one resource's operations straddle two transports; the M8

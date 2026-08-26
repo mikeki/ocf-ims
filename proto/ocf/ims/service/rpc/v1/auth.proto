@@ -29,8 +29,12 @@ message LoginResponse {
   google.protobuf.Timestamp expires_at = 2;
 }
 
-// RefreshTokenRequest is empty — the refresh token rides in the HttpOnly cookie
-// (unchanged under Connect; the handler still reads it from the request headers).
+// RefreshTokenRequest is empty: the web client's refresh token rides in the HttpOnly
+// cookie (unchanged under Connect — the handler reads it from the request headers).
+// The native Expo client has no cookie jar, so it will carry the token in the request
+// body and store it in expo-secure-store; that is a planned Phase-3a addition (its
+// exact shape is a 3a decision, and field numbers stay free until the app ships, so
+// adding the field then is non-breaking).
 message RefreshTokenRequest {}
 
 // RefreshTokenResponse mirrors api.RefreshAccessTokenResponse.

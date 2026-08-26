@@ -19,7 +19,7 @@ deliberately-excluded visits subsystem). Zero unclassified routes.
 
 ## What landed
 
-- `service/v1/service.proto` — the single **`ImsService`** (M3), **49 unary RPCs**, and
+- `service/v1/service.proto` — the single **`ImsService`** (M3), **58 unary RPCs**, and
   **nothing else**: `service/v1/` holds only this file, so the API index stands alone.
 - `service/rpc/v1/*.proto` (package `ocf.ims.service.rpc.v1`) — the request/response
   envelopes, **one file per resource** (`auth`, `incident`, `report`, `event`, `area`,
@@ -36,10 +36,12 @@ deliberately-excluded visits subsystem). Zero unclassified routes.
   `service/rpc/v1` package fixes both: the index is isolated, and every envelope file is
   a clean single resource. buf only requires files to match their package, not
   one-file-per-service.)*
-- Response wrappers for the derived read-only decorations 0b kept off the resources:
-  `IncidentView` (`viewer_may_add_journal`, `person_has_event_access`), `ReportView`
+- Response wrappers for the *caller*-relative read-only decorations 0b kept off the
+  resources: `IncidentView` (`viewer_may_add_journal`), `ReportView`
   (`may_edit_summary`, `may_add_journal_entry`), `AccessForEvent` (the per-viewer
-  permission set), and `ListNotificationsResponse.unread`.
+  permission set), and `ListNotificationsResponse.unread`. Per-**person** read-only
+  flags stay on the resource: `IncidentPerson.has_event_access` is output-only on the
+  resource (Q1 below), not a parallel map on the view.
 
 ## Route → RPC mapping table
 
@@ -81,7 +83,7 @@ All 70 registered `/ims/api/*` routes (the plan's "~65"). **M** = mapped to an R
 | POST `.../visits/{n}/attachments` | AttachToVisit | X | visits retiring (blob anyway) |
 | POST `.../visits/{n}/journal_entries/{j}` | EditVisitJournalEntry | X | visits retiring |
 | GET `/events/{e}/areas` | GetAreas | M | `ListAreas` |
-| POST `/events/{e}/areas` | EditAreas | M | `SaveArea` |
+| POST `/events/{e}/areas` | EditAreas | M | `CreateArea` + `UpdateArea` + `ApproveArea` + `MarkAreaDuplicate` (¹) |
 | GET `/events/{e}/crews` | GetCrews | M | `ListCrews` |
 | POST `/events/{e}/crews` | EditCrews | M | `SaveCrew` + `DeleteCrew` + `SetCrewMembership` (¹) |
 | GET `/events/{e}/crews/mine` | MyCrews | M | `ListMyCrews` |
@@ -90,10 +92,10 @@ All 70 registered `/ims/api/*` routes (the plan's "~65"). **M** = mapped to an R
 | GET `/events` | GetEvents | M | `ListEvents` |
 | POST `/events` | EditEvent | M | `SaveEvent` |
 | GET `/incident_types` | GetIncidentTypes | M | `ListIncidentTypes` |
-| POST `/incident_types` | EditIncidentTypes | M | `SaveIncidentType` |
+| POST `/incident_types` | EditIncidentTypes | M | `CreateIncidentType` + `UpdateIncidentType` + `ApproveIncidentType` + `SetIncidentTypeHidden` (¹) |
 | POST `/events/{e}/incident_types` | ProposeIncidentType | M | `ProposeIncidentType` |
 | GET `/outcomes` | GetOutcomes | M | `ListOutcomes` |
-| POST `/outcomes` | EditOutcomes | M | `SaveOutcome` |
+| POST `/outcomes` | EditOutcomes | M | `CreateOutcome` + `UpdateOutcome` + `ApproveOutcome` + `SetOutcomeHidden` (¹) |
 | POST `/events/{e}/outcomes` | ProposeOutcome | M | `ProposeOutcome` |
 | GET `/personnel` | GetPersonnel | M | `ListPersonnel` |
 | POST `/personnel` | CreatePerson | M | `CreatePerson` |
@@ -119,8 +121,11 @@ All 70 registered `/ims/api/*` routes (the plan's "~65"). **M** = mapped to an R
 | GET `/{$}` | (inline) | H | root banner |
 
 **Totals: 70 routes — 46 mapped (M), 15 plain-HTTP exceptions (H), 9 excluded (X).**
-46 REST routes map to 49 RPCs (¹ one REST endpoint, `POST /crews`, multiplexes three
-operations on its body and splits into three RPCs). Zero unclassified.
+46 REST routes map to **58 RPCs**. (¹) Four admin write endpoints **body-multiplex**
+several verbs on one POST via selector fields, and each splits into its real verbs:
+`POST /crews` → `SaveCrew`/`DeleteCrew`/`SetCrewMembership`; `POST /areas` →
+`CreateArea`/`UpdateArea`/`ApproveArea`/`MarkAreaDuplicate`; `POST /incident_types`
+and `POST /outcomes` → `Create`/`Update`/`Approve`/`SetHidden` each. Zero unclassified.
 
 Not counted here: the `web/` templ page routes are the legacy HTML UI, a separate HTTP
 surface frozen for replacement by the Expo client (Phases 2–4), not part of the API
@@ -138,17 +143,26 @@ contract.
    `number` (a resource's own field is unqualified in its own context; a
    selector/reference to it is qualified).
 2. **Presence vs derived, resolved per 0b–0d.** Required/presence constraints
-   (`string.min_len`, `int32.gt = 0` on path keys) live on the **request** messages;
-   the derived viewer-dependent fields live on the **response** wrappers
-   (`IncidentView`/`ReportView`/`AccessForEvent`). This completes the split 0b decision
-   #3/#4 set up.
+   (`string.min_len`, `int32.gt = 0` on path keys) live on the **request** messages.
+   Derived read-only fields split by *whom they describe*: a **caller**-relative flag
+   lives on the **response** wrapper (`IncidentView.viewer_may_add_journal`,
+   `ReportView`/`AccessForEvent`); a flag about a **resource member** lives on the
+   resource as output-only (`IncidentPerson.has_event_access` — Q1). This completes and
+   refines the split 0b decision #3/#4 set up.
 3. **Create/update carry the whole resource** (Phase-0 rule) — e.g.
    `CreateIncidentRequest{event_name, Incident}`. Server-assigned fields on the resource
    are ignored on create.
-4. **`POST /crews` splits into three RPCs** (`SaveCrew`, `DeleteCrew`,
-   `SetCrewMembership`) rather than one upsert carrying `delete`/`member` selectors —
-   the 0c decision to make those explicit RPCs. This is the one place the REST→RPC map
-   is not 1:1.
+4. **Body-multiplexing write endpoints split into their real verbs.** Four admin POSTs
+   carry several operations on one JSON body via selector fields, and each decomposes
+   into explicit RPCs: `POST /crews` → `SaveCrew`/`DeleteCrew`/`SetCrewMembership` (the
+   0c decision); `POST /areas` → `CreateArea`/`UpdateArea`/`ApproveArea`/
+   `MarkAreaDuplicate`; `POST /incident_types` and `POST /outcomes` →
+   `Create`/`Update`/`Approve`/`SetHidden` each. Approve, set-hidden and mark-duplicate
+   are state transitions and a destructive merge, not "save the resource" — the same
+   reason crews split. `SaveEvent` is the one write **kept** as an upsert (event.id == 0
+   creates, else updates): it carries no such extra verbs, only create-or-update by a
+   client-supplied name, and its response now returns the server-assigned `event_id`
+   (which the empty response, and the REST `IMS-Event-ID` header, had dropped).
 5. **Blob endpoints stay plain HTTP, deletes become RPCs.** Attachment/picture
    *upload* (multipart) and *download/serve* are M8 plain-HTTP; the picture *delete*
    endpoints carry no blob and become RPCs (`DeleteOwnProfilePicture`,
@@ -160,20 +174,26 @@ contract.
 7. **Debug endpoints are plain-HTTP exceptions**, not RPCs — one-off diagnostic shapes
    (buildinfo/runtimemetrics/gc), admin-only, not part of the product contract.
 
-## Open questions for review
+## Open questions — resolved (review, 2026-08-26)
 
-- **`IncidentView.person_has_event_access` as a `map<int32,bool>`** — the per-person
-  derived flag (`json.IncidentPerson.has_event_access`) had nowhere clean to go once it
-  was kept off the resource `IncidentPerson`. A parallel map keyed by person id is the
-  current answer; the alternative is a response-side `IncidentPersonView` wrapping the
-  resource person + the flag. The map is simpler; the wrapper is more uniform. Worth a
-  call before 1d builds against it.
-- **`RefreshToken` reads a cookie, not the request body.** Modeled with an empty
-  request; the handler still reads the HttpOnly cookie from headers (unchanged under
-  Connect). Flagged in case we'd rather carry the token explicitly.
-- **`SaveEvent` / `SaveArea` / `SaveCrew` / `SaveIncidentType` / `SaveOutcome` are
-  upserts** mirroring the single REST write endpoint, rather than split
-  Create/Update RPCs. Kept 1:1 with the routes; revisit if the handlers want the split.
+The three questions flagged during 0e were worked through and applied to the contract:
+
+- **Q1 — `has_event_access` placement → on the resource.** The `map<int32,bool>` on
+  `IncidentView` is gone; the flag is now an **output-only field on the `IncidentPerson`
+  resource** (ignored on write, like `Incident.created`). It is a fact about the
+  involved *person*, not the *viewer*, and the contract already carries read-only echoes
+  (`created_by`, `PersonRef.handle`/`name`) on resources — so this is consistent, and
+  clients read it inline with no map join. The **view keeps only caller-relative flags**
+  (`viewer_may_add_journal`). Considered and rejected: an `IncidentPersonView` wrapper
+  (would force a duplicate/half-populated `incident.people`).
+- **Q2 — `RefreshToken` stays empty.** The web client's refresh token rides in the
+  HttpOnly cookie; the native Expo client's body-carried token is a **Phase-3a addition**
+  (a decision 3a owns), non-breaking to add pre-ship. The proto comment now says so.
+- **Q3 — decompose the multiplexers, don't just upsert.** Investigation showed
+  `POST /areas`, `POST /incident_types` and `POST /outcomes` each **body-multiplex**
+  create/update/approve/(set-hidden | mark-duplicate) — the same shape crews had. They
+  split into explicit verbs (see decision #4). `SaveEvent` stays an upsert but its
+  response now returns the assigned `event_id`. Net: **49 → 58 RPCs.**
 
 ## Verification
 
@@ -187,6 +207,10 @@ contract.
   to a direct require** (0b predicted this at the first service) — the only go.mod
   change, and the expected one.
 - golangci-lint **0 issues** on `gen/`.
+- **After the review round (Q1–Q3):** `buf lint` + `buf breaking` vs `master` still
+  clean (the resource `IncidentPerson` only *gains* a field; the reshaped service
+  envelopes are 0e-only files, so nothing on master breaks); regenerate + `go build`
+  green; `go mod tidy` still a no-op. `ImsService` is now **58 RPCs**.
 
 ## Gate
 

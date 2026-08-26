@@ -12,21 +12,15 @@ option go_package = "github.com/mikeki/ocf-ims/gen/ocf/ims/service/rpc/v1;servic
 
 // Request/response envelopes for the incident RPCs (declared in ../../v1/service.proto).
 
-// IncidentView wraps the Incident resource with the caller-dependent, read-only
-// decorations that 0b deliberately kept off the resource (json.Incident carried
-// them inline). Response-only.
+// IncidentView wraps the Incident resource with the one caller-dependent, read-only
+// decoration 0b kept off the resource: viewer_may_add_journal, a flag about the
+// *caller*. Per-involved-person read-only flags (has_event_access) are flags about
+// each person, so they live on the resource's IncidentPerson, not here. Response-only.
 message IncidentView {
   ocf.ims.resources.v1.Incident incident = 1;
   // viewer_may_add_journal (52f): the caller may append journal entries (event
   // writer, or an involved reporter with a per-incident grant).
   bool viewer_may_add_journal = 2;
-  // person_has_event_access maps an involved person's id to whether they already
-  // hold event-wide incident access (so a per-incident grant is moot). This carries
-  // json.IncidentPerson.has_event_access, which was left off the resource
-  // IncidentPerson as a derived per-viewer flag; a map keeps the resource clean
-  // while still delivering the flag per person. Open question for review: fold this
-  // back onto a response-side person view instead of a parallel map?
-  map<int32, bool> person_has_event_access = 3;
 }
 
 message ListIncidentsRequest {

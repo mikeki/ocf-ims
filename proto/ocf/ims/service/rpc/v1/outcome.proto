@@ -17,13 +17,46 @@ message ListOutcomesResponse {
   repeated ocf.ims.resources.v1.Outcome outcomes = 1;
 }
 
-// SaveOutcomeRequest is the admin create/edit/approve write (POST /outcomes;
-// api.EditOutcomes reads one json.Outcome).
-message SaveOutcomeRequest {
+// api.EditOutcomes (POST /outcomes) multiplexes four admin verbs on one body
+// (id == 0 / Approved / Hidden / else), mirroring incident types. Contract-first
+// splits them into explicit RPCs — approve and set-hidden are state transitions,
+// not "save an outcome".
+
+// CreateOutcomeRequest is the admin create of a global outcome (approved
+// immediately). A writer's proposal goes through ProposeOutcome instead.
+message CreateOutcomeRequest {
   ocf.ims.resources.v1.Outcome outcome = 1;
 }
 
-message SaveOutcomeResponse {}
+// CreateOutcomeResponse returns the server-assigned id.
+message CreateOutcomeResponse {
+  int32 outcome_id = 1;
+}
+
+// UpdateOutcomeRequest edits an existing outcome (name).
+message UpdateOutcomeRequest {
+  int32 outcome_id = 1 [(buf.validate.field).int32.gt = 0];
+  ocf.ims.resources.v1.Outcome outcome = 2;
+}
+
+message UpdateOutcomeResponse {}
+
+// ApproveOutcomeRequest approves a pending proposed outcome (admin-only).
+message ApproveOutcomeRequest {
+  int32 outcome_id = 1 [(buf.validate.field).int32.gt = 0];
+}
+
+message ApproveOutcomeResponse {}
+
+// SetOutcomeHiddenRequest retires an outcome from the incident-form picker, or
+// restores it, without deleting it — historical incidents keep referencing it
+// (admin-only).
+message SetOutcomeHiddenRequest {
+  int32 outcome_id = 1 [(buf.validate.field).int32.gt = 0];
+  bool hidden = 2;
+}
+
+message SetOutcomeHiddenResponse {}
 
 // ProposeOutcomeRequest is a writer's proposal from the incident form; event-scoped
 // only to authorize the caller (the outcome is global).
