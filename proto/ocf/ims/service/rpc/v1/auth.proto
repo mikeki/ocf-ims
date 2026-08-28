@@ -15,10 +15,13 @@ option go_package = "github.com/mikeki/ocf-ims/gen/ocf/ims/service/rpc/v1;servic
 // ../../v1/service.proto. Presence/required constraints that a resource cannot carry
 // live on these request messages.
 
-// LoginRequest mirrors api.PostAuthRequest. identification is the email (the sole
-// login identifier, feedback round 9).
+// LoginRequest mirrors api.PostAuthRequest. email is the sole login identifier
+// (feedback round 9); the server matches it case-insensitively against PERSON.EMAIL.
+// (The REST field was the generic `identification`; the contract names it for what it
+// is. No format constraint here — the handler does the email match, and adding one
+// would change behavior.)
 message LoginRequest {
-  string identification = 1 [(buf.validate.field).string.min_len = 1];
+  string email = 1 [(buf.validate.field).string.min_len = 1];
   string password = 2 [(buf.validate.field).string.min_len = 1];
 }
 
@@ -46,7 +49,7 @@ message RefreshTokenResponse {
 // GetAuthStatusRequest mirrors GET /auth's optional event_id query param — when set,
 // the response's event_access carries the caller's permissions for that one event.
 message GetAuthStatusRequest {
-  optional string event_name = 1;
+  optional int32 event_id = 1;
 }
 
 // GetAuthStatusResponse mirrors api.GetAuthResponse (the whoami / profile response).
@@ -60,8 +63,8 @@ message GetAuthStatusResponse {
   // can_manage_personnel reports the GlobalAdministratePersonnel global (drives UI
   // gating; the endpoints remain authoritative).
   bool can_manage_personnel = 5;
-  // event_access is keyed by event name; populated only for the requested event.
-  map<string, AccessForEvent> event_access = 6;
+  // event_access is keyed by event id; populated only for the requested event.
+  map<int32, AccessForEvent> event_access = 6;
   // push_vapid_public_key is present only when web push is configured.
   string push_vapid_public_key = 7;
   bool using_default_password = 8;
@@ -85,28 +88,5 @@ message AccessForEvent {
   bool invite_reporters = 10;
 }
 
-// ChangeOwnPasswordRequest mirrors api.SetOwnPasswordRequest (the caller sets their
-// own password; identity resolved from the JWT).
-message ChangeOwnPasswordRequest {
-  string password = 1 [(buf.validate.field).string.min_len = 1];
-}
-
-message ChangeOwnPasswordResponse {}
-
-// UpdateOwnProfileRequest mirrors api.SetOwnProfileRequest — each field optional so
-// an unset field is left unchanged (the JWT identifies the caller).
-message UpdateOwnProfileRequest {
-  optional string handle = 1 [(buf.validate.field).string.max_len = 64];
-  optional string name = 2 [(buf.validate.field).string.max_len = 255];
-  optional string email = 3 [(buf.validate.field).string.max_len = 128];
-  optional string phone = 4 [(buf.validate.field).string.max_len = 32];
-}
-
-message UpdateOwnProfileResponse {}
-
-// DeleteOwnProfilePictureRequest removes the caller's own picture (the JWT
-// identifies them). The upload (POST /auth/picture) is a plain-HTTP multipart
-// endpoint (M8); only the delete is an RPC.
-message DeleteOwnProfilePictureRequest {}
-
-message DeleteOwnProfilePictureResponse {}
+// The caller's own self-service RPCs (change password, update profile, delete own
+// picture) moved to profile.proto — this file is authentication/session only.

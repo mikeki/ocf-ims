@@ -19,12 +19,13 @@ deliberately-excluded visits subsystem). Zero unclassified routes.
 
 ## What landed
 
-- `service/v1/service.proto` — the single **`ImsService`** (M3), **58 unary RPCs**, and
+- `service/v1/service.proto` — the single **`ImsService`** (M3), **60 unary RPCs**, and
   **nothing else**: `service/v1/` holds only this file, so the API index stands alone.
 - `service/rpc/v1/*.proto` (package `ocf.ims.service.rpc.v1`) — the request/response
-  envelopes, **one file per resource** (`auth`, `incident`, `report`, `event`, `area`,
-  `crew`, `person`, `incident_type`, `outcome`, `notification`, `metrics`,
-  `action_log`, `push`), each keeping its RPCs' **request and response paired**. A
+  envelopes, **one file per resource** (`auth`, `profile`, `incident`, `report`,
+  `event`, `area`, `crew`, `person`, `incident_type`, `outcome`, `notification`,
+  `metrics`, `action_log`, `push`), each keeping its RPCs' **request and response
+  paired**. A
   dedicated request and response per RPC (including empty ones — buf's
   `RPC_REQUEST_RESPONSE_UNIQUE` forbids sharing, so each empty message is its own type).
   `service.proto` references them as `rpc.v1.<Name>`.
@@ -85,12 +86,12 @@ All 70 registered `/ims/api/*` routes (the plan's "~65"). **M** = mapped to an R
 | GET `/events/{e}/areas` | GetAreas | M | `ListAreas` |
 | POST `/events/{e}/areas` | EditAreas | M | `CreateArea` + `UpdateArea` + `ApproveArea` + `MarkAreaDuplicate` (¹) |
 | GET `/events/{e}/crews` | GetCrews | M | `ListCrews` |
-| POST `/events/{e}/crews` | EditCrews | M | `SaveCrew` + `DeleteCrew` + `SetCrewMembership` (¹) |
+| POST `/events/{e}/crews` | EditCrews | M | `CreateCrew` + `UpdateCrew` + `DeleteCrew` + `SetCrewMembership` (¹) |
 | GET `/events/{e}/crews/mine` | MyCrews | M | `ListMyCrews` |
 | POST `/events/{e}/crews/mine` | EditMyCrew | M | `SetMyCrewMembership` |
 | GET `/events/{e}/metrics` | GetMetrics | M | `GetMetrics` |
 | GET `/events` | GetEvents | M | `ListEvents` |
-| POST `/events` | EditEvent | M | `SaveEvent` |
+| POST `/events` | EditEvent | M | `CreateEvent` + `UpdateEvent` (²) |
 | GET `/incident_types` | GetIncidentTypes | M | `ListIncidentTypes` |
 | POST `/incident_types` | EditIncidentTypes | M | `CreateIncidentType` + `UpdateIncidentType` + `ApproveIncidentType` + `SetIncidentTypeHidden` (¹) |
 | POST `/events/{e}/incident_types` | ProposeIncidentType | M | `ProposeIncidentType` |
@@ -121,11 +122,14 @@ All 70 registered `/ims/api/*` routes (the plan's "~65"). **M** = mapped to an R
 | GET `/{$}` | (inline) | H | root banner |
 
 **Totals: 70 routes — 46 mapped (M), 15 plain-HTTP exceptions (H), 9 excluded (X).**
-46 REST routes map to **58 RPCs**. (¹) Four admin write endpoints **body-multiplex**
+46 REST routes map to **60 RPCs**. (¹) Four admin write endpoints **body-multiplex**
 several verbs on one POST via selector fields, and each splits into its real verbs:
-`POST /crews` → `SaveCrew`/`DeleteCrew`/`SetCrewMembership`; `POST /areas` →
-`CreateArea`/`UpdateArea`/`ApproveArea`/`MarkAreaDuplicate`; `POST /incident_types`
-and `POST /outcomes` → `Create`/`Update`/`Approve`/`SetHidden` each. Zero unclassified.
+`POST /crews` → `CreateCrew`/`UpdateCrew`/`DeleteCrew`/`SetCrewMembership`; `POST /areas`
+→ `CreateArea`/`UpdateArea`/`ApproveArea`/`MarkAreaDuplicate`; `POST /incident_types`
+and `POST /outcomes` → `Create`/`Update`/`Approve`/`SetHidden` each. (²) A single-upsert
+POST (create if the id/slug is empty, else update) splits into `Create*`/`Update*` — the
+service has **no `Save*`/upsert form** anywhere; `POST /events` is the plain example.
+Zero unclassified.
 
 Not counted here: the `web/` templ page routes are the legacy HTML UI, a separate HTTP
 surface frozen for replacement by the Expo client (Phases 2–4), not part of the API
@@ -152,17 +156,23 @@ contract.
 3. **Create/update carry the whole resource** (Phase-0 rule) — e.g.
    `CreateIncidentRequest{event_name, Incident}`. Server-assigned fields on the resource
    are ignored on create.
-4. **Body-multiplexing write endpoints split into their real verbs.** Four admin POSTs
-   carry several operations on one JSON body via selector fields, and each decomposes
-   into explicit RPCs: `POST /crews` → `SaveCrew`/`DeleteCrew`/`SetCrewMembership` (the
-   0c decision); `POST /areas` → `CreateArea`/`UpdateArea`/`ApproveArea`/
-   `MarkAreaDuplicate`; `POST /incident_types` and `POST /outcomes` →
-   `Create`/`Update`/`Approve`/`SetHidden` each. Approve, set-hidden and mark-duplicate
-   are state transitions and a destructive merge, not "save the resource" — the same
-   reason crews split. `SaveEvent` is the one write **kept** as an upsert (event.id == 0
-   creates, else updates): it carries no such extra verbs, only create-or-update by a
-   client-supplied name, and its response now returns the server-assigned `event_id`
-   (which the empty response, and the REST `IMS-Event-ID` header, had dropped).
+4. **Every write is `Create`/`Update` — there is no `Save*`/upsert form.** Two things
+   drove this. (a) Four admin POSTs body-multiplex several verbs on one JSON body via
+   selector fields, and each decomposes into explicit RPCs: `POST /crews` →
+   `CreateCrew`/`UpdateCrew`/`DeleteCrew`/`SetCrewMembership`; `POST /areas` →
+   `CreateArea`/`UpdateArea`/`ApproveArea`/`MarkAreaDuplicate`; `POST /incident_types`
+   and `POST /outcomes` → `Create`/`Update`/`Approve`/`SetHidden` each. Approve,
+   set-hidden and mark-duplicate are state transitions and a destructive merge, not
+   "save the resource". (b) For **consistency** (review round 2), the two remaining
+   single-upsert writes — `SaveEvent`, `SaveCrew` — also split into `Create*`/`Update*`,
+   so the whole service reads one way (incidents, reports, personnel, events, areas,
+   crews, taxonomies all `Create`/`Update`). Each `Create*` returns the server-assigned
+   key (`event_id`, `area_slug`, `crew_slug`, `incident_type_id`, `outcome_id`,
+   `incident_number`) — the value an empty `Save*` response, and the REST `IMS-Event-ID`
+   header, had dropped. Considered and rejected: naming the upserts `Upsert*` instead —
+   incidents/reports/personnel already need a distinct `Create` (it returns a
+   server-assigned number/id on create only), so `Create`/`Update` is the one form that
+   unifies every write.
 5. **Blob endpoints stay plain HTTP, deletes become RPCs.** Attachment/picture
    *upload* (multipart) and *download/serve* are M8 plain-HTTP; the picture *delete*
    endpoints carry no blob and become RPCs (`DeleteOwnProfilePicture`,
@@ -192,8 +202,33 @@ The three questions flagged during 0e were worked through and applied to the con
 - **Q3 — decompose the multiplexers, don't just upsert.** Investigation showed
   `POST /areas`, `POST /incident_types` and `POST /outcomes` each **body-multiplex**
   create/update/approve/(set-hidden | mark-duplicate) — the same shape crews had. They
-  split into explicit verbs (see decision #4). `SaveEvent` stays an upsert but its
-  response now returns the assigned `event_id`. Net: **49 → 58 RPCs.**
+  split into explicit verbs (see decision #4). Net (49 → 58) here; extended below.
+
+### Review round 2 (PR #204 comments, 2026-08-27)
+
+- **Full `Create`/`Update` consistency — no `Save*` left.** The two remaining upserts,
+  `SaveEvent` and `SaveCrew`, split into `Create*`/`Update*` (decision #4). The service
+  now reads one way; `Create*` returns the server-assigned key.
+- **Self-service RPCs → `profile.proto`.** `ChangeOwnPassword` / `UpdateOwnProfile` /
+  `DeleteOwnProfilePicture` moved out of `auth.proto` (authentication/session only) into
+  a new `profile.proto` — the caller's *own* account, distinct from `person.proto` (an
+  admin managing others). Same package, so it is a file move; `service.proto` groups them
+  under a "Profile" heading.
+- **Selector keys qualified everywhere.** `CreateAreaResponse.slug` → `area_slug`, and
+  the crew RPCs' bare `slug` → `crew_slug` (decision #1a). A resource's own field stays
+  unqualified; a selector/return that *references* it is qualified.
+- **Events identified by `event_id`, not `event_name`.** Every request selector now
+  carries `int32 event_id` (was `string event_name`), and `GetAuthStatus`'s event key +
+  its `event_access` map key are `event_id` too. `EVENT.NAME` *is* unique, but the id is
+  the stable surrogate (a rename can't break a reference), and it matches the numeric
+  `event_id` param `GET /auth` already takes. **Display denormalizations keep the name**
+  — `Incident.event`, `common.IncidentRef.event_name` — since those are read-only labels,
+  not selectors. Cost accepted: the ported web UI (Phase 2), which routes by event name,
+  resolves name → id via the events list it already loads.
+- **`LoginRequest.identification` → `email`.** Email is the sole login id (round 9), so
+  the contract names it for what it is (the REST field was the generic `identification`).
+  No format constraint — the handler does the case-insensitive `PERSON.EMAIL` match.
+- Net across both rounds: **49 → 60 RPCs.**
 
 ## Verification
 
@@ -201,16 +236,17 @@ The three questions flagged during 0e were worked through and applied to the con
   merged, so master is a meaningful baseline and 0e only adds.
 - `buf generate proto` now emits the connect stubs
   (`gen/ocf/ims/service/v1/servicev1connect/service.connect.go`) — 0a–0d produced none,
-  as no service existed. OpenAPI regenerated. The pnpm template emits 14 service TS
-  files.
+  as no service existed. OpenAPI regenerated. The pnpm template emits the service TS
+  files (one per envelope file, plus the service index).
 - `go build ./...` green. `go mod tidy` flips **`connectrpc.com/connect` from indirect
   to a direct require** (0b predicted this at the first service) — the only go.mod
   change, and the expected one.
 - golangci-lint **0 issues** on `gen/`.
-- **After the review round (Q1–Q3):** `buf lint` + `buf breaking` vs `master` still
-  clean (the resource `IncidentPerson` only *gains* a field; the reshaped service
-  envelopes are 0e-only files, so nothing on master breaks); regenerate + `go build`
-  green; `go mod tidy` still a no-op. `ImsService` is now **58 RPCs**.
+- **After the review rounds (Q1–Q3, then the PR #204 comments):** `buf lint` +
+  `buf breaking` vs `master` still clean (the resource `IncidentPerson` only *gains* a
+  field; the reshaped service envelopes are 0e-only files, so nothing on master breaks);
+  regenerate + `go build` green; `go mod tidy` still a no-op. `ImsService` is now
+  **60 RPCs** across **15** service files (`service.proto` + 14 envelopes).
 
 ## Gate
 

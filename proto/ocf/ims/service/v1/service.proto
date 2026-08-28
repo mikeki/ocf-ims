@@ -15,6 +15,7 @@ import "ocf/ims/service/rpc/v1/metrics.proto";
 import "ocf/ims/service/rpc/v1/notification.proto";
 import "ocf/ims/service/rpc/v1/outcome.proto";
 import "ocf/ims/service/rpc/v1/person.proto";
+import "ocf/ims/service/rpc/v1/profile.proto";
 import "ocf/ims/service/rpc/v1/push.proto";
 import "ocf/ims/service/rpc/v1/report.proto";
 
@@ -33,10 +34,12 @@ option go_package = "github.com/mikeki/ocf-ims/gen/ocf/ims/service/v1;servicev1"
 // profile pictures) and the liveness/readiness/debug endpoints are the other
 // plain-HTTP exceptions.
 service ImsService {
-  // --- Auth & self-service ---
+  // --- Auth & session ---
   rpc Login(rpc.v1.LoginRequest) returns (rpc.v1.LoginResponse);
   rpc RefreshToken(rpc.v1.RefreshTokenRequest) returns (rpc.v1.RefreshTokenResponse);
   rpc GetAuthStatus(rpc.v1.GetAuthStatusRequest) returns (rpc.v1.GetAuthStatusResponse);
+
+  // --- Profile (the caller's own account) ---
   rpc ChangeOwnPassword(rpc.v1.ChangeOwnPasswordRequest) returns (rpc.v1.ChangeOwnPasswordResponse);
   rpc UpdateOwnProfile(rpc.v1.UpdateOwnProfileRequest) returns (rpc.v1.UpdateOwnProfileResponse);
   rpc DeleteOwnProfilePicture(rpc.v1.DeleteOwnProfilePictureRequest) returns (rpc.v1.DeleteOwnProfilePictureResponse);
@@ -59,7 +62,8 @@ service ImsService {
 
   // --- Events ---
   rpc ListEvents(rpc.v1.ListEventsRequest) returns (rpc.v1.ListEventsResponse);
-  rpc SaveEvent(rpc.v1.SaveEventRequest) returns (rpc.v1.SaveEventResponse);
+  rpc CreateEvent(rpc.v1.CreateEventRequest) returns (rpc.v1.CreateEventResponse);
+  rpc UpdateEvent(rpc.v1.UpdateEventRequest) returns (rpc.v1.UpdateEventResponse);
 
   // --- Areas --- (POST /areas multiplexes these four verbs; see 09e)
   rpc ListAreas(rpc.v1.ListAreasRequest) returns (rpc.v1.ListAreasResponse);
@@ -70,7 +74,8 @@ service ImsService {
 
   // --- Crews ---
   rpc ListCrews(rpc.v1.ListCrewsRequest) returns (rpc.v1.ListCrewsResponse);
-  rpc SaveCrew(rpc.v1.SaveCrewRequest) returns (rpc.v1.SaveCrewResponse);
+  rpc CreateCrew(rpc.v1.CreateCrewRequest) returns (rpc.v1.CreateCrewResponse);
+  rpc UpdateCrew(rpc.v1.UpdateCrewRequest) returns (rpc.v1.UpdateCrewResponse);
   rpc DeleteCrew(rpc.v1.DeleteCrewRequest) returns (rpc.v1.DeleteCrewResponse);
   rpc SetCrewMembership(rpc.v1.SetCrewMembershipRequest) returns (rpc.v1.SetCrewMembershipResponse);
   rpc ListMyCrews(rpc.v1.ListMyCrewsRequest) returns (rpc.v1.ListMyCrewsResponse);

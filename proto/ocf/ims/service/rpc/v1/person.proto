@@ -13,9 +13,9 @@ option go_package = "github.com/mikeki/ocf-ims/gen/ocf/ims/service/rpc/v1;servic
 
 // ListPersonnelRequest mirrors GET /personnel's query params, which select the mode:
 // all=true is the admin listing (email/phone/has_password populated); query is the
-// event-scoped typeahead; event_name scopes the roster. All optional.
+// event-scoped typeahead; event_id scopes the roster. All optional.
 message ListPersonnelRequest {
-  optional string event_name = 1;
+  optional int32 event_id = 1;
   optional string query = 2;
   bool all = 3;
 }
@@ -83,7 +83,7 @@ message SetPersonAdminResponse {}
 // and the event (a query param on the REST route).
 message SetPersonParticipationRequest {
   int32 person_id = 1 [(buf.validate.field).int32.gt = 0];
-  string event_name = 2 [(buf.validate.field).string.min_len = 1];
+  int32 event_id = 2 [(buf.validate.field).int32.gt = 0];
   string wristband = 3 [(buf.validate.field).string.max_len = 32];
   ocf.ims.resources.v1.ParticipationType participation_type = 4
       [(buf.validate.field).enum.defined_only = true];
@@ -94,7 +94,7 @@ message SetPersonParticipationResponse {}
 // RemovePersonFromEventRequest deletes a person's PERSON__EVENT row for the event.
 message RemovePersonFromEventRequest {
   int32 person_id = 1 [(buf.validate.field).int32.gt = 0];
-  string event_name = 2 [(buf.validate.field).string.min_len = 1];
+  int32 event_id = 2 [(buf.validate.field).int32.gt = 0];
 }
 
 message RemovePersonFromEventResponse {}

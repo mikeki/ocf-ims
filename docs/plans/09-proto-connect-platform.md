@@ -473,6 +473,15 @@ Queued before any code is written:
   verbose than a `google.protobuf.Empty`, but it keeps each RPC's schema independently
   evolvable — a deliberate STANDARD-lint stance worth noting for teams reaching for a
   shared empty message.
+- **The contract wants the surrogate key even where the REST URL uses a natural one.**
+  This brownfield addresses events by *name* in every URL (`/events/{eventName}/…`), and
+  `EVENT.NAME` is even unique — so name "works" as a key. The 0e review still moved every
+  request selector to `int32 event_id`: a surrogate id is rename-stable and unambiguous,
+  and it is what the typed contract should carry, with the human name kept only as a
+  read-only display denormalization on resources. The migration cost is real and worth
+  naming: the ported client, which routes by the URL's name, must resolve name → id
+  (here, from the events list it already loads). A REST-URL natural key is not
+  automatically the contract's key. *Adoption-path detail (#10).*
 
 ## 8. Open questions
 

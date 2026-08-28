@@ -13,32 +13,45 @@ option go_package = "github.com/mikeki/ocf-ims/gen/ocf/ims/service/rpc/v1;servic
 //
 // The REST POST /crews multiplexes create/rename, delete, and a single-member
 // mutation on one json.Crew body (via its delete/member write-selectors). The RPC
-// surface splits that into three explicit calls (0c decision: crew delete/member
-// become RPCs, not resource fields).
+// surface splits that into explicit calls (0c decision: crew delete/member become
+// RPCs, not resource fields). Create and update are separate RPCs — as everywhere
+// else in the service (incidents, reports, personnel, areas, taxonomies) — rather
+// than one upsert; there is no `Save*`/upsert form anywhere in ImsService.
 
 message ListCrewsRequest {
-  string event_name = 1 [(buf.validate.field).string.min_len = 1];
+  int32 event_id = 1 [(buf.validate.field).int32.gt = 0];
 }
 
 message ListCrewsResponse {
   repeated ocf.ims.resources.v1.Crew crews = 1;
 }
 
-// SaveCrewRequest creates (empty slug → server generates) or renames/reorders
-// (slug set) a crew. Membership is not touched here.
-message SaveCrewRequest {
-  string event_name = 1 [(buf.validate.field).string.min_len = 1];
+// CreateCrewRequest creates a crew (the server generates its slug). Membership is
+// not touched here.
+message CreateCrewRequest {
+  int32 event_id = 1 [(buf.validate.field).int32.gt = 0];
   ocf.ims.resources.v1.Crew crew = 2;
 }
 
-// SaveCrewResponse echoes the crew (with its server-generated slug on create).
-message SaveCrewResponse {
-  ocf.ims.resources.v1.Crew crew = 1;
+// CreateCrewResponse returns the server-generated slug (the per-event key), as
+// CreateArea returns area_slug.
+message CreateCrewResponse {
+  string crew_slug = 1;
 }
 
+// UpdateCrewRequest renames / reorders an existing crew (admin-only). Membership is
+// not touched here.
+message UpdateCrewRequest {
+  int32 event_id = 1 [(buf.validate.field).int32.gt = 0];
+  string crew_slug = 2 [(buf.validate.field).string.min_len = 1];
+  ocf.ims.resources.v1.Crew crew = 3;
+}
+
+message UpdateCrewResponse {}
+
 message DeleteCrewRequest {
-  string event_name = 1 [(buf.validate.field).string.min_len = 1];
-  string slug = 2 [(buf.validate.field).string.min_len = 1];
+  int32 event_id = 1 [(buf.validate.field).int32.gt = 0];
+  string crew_slug = 2 [(buf.validate.field).string.min_len = 1];
 }
 
 message DeleteCrewResponse {}
@@ -46,8 +59,8 @@ message DeleteCrewResponse {}
 // SetCrewMembershipRequest is one membership mutation (json.CrewMemberEdit): remove,
 // or add/update with a leader flag. Admin-gated.
 message SetCrewMembershipRequest {
-  string event_name = 1 [(buf.validate.field).string.min_len = 1];
-  string slug = 2 [(buf.validate.field).string.min_len = 1];
+  int32 event_id = 1 [(buf.validate.field).int32.gt = 0];
+  string crew_slug = 2 [(buf.validate.field).string.min_len = 1];
   int32 person_id = 3 [(buf.validate.field).int32.gt = 0];
   bool remove = 4;
   bool is_leader = 5;
@@ -59,7 +72,7 @@ message SetCrewMembershipResponse {}
 // the caller reads/edits only crews they lead (authz is leadership, checked in the
 // handler), distinct from the admin crew RPCs above.
 message ListMyCrewsRequest {
-  string event_name = 1 [(buf.validate.field).string.min_len = 1];
+  int32 event_id = 1 [(buf.validate.field).int32.gt = 0];
 }
 
 message ListMyCrewsResponse {
@@ -67,8 +80,8 @@ message ListMyCrewsResponse {
 }
 
 message SetMyCrewMembershipRequest {
-  string event_name = 1 [(buf.validate.field).string.min_len = 1];
-  string slug = 2 [(buf.validate.field).string.min_len = 1];
+  int32 event_id = 1 [(buf.validate.field).int32.gt = 0];
+  string crew_slug = 2 [(buf.validate.field).string.min_len = 1];
   int32 person_id = 3 [(buf.validate.field).int32.gt = 0];
   bool remove = 4;
   bool is_leader = 5;

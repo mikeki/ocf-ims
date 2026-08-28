@@ -60,7 +60,7 @@ message SetIncidentTypeHiddenResponse {}
 // ProposeIncidentTypeRequest is a writer's proposal from the incident form. The route
 // is event-scoped only to authorize the caller as a writer; the type itself is global.
 message ProposeIncidentTypeRequest {
-  string event_name = 1 [(buf.validate.field).string.min_len = 1];
+  int32 event_id = 1 [(buf.validate.field).int32.gt = 0];
   ocf.ims.resources.v1.IncidentType incident_type = 2;
 }
 
