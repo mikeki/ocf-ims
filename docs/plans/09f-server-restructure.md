@@ -49,6 +49,11 @@ validate interceptor, the generated `servicev1connect` handler interface), we wa
 to learn it in an afternoon on the tree we already understand, not tangled up in
 the restructure diff.
 
+**One branch, not two.** Step 0 lives on the **same branch** that will carry slice
+1a — it is a throwaway local validation, so it gets no branch and no PR of its own
+(there is nothing to review in a spike you delete). Do it first on the current tree,
+prove it, revert it, then start the `git mv` on that same branch.
+
 **What.** On the **current** tree (no move yet):
 
 1. Add a tiny hand-written implementation of **one** `ImsService` method — pick a
@@ -68,13 +73,14 @@ the restructure diff.
    response; a request that violates a protovalidate constraint returns
    `invalid_argument`; `go test` exercises it through the **generated connect-go
    client** (the Phase 1 gate's client path, rehearsed once).
-5. **Delete the spike.** It is scaffolding, not 1d. Its findings (below) are the
-   keeper.
+5. **Revert the spike locally** (`git restore` / drop the WIP commit) **before the
+   1a `git mv` begins**, so it never lands in the branch's history. It is
+   scaffolding, not 1d; only its findings (below) are the keeper.
 
 **Gate for Step 0:** one RPC answers over Connect locally, one bad request is
 rejected by the interceptor, one test hits it through the generated client — then
-the diff is reverted, leaving only a findings note. This is a spike, not a slice
-deliverable.
+the diff is reverted on the same branch, leaving only a findings note before the
+move begins. This is a local spike, not a slice deliverable, and not its own branch.
 
 ## Slice 1a — the restructure
 
