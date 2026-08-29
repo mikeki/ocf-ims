@@ -1,0 +1,20 @@
+// SPDX-License-Identifier: Apache-2.0
+
+syntax = "proto3";
+
+package ocf.ims.service.rpc.v1;
+
+import "buf/validate/validate.proto";
+import "ocf/ims/resources/v1/metrics.proto";
+
+option go_package = "github.com/mikeki/ocf-ims/gen/ocf/ims/service/rpc/v1;servicerpcv1";
+
+// Request/response envelopes for the metrics RPC (declared in ../../v1/service.proto).
+
+message GetMetricsRequest {
+  int32 event_id = 1 [(buf.validate.field).int32.gt = 0];
+}
+
+message GetMetricsResponse {
+  ocf.ims.resources.v1.Metrics metrics = 1;
+}

@@ -1,0 +1,67 @@
+// SPDX-License-Identifier: Apache-2.0
+
+syntax = "proto3";
+
+package ocf.ims.service.rpc.v1;
+
+import "buf/validate/validate.proto";
+import "ocf/ims/resources/v1/area.proto";
+
+option go_package = "github.com/mikeki/ocf-ims/gen/ocf/ims/service/rpc/v1;servicerpcv1";
+
+// Request/response envelopes for the area RPCs (declared in ../../v1/service.proto).
+
+message ListAreasRequest {
+  int32 event_id = 1 [(buf.validate.field).int32.gt = 0];
+}
+
+message ListAreasResponse {
+  repeated ocf.ims.resources.v1.Area areas = 1;
+}
+
+// api.EditAreas (POST /areas) multiplexes four verbs on one body via selector fields
+// (empty slug / DuplicateOf / Approved / else). Contract-first splits them into
+// explicit RPCs, the same call the crew decomposition made — approve and mark-duplicate
+// are state transitions and a destructive merge, not "save an area".
+
+// CreateAreaRequest creates an area in an event. A non-admin writer's create is a
+// *proposal* (unapproved, proposer recorded — so a Ranger can add a missing location
+// from the incident form); an area admin's is approved immediately. The slug is
+// server-derived from the name, so it is unset here.
+message CreateAreaRequest {
+  int32 event_id = 1 [(buf.validate.field).int32.gt = 0];
+  ocf.ims.resources.v1.Area area = 2;
+}
+
+// CreateAreaResponse returns the server-derived area_slug (the per-event key).
+message CreateAreaResponse {
+  string area_slug = 1;
+}
+
+// UpdateAreaRequest renames / reparents an existing area (admin-only).
+message UpdateAreaRequest {
+  int32 event_id = 1 [(buf.validate.field).int32.gt = 0];
+  string area_slug = 2 [(buf.validate.field).string.min_len = 1];
+  ocf.ims.resources.v1.Area area = 3;
+}
+
+message UpdateAreaResponse {}
+
+// ApproveAreaRequest approves a pending proposed area (admin-only).
+message ApproveAreaRequest {
+  int32 event_id = 1 [(buf.validate.field).int32.gt = 0];
+  string area_slug = 2 [(buf.validate.field).string.min_len = 1];
+}
+
+message ApproveAreaResponse {}
+
+// MarkAreaDuplicateRequest marks a proposed area a duplicate of a canonical one:
+// re-points the duplicate's incidents to the canonical area, then deletes it
+// (admin-only). A destructive merge, so it is its own RPC, not a Save selector.
+message MarkAreaDuplicateRequest {
+  int32 event_id = 1 [(buf.validate.field).int32.gt = 0];
+  string area_slug = 2 [(buf.validate.field).string.min_len = 1];
+  string canonical_slug = 3 [(buf.validate.field).string.min_len = 1];
+}
+
+message MarkAreaDuplicateResponse {}

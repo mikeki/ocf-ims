@@ -1,0 +1,68 @@
+// SPDX-License-Identifier: Apache-2.0
+
+syntax = "proto3";
+
+package ocf.ims.service.rpc.v1;
+
+import "buf/validate/validate.proto";
+import "ocf/ims/resources/v1/outcome.proto";
+
+option go_package = "github.com/mikeki/ocf-ims/gen/ocf/ims/service/rpc/v1;servicerpcv1";
+
+// Request/response envelopes for the outcome RPCs (declared in ../../v1/service.proto).
+
+message ListOutcomesRequest {}
+
+message ListOutcomesResponse {
+  repeated ocf.ims.resources.v1.Outcome outcomes = 1;
+}
+
+// api.EditOutcomes (POST /outcomes) multiplexes four admin verbs on one body
+// (id == 0 / Approved / Hidden / else), mirroring incident types. Contract-first
+// splits them into explicit RPCs — approve and set-hidden are state transitions,
+// not "save an outcome".
+
+// CreateOutcomeRequest is the admin create of a global outcome (approved
+// immediately). A writer's proposal goes through ProposeOutcome instead.
+message CreateOutcomeRequest {
+  ocf.ims.resources.v1.Outcome outcome = 1;
+}
+
+// CreateOutcomeResponse returns the server-assigned id.
+message CreateOutcomeResponse {
+  int32 outcome_id = 1;
+}
+
+// UpdateOutcomeRequest edits an existing outcome (name).
+message UpdateOutcomeRequest {
+  int32 outcome_id = 1 [(buf.validate.field).int32.gt = 0];
+  ocf.ims.resources.v1.Outcome outcome = 2;
+}
+
+message UpdateOutcomeResponse {}
+
+// ApproveOutcomeRequest approves a pending proposed outcome (admin-only).
+message ApproveOutcomeRequest {
+  int32 outcome_id = 1 [(buf.validate.field).int32.gt = 0];
+}
+
+message ApproveOutcomeResponse {}
+
+// SetOutcomeHiddenRequest retires an outcome from the incident-form picker, or
+// restores it, without deleting it — historical incidents keep referencing it
+// (admin-only).
+message SetOutcomeHiddenRequest {
+  int32 outcome_id = 1 [(buf.validate.field).int32.gt = 0];
+  bool hidden = 2;
+}
+
+message SetOutcomeHiddenResponse {}
+
+// ProposeOutcomeRequest is a writer's proposal from the incident form; event-scoped
+// only to authorize the caller (the outcome is global).
+message ProposeOutcomeRequest {
+  int32 event_id = 1 [(buf.validate.field).int32.gt = 0];
+  ocf.ims.resources.v1.Outcome outcome = 2;
+}
+
+message ProposeOutcomeResponse {}

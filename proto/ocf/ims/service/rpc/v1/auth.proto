@@ -1,0 +1,92 @@
+// SPDX-License-Identifier: Apache-2.0
+
+syntax = "proto3";
+
+package ocf.ims.service.rpc.v1;
+
+import "buf/validate/validate.proto";
+import "google/protobuf/timestamp.proto";
+
+option go_package = "github.com/mikeki/ocf-ims/gen/ocf/ims/service/rpc/v1;servicerpcv1";
+
+// Request/response envelopes for the auth & self-service RPCs (deferred here from
+// slice 0c: pure service surface — no backing resource, and the whoami response is
+// computed per-viewer permissions). The ImsService methods are declared in
+// ../../v1/service.proto. Presence/required constraints that a resource cannot carry
+// live on these request messages.
+
+// LoginRequest mirrors api.PostAuthRequest. email is the sole login identifier
+// (feedback round 9); the server matches it case-insensitively against PERSON.EMAIL.
+// (The REST field was the generic `identification`; the contract names it for what it
+// is. No format constraint here — the handler does the email match, and adding one
+// would change behavior.)
+message LoginRequest {
+  string email = 1 [(buf.validate.field).string.min_len = 1];
+  string password = 2 [(buf.validate.field).string.min_len = 1];
+}
+
+// LoginResponse mirrors api.PostAuthResponse. expires_at is the suggested
+// early-refresh time (api used epoch millis; the contract uses a Timestamp).
+message LoginResponse {
+  string token = 1;
+  google.protobuf.Timestamp expires_at = 2;
+}
+
+// RefreshTokenRequest is empty: the web client's refresh token rides in the HttpOnly
+// cookie (unchanged under Connect — the handler reads it from the request headers).
+// The native Expo client has no cookie jar, so it will carry the token in the request
+// body and store it in expo-secure-store; that is a planned Phase-3a addition (its
+// exact shape is a 3a decision, and field numbers stay free until the app ships, so
+// adding the field then is non-breaking).
+message RefreshTokenRequest {}
+
+// RefreshTokenResponse mirrors api.RefreshAccessTokenResponse.
+message RefreshTokenResponse {
+  string token = 1;
+  google.protobuf.Timestamp expires_at = 2;
+}
+
+// GetAuthStatusRequest mirrors GET /auth's optional event_id query param — when set,
+// the response's event_access carries the caller's permissions for that one event.
+message GetAuthStatusRequest {
+  optional int32 event_id = 1;
+}
+
+// GetAuthStatusResponse mirrors api.GetAuthResponse (the whoami / profile response).
+// Every field is a per-viewer derived value, which is why this lives on the response
+// envelope rather than a resource.
+message GetAuthStatusResponse {
+  bool authenticated = 1;
+  string user = 2;
+  int32 person_id = 3;
+  bool admin = 4;
+  // can_manage_personnel reports the GlobalAdministratePersonnel global (drives UI
+  // gating; the endpoints remain authoritative).
+  bool can_manage_personnel = 5;
+  // event_access is keyed by event id; populated only for the requested event.
+  map<int32, AccessForEvent> event_access = 6;
+  // push_vapid_public_key is present only when web push is configured.
+  string push_vapid_public_key = 7;
+  bool using_default_password = 8;
+}
+
+// AccessForEvent is the caller's computed per-event permission set (api.AccessForEvent).
+// Derived, viewer-dependent — response-only.
+message AccessForEvent {
+  int32 event_id = 1;
+  bool read_incidents = 2;
+  bool write_incidents = 3;
+  bool write_reports = 4;
+  bool read_visits = 5;
+  bool write_visits = 6;
+  bool attach_files = 7;
+  bool read_areas = 8;
+  // read_incidents_via_grant (52f): lacks event-wide incident read but has at least
+  // one per-incident grant in this event.
+  bool read_incidents_via_grant = 9;
+  // invite_reporters (53a): may invite reporters to this event.
+  bool invite_reporters = 10;
+}
+
+// The caller's own self-service RPCs (change password, update profile, delete own
+// picture) moved to profile.proto — this file is authentication/session only.

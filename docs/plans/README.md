@@ -34,10 +34,11 @@ management system.
 | [07-proto-integration.md](07-proto-integration.md) | Platform — proto-first API contract (buf + Connect-Go) | ⏸️ Park lifted (fair is over) — resumed under [09](09-proto-connect-platform.md). `archive/proto-integration` is reference only. |
 | [08-db-migration-tooling.md](08-db-migration-tooling.md) | Platform — DB migration tooling (goose, single source of truth) | ✅ Done (A #56, B #57, C #58, D #59, E #60) |
 | [09-proto-connect-platform.md](09-proto-connect-platform.md) | Platform — proto-first Connect architecture + an Expo mobile client (supersedes 05/06/07) | Plan — for review; Phase 0 in progress |
-| [09a-codegen-skeleton.md](09a-codegen-skeleton.md) | Phase 0, slice 0a — buf + 4 generators + pnpm/biome scaffolding, one throwaway proto | ✅ Merged (PR #202) |
-| [09b-core-domain.md](09b-core-domain.md) | Phase 0, slice 0b — resources/v1 messages (incident, report, journal entry, involvement, linked incident, area, event) + vendored protovalidate | ✅ Merged (PR #203) |
-| [09c-people-access.md](09c-people-access.md) | Phase 0, slice 0c — resources/v1 people & access (person, participation, crew, membership); auth envelopes deferred to 0e | ✅ Merged (PR #203) |
-| [09d-taxonomies-admin.md](09d-taxonomies-admin.md) | Phase 0, slice 0d — resources/v1 taxonomies & admin (incident type, outcome, action log, notification, metrics); White Bird visits deliberately excluded | ✅ Merged (PR #203) |
+| [09a-codegen-skeleton.md](09a-codegen-skeleton.md) | Phase 0, slice 0a — buf + 4 generators + pnpm/biome scaffolding, one throwaway proto | Built — for review (PR #202) |
+| [09b-core-domain.md](09b-core-domain.md) | Phase 0, slice 0b — resources/v1 messages (incident, report, journal entry, involvement, linked incident, area, event) + vendored protovalidate | In progress — for review (PR #203) |
+| [09c-people-access.md](09c-people-access.md) | Phase 0, slice 0c — resources/v1 people & access (person, participation, crew, membership); auth envelopes deferred to 0e | In progress — for review (PR #203) |
+| [09d-taxonomies-admin.md](09d-taxonomies-admin.md) | Phase 0, slice 0d — resources/v1 taxonomies & admin (incident type, outcome, action log, notification, metrics); White Bird visits deliberately excluded | In progress — for review (PR #203) |
+| [09e-service-surface.md](09e-service-surface.md) | Phase 0, slice 0e — single `ImsService` (49 RPCs) + service/v1 request/response envelopes + the route→RPC mapping table (70 routes, zero unclassified) | In progress — for review (stacked on #203) |
 | [09f-server-restructure.md](09f-server-restructure.md) | Phase 1, slice 1a — transport de-risk spike, then relocate the Go tree to `go/` + `internal/<domain>/` (opens Phase 1) | Plan — for review |
 | [10-cleanup-pass.md](10-cleanup-pass.md) | Phase 1 — Preparation & clean-up | ✅ Done (PRs #1–#5) |
 | [11-remove-concentric-streets.md](11-remove-concentric-streets.md) | Phase 1 — Remove Concentric Streets | ✅ Done (PR #1) |

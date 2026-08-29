@@ -1,0 +1,109 @@
+// SPDX-License-Identifier: Apache-2.0
+
+syntax = "proto3";
+
+package ocf.ims.service.rpc.v1;
+
+import "buf/validate/validate.proto";
+import "ocf/ims/resources/v1/person.proto";
+
+option go_package = "github.com/mikeki/ocf-ims/gen/ocf/ims/service/rpc/v1;servicerpcv1";
+
+// Request/response envelopes for the personnel RPCs (declared in ../../v1/service.proto).
+
+// ListPersonnelRequest mirrors GET /personnel's query params, which select the mode:
+// all=true is the admin listing (email/phone/has_password populated); query is the
+// event-scoped typeahead; event_id scopes the roster. All optional.
+message ListPersonnelRequest {
+  optional int32 event_id = 1;
+  optional string query = 2;
+  bool all = 3;
+}
+
+message ListPersonnelResponse {
+  repeated ocf.ims.resources.v1.Person people = 1;
+}
+
+// CreatePersonRequest mirrors api.CreatePersonRequest. password/use_default_password
+// are the two IMS-access paths (use_default honored only when password is empty). The
+// event-scoped fields are optional (a login-less registry entry sets none).
+message CreatePersonRequest {
+  string handle = 1 [(buf.validate.field).string.max_len = 64];
+  string name = 2 [(buf.validate.field).string.max_len = 255];
+  string email = 3 [(buf.validate.field).string.max_len = 128];
+  string phone = 4 [(buf.validate.field).string.max_len = 32];
+  string password = 5;
+  bool use_default_password = 6;
+  string event = 7;
+  string wristband = 8 [(buf.validate.field).string.max_len = 32];
+  ocf.ims.resources.v1.ParticipationType participation_type = 9
+      [(buf.validate.field).enum.defined_only = true];
+}
+
+message CreatePersonResponse {
+  ocf.ims.resources.v1.Person person = 1;
+}
+
+// UpdatePersonRequest mirrors api.EditPersonRequest: optional identity/contact fields
+// (unset = unchanged) plus the event-scoped participation fields.
+message UpdatePersonRequest {
+  int32 person_id = 1 [(buf.validate.field).int32.gt = 0];
+  optional string handle = 2 [(buf.validate.field).string.max_len = 64];
+  optional string name = 3 [(buf.validate.field).string.max_len = 255];
+  optional string email = 4 [(buf.validate.field).string.max_len = 128];
+  optional string phone = 5 [(buf.validate.field).string.max_len = 32];
+  string event = 6;
+  string wristband = 7 [(buf.validate.field).string.max_len = 32];
+  ocf.ims.resources.v1.ParticipationType participation_type = 8
+      [(buf.validate.field).enum.defined_only = true];
+}
+
+message UpdatePersonResponse {}
+
+// SetPersonPasswordRequest mirrors api.SetPersonPasswordRequest (admin reset).
+// use_default_password resets to the shared default and ignores password.
+message SetPersonPasswordRequest {
+  int32 person_id = 1 [(buf.validate.field).int32.gt = 0];
+  string password = 2;
+  bool use_default_password = 3;
+}
+
+message SetPersonPasswordResponse {}
+
+// SetPersonAdminRequest toggles PERSON.IS_ADMIN (admin-only; refuses to clear the last
+// admin — a handler-enforced 409).
+message SetPersonAdminRequest {
+  int32 person_id = 1 [(buf.validate.field).int32.gt = 0];
+  bool is_admin = 2;
+}
+
+message SetPersonAdminResponse {}
+
+// SetPersonParticipationRequest mirrors api.SetParticipationRequest plus the path id
+// and the event (a query param on the REST route).
+message SetPersonParticipationRequest {
+  int32 person_id = 1 [(buf.validate.field).int32.gt = 0];
+  int32 event_id = 2 [(buf.validate.field).int32.gt = 0];
+  string wristband = 3 [(buf.validate.field).string.max_len = 32];
+  ocf.ims.resources.v1.ParticipationType participation_type = 4
+      [(buf.validate.field).enum.defined_only = true];
+}
+
+message SetPersonParticipationResponse {}
+
+// RemovePersonFromEventRequest deletes a person's PERSON__EVENT row for the event.
+message RemovePersonFromEventRequest {
+  int32 person_id = 1 [(buf.validate.field).int32.gt = 0];
+  int32 event_id = 2 [(buf.validate.field).int32.gt = 0];
+}
+
+message RemovePersonFromEventResponse {}
+
+// DeletePersonProfilePictureRequest removes a person's picture (admin). The upload
+// (POST .../picture) and serve (GET .../picture) are plain-HTTP (M8); only the delete
+// is an RPC.
+message DeletePersonProfilePictureRequest {
+  int32 person_id = 1 [(buf.validate.field).int32.gt = 0];
+}
+
+message DeletePersonProfilePictureResponse {}

@@ -1,0 +1,66 @@
+// SPDX-License-Identifier: Apache-2.0
+
+syntax = "proto3";
+
+package ocf.ims.service.rpc.v1;
+
+import "buf/validate/validate.proto";
+import "ocf/ims/resources/v1/journal_entry.proto";
+import "ocf/ims/resources/v1/report.proto";
+
+option go_package = "github.com/mikeki/ocf-ims/gen/ocf/ims/service/rpc/v1;servicerpcv1";
+
+// Request/response envelopes for the field-report RPCs (declared in ../../v1/service.proto).
+
+// ReportView wraps the Report resource with the caller-dependent edit-gating flags
+// json.Report carried inline. Response-only.
+message ReportView {
+  ocf.ims.resources.v1.Report report = 1;
+  // may_edit_summary: summary edits are limited to the report's creator and admins.
+  bool may_edit_summary = 2;
+  // may_add_journal_entry: additionally allows the writer role.
+  bool may_add_journal_entry = 3;
+}
+
+message ListReportsRequest {
+  int32 event_id = 1 [(buf.validate.field).int32.gt = 0];
+}
+
+message ListReportsResponse {
+  repeated ReportView reports = 1;
+}
+
+message GetReportRequest {
+  int32 event_id = 1 [(buf.validate.field).int32.gt = 0];
+  int32 report_number = 2 [(buf.validate.field).int32.gt = 0];
+}
+
+message GetReportResponse {
+  ReportView report = 1;
+}
+
+message CreateReportRequest {
+  int32 event_id = 1 [(buf.validate.field).int32.gt = 0];
+  ocf.ims.resources.v1.Report report = 2;
+}
+
+message CreateReportResponse {
+  int32 report_number = 1;
+}
+
+message UpdateReportRequest {
+  int32 event_id = 1 [(buf.validate.field).int32.gt = 0];
+  int32 report_number = 2 [(buf.validate.field).int32.gt = 0];
+  ocf.ims.resources.v1.Report report = 3;
+}
+
+message UpdateReportResponse {}
+
+message UpdateReportJournalEntryRequest {
+  int32 event_id = 1 [(buf.validate.field).int32.gt = 0];
+  int32 report_number = 2 [(buf.validate.field).int32.gt = 0];
+  int32 journal_entry_id = 3 [(buf.validate.field).int32.gt = 0];
+  ocf.ims.resources.v1.JournalEntry entry = 4;
+}
+
+message UpdateReportJournalEntryResponse {}

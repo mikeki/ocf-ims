@@ -1,0 +1,20 @@
+// SPDX-License-Identifier: Apache-2.0
+
+syntax = "proto3";
+
+package ocf.ims.service.rpc.v1;
+
+import "ocf/ims/resources/v1/action_log.proto";
+
+option go_package = "github.com/mikeki/ocf-ims/gen/ocf/ims/service/rpc/v1;servicerpcv1";
+
+// Request/response envelopes for the action-log RPC (declared in ../../v1/service.proto).
+
+// ListActionLogsRequest is the admin audit read (GET /actionlogs). No filters are
+// exposed by the REST endpoint today; kept empty (add pagination/filters here when
+// the endpoint grows them).
+message ListActionLogsRequest {}
+
+message ListActionLogsResponse {
+  repeated ocf.ims.resources.v1.ActionLog action_logs = 1;
+}
