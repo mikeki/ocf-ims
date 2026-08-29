@@ -1,0 +1,67 @@
+// SPDX-License-Identifier: Apache-2.0
+
+syntax = "proto3";
+
+package ocf.ims.service.rpc.v1;
+
+import "buf/validate/validate.proto";
+import "ocf/ims/resources/v1/incident_type.proto";
+
+option go_package = "github.com/mikeki/ocf-ims/gen/ocf/ims/service/rpc/v1;servicerpcv1";
+
+// Request/response envelopes for the incident-type RPCs (declared in ../../v1/service.proto).
+
+message ListIncidentTypesRequest {}
+
+message ListIncidentTypesResponse {
+  repeated ocf.ims.resources.v1.IncidentType incident_types = 1;
+}
+
+// api.EditIncidentTypes (POST /incident_types) multiplexes four admin verbs on one
+// body (id == 0 / Approved / Hidden / else). Contract-first splits them into explicit
+// RPCs, as the crew and area decompositions did — approve and set-hidden are state
+// transitions, not "save a type".
+
+// CreateIncidentTypeRequest is the admin create of a global incident type (approved
+// immediately). A writer's proposal goes through ProposeIncidentType instead.
+message CreateIncidentTypeRequest {
+  ocf.ims.resources.v1.IncidentType incident_type = 1;
+}
+
+// CreateIncidentTypeResponse returns the server-assigned id.
+message CreateIncidentTypeResponse {
+  int32 incident_type_id = 1;
+}
+
+// UpdateIncidentTypeRequest edits an existing type (name / description / group).
+message UpdateIncidentTypeRequest {
+  int32 incident_type_id = 1 [(buf.validate.field).int32.gt = 0];
+  ocf.ims.resources.v1.IncidentType incident_type = 2;
+}
+
+message UpdateIncidentTypeResponse {}
+
+// ApproveIncidentTypeRequest approves a pending proposed type (admin-only).
+message ApproveIncidentTypeRequest {
+  int32 incident_type_id = 1 [(buf.validate.field).int32.gt = 0];
+}
+
+message ApproveIncidentTypeResponse {}
+
+// SetIncidentTypeHiddenRequest retires a type from the incident-form picker, or
+// restores it, without deleting it (admin-only).
+message SetIncidentTypeHiddenRequest {
+  int32 incident_type_id = 1 [(buf.validate.field).int32.gt = 0];
+  bool hidden = 2;
+}
+
+message SetIncidentTypeHiddenResponse {}
+
+// ProposeIncidentTypeRequest is a writer's proposal from the incident form. The route
+// is event-scoped only to authorize the caller as a writer; the type itself is global.
+message ProposeIncidentTypeRequest {
+  int32 event_id = 1 [(buf.validate.field).int32.gt = 0];
+  ocf.ims.resources.v1.IncidentType incident_type = 2;
+}
+
+message ProposeIncidentTypeResponse {}

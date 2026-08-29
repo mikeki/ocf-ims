@@ -83,7 +83,7 @@ message IncidentLocation {
 
 // IncidentPerson is a person's involvement in an incident (the INCIDENT__PERSON
 // table): the referenced person plus their role and access grant. Mirrors
-// json.IncidentPerson, minus the derived read-only has_event_access flag (0e).
+// json.IncidentPerson.
 message IncidentPerson {
   // person references the involved person. person_id is required on write;
   // handle/name are read-only display echoes. (json.IncidentPerson used int64
@@ -94,4 +94,12 @@ message IncidentPerson {
   // granted_access records a per-incident read + journal-append grant (52f);
   // writable on attach (writer-gated), echoed on read.
   bool granted_access = 3;
+  // has_event_access is output-only: whether this person already holds access to
+  // this incident through their event-wide role (accounting for privacy — a plain
+  // writer reads false on a private incident, the creator true). Server-computed
+  // and ignored on write, like Incident.created; it drives the People editor's
+  // "already has access" hint. It sits here (not on the read response) because it
+  // is a flag about the involved *person*; the caller-relative flag
+  // (viewer_may_add_journal) is the one that lives on IncidentView instead.
+  bool has_event_access = 4;
 }

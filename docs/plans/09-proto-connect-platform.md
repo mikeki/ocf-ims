@@ -432,6 +432,57 @@ Queued before any code is written:
   contract" is a real adoption-path decision, not a mechanical port of everything in
   `json/`. *Adoption-path detail (#10).*
 
+### 0e — Service surface (2026-08-25)
+
+- **Body-multiplexing REST endpoints are a *systematic* 1→N map onto RPCs, not a
+  one-off.** `POST /crews` was the first spotted (create/rename + delete + membership →
+  `SaveCrew`/`DeleteCrew`/`SetCrewMembership`), but the 0e review found the same shape
+  across the whole admin-taxonomy write surface: `POST /areas`, `POST /incident_types`
+  and `POST /outcomes` each dispatch create / update / approve / (set-hidden |
+  mark-duplicate) off body selector fields (`id == 0`, `Approved`, `Hidden`,
+  `DuplicateOf`). Contract-first decomposes all four into explicit verbs (58 RPCs vs the
+  49 the single-`Save*` first cut showed) — a brownfield's "one POST does everything"
+  handlers routinely hide a fistful of verbs, and finding them is a *repeatable* audit
+  (grep the handler for its selector `switch`), not luck. *Adoption-path detail (#10).*
+- **A derived read-only field's home is decided by *whom it describes*, and a per-member
+  flag belongs on the resource, not a parallel response map.** 0b pushed *all* derived
+  fields onto response wrappers; the 0e review split that: a **caller**-relative flag
+  (`viewer_may_add_journal`) stays on the view, but a flag about a **resource member**
+  (`IncidentPerson.has_event_access`) belongs on the resource as **output-only** —
+  matching AIP-203 and the echoes (`created_by`, `PersonRef.handle`/`name`) already
+  carried there. The rejected alternative — a `map<int32,bool>` on the wrapper keyed by
+  member id — needs a client join and doesn't extend. *Refines finding #2; the blueprint
+  says "constraints/derived fields in the proto" but not which message owns each.*
+- **"Blobs stay plain HTTP" cuts across a resource, not around it.** Picture/attachment
+  *upload* and *download* are plain-HTTP (M8), but the picture *delete* — no blob —
+  becomes an RPC. So one resource's operations straddle two transports; the M8
+  exception is per-operation, not per-resource. Worth stating where the stack draws
+  the RPC/plain-HTTP line (extends finding #6).
+- **The mapping table needs a third disposition: deliberately-excluded.** The gate
+  ("every route is an RPC or a plain-HTTP exception") has no bucket for a route whose
+  subsystem is being deleted (visits). Forcing those into "plain-HTTP exception" would
+  be a lie (they are not staying). A brownfield adoption needs an explicit "retiring,
+  not modelled" disposition, distinct from the M8 exceptions. *Adoption-path detail
+  (#10).*
+- **The connect dependency flips to direct exactly at the first service.** Through
+  0b–0d (messages only) `connectrpc.com/connect` sat indirect; 0e's `ImsService` makes
+  `go mod tidy` promote it to a direct require — the predicted, self-documenting
+  signal that the first service landed.
+- **buf's `RPC_REQUEST_RESPONSE_UNIQUE` forbids a shared `Empty`.** Every empty request
+  or response must be its own named type (`MarkAllNotificationsReadRequest{}`, …). More
+  verbose than a `google.protobuf.Empty`, but it keeps each RPC's schema independently
+  evolvable — a deliberate STANDARD-lint stance worth noting for teams reaching for a
+  shared empty message.
+- **The contract wants the surrogate key even where the REST URL uses a natural one.**
+  This brownfield addresses events by *name* in every URL (`/events/{eventName}/…`), and
+  `EVENT.NAME` is even unique — so name "works" as a key. The 0e review still moved every
+  request selector to `int32 event_id`: a surrogate id is rename-stable and unambiguous,
+  and it is what the typed contract should carry, with the human name kept only as a
+  read-only display denormalization on resources. The migration cost is real and worth
+  naming: the ported client, which routes by the URL's name, must resolve name → id
+  (here, from the events list it already loads). A REST-URL natural key is not
+  automatically the contract's key. *Adoption-path detail (#10).*
+
 ## 8. Open questions
 
 1. **Does the Go binary keep serving static assets in production**, or does Caddy?

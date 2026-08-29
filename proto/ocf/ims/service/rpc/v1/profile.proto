@@ -1,0 +1,42 @@
+// SPDX-License-Identifier: Apache-2.0
+
+syntax = "proto3";
+
+package ocf.ims.service.rpc.v1;
+
+import "buf/validate/validate.proto";
+
+option go_package = "github.com/mikeki/ocf-ims/gen/ocf/ims/service/rpc/v1;servicerpcv1";
+
+// Request/response envelopes for the caller's own self-service RPCs — the account a
+// signed-in person manages for themselves (password, profile fields, profile
+// picture), all keyed off the JWT identity. Kept separate from auth.proto, which is
+// authentication/session (login, refresh, whoami), and from person.proto, which is
+// an admin managing *other* people. The ImsService methods are declared in
+// ../../v1/service.proto.
+
+// ChangeOwnPasswordRequest mirrors api.SetOwnPasswordRequest (the caller sets their
+// own password; identity resolved from the JWT).
+message ChangeOwnPasswordRequest {
+  string password = 1 [(buf.validate.field).string.min_len = 1];
+}
+
+message ChangeOwnPasswordResponse {}
+
+// UpdateOwnProfileRequest mirrors api.SetOwnProfileRequest — each field optional so
+// an unset field is left unchanged (the JWT identifies the caller).
+message UpdateOwnProfileRequest {
+  optional string handle = 1 [(buf.validate.field).string.max_len = 64];
+  optional string name = 2 [(buf.validate.field).string.max_len = 255];
+  optional string email = 3 [(buf.validate.field).string.max_len = 128];
+  optional string phone = 4 [(buf.validate.field).string.max_len = 32];
+}
+
+message UpdateOwnProfileResponse {}
+
+// DeleteOwnProfilePictureRequest removes the caller's own picture (the JWT
+// identifies them). The upload (POST /auth/picture) is a plain-HTTP multipart
+// endpoint (M8); only the delete is an RPC.
+message DeleteOwnProfilePictureRequest {}
+
+message DeleteOwnProfilePictureResponse {}

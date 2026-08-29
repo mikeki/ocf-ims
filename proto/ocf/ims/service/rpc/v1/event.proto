@@ -1,0 +1,41 @@
+// SPDX-License-Identifier: Apache-2.0
+
+syntax = "proto3";
+
+package ocf.ims.service.rpc.v1;
+
+import "buf/validate/validate.proto";
+import "ocf/ims/resources/v1/event.proto";
+
+option go_package = "github.com/mikeki/ocf-ims/gen/ocf/ims/service/rpc/v1;servicerpcv1";
+
+// Request/response envelopes for the event RPCs (declared in ../../v1/service.proto).
+
+message ListEventsRequest {}
+
+message ListEventsResponse {
+  repeated ocf.ims.resources.v1.Event events = 1;
+}
+
+// CreateEventRequest creates an event (POST /events with event.id == 0; the admin
+// Events page). Carries the whole resource per the Phase-0 rule; the server assigns
+// the id. Split Create/Update rather than one upsert, for consistency with the rest
+// of the service (there is no `Save*`/upsert form in ImsService).
+message CreateEventRequest {
+  ocf.ims.resources.v1.Event event = 1;
+}
+
+// CreateEventResponse returns the server-assigned id (REST returned it in the
+// IMS-Event-ID header, which an empty response would have dropped).
+message CreateEventResponse {
+  int32 event_id = 1;
+}
+
+// UpdateEventRequest edits an existing event, keyed by its id (its stable surrogate
+// key, as UpdateIncidentType keys by incident_type_id).
+message UpdateEventRequest {
+  int32 event_id = 1 [(buf.validate.field).int32.gt = 0];
+  ocf.ims.resources.v1.Event event = 2;
+}
+
+message UpdateEventResponse {}
