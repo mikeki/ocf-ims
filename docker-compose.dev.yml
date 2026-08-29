@@ -30,8 +30,10 @@ services:
     # Survive host reboots (the host auto-reboots ~02:00 for kernel upgrades).
     restart: unless-stopped
 
-    # Map the repo into a directory in the container.
-    working_dir: /src
+    # Map the repo into a directory in the container. air runs from the go/
+    # module root (plan 09f) — that is where .air.toml lives and where build.go
+    # resolves; proto/ stays reachable at /src/proto (../proto from go/).
+    working_dir: /src/go
     volumes:
       - ./:/src/
 

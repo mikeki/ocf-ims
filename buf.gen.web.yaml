@@ -11,11 +11,15 @@
 # consume with `import type` only — the zero-runtime, no-bundler path (plan 09
 # M12). Output under packages/protocol-buffers/src/ is gitignored.
 #
-# Run via `go tool buf generate --template buf.gen.web.yaml`.
+# Run via `go tool buf generate --template buf.gen.web.yaml` from the go/ module
+# root (that is where `go tool` resolves the pinned buf; see bin/build/build.go and
+# the diverging-roots note in docs/plans/09f-server-restructure.md). buf resolves
+# `out` relative to that CWD, so the path reaches back UP to the repo-root pnpm
+# workspace (../packages), where packages/ stays with the TS tier.
 version: v2
 plugins:
   - local: ["pnpm", "exec", "protoc-gen-es"]
-    out: packages/protocol-buffers/src
+    out: ../packages/protocol-buffers/src
     opt:
       - target=ts
       - json_types=true

@@ -1,7 +1,7 @@
 # This file was created with much inspiration from
 # https://www.alexedwards.net/blog/a-time-saving-makefile-for-your-go-projects
 
-main_package_path = ./
+main_package_path = ./cmd/ocf-ims
 binary_name = ocf-ims
 
 ## build: build the server
@@ -32,14 +32,15 @@ run/live:
 
 
 ## compose/build: build the stack for live reloading
+# The compose files stay at the repo root (this Makefile lives under go/, plan 09f).
 .PHONY: compose/build
 compose/build:
-	docker compose -f docker-compose.dev.yml build --pull
+	docker compose -f ../docker-compose.dev.yml build --pull
 
 ## compose/live: run the application stack with live reloading
 .PHONY: compose/live
 compose/live:
-	docker compose -f docker-compose.dev.yml up
+	docker compose -f ../docker-compose.dev.yml up
 
 ## upgrade-deps: upgrade all Go deps
 .PHONY: upgrade-deps
