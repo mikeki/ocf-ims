@@ -17,11 +17,12 @@
 package integration_test
 
 import (
+	"net/http"
+	"testing"
+
 	imsjson "github.com/mikeki/ocf-ims/json"
 	"github.com/mikeki/ocf-ims/lib/rand"
 	"github.com/stretchr/testify/require"
-	"net/http"
-	"testing"
 )
 
 func TestCreateIncidentTypes(t *testing.T) {

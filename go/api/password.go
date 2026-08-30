@@ -24,6 +24,7 @@ import (
 	"net/http"
 
 	"github.com/mikeki/ocf-ims/directory"
+	"github.com/mikeki/ocf-ims/internal/server"
 	"github.com/mikeki/ocf-ims/lib/argon2id"
 	"github.com/mikeki/ocf-ims/lib/authz"
 	"github.com/mikeki/ocf-ims/lib/conv"
@@ -71,17 +72,17 @@ func (action SetPersonPassword) ServeHTTP(w http.ResponseWriter, req *http.Reque
 }
 
 func (action SetPersonPassword) setPersonPassword(req *http.Request) *herr.HTTPError {
-	_, globalPermissions, errHTTP := getGlobalPermissions(req, action.imsDBQ, action.userStore)
+	_, globalPermissions, errHTTP := server.GetGlobalPermissions(req, action.imsDBQ, action.userStore)
 	if errHTTP != nil {
-		return errHTTP.From("[getGlobalPermissions]")
+		return errHTTP.From("[server.GetGlobalPermissions]")
 	}
 	if globalPermissions&authz.GlobalAdministratePersonnel == 0 {
 		return herr.Forbidden("The requestor does not have GlobalAdministratePersonnel permission", nil)
 	}
 
-	body, errHTTP := readBodyAs[SetPersonPasswordRequest](req)
+	body, errHTTP := server.ReadBodyAs[SetPersonPasswordRequest](req)
 	if errHTTP != nil {
-		return errHTTP.From("[readBodyAs]")
+		return errHTTP.From("[server.ReadBodyAs]")
 	}
 	// Two paths: reset to the shared default or set a specific typed password. Either
 	// way it is hashed per user below; validate the typed one against the same bounds
@@ -101,7 +102,7 @@ func (action SetPersonPassword) setPersonPassword(req *http.Request) *herr.HTTPE
 
 	// The person is addressed by stable ID in the URL path (registry people may
 	// have no handle since 5e).
-	person, errHTTP := personByIDFromPath(req.Context(), action.imsDBQ, req)
+	person, errHTTP := server.PersonByIDFromPath(req.Context(), action.imsDBQ, req)
 	if errHTTP != nil {
 		return errHTTP
 	}
@@ -145,7 +146,7 @@ func (action SetPersonPassword) setPersonPassword(req *http.Request) *herr.HTTPE
 // prompt, and is the general self-service change primitive.
 //
 // The current password is intentionally NOT required: the caller is already
-// authenticated (RequireAuthN gates the route), and for the default-password case
+// authenticated (server.RequireAuthN gates the route), and for the default-password case
 // re-typing the shared secret would add friction with no real security gain.
 type SetOwnPassword struct {
 	imsDBQ    *store.DBQ
@@ -171,15 +172,15 @@ func (action SetOwnPassword) ServeHTTP(w http.ResponseWriter, req *http.Request)
 }
 
 func (action SetOwnPassword) setOwnPassword(req *http.Request) *herr.HTTPError {
-	jwtCtx, errHTTP := getJwtCtx(req)
+	jwtCtx, errHTTP := server.GetJwtCtx(req)
 	if errHTTP != nil {
-		return errHTTP.From("[getJwtCtx]")
+		return errHTTP.From("[server.GetJwtCtx]")
 	}
 	personID := jwtCtx.Claims.PersonID()
 
-	body, errHTTP := readBodyAs[SetOwnPasswordRequest](req)
+	body, errHTTP := server.ReadBodyAs[SetOwnPasswordRequest](req)
 	if errHTTP != nil {
-		return errHTTP.From("[readBodyAs]")
+		return errHTTP.From("[server.ReadBodyAs]")
 	}
 	if len(body.Password) < minPasswordLength {
 		return herr.BadRequest(fmt.Sprintf("Password must be at least %d characters", minPasswordLength), nil)

@@ -24,6 +24,7 @@ import (
 	"time"
 
 	"github.com/mikeki/ocf-ims/directory"
+	"github.com/mikeki/ocf-ims/internal/server"
 	imsjson "github.com/mikeki/ocf-ims/json"
 	"github.com/mikeki/ocf-ims/lib/conv"
 	"github.com/mikeki/ocf-ims/lib/herr"
@@ -177,14 +178,14 @@ func (action GetNotifications) ServeHTTP(w http.ResponseWriter, req *http.Reques
 		return
 	}
 	w.Header().Set("Cache-Control", fmt.Sprintf("max-age=%v, private", action.cacheControlShort.Milliseconds()/1000))
-	mustWriteJSON(w, req, resp)
+	server.MustWriteJSON(w, req, resp)
 }
 
 func (action GetNotifications) getNotifications(req *http.Request) (imsjson.NotificationList, *herr.HTTPError) {
 	var empty imsjson.NotificationList
-	jwtCtx, errHTTP := getJwtCtx(req)
+	jwtCtx, errHTTP := server.GetJwtCtx(req)
 	if errHTTP != nil {
-		return empty, errHTTP.From("[getJwtCtx]")
+		return empty, errHTTP.From("[server.GetJwtCtx]")
 	}
 	ctx := req.Context()
 	personID := jwtCtx.Claims.PersonID()
@@ -226,9 +227,9 @@ func (action MarkNotificationsRead) ServeHTTP(w http.ResponseWriter, req *http.R
 }
 
 func (action MarkNotificationsRead) markRead(req *http.Request) *herr.HTTPError {
-	jwtCtx, errHTTP := getJwtCtx(req)
+	jwtCtx, errHTTP := server.GetJwtCtx(req)
 	if errHTTP != nil {
-		return errHTTP.From("[getJwtCtx]")
+		return errHTTP.From("[server.GetJwtCtx]")
 	}
 	ctx := req.Context()
 	personID := jwtCtx.Claims.PersonID()

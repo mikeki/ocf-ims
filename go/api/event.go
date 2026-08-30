@@ -29,6 +29,7 @@ import (
 	"time"
 
 	"github.com/mikeki/ocf-ims/directory"
+	"github.com/mikeki/ocf-ims/internal/server"
 	imsjson "github.com/mikeki/ocf-ims/json"
 	"github.com/mikeki/ocf-ims/lib/authz"
 	"github.com/mikeki/ocf-ims/lib/conv"
@@ -51,13 +52,13 @@ func (action GetEvents) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 	}
 	w.Header().Set("Cache-Control", fmt.Sprintf(
 		"max-age=%v, private", action.cacheControlShort.Milliseconds()/1000))
-	mustWriteJSON(w, req, resp)
+	server.MustWriteJSON(w, req, resp)
 }
 func (action GetEvents) getEvents(req *http.Request) (imsjson.Events, *herr.HTTPError) {
 	var empty imsjson.Events
-	jwt, globalPermissions, errHTTP := getGlobalPermissions(req, action.imsDBQ, action.userStore)
+	jwt, globalPermissions, errHTTP := server.GetGlobalPermissions(req, action.imsDBQ, action.userStore)
 	if errHTTP != nil {
-		return empty, errHTTP.From("[getGlobalPermissions]")
+		return empty, errHTTP.From("[server.GetGlobalPermissions]")
 	}
 	// This is the first level of authorization. Per-event filtering is done farther down.
 	if globalPermissions&authz.GlobalListEvents == 0 {
@@ -73,9 +74,9 @@ func (action GetEvents) getEvents(req *http.Request) (imsjson.Events, *herr.HTTP
 	if err != nil {
 		return nil, herr.InternalServerError("Failed to get events", err).From("[Events]")
 	}
-	permsByEvent, errHTTP := permissionsByEvent(req.Context(), jwt, action.imsDBQ, action.userStore)
+	permsByEvent, errHTTP := server.PermissionsByEvent(req.Context(), jwt, action.imsDBQ, action.userStore)
 	if errHTTP != nil {
-		return empty, errHTTP.From("[permissionsByEvent]")
+		return empty, errHTTP.From("[server.PermissionsByEvent]")
 	}
 
 	var authorizedEvents []imsdb.EventsRow
@@ -128,9 +129,9 @@ func (action EditEvent) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 	herr.WriteNoContentResponse(w, "Success")
 }
 func (action EditEvent) editEvents(req *http.Request) (newEventID *int32, errHTTP *herr.HTTPError) {
-	_, globalPermissions, errHTTP := getGlobalPermissions(req, action.imsDBQ, action.userStore)
+	_, globalPermissions, errHTTP := server.GetGlobalPermissions(req, action.imsDBQ, action.userStore)
 	if errHTTP != nil {
-		return nil, errHTTP.From("[getGlobalPermissions]")
+		return nil, errHTTP.From("[server.GetGlobalPermissions]")
 	}
 	if globalPermissions&authz.GlobalAdministrateEvents == 0 {
 		return nil, herr.Forbidden("The requestor does not have GlobalAdministrateEvents permission", nil)
@@ -139,9 +140,9 @@ func (action EditEvent) editEvents(req *http.Request) (newEventID *int32, errHTT
 	if err != nil {
 		return nil, herr.BadRequest("Failed to parse HTTP form", err)
 	}
-	editRequest, errHTTP := readBodyAs[imsjson.Event](req)
+	editRequest, errHTTP := server.ReadBodyAs[imsjson.Event](req)
 	if errHTTP != nil {
-		return nil, errHTTP.From("[readBodyAs]")
+		return nil, errHTTP.From("[server.ReadBodyAs]")
 	}
 
 	if editRequest.ID == 0 {

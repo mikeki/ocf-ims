@@ -33,6 +33,7 @@ import (
 	"github.com/mikeki/ocf-ims/api"
 	"github.com/mikeki/ocf-ims/conf"
 	"github.com/mikeki/ocf-ims/directory"
+	"github.com/mikeki/ocf-ims/internal/server"
 	"github.com/mikeki/ocf-ims/lib/attachment"
 	"github.com/mikeki/ocf-ims/lib/conv"
 	"github.com/mikeki/ocf-ims/lib/push"
@@ -140,7 +141,7 @@ func mustStartServer(ctx context.Context, unvalidatedCfg *conf.IMSConfig, printC
 		pushSender = push.NewWebPushSender(imsCfg.Push.VAPIDPublicKey, imsCfg.Push.VAPIDPrivateKey, imsCfg.Push.VAPIDSubject)
 	}
 
-	eventSource := api.NewEventSourcerer()
+	eventSource := server.NewEventSourcerer()
 	mux := http.NewServeMux()
 	api.AddToMux(mux, eventSource, imsCfg, imsDBQ, userStore, s3Client, actionLogger, pushSender)
 	web.AddToMux(mux, imsCfg)

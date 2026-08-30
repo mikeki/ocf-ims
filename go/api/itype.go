@@ -29,6 +29,7 @@ import (
 
 	"github.com/go-sql-driver/mysql"
 	"github.com/mikeki/ocf-ims/directory"
+	"github.com/mikeki/ocf-ims/internal/server"
 	imsjson "github.com/mikeki/ocf-ims/json"
 	"github.com/mikeki/ocf-ims/lib/authz"
 	"github.com/mikeki/ocf-ims/lib/conv"
@@ -40,7 +41,7 @@ import (
 type GetIncidentTypes struct {
 	imsDBQ            *store.DBQ
 	userStore         directory.UserStore
-	cache             *incidentTypesCache
+	cache             *server.IncidentTypesCache
 	cacheControlShort time.Duration
 }
 
@@ -51,12 +52,12 @@ func (action GetIncidentTypes) ServeHTTP(w http.ResponseWriter, req *http.Reques
 		return
 	}
 	w.Header().Set("Cache-Control", fmt.Sprintf("max-age=%v, private", action.cacheControlShort.Milliseconds()/1000))
-	mustWriteJSON(w, req, resp)
+	server.MustWriteJSON(w, req, resp)
 }
 func (action GetIncidentTypes) getIncidentTypes(req *http.Request) (imsjson.IncidentTypes, *herr.HTTPError) {
-	_, globalPermissions, errHTTP := getGlobalPermissions(req, action.imsDBQ, action.userStore)
+	_, globalPermissions, errHTTP := server.GetGlobalPermissions(req, action.imsDBQ, action.userStore)
 	if errHTTP != nil {
-		return nil, errHTTP.From("[getGlobalPermissions]")
+		return nil, errHTTP.From("[server.GetGlobalPermissions]")
 	}
 	if globalPermissions&authz.GlobalReadIncidentTypes == 0 {
 		return nil, herr.Forbidden("The requestor does not have GlobalReadIncidentTypes permission", nil)
@@ -65,7 +66,7 @@ func (action GetIncidentTypes) getIncidentTypes(req *http.Request) (imsjson.Inci
 	// The taxonomy is global and identical for every reader, so it is served from
 	// an in-memory cache (refDataCacheTTL) rather than re-reading the whole table
 	// on every form load. Writes invalidate it; see loadIncidentTypesJSON.
-	response, err := action.cache.get(req.Context(), func(ctx context.Context) (imsjson.IncidentTypes, error) {
+	response, err := action.cache.Get(req.Context(), func(ctx context.Context) (imsjson.IncidentTypes, error) {
 		return loadIncidentTypesJSON(ctx, action.imsDBQ)
 	})
 	if err != nil {
@@ -110,8 +111,8 @@ func loadIncidentTypesJSON(ctx context.Context, imsDBQ *store.DBQ) (imsjson.Inci
 type EditIncidentTypes struct {
 	imsDBQ    *store.DBQ
 	userStore directory.UserStore
-	metrics   *metricsCache
-	types     *incidentTypesCache
+	metrics   *server.MetricsCache
+	types     *server.IncidentTypesCache
 }
 
 func (action EditIncidentTypes) ServeHTTP(w http.ResponseWriter, req *http.Request) {
@@ -132,17 +133,17 @@ func (action EditIncidentTypes) ServeHTTP(w http.ResponseWriter, req *http.Reque
 	herr.WriteNoContentResponse(w, "Success")
 }
 func (action EditIncidentTypes) editIncidentTypes(req *http.Request) (newTypeID *int32, errHTTP *herr.HTTPError) {
-	_, globalPermissions, errHTTP := getGlobalPermissions(req, action.imsDBQ, action.userStore)
+	_, globalPermissions, errHTTP := server.GetGlobalPermissions(req, action.imsDBQ, action.userStore)
 	if errHTTP != nil {
-		return nil, errHTTP.From("[getGlobalPermissions]")
+		return nil, errHTTP.From("[server.GetGlobalPermissions]")
 	}
 	if globalPermissions&authz.GlobalAdministrateIncidentTypes == 0 {
 		return nil, herr.Forbidden("The requestor does not have GlobalAdministrateIncidentTypes permission", nil)
 	}
 	ctx := req.Context()
-	typeReq, errHTTP := readBodyAs[imsjson.IncidentType](req)
+	typeReq, errHTTP := server.ReadBodyAs[imsjson.IncidentType](req)
 	if errHTTP != nil {
-		return nil, errHTTP.From("[readBodyAs]")
+		return nil, errHTTP.From("[server.ReadBodyAs]")
 	}
 	if typeReq.ID == 0 {
 		if typeReq.Name == nil {
@@ -222,8 +223,8 @@ func (action EditIncidentTypes) editIncidentTypes(req *http.Request) (newTypeID 
 type ProposeIncidentType struct {
 	imsDBQ    *store.DBQ
 	userStore directory.UserStore
-	metrics   *metricsCache
-	types     *incidentTypesCache
+	metrics   *server.MetricsCache
+	types     *server.IncidentTypesCache
 }
 
 func (action ProposeIncidentType) ServeHTTP(w http.ResponseWriter, req *http.Request) {
@@ -242,17 +243,17 @@ func (action ProposeIncidentType) ServeHTTP(w http.ResponseWriter, req *http.Req
 }
 
 func (action ProposeIncidentType) proposeIncidentType(req *http.Request) (int32, *herr.HTTPError) {
-	_, jwtCtx, eventPermissions, errHTTP := getEventPermissions(req, action.imsDBQ, action.userStore)
+	_, jwtCtx, eventPermissions, errHTTP := server.GetEventPermissions(req, action.imsDBQ, action.userStore)
 	if errHTTP != nil {
-		return 0, errHTTP.From("[getEventPermissions]")
+		return 0, errHTTP.From("[server.GetEventPermissions]")
 	}
 	if eventPermissions&authz.EventWriteIncidents == 0 {
 		return 0, herr.Forbidden("The requestor does not have permission to propose Incident Types on this Event", nil)
 	}
 	ctx := req.Context()
-	typeReq, errHTTP := readBodyAs[imsjson.IncidentType](req)
+	typeReq, errHTTP := server.ReadBodyAs[imsjson.IncidentType](req)
 	if errHTTP != nil {
-		return 0, errHTTP.From("[readBodyAs]")
+		return 0, errHTTP.From("[server.ReadBodyAs]")
 	}
 	if typeReq.Name == nil || strings.TrimSpace(*typeReq.Name) == "" {
 		return 0, herr.BadRequest("Incident Type name is required", nil)

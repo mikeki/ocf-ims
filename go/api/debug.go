@@ -19,10 +19,6 @@ package api
 import (
 	"bytes"
 	"fmt"
-	"github.com/mikeki/ocf-ims/directory"
-	"github.com/mikeki/ocf-ims/lib/authz"
-	"github.com/mikeki/ocf-ims/lib/herr"
-	"github.com/mikeki/ocf-ims/store"
 	"log/slog"
 	"net/http"
 	"runtime"
@@ -31,6 +27,12 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/mikeki/ocf-ims/directory"
+	"github.com/mikeki/ocf-ims/internal/server"
+	"github.com/mikeki/ocf-ims/lib/authz"
+	"github.com/mikeki/ocf-ims/lib/herr"
+	"github.com/mikeki/ocf-ims/store"
 )
 
 var serverStartTime = time.Now()
@@ -64,9 +66,9 @@ func (action GetBuildInfo) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 
 func (action GetBuildInfo) getBuildInfo(req *http.Request) (debug.BuildInfo, *herr.HTTPError) {
 	empty := debug.BuildInfo{}
-	_, globalPermissions, errHTTP := getGlobalPermissions(req, action.imsDBQ, action.userStore)
+	_, globalPermissions, errHTTP := server.GetGlobalPermissions(req, action.imsDBQ, action.userStore)
 	if errHTTP != nil {
-		return empty, errHTTP.From("[getGlobalPermissions]")
+		return empty, errHTTP.From("[server.GetGlobalPermissions]")
 	}
 	if globalPermissions&authz.GlobalAdministrateDebugging == 0 {
 		return empty, herr.Forbidden("The requestor does not have GlobalAdministrateDebugging permission", nil)
@@ -97,9 +99,9 @@ func (action GetRuntimeMetrics) ServeHTTP(w http.ResponseWriter, req *http.Reque
 }
 
 func (action GetRuntimeMetrics) getRuntimeMetrics(req *http.Request) (string, *herr.HTTPError) {
-	_, globalPermissions, errHTTP := getGlobalPermissions(req, action.imsDBQ, action.userStore)
+	_, globalPermissions, errHTTP := server.GetGlobalPermissions(req, action.imsDBQ, action.userStore)
 	if errHTTP != nil {
-		return "", errHTTP.From("[getGlobalPermissions]")
+		return "", errHTTP.From("[server.GetGlobalPermissions]")
 	}
 	if globalPermissions&authz.GlobalAdministrateDebugging == 0 {
 		return "", herr.Forbidden("The requestor does not have GlobalAdministrateDebugging permission", nil)
@@ -175,9 +177,9 @@ func (action PerformGC) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 }
 
 func (action PerformGC) performGC(req *http.Request) *herr.HTTPError {
-	_, globalPermissions, errHTTP := getGlobalPermissions(req, action.imsDBQ, action.userStore)
+	_, globalPermissions, errHTTP := server.GetGlobalPermissions(req, action.imsDBQ, action.userStore)
 	if errHTTP != nil {
-		return errHTTP.From("[getGlobalPermissions]")
+		return errHTTP.From("[server.GetGlobalPermissions]")
 	}
 	if globalPermissions&authz.GlobalAdministrateDebugging == 0 {
 		return herr.Forbidden("The requestor does not have GlobalAdministrateDebugging permission", nil)

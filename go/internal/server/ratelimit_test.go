@@ -14,7 +14,7 @@
 // limitations under the License.
 //
 
-package api
+package server
 
 import (
 	"io"
@@ -35,7 +35,7 @@ func (c *fakeClock) now() time.Time          { return c.t }
 func (c *fakeClock) advance(d time.Duration) { c.t = c.t.Add(d) }
 
 func testLimiter(clk *fakeClock) *loginRateLimiter {
-	return newLoginRateLimiter(loginRateLimiterConfig{
+	return NewLoginRateLimiter(loginRateLimiterConfig{
 		enabled:       true,
 		maxFailures:   5,
 		lockout:       15 * time.Minute,
@@ -72,7 +72,7 @@ func TestLimiter_AllowsUntilBackoffThreshold(t *testing.T) {
 func TestLimiter_BackoffIsExponentialAndCapped(t *testing.T) {
 	t.Parallel()
 	clk := &fakeClock{t: time.Unix(1_700_000_000, 0)}
-	l := newLoginRateLimiter(loginRateLimiterConfig{
+	l := NewLoginRateLimiter(loginRateLimiterConfig{
 		enabled: true, maxFailures: 100, lockout: time.Hour,
 		backoffThresh: 3, backoffBase: time.Second, backoffMax: 30 * time.Second,
 		resetWindow: time.Hour, now: clk.now,
@@ -171,7 +171,7 @@ func TestLimiter_IdleResetForgetsHistory(t *testing.T) {
 func TestLimiter_DisabledIsNoop(t *testing.T) {
 	t.Parallel()
 	clk := &fakeClock{t: time.Unix(1_700_000_000, 0)}
-	l := newLoginRateLimiter(loginRateLimiterConfig{enabled: false, now: clk.now})
+	l := NewLoginRateLimiter(loginRateLimiterConfig{enabled: false, now: clk.now})
 	for range 100 {
 		l.recordFailure("id:x")
 	}

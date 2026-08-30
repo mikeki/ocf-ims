@@ -14,7 +14,7 @@
 // limitations under the License.
 //
 
-package api
+package server
 
 import (
 	"bytes"
@@ -82,7 +82,7 @@ type loginRateLimiterConfig struct {
 	now           func() time.Time
 }
 
-func defaultLoginRateLimiterConfig(enabled bool) loginRateLimiterConfig {
+func DefaultLoginRateLimiterConfig(enabled bool) loginRateLimiterConfig {
 	return loginRateLimiterConfig{
 		enabled:       enabled,
 		maxFailures:   defaultLoginMaxFailures,
@@ -110,7 +110,7 @@ type loginRateLimiter struct {
 	attempts map[string]*attemptState
 }
 
-func newLoginRateLimiter(cfg loginRateLimiterConfig) *loginRateLimiter {
+func NewLoginRateLimiter(cfg loginRateLimiterConfig) *loginRateLimiter {
 	if cfg.now == nil {
 		cfg.now = time.Now
 	}
@@ -322,7 +322,12 @@ func peekIdentification(r *http.Request) string {
 	if err != nil {
 		return ""
 	}
-	var parsed PostAuthRequest
+	// Peek only the login identifier — a minimal local shape keeps this
+	// cross-cutting throttle a leaf package (independent of the auth DTO). The
+	// json tag must match api.PostAuthRequest.Identification.
+	var parsed struct {
+		Identification string `json:"identification"`
+	}
 	if json.Unmarshal(buf, &parsed) != nil {
 		return ""
 	}

@@ -19,10 +19,11 @@ package api_test
 import (
 	"bytes"
 	"fmt"
-	"github.com/mikeki/ocf-ims/api"
-	"github.com/stretchr/testify/require"
 	"net/http"
 	"testing"
+
+	"github.com/mikeki/ocf-ims/internal/server"
+	"github.com/stretchr/testify/require"
 )
 
 type exampleAction struct {
@@ -33,7 +34,7 @@ func (e exampleAction) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 	fmt.Fprintln(e.output, "      in the action")
 }
 
-func firstAdapter(output *bytes.Buffer) api.Adapter {
+func firstAdapter(output *bytes.Buffer) server.Adapter {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			fmt.Fprintln(output, "firstAdapter before")
@@ -43,7 +44,7 @@ func firstAdapter(output *bytes.Buffer) api.Adapter {
 	}
 }
 
-func secondAdapter(output *bytes.Buffer) api.Adapter {
+func secondAdapter(output *bytes.Buffer) server.Adapter {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			fmt.Fprintln(output, "  secondAdapter before")
@@ -53,7 +54,7 @@ func secondAdapter(output *bytes.Buffer) api.Adapter {
 	}
 }
 
-func thirdAdapter(output *bytes.Buffer) api.Adapter {
+func thirdAdapter(output *bytes.Buffer) server.Adapter {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			fmt.Fprintln(output, "    thirdAdapter before")
@@ -63,11 +64,11 @@ func thirdAdapter(output *bytes.Buffer) api.Adapter {
 	}
 }
 
-// TestAdapt demonstrates how the Adapter pattern works.
+// TestAdapt demonstrates how the server.Adapter pattern works.
 func TestAdapt(t *testing.T) {
 	t.Parallel()
 	b := bytes.Buffer{}
-	api.Adapt(
+	server.Adapt(
 		exampleAction{output: &b},
 		firstAdapter(&b),
 		secondAdapter(&b),

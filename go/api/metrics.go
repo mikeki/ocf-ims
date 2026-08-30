@@ -20,80 +20,18 @@ import (
 	"context"
 	"net/http"
 	"sort"
-	"sync"
 	"time"
 
 	"github.com/mikeki/ocf-ims/directory"
+	"github.com/mikeki/ocf-ims/internal/server"
 	imsjson "github.com/mikeki/ocf-ims/json"
 	"github.com/mikeki/ocf-ims/lib/authz"
-	"github.com/mikeki/ocf-ims/lib/cache"
 	"github.com/mikeki/ocf-ims/lib/conv"
 	"github.com/mikeki/ocf-ims/lib/herr"
 	"github.com/mikeki/ocf-ims/store"
 	"github.com/mikeki/ocf-ims/store/imsdb"
 	"golang.org/x/sync/errgroup"
 )
-
-// metricsCacheTTL is how long a computed per-event aggregate is reused. The
-// dashboard auto-refreshes on roughly this cadence, so several admins watching
-// the same event share one set of (heavy GROUP BY) queries per minute rather than
-// each request hitting the database.
-const metricsCacheTTL = time.Minute
-
-// metricsCache memoizes the dashboard aggregate per event with a short TTL. Each
-// event gets its own cache.InMemory, which provides the TTL and single-flight
-// (concurrent requests for the same event coalesce onto one refresh) — so a busy
-// dashboard can't stampede the database.
-type metricsCache struct {
-	mu      sync.Mutex
-	byEvent map[string]*cache.InMemory[imsjson.Metrics]
-}
-
-func newMetricsCache() *metricsCache {
-	return &metricsCache{byEvent: map[string]*cache.InMemory[imsjson.Metrics]{}}
-}
-
-// InvalidateEvent drops the cached aggregate for one event so the next dashboard
-// read recomputes from the database. Called after an event-scoped mutation
-// (incident or area change) so the dashboard reflects the write immediately
-// instead of waiting out the TTL. A no-op if the event was never cached.
-func (c *metricsCache) InvalidateEvent(eventName string) {
-	c.mu.Lock()
-	entry, ok := c.byEvent[eventName]
-	c.mu.Unlock()
-	if ok {
-		entry.Invalidate()
-	}
-}
-
-// InvalidateAll drops every event's cached aggregate. Used after a change to
-// global reference data that the dashboard aggregates across events (the
-// incident-type taxonomy), where a single event key can't target the effect.
-func (c *metricsCache) InvalidateAll() {
-	c.mu.Lock()
-	defer c.mu.Unlock()
-	for _, entry := range c.byEvent {
-		entry.Invalidate()
-	}
-}
-
-// get returns the cached aggregate for eventName, computing it via refresh on a
-// miss (or expiry). refresh is only consulted once per TTL per event even under
-// concurrent load; errors are not cached.
-func (c *metricsCache) get(
-	ctx context.Context,
-	eventName string,
-	refresh func(context.Context) (imsjson.Metrics, error),
-) (*imsjson.Metrics, error) {
-	c.mu.Lock()
-	entry, ok := c.byEvent[eventName]
-	if !ok {
-		entry = cache.New(metricsCacheTTL, refresh)
-		c.byEvent[eventName] = entry
-	}
-	c.mu.Unlock()
-	return entry.Get(ctx)
-}
 
 // GetMetrics serves the per-event dashboard aggregate (Phase 7). It is read-only
 // and open to admins and per-event writers (plan 52d): writers get
@@ -104,7 +42,7 @@ func (c *metricsCache) get(
 type GetMetrics struct {
 	imsDBQ    *store.DBQ
 	userStore directory.UserStore
-	cache     *metricsCache
+	cache     *server.MetricsCache
 }
 
 func (action GetMetrics) ServeHTTP(w http.ResponseWriter, req *http.Request) {
@@ -113,7 +51,7 @@ func (action GetMetrics) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 		errHTTP.From("[getMetrics]").WriteResponse(w)
 		return
 	}
-	mustWriteJSON(w, req, resp)
+	server.MustWriteJSON(w, req, resp)
 }
 
 func (action GetMetrics) getMetrics(req *http.Request) (imsjson.Metrics, *herr.HTTPError) {
@@ -124,9 +62,9 @@ func (action GetMetrics) getMetrics(req *http.Request) (imsjson.Metrics, *herr.H
 	// fine: event names aren't secret — every authenticated user sees them in the
 	// nav — and writers get EventWriteIncidents from their tier while admins get it
 	// via the bypass, so the one write-bit check covers both.
-	event, _, eventPermissions, errHTTP := getEventPermissions(req, action.imsDBQ, action.userStore)
+	event, _, eventPermissions, errHTTP := server.GetEventPermissions(req, action.imsDBQ, action.userStore)
 	if errHTTP != nil {
-		return resp, errHTTP.From("[getEventPermissions]")
+		return resp, errHTTP.From("[server.GetEventPermissions]")
 	}
 	if eventPermissions&authz.EventWriteIncidents == 0 {
 		return resp, herr.Forbidden("The dashboard is restricted to administrators and event writers", nil)
@@ -135,7 +73,7 @@ func (action GetMetrics) getMetrics(req *http.Request) (imsjson.Metrics, *herr.H
 	// The heavy work (event lookup + GROUP BY aggregation) goes through the
 	// per-event cache, so repeated dashboard loads within the TTL serve a cached
 	// payload without touching the database.
-	cached, err := action.cache.get(req.Context(), event.Name,
+	cached, err := action.cache.Get(req.Context(), event.Name,
 		func(ctx context.Context) (imsjson.Metrics, error) {
 			return action.computeMetrics(ctx, event.Name)
 		})
@@ -150,9 +88,9 @@ func (action GetMetrics) getMetrics(req *http.Request) (imsjson.Metrics, *herr.H
 func (action GetMetrics) computeMetrics(ctx context.Context, eventName string) (imsjson.Metrics, error) {
 	var resp imsjson.Metrics
 
-	event, errHTTP := getEventCtx(ctx, eventName, action.imsDBQ)
+	event, errHTTP := server.GetEventCtx(ctx, eventName, action.imsDBQ)
 	if errHTTP != nil {
-		return resp, errHTTP.From("[getEvent]")
+		return resp, errHTTP.From("[server.GetEvent]")
 	}
 
 	var (

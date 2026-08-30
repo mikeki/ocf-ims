@@ -14,7 +14,7 @@
 // limitations under the License.
 //
 
-package api
+package server
 
 import (
 	"context"
@@ -61,9 +61,9 @@ func TestFanOutDisabledIsNoOp(t *testing.T) {
 	spy := &spySender{enabled: false}
 	p := NewPusher(nil, spy)
 	// Would panic on a nil DBQ if it tried to deliver; the disabled gate stops it.
-	p.notifyAddedToIncident(context.Background(), "2026", 12, 3, 7)
-	p.notifyMentionedInIncident(context.Background(), "2026", 12, []int32{3, 4}, 7)
-	p.notifyMentionedInReport(context.Background(), "2026", 9, []int32{3, 4}, 7)
+	p.NotifyAddedToIncident(context.Background(), "2026", 12, 3, 7)
+	p.NotifyMentionedInIncident(context.Background(), "2026", 12, []int32{3, 4}, 7)
+	p.NotifyMentionedInReport(context.Background(), "2026", 9, []int32{3, 4}, 7)
 
 	assert.Zero(t, spy.calls, "a disabled sender must never be invoked")
 }

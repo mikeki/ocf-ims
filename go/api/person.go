@@ -27,6 +27,7 @@ import (
 
 	"github.com/go-sql-driver/mysql"
 	"github.com/mikeki/ocf-ims/directory"
+	"github.com/mikeki/ocf-ims/internal/server"
 	imsjson "github.com/mikeki/ocf-ims/json"
 	"github.com/mikeki/ocf-ims/lib/argon2id"
 	"github.com/mikeki/ocf-ims/lib/authz"
@@ -101,19 +102,19 @@ func (action CreatePerson) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 		errHTTP.From("[createPerson]").WriteResponse(w)
 		return
 	}
-	mustWriteJSONStatus(w, req, http.StatusCreated, resp)
+	server.MustWriteJSONStatus(w, req, http.StatusCreated, resp)
 }
 
 func (action CreatePerson) createPerson(req *http.Request) (imsjson.Person, *herr.HTTPError) {
 	var empty imsjson.Person
-	jwtCtx, globalPermissions, errHTTP := getGlobalPermissions(req, action.imsDBQ, action.userStore)
+	jwtCtx, globalPermissions, errHTTP := server.GetGlobalPermissions(req, action.imsDBQ, action.userStore)
 	if errHTTP != nil {
-		return empty, errHTTP.From("[getGlobalPermissions]")
+		return empty, errHTTP.From("[server.GetGlobalPermissions]")
 	}
 
-	body, errHTTP := readBodyAs[CreatePersonRequest](req)
+	body, errHTTP := server.ReadBodyAs[CreatePersonRequest](req)
 	if errHTTP != nil {
-		return empty, errHTTP.From("[readBodyAs]")
+		return empty, errHTTP.From("[server.ReadBodyAs]")
 	}
 
 	handle := strings.TrimSpace(body.Handle)
@@ -158,9 +159,9 @@ func (action CreatePerson) createPerson(req *http.Request) (imsjson.Person, *her
 		}
 	} else if strings.TrimSpace(body.Event) != "" {
 		var event imsdb.Event
-		event, errHTTP = getEvent(req, strings.TrimSpace(body.Event), action.imsDBQ)
+		event, errHTTP = server.GetEvent(req, strings.TrimSpace(body.Event), action.imsDBQ)
 		if errHTTP != nil {
-			return empty, errHTTP.From("[getEvent]")
+			return empty, errHTTP.From("[server.GetEvent]")
 		}
 		eventID = event.ID
 	}
@@ -308,14 +309,14 @@ func (action CreatePerson) createPerson(req *http.Request) (imsjson.Person, *her
 // 53b). Returns that event's ID for the PERSON__EVENT row. Both the 5e field create
 // (writers registering someone met at an incident/visit) and the crew-leader invite
 // take this path.
-func (action CreatePerson) eventForInvite(req *http.Request, jwtCtx JWTContext, eventName string) (int32, *herr.HTTPError) {
+func (action CreatePerson) eventForInvite(req *http.Request, jwtCtx server.JWTContext, eventName string) (int32, *herr.HTTPError) {
 	eventName = strings.TrimSpace(eventName)
 	if eventName == "" {
 		return 0, herr.Forbidden("Creating a person requires GlobalAdministratePersonnel, or invite-reporters access on a named event", nil)
 	}
-	event, errHTTP := getEvent(req, eventName, action.imsDBQ)
+	event, errHTTP := server.GetEvent(req, eventName, action.imsDBQ)
 	if errHTTP != nil {
-		return 0, errHTTP.From("[getEvent]")
+		return 0, errHTTP.From("[server.GetEvent]")
 	}
 	perms, _, err := authz.EventPermissions(req.Context(), &event.ID, action.imsDBQ, *jwtCtx.Claims)
 	if err != nil {
@@ -415,22 +416,22 @@ func (action EditPerson) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 }
 
 func (action EditPerson) editPerson(req *http.Request) *herr.HTTPError {
-	_, globalPermissions, errHTTP := getGlobalPermissions(req, action.imsDBQ, action.userStore)
+	_, globalPermissions, errHTTP := server.GetGlobalPermissions(req, action.imsDBQ, action.userStore)
 	if errHTTP != nil {
-		return errHTTP.From("[getGlobalPermissions]")
+		return errHTTP.From("[server.GetGlobalPermissions]")
 	}
 	if globalPermissions&authz.GlobalAdministratePersonnel == 0 {
 		return herr.Forbidden("The requestor does not have GlobalAdministratePersonnel permission", nil)
 	}
 
-	body, errHTTP := readBodyAs[EditPersonRequest](req)
+	body, errHTTP := server.ReadBodyAs[EditPersonRequest](req)
 	if errHTTP != nil {
-		return errHTTP.From("[readBodyAs]")
+		return errHTTP.From("[server.ReadBodyAs]")
 	}
 
 	// The person is addressed by stable ID in the URL path (registry people may have
 	// no handle since 5e).
-	person, errHTTP := personByIDFromPath(req.Context(), action.imsDBQ, req)
+	person, errHTTP := server.PersonByIDFromPath(req.Context(), action.imsDBQ, req)
 	if errHTTP != nil {
 		return errHTTP
 	}
@@ -554,9 +555,9 @@ func (action EditPerson) editParticipation(req *http.Request, personID int32, bo
 		participation = pt
 	}
 
-	event, errHTTP := getEvent(req, strings.TrimSpace(body.Event), action.imsDBQ)
+	event, errHTTP := server.GetEvent(req, strings.TrimSpace(body.Event), action.imsDBQ)
 	if errHTTP != nil {
-		return errHTTP.From("[getEvent]")
+		return errHTTP.From("[server.GetEvent]")
 	}
 
 	var wristbandNull sql.NullString
@@ -637,13 +638,13 @@ func (action SetPersonParticipation) ServeHTTP(w http.ResponseWriter, req *http.
 }
 
 func (action SetPersonParticipation) setParticipation(req *http.Request) *herr.HTTPError {
-	jwtCtx, globalPermissions, errHTTP := getGlobalPermissions(req, action.imsDBQ, action.userStore)
+	jwtCtx, globalPermissions, errHTTP := server.GetGlobalPermissions(req, action.imsDBQ, action.userStore)
 	if errHTTP != nil {
-		return errHTTP.From("[getGlobalPermissions]")
+		return errHTTP.From("[server.GetGlobalPermissions]")
 	}
 	isPersonnelAdmin := globalPermissions&authz.GlobalAdministratePersonnel != 0
 
-	person, errHTTP := personByIDFromPath(req.Context(), action.imsDBQ, req)
+	person, errHTTP := server.PersonByIDFromPath(req.Context(), action.imsDBQ, req)
 	if errHTTP != nil {
 		return errHTTP
 	}
@@ -652,9 +653,9 @@ func (action SetPersonParticipation) setParticipation(req *http.Request) *herr.H
 	if eventName == "" {
 		return herr.BadRequest("An event is required", nil)
 	}
-	event, errHTTP := getEvent(req, eventName, action.imsDBQ)
+	event, errHTTP := server.GetEvent(req, eventName, action.imsDBQ)
 	if errHTTP != nil {
-		return errHTTP.From("[getEvent]")
+		return errHTTP.From("[server.GetEvent]")
 	}
 
 	// Authorization (plan 53b). A personnel admin may set any participation. A
@@ -669,9 +670,9 @@ func (action SetPersonParticipation) setParticipation(req *http.Request) *herr.H
 		}
 	}
 
-	body, errHTTP := readBodyAs[SetParticipationRequest](req)
+	body, errHTTP := server.ReadBodyAs[SetParticipationRequest](req)
 	if errHTTP != nil {
-		return errHTTP.From("[readBodyAs]")
+		return errHTTP.From("[server.ReadBodyAs]")
 	}
 	wristband := strings.TrimSpace(body.Wristband)
 	if len(wristband) > maxWristbandLength {
@@ -747,15 +748,15 @@ func (action RemovePersonEvent) ServeHTTP(w http.ResponseWriter, req *http.Reque
 }
 
 func (action RemovePersonEvent) removePersonEvent(req *http.Request) *herr.HTTPError {
-	_, globalPermissions, errHTTP := getGlobalPermissions(req, action.imsDBQ, action.userStore)
+	_, globalPermissions, errHTTP := server.GetGlobalPermissions(req, action.imsDBQ, action.userStore)
 	if errHTTP != nil {
-		return errHTTP.From("[getGlobalPermissions]")
+		return errHTTP.From("[server.GetGlobalPermissions]")
 	}
 	if globalPermissions&authz.GlobalAdministratePersonnel == 0 {
 		return herr.Forbidden("The requestor does not have GlobalAdministratePersonnel permission", nil)
 	}
 
-	person, errHTTP := personByIDFromPath(req.Context(), action.imsDBQ, req)
+	person, errHTTP := server.PersonByIDFromPath(req.Context(), action.imsDBQ, req)
 	if errHTTP != nil {
 		return errHTTP
 	}
@@ -764,9 +765,9 @@ func (action RemovePersonEvent) removePersonEvent(req *http.Request) *herr.HTTPE
 	if eventName == "" {
 		return herr.BadRequest("An event is required", nil)
 	}
-	event, errHTTP := getEvent(req, eventName, action.imsDBQ)
+	event, errHTTP := server.GetEvent(req, eventName, action.imsDBQ)
 	if errHTTP != nil {
-		return errHTTP.From("[getEvent]")
+		return errHTTP.From("[server.GetEvent]")
 	}
 
 	err := action.imsDBQ.DeletePersonEvent(req.Context(), action.imsDBQ, imsdb.DeletePersonEventParams{

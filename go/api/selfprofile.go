@@ -24,6 +24,7 @@ import (
 
 	"github.com/mikeki/ocf-ims/conf"
 	"github.com/mikeki/ocf-ims/directory"
+	"github.com/mikeki/ocf-ims/internal/server"
 	"github.com/mikeki/ocf-ims/lib/attachment"
 	"github.com/mikeki/ocf-ims/lib/herr"
 	"github.com/mikeki/ocf-ims/store"
@@ -39,11 +40,11 @@ import (
 // admin-only EditPerson / personnel endpoints.
 
 // resolveSelf loads the caller's own PERSON row from their JWT subject. It is the
-// self-service analogue of personByIDFromPath (which addresses a person by URL id).
+// self-service analogue of server.PersonByIDFromPath (which addresses a person by URL id).
 func resolveSelf(req *http.Request, imsDBQ *store.DBQ) (imsdb.PersonByIDRow, *herr.HTTPError) {
-	jwtCtx, errHTTP := getJwtCtx(req)
+	jwtCtx, errHTTP := server.GetJwtCtx(req)
 	if errHTTP != nil {
-		return imsdb.PersonByIDRow{}, errHTTP.From("[getJwtCtx]")
+		return imsdb.PersonByIDRow{}, errHTTP.From("[server.GetJwtCtx]")
 	}
 	personID := jwtCtx.Claims.PersonID()
 	person, err := imsDBQ.PersonByID(req.Context(), imsDBQ, personID)
@@ -68,7 +69,7 @@ type SetOwnProfileRequest struct {
 }
 
 // SetOwnProfile lets an authenticated user change THEIR OWN identity/contact fields.
-// Resolved from the JWT, no admin permission required (RequireAuthN gates the route).
+// Resolved from the JWT, no admin permission required (server.RequireAuthN gates the route).
 type SetOwnProfile struct {
 	imsDBQ    *store.DBQ
 	userStore directory.UserStore
@@ -89,9 +90,9 @@ func (action SetOwnProfile) setOwnProfile(req *http.Request) *herr.HTTPError {
 		return errHTTP
 	}
 
-	body, errHTTP := readBodyAs[SetOwnProfileRequest](req)
+	body, errHTTP := server.ReadBodyAs[SetOwnProfileRequest](req)
 	if errHTTP != nil {
-		return errHTTP.From("[readBodyAs]")
+		return errHTTP.From("[server.ReadBodyAs]")
 	}
 
 	// Same validation and write as the admin path (identity invariant, "email required

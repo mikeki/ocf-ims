@@ -23,6 +23,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/mikeki/ocf-ims/internal/server"
 	imsjson "github.com/mikeki/ocf-ims/json"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -36,7 +37,7 @@ import (
 func TestMetricsCacheMemoizes(t *testing.T) {
 	t.Parallel()
 	ctx := context.Background()
-	c := newMetricsCache()
+	c := server.NewMetricsCache()
 
 	var calls atomic.Int64
 	refresh := func(event string) func(context.Context) (imsjson.Metrics, error) {
@@ -51,14 +52,14 @@ func TestMetricsCacheMemoizes(t *testing.T) {
 
 	// Repeated sequential gets for one event hit the refresher once.
 	for range 5 {
-		m, err := c.get(ctx, "EventA", refresh("EventA"))
+		m, err := c.Get(ctx, "EventA", refresh("EventA"))
 		require.NoError(t, err)
 		assert.Equal(t, "EventA", m.Event)
 	}
 	assert.Equal(t, int64(1), calls.Load())
 
 	// A different event computes independently (one more call).
-	m, err := c.get(ctx, "EventB", refresh("EventB"))
+	m, err := c.Get(ctx, "EventB", refresh("EventB"))
 	require.NoError(t, err)
 	assert.Equal(t, "EventB", m.Event)
 	assert.Equal(t, int64(2), calls.Load())
@@ -68,7 +69,7 @@ func TestMetricsCacheMemoizes(t *testing.T) {
 	var wg sync.WaitGroup
 	for range 20 {
 		wg.Go(func() {
-			_, err := c.get(ctx, "EventC", refresh("EventC"))
+			_, err := c.Get(ctx, "EventC", refresh("EventC"))
 			assert.NoError(t, err)
 		})
 	}
@@ -81,7 +82,7 @@ func TestMetricsCacheMemoizes(t *testing.T) {
 func TestMetricsCacheDoesNotCacheErrors(t *testing.T) {
 	t.Parallel()
 	ctx := context.Background()
-	c := newMetricsCache()
+	c := server.NewMetricsCache()
 
 	var calls atomic.Int64
 	boom := func(context.Context) (imsjson.Metrics, error) {
@@ -89,9 +90,9 @@ func TestMetricsCacheDoesNotCacheErrors(t *testing.T) {
 		return imsjson.Metrics{}, assert.AnError
 	}
 
-	_, err := c.get(ctx, "EventA", boom)
+	_, err := c.Get(ctx, "EventA", boom)
 	require.Error(t, err)
-	_, err = c.get(ctx, "EventA", boom)
+	_, err = c.Get(ctx, "EventA", boom)
 	require.Error(t, err)
 	// Both calls re-ran the refresher because the error wasn't cached.
 	assert.Equal(t, int64(2), calls.Load())

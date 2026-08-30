@@ -28,6 +28,7 @@ import (
 
 	"github.com/go-sql-driver/mysql"
 	"github.com/mikeki/ocf-ims/directory"
+	"github.com/mikeki/ocf-ims/internal/server"
 	imsjson "github.com/mikeki/ocf-ims/json"
 	"github.com/mikeki/ocf-ims/lib/authz"
 	"github.com/mikeki/ocf-ims/lib/herr"
@@ -42,7 +43,7 @@ const mySQLErNoReferencedRow = 1452
 type GetCrews struct {
 	imsDBQ            *store.DBQ
 	userStore         directory.UserStore
-	cache             *crewsCache
+	cache             *server.CrewsCache
 	cacheControlShort time.Duration
 }
 
@@ -53,25 +54,25 @@ func (action GetCrews) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 		return
 	}
 	w.Header().Set("Cache-Control", fmt.Sprintf("max-age=%v, private", action.cacheControlShort.Milliseconds()/1000))
-	mustWriteJSON(w, req, resp)
+	server.MustWriteJSON(w, req, resp)
 }
 
 func (action GetCrews) run(req *http.Request) (imsjson.Crews, *herr.HTTPError) {
 	ctx := req.Context()
-	event, _, _, errHTTP := getEventPermissions(req, action.imsDBQ, action.userStore)
+	event, _, _, errHTTP := server.GetEventPermissions(req, action.imsDBQ, action.userStore)
 	if errHTTP != nil {
-		return nil, errHTTP.From("[getEventPermissions]")
+		return nil, errHTTP.From("[server.GetEventPermissions]")
 	}
-	_, globalPermissions, errHTTP := getGlobalPermissions(req, action.imsDBQ, action.userStore)
+	_, globalPermissions, errHTTP := server.GetGlobalPermissions(req, action.imsDBQ, action.userStore)
 	if errHTTP != nil {
-		return nil, errHTTP.From("[getGlobalPermissions]")
+		return nil, errHTTP.From("[server.GetGlobalPermissions]")
 	}
 	// Crews are admin-managed only — there is no reader/writer view of the roster.
 	if globalPermissions&authz.GlobalAdministrateCrews == 0 {
 		return nil, herr.Forbidden("The requestor does not have GlobalAdministrateCrews permission", nil)
 	}
 
-	resp, err := action.cache.get(ctx, req.PathValue("eventName"), func(ctx context.Context) (imsjson.Crews, error) {
+	resp, err := action.cache.Get(ctx, req.PathValue("eventName"), func(ctx context.Context) (imsjson.Crews, error) {
 		return loadCrewsJSON(ctx, action.imsDBQ, event.ID)
 	})
 	if err != nil {
@@ -119,7 +120,7 @@ func loadCrewsJSON(ctx context.Context, imsDBQ *store.DBQ, eventID int32) (imsjs
 type EditCrews struct {
 	imsDBQ    *store.DBQ
 	userStore directory.UserStore
-	crews     *crewsCache
+	crews     *server.CrewsCache
 }
 
 func (action EditCrews) ServeHTTP(w http.ResponseWriter, req *http.Request) {
@@ -138,21 +139,21 @@ func (action EditCrews) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 
 func (action EditCrews) run(req *http.Request) (newSlug string, errHTTP *herr.HTTPError) {
 	ctx := req.Context()
-	event, _, _, errHTTP := getEventPermissions(req, action.imsDBQ, action.userStore)
+	event, _, _, errHTTP := server.GetEventPermissions(req, action.imsDBQ, action.userStore)
 	if errHTTP != nil {
-		return "", errHTTP.From("[getEventPermissions]")
+		return "", errHTTP.From("[server.GetEventPermissions]")
 	}
-	_, globalPermissions, errHTTP := getGlobalPermissions(req, action.imsDBQ, action.userStore)
+	_, globalPermissions, errHTTP := server.GetGlobalPermissions(req, action.imsDBQ, action.userStore)
 	if errHTTP != nil {
-		return "", errHTTP.From("[getGlobalPermissions]")
+		return "", errHTTP.From("[server.GetGlobalPermissions]")
 	}
 	// Every crew write — create, rename/reorder, delete, membership — is admin-only.
 	if globalPermissions&authz.GlobalAdministrateCrews == 0 {
 		return "", herr.Forbidden("The requestor does not have GlobalAdministrateCrews permission", nil)
 	}
-	crewReq, errHTTP := readBodyAs[imsjson.Crew](req)
+	crewReq, errHTTP := server.ReadBodyAs[imsjson.Crew](req)
 	if errHTTP != nil {
-		return "", errHTTP.From("[readBodyAs]")
+		return "", errHTTP.From("[server.ReadBodyAs]")
 	}
 
 	if crewReq.Slug == "" {
@@ -322,14 +323,14 @@ func (action MyCrews) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 	}
 	// The result is which crews *you* lead, so it isn't shareable — don't cache it.
 	w.Header().Set("Cache-Control", "no-store")
-	mustWriteJSON(w, req, resp)
+	server.MustWriteJSON(w, req, resp)
 }
 
 func (action MyCrews) run(req *http.Request) (imsjson.Crews, *herr.HTTPError) {
 	ctx := req.Context()
-	event, jwtCtx, _, errHTTP := getEventPermissions(req, action.imsDBQ, action.userStore)
+	event, jwtCtx, _, errHTTP := server.GetEventPermissions(req, action.imsDBQ, action.userStore)
 	if errHTTP != nil {
-		return nil, errHTTP.From("[getEventPermissions]")
+		return nil, errHTTP.From("[server.GetEventPermissions]")
 	}
 	resp, err := loadLedCrewsJSON(ctx, action.imsDBQ, event.ID, jwtCtx.Claims.PersonID())
 	if err != nil {
@@ -378,7 +379,7 @@ func loadLedCrewsJSON(ctx context.Context, imsDBQ *store.DBQ, eventID, leaderPer
 type EditMyCrew struct {
 	imsDBQ    *store.DBQ
 	userStore directory.UserStore
-	crews     *crewsCache
+	crews     *server.CrewsCache
 }
 
 func (action EditMyCrew) ServeHTTP(w http.ResponseWriter, req *http.Request) {
@@ -393,13 +394,13 @@ func (action EditMyCrew) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 
 func (action EditMyCrew) run(req *http.Request) *herr.HTTPError {
 	ctx := req.Context()
-	event, jwtCtx, _, errHTTP := getEventPermissions(req, action.imsDBQ, action.userStore)
+	event, jwtCtx, _, errHTTP := server.GetEventPermissions(req, action.imsDBQ, action.userStore)
 	if errHTTP != nil {
-		return errHTTP.From("[getEventPermissions]")
+		return errHTTP.From("[server.GetEventPermissions]")
 	}
-	crewReq, errHTTP := readBodyAs[imsjson.Crew](req)
+	crewReq, errHTTP := server.ReadBodyAs[imsjson.Crew](req)
 	if errHTTP != nil {
-		return errHTTP.From("[readBodyAs]")
+		return errHTTP.From("[server.ReadBodyAs]")
 	}
 	if crewReq.Slug == "" {
 		return herr.BadRequest("A crew slug is required", nil)

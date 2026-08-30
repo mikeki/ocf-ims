@@ -21,6 +21,7 @@ import (
 	"net/http"
 
 	"github.com/mikeki/ocf-ims/directory"
+	"github.com/mikeki/ocf-ims/internal/server"
 	"github.com/mikeki/ocf-ims/lib/herr"
 	"github.com/mikeki/ocf-ims/store"
 	"github.com/mikeki/ocf-ims/store/imsdb"
@@ -51,9 +52,9 @@ func (action SetPersonAdmin) ServeHTTP(w http.ResponseWriter, req *http.Request)
 }
 
 func (action SetPersonAdmin) setPersonAdmin(req *http.Request) *herr.HTTPError {
-	jwtCtx, errHTTP := getJwtCtx(req)
+	jwtCtx, errHTTP := server.GetJwtCtx(req)
 	if errHTTP != nil {
-		return errHTTP.From("[getJwtCtx]")
+		return errHTTP.From("[server.GetJwtCtx]")
 	}
 	// Only an administrator may change administrator status. Gate on the caller
 	// actually being an admin (their own IS_ADMIN flag), not on a delegatable
@@ -63,14 +64,14 @@ func (action SetPersonAdmin) setPersonAdmin(req *http.Request) *herr.HTTPError {
 		return herr.Forbidden("Only administrators may change administrator status", nil)
 	}
 
-	body, errHTTP := readBodyAs[SetPersonAdminRequest](req)
+	body, errHTTP := server.ReadBodyAs[SetPersonAdminRequest](req)
 	if errHTTP != nil {
-		return errHTTP.From("[readBodyAs]")
+		return errHTTP.From("[server.ReadBodyAs]")
 	}
 
 	// The person is addressed by stable ID in the URL path (registry people may
 	// have no handle since 5e).
-	target, errHTTP := personByIDFromPath(req.Context(), action.imsDBQ, req)
+	target, errHTTP := server.PersonByIDFromPath(req.Context(), action.imsDBQ, req)
 	if errHTTP != nil {
 		return errHTTP
 	}

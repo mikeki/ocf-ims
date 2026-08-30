@@ -14,7 +14,7 @@
 // limitations under the License.
 //
 
-package api
+package server
 
 import (
 	"context"
@@ -59,10 +59,10 @@ func NewPusher(imsDBQ *store.DBQ, sender push.Sender) *Pusher {
 	return &Pusher{imsDBQ: imsDBQ, sender: sender}
 }
 
-// notifyMentionedInIncident pushes to everyone mentioned in an incident's journal
+// NotifyMentionedInIncident pushes to everyone mentioned in an incident's journal
 // entries. recipientIDs may contain duplicates and the actor; both are filtered.
 // Call it after the commit: it never blocks and fans out from a goroutine.
-func (p *Pusher) notifyMentionedInIncident(ctx context.Context, eventName string, incidentNumber int32, recipientIDs []int32, actorPersonID int32) {
+func (p *Pusher) NotifyMentionedInIncident(ctx context.Context, eventName string, incidentNumber int32, recipientIDs []int32, actorPersonID int32) {
 	p.fanOut(ctx, recipientIDs, actorPersonID, push.Message{
 		Title: pushTitle,
 		Body:  fmt.Sprintf("You were mentioned in incident #%d", incidentNumber),
@@ -70,9 +70,9 @@ func (p *Pusher) notifyMentionedInIncident(ctx context.Context, eventName string
 	})
 }
 
-// notifyMentionedInReport pushes to everyone mentioned in a field report's
+// NotifyMentionedInReport pushes to everyone mentioned in a field report's
 // journal entries.
-func (p *Pusher) notifyMentionedInReport(ctx context.Context, eventName string, reportNumber int32, recipientIDs []int32, actorPersonID int32) {
+func (p *Pusher) NotifyMentionedInReport(ctx context.Context, eventName string, reportNumber int32, recipientIDs []int32, actorPersonID int32) {
 	p.fanOut(ctx, recipientIDs, actorPersonID, push.Message{
 		Title: pushTitle,
 		Body:  fmt.Sprintf("You were mentioned in field report #%d", reportNumber),
@@ -80,9 +80,9 @@ func (p *Pusher) notifyMentionedInReport(ctx context.Context, eventName string, 
 	})
 }
 
-// notifyAddedToIncident pushes to a person just added to an incident's
+// NotifyAddedToIncident pushes to a person just added to an incident's
 // involvement.
-func (p *Pusher) notifyAddedToIncident(ctx context.Context, eventName string, incidentNumber, recipientPersonID, actorPersonID int32) {
+func (p *Pusher) NotifyAddedToIncident(ctx context.Context, eventName string, incidentNumber, recipientPersonID, actorPersonID int32) {
 	p.fanOut(ctx, []int32{recipientPersonID}, actorPersonID, push.Message{
 		Title: pushTitle,
 		Body:  fmt.Sprintf("You were added to incident #%d", incidentNumber),

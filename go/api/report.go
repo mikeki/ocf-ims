@@ -29,6 +29,7 @@ import (
 
 	"github.com/go-sql-driver/mysql"
 	"github.com/mikeki/ocf-ims/directory"
+	"github.com/mikeki/ocf-ims/internal/server"
 	imsjson "github.com/mikeki/ocf-ims/json"
 	"github.com/mikeki/ocf-ims/lib/authz"
 	"github.com/mikeki/ocf-ims/lib/conv"
@@ -49,13 +50,13 @@ func (action GetReports) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 		errHTTP.From("[getReports]").WriteResponse(w)
 		return
 	}
-	mustWriteJSON(w, req, resp)
+	server.MustWriteJSON(w, req, resp)
 }
 func (action GetReports) getReports(req *http.Request) (imsjson.Reports, *herr.HTTPError) {
 	resp := make(imsjson.Reports, 0)
-	event, jwtCtx, eventPermissions, errHTTP := getEventPermissions(req, action.imsDBQ, action.userStore)
+	event, jwtCtx, eventPermissions, errHTTP := server.GetEventPermissions(req, action.imsDBQ, action.userStore)
 	if errHTTP != nil {
-		return resp, errHTTP.From("[getEventPermissions]")
+		return resp, errHTTP.From("[server.GetEventPermissions]")
 	}
 	if eventPermissions&(authz.EventReadAllReports|authz.EventReadOwnReports|authz.EventReadCrewReports) == 0 {
 		return resp, herr.Forbidden("The requestor does not have permission to read Reports on this Event", nil)
@@ -201,15 +202,15 @@ func (action GetReport) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 		errHTTP.From("[getReport]").WriteResponse(w)
 		return
 	}
-	mustWriteJSON(w, req, resp)
+	server.MustWriteJSON(w, req, resp)
 }
 
 func (action GetReport) getReport(req *http.Request) (imsjson.Report, *herr.HTTPError) {
 	var response imsjson.Report
 
-	event, jwtCtx, eventPermissions, errHTTP := getEventPermissions(req, action.imsDBQ, action.userStore)
+	event, jwtCtx, eventPermissions, errHTTP := server.GetEventPermissions(req, action.imsDBQ, action.userStore)
 	if errHTTP != nil {
-		return response, errHTTP.From("[getEventPermissions]")
+		return response, errHTTP.From("[server.GetEventPermissions]")
 	}
 	if eventPermissions&(authz.EventReadAllReports|authz.EventReadOwnReports|authz.EventReadCrewReports) == 0 {
 		return response, herr.Forbidden("The requestor does not have permission to read Reports on this Event", nil)
@@ -354,8 +355,8 @@ func fetchReport(ctx context.Context, imsDBQ *store.DBQ, eventID, reportNumber i
 type EditReport struct {
 	imsDBQ      *store.DBQ
 	userStore   directory.UserStore
-	eventSource *EventSourcerer
-	pusher      *Pusher
+	eventSource *server.EventSourcerer
+	pusher      *server.Pusher
 }
 
 func (action EditReport) ServeHTTP(w http.ResponseWriter, req *http.Request) {
@@ -367,9 +368,9 @@ func (action EditReport) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 	herr.WriteNoContentResponse(w, "Success")
 }
 func (action EditReport) editReport(req *http.Request) *herr.HTTPError {
-	event, jwt, eventPermissions, errHTTP := getEventPermissions(req, action.imsDBQ, action.userStore)
+	event, jwt, eventPermissions, errHTTP := server.GetEventPermissions(req, action.imsDBQ, action.userStore)
 	if errHTTP != nil {
-		return errHTTP.From("[getEventPermissions]")
+		return errHTTP.From("[server.GetEventPermissions]")
 	}
 	if eventPermissions&(authz.EventWriteAllReports|authz.EventWriteOwnReports) == 0 {
 		return herr.Forbidden("The requestor does not have permission to edit Reports on this Event", nil)
@@ -431,9 +432,9 @@ func (action EditReport) editReport(req *http.Request) *herr.HTTPError {
 		}
 	}
 
-	requestReport, errHTTP := readBodyAs[imsjson.Report](req)
+	requestReport, errHTTP := server.ReadBodyAs[imsjson.Report](req)
 	if errHTTP != nil {
-		return errHTTP.From("[readBodyAs]")
+		return errHTTP.From("[server.ReadBodyAs]")
 	}
 	// This is fine, as it may be that only a link/unlink was requested
 	if requestReport.Number == 0 {
@@ -464,7 +465,7 @@ func (action EditReport) editReport(req *http.Request) *herr.HTTPError {
 	if err != nil {
 		return herr.InternalServerError("Failed to begin transaction", err).From("[Begin]")
 	}
-	defer rollback(txn)
+	defer server.Rollback(txn)
 
 	if requestReport.Summary != nil {
 		storedReport.Summary = conv.StringToSql(requestReport.Summary, 0)
@@ -510,9 +511,9 @@ func (action EditReport) editReport(req *http.Request) *herr.HTTPError {
 		return herr.InternalServerError("Failed to commit transaction", err).From("[Commit]")
 	}
 
-	defer action.eventSource.notifyReportUpdate(event.ID, storedReport.Number)
+	defer action.eventSource.NotifyReportUpdate(event.ID, storedReport.Number)
 	// Web push the mentioned people (plan 84c): after commit, off the request path.
-	action.pusher.notifyMentionedInReport(ctx, event.Name, storedReport.Number, mentionedPersonIDs, authorPersonID)
+	action.pusher.NotifyMentionedInReport(ctx, event.Name, storedReport.Number, mentionedPersonIDs, authorPersonID)
 	return nil
 }
 
@@ -579,8 +580,8 @@ func (action EditReport) handleLinkToIncident(
 			return errHTTP.From("[addIncidentJournalEntry]")
 		}
 	}
-	defer action.eventSource.notifyReportUpdate(event.ID, reportNumber)
-	defer action.eventSource.notifyIncidentUpdates(event.ID, previousIncident.Int32, newIncident.Int32)
+	defer action.eventSource.NotifyReportUpdate(event.ID, reportNumber)
+	defer action.eventSource.NotifyIncidentUpdates(event.ID, previousIncident.Int32, newIncident.Int32)
 	// #nosec G706 // log injection
 	slog.Info("Attached Report to newIncident",
 		"event", event.ID,
@@ -619,8 +620,8 @@ func (action EditReport) isPreviousAuthor(
 type NewReport struct {
 	imsDBQ      *store.DBQ
 	userStore   directory.UserStore
-	eventSource *EventSourcerer
-	pusher      *Pusher
+	eventSource *server.EventSourcerer
+	pusher      *server.Pusher
 }
 
 func (action NewReport) ServeHTTP(w http.ResponseWriter, req *http.Request) {
@@ -636,18 +637,18 @@ func (action NewReport) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 }
 
 func (action NewReport) newReport(req *http.Request) (reportNumber int32, location string, errHTTP *herr.HTTPError) {
-	event, jwtCtx, eventPermissions, errHTTP := getEventPermissions(req, action.imsDBQ, action.userStore)
+	event, jwtCtx, eventPermissions, errHTTP := server.GetEventPermissions(req, action.imsDBQ, action.userStore)
 	if errHTTP != nil {
-		return 0, "", errHTTP.From("[getEventPermissions]")
+		return 0, "", errHTTP.From("[server.GetEventPermissions]")
 	}
 	if eventPermissions&(authz.EventWriteAllReports|authz.EventWriteOwnReports) == 0 {
 		return 0, "", herr.Forbidden("The requestor does not have permission to write Reports on this Event", nil)
 	}
 	ctx := req.Context()
 
-	report, errHTTP := readBodyAs[imsjson.Report](req)
+	report, errHTTP := server.ReadBodyAs[imsjson.Report](req)
 	if errHTTP != nil {
-		return 0, "", errHTTP.From("[readBodyAs]")
+		return 0, "", errHTTP.From("[server.ReadBodyAs]")
 	}
 
 	// A new Report may be created already attached to an incident (10e): a
@@ -690,7 +691,7 @@ func (action NewReport) newReport(req *http.Request) (reportNumber int32, locati
 	if err != nil {
 		return 0, "", herr.InternalServerError("Failed to begin transaction", err).From("[Begin]")
 	}
-	defer rollback(txn)
+	defer server.Rollback(txn)
 
 	if report.Summary != nil {
 		text := "Changed summary to: " + *report.Summary
@@ -740,14 +741,14 @@ func (action NewReport) newReport(req *http.Request) (reportNumber int32, locati
 	}
 
 	loc := fmt.Sprintf("/ims/api/events/%v/reports/%v", event.Name, report.Number)
-	defer action.eventSource.notifyReportUpdate(event.ID, report.Number)
+	defer action.eventSource.NotifyReportUpdate(event.ID, report.Number)
 	if report.Incident != nil {
 		// The incident just gained a report; refresh its subscribers too (0 =
 		// no previous incident, mirroring an attach from unattached).
-		defer action.eventSource.notifyIncidentUpdates(event.ID, 0, *report.Incident)
+		defer action.eventSource.NotifyIncidentUpdates(event.ID, 0, *report.Incident)
 	}
 	// Web push the mentioned people (plan 84c): after commit, off the request path.
-	action.pusher.notifyMentionedInReport(ctx, event.Name, report.Number, mentionedPersonIDs, authorPersonID)
+	action.pusher.NotifyMentionedInReport(ctx, event.Name, report.Number, mentionedPersonIDs, authorPersonID)
 	return report.Number, loc, nil
 }
 

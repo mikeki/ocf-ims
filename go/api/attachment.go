@@ -35,6 +35,7 @@ import (
 	"github.com/gabriel-vasile/mimetype"
 	"github.com/mikeki/ocf-ims/conf"
 	"github.com/mikeki/ocf-ims/directory"
+	"github.com/mikeki/ocf-ims/internal/server"
 	"github.com/mikeki/ocf-ims/lib/attachment"
 	"github.com/mikeki/ocf-ims/lib/authz"
 	"github.com/mikeki/ocf-ims/lib/conv"
@@ -59,7 +60,7 @@ type GetIncidentAttachment struct {
 type AttachToIncident struct {
 	imsDBQ             *store.DBQ
 	userStore          directory.UserStore
-	es                 *EventSourcerer
+	es                 *server.EventSourcerer
 	attachmentsStore   conf.AttachmentsStore
 	s3Client           *attachment.S3Client
 	maxAttachmentBytes int64
@@ -75,7 +76,7 @@ type GetReportAttachment struct {
 type AttachToReport struct {
 	imsDBQ             *store.DBQ
 	userStore          directory.UserStore
-	es                 *EventSourcerer
+	es                 *server.EventSourcerer
 	attachmentsStore   conf.AttachmentsStore
 	s3Client           *attachment.S3Client
 	maxAttachmentBytes int64
@@ -91,7 +92,7 @@ type GetVisitAttachment struct {
 type AttachToVisit struct {
 	imsDBQ             *store.DBQ
 	userStore          directory.UserStore
-	es                 *EventSourcerer
+	es                 *server.EventSourcerer
 	attachmentsStore   conf.AttachmentsStore
 	s3Client           *attachment.S3Client
 	maxAttachmentBytes int64
@@ -111,9 +112,9 @@ func (action GetIncidentAttachment) ServeHTTP(w http.ResponseWriter, req *http.R
 func (action GetIncidentAttachment) getIncidentAttachment(
 	req *http.Request,
 ) (fi io.ReadSeeker, contentType string, errHTTP *herr.HTTPError) {
-	event, jwtCtx, eventPermissions, errHTTP := getEventPermissions(req, action.imsDBQ, action.userStore)
+	event, jwtCtx, eventPermissions, errHTTP := server.GetEventPermissions(req, action.imsDBQ, action.userStore)
 	if errHTTP != nil {
-		return nil, "", errHTTP.From("[getEventPermissions]")
+		return nil, "", errHTTP.From("[server.GetEventPermissions]")
 	}
 	ctx := req.Context()
 
@@ -310,9 +311,9 @@ func (action GetReportAttachment) ServeHTTP(w http.ResponseWriter, req *http.Req
 func (action GetReportAttachment) getReportAttachment(
 	req *http.Request,
 ) (fi io.ReadSeeker, contentType string, errHTTP *herr.HTTPError) {
-	event, jwtCtx, eventPermissions, errHTTP := getEventPermissions(req, action.imsDBQ, action.userStore)
+	event, jwtCtx, eventPermissions, errHTTP := server.GetEventPermissions(req, action.imsDBQ, action.userStore)
 	if errHTTP != nil {
-		return nil, "", errHTTP.From("[getEventPermissions]")
+		return nil, "", errHTTP.From("[server.GetEventPermissions]")
 	}
 	if eventPermissions&(authz.EventReadAllReports|authz.EventReadOwnReports) == 0 {
 		return nil, "", herr.Forbidden("The requestor does not have permission to read Reports on this Event", nil)
@@ -385,9 +386,9 @@ func (action AttachToIncident) ServeHTTP(w http.ResponseWriter, req *http.Reques
 }
 
 func (action AttachToIncident) attachToIncident(req *http.Request) (int32, *herr.HTTPError) {
-	event, jwtCtx, eventPermissions, errHTTP := getEventPermissions(req, action.imsDBQ, action.userStore)
+	event, jwtCtx, eventPermissions, errHTTP := server.GetEventPermissions(req, action.imsDBQ, action.userStore)
 	if errHTTP != nil {
-		return 0, errHTTP.From("[getEventPermissions]")
+		return 0, errHTTP.From("[server.GetEventPermissions]")
 	}
 	if eventPermissions&authz.EventWriteIncidents == 0 {
 		return 0, herr.Forbidden("The requestor does not have EventWriteIncidents permission on this Event", nil)
@@ -408,7 +409,7 @@ func (action AttachToIncident) attachToIncident(req *http.Request) (int32, *herr
 		}
 		return 0, herr.BadRequest("Failed to parse file", err)
 	}
-	defer shut(fi)
+	defer server.Shut(fi)
 
 	errHTTP = checkAttachmentSize(fiHead, action.maxAttachmentBytes)
 	if errHTTP != nil {
@@ -448,7 +449,7 @@ func (action AttachToIncident) attachToIncident(req *http.Request) (int32, *herr
 		return 0, errHTTP.From("[addIncidentJournalEntry]")
 	}
 
-	action.es.notifyIncidentUpdate(event.ID, incidentNumber)
+	action.es.NotifyIncidentUpdate(event.ID, incidentNumber)
 	return reID, nil
 }
 
@@ -456,7 +457,7 @@ func (action AttachToIncident) attachToIncident(req *http.Request) (int32, *herr
 // per-attachment cap (conf MaxAttachmentBytes / IMS_MAX_ATTACHMENT_SIZE). fiHead.Size is
 // the multipart part's length as measured by the parser (not a client-declared header),
 // so it's a reliable gate to apply before the bytes are sniffed or stored. The global
-// LimitRequestBytes middleware is a coarser whole-request backstop; this gives a clear
+// server.LimitRequestBytes middleware is a coarser whole-request backstop; this gives a clear
 // per-file error well below it.
 func checkAttachmentSize(fiHead *multipart.FileHeader, maxBytes int64) *herr.HTTPError {
 	if fiHead.Size > maxBytes {
@@ -481,7 +482,7 @@ func saveFile(
 		if err != nil {
 			return herr.InternalServerError("Failed to create file", err).From("[Create]")
 		}
-		defer shut(outFi)
+		defer server.Shut(outFi)
 		_, err = io.Copy(outFi, fi)
 		if err != nil {
 			return herr.InternalServerError("Failed to write file", err).From("[Copy]")
@@ -536,9 +537,9 @@ func (action AttachToReport) ServeHTTP(w http.ResponseWriter, req *http.Request)
 	herr.WriteNoContentResponse(w, "Saved Report attachment")
 }
 func (action AttachToReport) attachToReport(req *http.Request) (int32, *herr.HTTPError) {
-	event, jwtCtx, eventPermissions, errHTTP := getEventPermissions(req, action.imsDBQ, action.userStore)
+	event, jwtCtx, eventPermissions, errHTTP := server.GetEventPermissions(req, action.imsDBQ, action.userStore)
 	if errHTTP != nil {
-		return 0, errHTTP.From("[getEventPermissions]")
+		return 0, errHTTP.From("[server.GetEventPermissions]")
 	}
 	if eventPermissions&(authz.EventWriteAllReports|authz.EventWriteOwnReports) == 0 {
 		return 0, herr.Forbidden("The requestor does not have permission to write Reports on this Event", nil)
@@ -571,7 +572,7 @@ func (action AttachToReport) attachToReport(req *http.Request) (int32, *herr.HTT
 		}
 		return 0, herr.BadRequest("Failed to parse file", err)
 	}
-	defer shut(fi)
+	defer server.Shut(fi)
 
 	errHTTP = checkAttachmentSize(fiHead, action.maxAttachmentBytes)
 	if errHTTP != nil {
@@ -613,9 +614,9 @@ func (action AttachToReport) attachToReport(req *http.Request) (int32, *herr.HTT
 		return 0, errHTTP.From("[addJournalEntry]")
 	}
 
-	action.es.notifyReportUpdate(event.ID, reportNumber)
+	action.es.NotifyReportUpdate(event.ID, reportNumber)
 	if report.Report.IncidentNumber.Valid {
-		action.es.notifyIncidentUpdate(event.ID, report.Report.IncidentNumber.Int32)
+		action.es.NotifyIncidentUpdate(event.ID, report.Report.IncidentNumber.Int32)
 	}
 	return reID, nil
 }
@@ -634,9 +635,9 @@ func (action GetVisitAttachment) ServeHTTP(w http.ResponseWriter, req *http.Requ
 func (action GetVisitAttachment) getVisitAttachment(
 	req *http.Request,
 ) (fi io.ReadSeeker, contentType string, errHTTP *herr.HTTPError) {
-	event, _, eventPermissions, errHTTP := getEventPermissions(req, action.imsDBQ, action.userStore)
+	event, _, eventPermissions, errHTTP := server.GetEventPermissions(req, action.imsDBQ, action.userStore)
 	if errHTTP != nil {
-		return nil, "", errHTTP.From("[getEventPermissions]")
+		return nil, "", errHTTP.From("[server.GetEventPermissions]")
 	}
 	if eventPermissions&authz.EventReadVisits == 0 {
 		return nil, "", herr.Forbidden("The requestor does not have EventReadVisits permission on this Event", nil)
@@ -701,9 +702,9 @@ func (action AttachToVisit) ServeHTTP(w http.ResponseWriter, req *http.Request) 
 }
 
 func (action AttachToVisit) attachToVisit(req *http.Request) (int32, *herr.HTTPError) {
-	event, jwtCtx, eventPermissions, errHTTP := getEventPermissions(req, action.imsDBQ, action.userStore)
+	event, jwtCtx, eventPermissions, errHTTP := server.GetEventPermissions(req, action.imsDBQ, action.userStore)
 	if errHTTP != nil {
-		return 0, errHTTP.From("[getEventPermissions]")
+		return 0, errHTTP.From("[server.GetEventPermissions]")
 	}
 	if eventPermissions&authz.EventWriteVisits == 0 {
 		return 0, herr.Forbidden("The requestor does not have EventWriteVisits permission on this Event", nil)
@@ -724,7 +725,7 @@ func (action AttachToVisit) attachToVisit(req *http.Request) (int32, *herr.HTTPE
 		}
 		return 0, herr.BadRequest("Failed to parse file", err)
 	}
-	defer shut(fi)
+	defer server.Shut(fi)
 
 	errHTTP = checkAttachmentSize(fiHead, action.maxAttachmentBytes)
 	if errHTTP != nil {
@@ -764,7 +765,7 @@ func (action AttachToVisit) attachToVisit(req *http.Request) (int32, *herr.HTTPE
 		return 0, errHTTP.From("[addVisitJournalEntry]")
 	}
 
-	action.es.notifyVisitUpdate(event.ID, visitNumber)
+	action.es.NotifyVisitUpdate(event.ID, visitNumber)
 	return reID, nil
 }
 

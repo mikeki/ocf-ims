@@ -28,6 +28,7 @@ import (
 
 	"github.com/go-sql-driver/mysql"
 	"github.com/mikeki/ocf-ims/directory"
+	"github.com/mikeki/ocf-ims/internal/server"
 	imsjson "github.com/mikeki/ocf-ims/json"
 	"github.com/mikeki/ocf-ims/lib/authz"
 	"github.com/mikeki/ocf-ims/lib/conv"
@@ -49,14 +50,14 @@ func (action GetVisits) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 		errHTTP.From("[getVisits]").WriteResponse(w)
 		return
 	}
-	mustWriteJSON(w, req, resp)
+	server.MustWriteJSON(w, req, resp)
 }
 
 func (action GetVisits) getVisits(req *http.Request) (imsjson.Visits, *herr.HTTPError) {
 	resp := make(imsjson.Visits, 0)
-	event, _, eventPermissions, errHTTP := getEventPermissions(req, action.imsDBQ, action.userStore)
+	event, _, eventPermissions, errHTTP := server.GetEventPermissions(req, action.imsDBQ, action.userStore)
 	if errHTTP != nil {
-		return resp, errHTTP.From("[getEventPermissions]")
+		return resp, errHTTP.From("[server.GetEventPermissions]")
 	}
 	if eventPermissions&authz.EventReadVisits == 0 {
 		return nil, herr.Forbidden("The requestor does not have EventReadVisits permission", nil)
@@ -147,15 +148,15 @@ func (action GetVisit) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 		errHTTP.From("[getVisit]").WriteResponse(w)
 		return
 	}
-	mustWriteJSON(w, req, resp)
+	server.MustWriteJSON(w, req, resp)
 }
 
 func (action GetVisit) getVisit(req *http.Request) (imsjson.Visit, *herr.HTTPError) {
 	var resp imsjson.Visit
 
-	event, _, eventPermissions, errHTTP := getEventPermissions(req, action.imsDBQ, action.userStore)
+	event, _, eventPermissions, errHTTP := server.GetEventPermissions(req, action.imsDBQ, action.userStore)
 	if errHTTP != nil {
-		return resp, errHTTP.From("[getEventPermissions]")
+		return resp, errHTTP.From("[server.GetEventPermissions]")
 	}
 	if eventPermissions&authz.EventReadVisits == 0 {
 		return resp, herr.Forbidden("The requestor does not have EventReadVisits permission on this Event", nil)
@@ -282,7 +283,7 @@ func visitToJSON(storedRow imsdb.VisitRow, visitPeople []imsjson.VisitPerson,
 type NewVisit struct {
 	imsDBQ    *store.DBQ
 	userStore directory.UserStore
-	es        *EventSourcerer
+	es        *server.EventSourcerer
 }
 
 func (action NewVisit) ServeHTTP(w http.ResponseWriter, req *http.Request) {
@@ -297,17 +298,17 @@ func (action NewVisit) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 	herr.WriteCreatedResponse(w, http.StatusText(http.StatusCreated))
 }
 func (action NewVisit) newVisit(req *http.Request) (visitNumber int32, location string, errHTTP *herr.HTTPError) {
-	event, jwtCtx, eventPermissions, errHTTP := getEventPermissions(req, action.imsDBQ, action.userStore)
+	event, jwtCtx, eventPermissions, errHTTP := server.GetEventPermissions(req, action.imsDBQ, action.userStore)
 	if errHTTP != nil {
-		return 0, "", errHTTP.From("[getEventPermissions]")
+		return 0, "", errHTTP.From("[server.GetEventPermissions]")
 	}
 	if eventPermissions&authz.EventWriteVisits == 0 {
 		return 0, "", herr.Forbidden("The requestor does not have EventWriteVisits permission on this Event", nil)
 	}
 	ctx := req.Context()
-	newVisit, errHTTP := readBodyAs[imsjson.Visit](req)
+	newVisit, errHTTP := server.ReadBodyAs[imsjson.Visit](req)
 	if errHTTP != nil {
-		return 0, "", errHTTP.From("[readBodyAs]")
+		return 0, "", errHTTP.From("[server.ReadBodyAs]")
 	}
 
 	authorPersonID := jwtCtx.Claims.PersonID()
@@ -339,7 +340,7 @@ func (action NewVisit) newVisit(req *http.Request) (visitNumber int32, location 
 	return newVisit.Number, fmt.Sprintf("/ims/api/events/%v/visits/%d", event.Name, newVisit.Number), nil
 }
 
-func updateVisit(ctx context.Context, imsDBQ *store.DBQ, es *EventSourcerer, newVisit imsjson.Visit, authorPersonID int32,
+func updateVisit(ctx context.Context, imsDBQ *store.DBQ, es *server.EventSourcerer, newVisit imsjson.Visit, authorPersonID int32,
 ) *herr.HTTPError {
 	storedVisitRow, err := imsDBQ.Visit(ctx, imsDBQ,
 		imsdb.VisitParams{
@@ -365,7 +366,7 @@ func updateVisit(ctx context.Context, imsDBQ *store.DBQ, es *EventSourcerer, new
 	if err != nil {
 		return herr.InternalServerError("Failed to start transaction", err).From("[Begin]")
 	}
-	defer rollback(txn)
+	defer server.Rollback(txn)
 
 	update := imsdb.UpdateVisitParams{
 		Event:                storedVisit.Event,
@@ -553,8 +554,8 @@ func updateVisit(ctx context.Context, imsDBQ *store.DBQ, es *EventSourcerer, new
 		return herr.InternalServerError("Failed to commit transaction", err).From("[Commit]")
 	}
 
-	es.notifyVisitUpdate(storedVisit.Event, storedVisit.Number)
-	es.notifyIncidentUpdates(storedVisit.Event, storedVisit.IncidentNumber.Int32, update.IncidentNumber.Int32)
+	es.NotifyVisitUpdate(storedVisit.Event, storedVisit.Number)
+	es.NotifyIncidentUpdates(storedVisit.Event, storedVisit.IncidentNumber.Int32, update.IncidentNumber.Int32)
 
 	return nil
 }
@@ -595,7 +596,7 @@ func addVisitJournalEntry(
 type EditVisit struct {
 	imsDBQ    *store.DBQ
 	userStore directory.UserStore
-	es        *EventSourcerer
+	es        *server.EventSourcerer
 }
 
 func (action EditVisit) ServeHTTP(w http.ResponseWriter, req *http.Request) {
@@ -608,9 +609,9 @@ func (action EditVisit) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 }
 
 func (action EditVisit) editVisit(req *http.Request) *herr.HTTPError {
-	event, jwtCtx, eventPermissions, errHTTP := getEventPermissions(req, action.imsDBQ, action.userStore)
+	event, jwtCtx, eventPermissions, errHTTP := server.GetEventPermissions(req, action.imsDBQ, action.userStore)
 	if errHTTP != nil {
-		return errHTTP.From("[getEventPermissions]")
+		return errHTTP.From("[server.GetEventPermissions]")
 	}
 	if eventPermissions&authz.EventWriteVisits == 0 {
 		return herr.Forbidden("The requestor does not have EventWriteVisits permission for this Event", nil)
@@ -621,9 +622,9 @@ func (action EditVisit) editVisit(req *http.Request) *herr.HTTPError {
 	if err != nil {
 		return herr.BadRequest("Invalid Visit Number", err).From("[ParseInt32]")
 	}
-	newVisit, errHTTP := readBodyAs[imsjson.Visit](req)
+	newVisit, errHTTP := server.ReadBodyAs[imsjson.Visit](req)
 	if errHTTP != nil {
-		return errHTTP.From("[readBodyAs]")
+		return errHTTP.From("[server.ReadBodyAs]")
 	}
 	newVisit.Event = event.Name
 	newVisit.EventID = event.ID
@@ -642,7 +643,7 @@ func (action EditVisit) editVisit(req *http.Request) *herr.HTTPError {
 type AttachPersonToVisit struct {
 	imsDBQ    *store.DBQ
 	userStore directory.UserStore
-	es        *EventSourcerer
+	es        *server.EventSourcerer
 }
 
 func (action AttachPersonToVisit) ServeHTTP(w http.ResponseWriter, req *http.Request) {
@@ -655,9 +656,9 @@ func (action AttachPersonToVisit) ServeHTTP(w http.ResponseWriter, req *http.Req
 }
 
 func (action AttachPersonToVisit) attachPerson(req *http.Request) *herr.HTTPError {
-	event, jwtCtx, eventPermissions, errHTTP := getEventPermissions(req, action.imsDBQ, action.userStore)
+	event, jwtCtx, eventPermissions, errHTTP := server.GetEventPermissions(req, action.imsDBQ, action.userStore)
 	if errHTTP != nil {
-		return errHTTP.From("[getEventPermissions]")
+		return errHTTP.From("[server.GetEventPermissions]")
 	}
 	if eventPermissions&authz.EventWriteVisits == 0 {
 		return herr.Forbidden("The requestor does not have EventWriteVisits permission for this Event", nil)
@@ -669,21 +670,21 @@ func (action AttachPersonToVisit) attachPerson(req *http.Request) *herr.HTTPErro
 		return herr.BadRequest("Invalid Visit Number", err).From("[ParseInt32]")
 	}
 
-	person, errHTTP := personByIDFromPath(ctx, action.imsDBQ, req)
+	person, errHTTP := server.PersonByIDFromPath(ctx, action.imsDBQ, req)
 	if errHTTP != nil {
-		return errHTTP.From("[personByIDFromPath]")
+		return errHTTP.From("[server.PersonByIDFromPath]")
 	}
 	personID := person.ID
 
-	body, errHTTP := readBodyAs[imsjson.VisitPerson](req)
+	body, errHTTP := server.ReadBodyAs[imsjson.VisitPerson](req)
 	if errHTTP != nil {
-		return errHTTP.From("[readBodyAs]")
+		return errHTTP.From("[server.ReadBodyAs]")
 	}
 	txn, err := action.imsDBQ.Begin()
 	if err != nil {
 		return herr.InternalServerError("Failed to start transaction", err).From("[Begin]")
 	}
-	defer rollback(txn)
+	defer server.Rollback(txn)
 
 	err = action.imsDBQ.DetachPersonFromVisit(ctx, txn, imsdb.DetachPersonFromVisitParams{
 		Event:       event.ID,
@@ -706,7 +707,7 @@ func (action AttachPersonToVisit) attachPerson(req *http.Request) *herr.HTTPErro
 
 	_, errHTTP = addVisitJournalEntry(
 		ctx, action.imsDBQ, txn, event.ID, visitNumber,
-		jwtCtx.Claims.PersonID(), fmt.Sprintf("Added person: %v", personDisplayName(person)),
+		jwtCtx.Claims.PersonID(), fmt.Sprintf("Added person: %v", server.PersonDisplayName(person)),
 		true, "", "", "",
 	)
 	if errHTTP != nil {
@@ -717,7 +718,7 @@ func (action AttachPersonToVisit) attachPerson(req *http.Request) *herr.HTTPErro
 		return herr.InternalServerError("Failed to commit transaction", err).From("[Commit]")
 	}
 
-	action.es.notifyVisitUpdate(event.ID, visitNumber)
+	action.es.NotifyVisitUpdate(event.ID, visitNumber)
 
 	return nil
 }
@@ -725,7 +726,7 @@ func (action AttachPersonToVisit) attachPerson(req *http.Request) *herr.HTTPErro
 type DetachPersonFromVisit struct {
 	imsDBQ    *store.DBQ
 	userStore directory.UserStore
-	es        *EventSourcerer
+	es        *server.EventSourcerer
 }
 
 func (action DetachPersonFromVisit) ServeHTTP(w http.ResponseWriter, req *http.Request) {
@@ -738,9 +739,9 @@ func (action DetachPersonFromVisit) ServeHTTP(w http.ResponseWriter, req *http.R
 }
 
 func (action DetachPersonFromVisit) detachPerson(req *http.Request) *herr.HTTPError {
-	event, jwtCtx, eventPermissions, errHTTP := getEventPermissions(req, action.imsDBQ, action.userStore)
+	event, jwtCtx, eventPermissions, errHTTP := server.GetEventPermissions(req, action.imsDBQ, action.userStore)
 	if errHTTP != nil {
-		return errHTTP.From("[getEventPermissions]")
+		return errHTTP.From("[server.GetEventPermissions]")
 	}
 	if eventPermissions&authz.EventWriteVisits == 0 {
 		return herr.Forbidden("The requestor does not have EventWriteVisits permission for this Event", nil)
@@ -752,9 +753,9 @@ func (action DetachPersonFromVisit) detachPerson(req *http.Request) *herr.HTTPEr
 		return herr.BadRequest("Invalid Visit Number", err).From("[ParseInt32]")
 	}
 
-	person, errHTTP := personByIDFromPath(ctx, action.imsDBQ, req)
+	person, errHTTP := server.PersonByIDFromPath(ctx, action.imsDBQ, req)
 	if errHTTP != nil {
-		return errHTTP.From("[personByIDFromPath]")
+		return errHTTP.From("[server.PersonByIDFromPath]")
 	}
 	personID := person.ID
 
@@ -762,7 +763,7 @@ func (action DetachPersonFromVisit) detachPerson(req *http.Request) *herr.HTTPEr
 	if err != nil {
 		return herr.InternalServerError("Failed to start transaction", err).From("[Begin]")
 	}
-	defer rollback(txn)
+	defer server.Rollback(txn)
 
 	err = action.imsDBQ.DetachPersonFromVisit(ctx, txn, imsdb.DetachPersonFromVisitParams{
 		Event:       event.ID,
@@ -774,7 +775,7 @@ func (action DetachPersonFromVisit) detachPerson(req *http.Request) *herr.HTTPEr
 	}
 	_, errHTTP = addVisitJournalEntry(
 		ctx, action.imsDBQ, txn, event.ID, visitNumber,
-		jwtCtx.Claims.PersonID(), fmt.Sprintf("Removed person: %v", personDisplayName(person)),
+		jwtCtx.Claims.PersonID(), fmt.Sprintf("Removed person: %v", server.PersonDisplayName(person)),
 		true, "", "", "",
 	)
 	if errHTTP != nil {
@@ -786,7 +787,7 @@ func (action DetachPersonFromVisit) detachPerson(req *http.Request) *herr.HTTPEr
 		return herr.InternalServerError("Failed to commit transaction", err).From("[Commit]")
 	}
 
-	action.es.notifyVisitUpdate(event.ID, visitNumber)
+	action.es.NotifyVisitUpdate(event.ID, visitNumber)
 
 	return nil
 }

@@ -23,6 +23,7 @@ import (
 	"time"
 
 	"github.com/go-sql-driver/mysql"
+	"github.com/mikeki/ocf-ims/internal/server"
 	"github.com/mikeki/ocf-ims/lib/conv"
 	"github.com/mikeki/ocf-ims/lib/herr"
 	"github.com/mikeki/ocf-ims/store"
@@ -62,16 +63,16 @@ func (action PostPushSubscribe) ServeHTTP(w http.ResponseWriter, req *http.Reque
 }
 
 func (action PostPushSubscribe) subscribe(req *http.Request) *herr.HTTPError {
-	jwtCtx, errHTTP := getJwtCtx(req)
+	jwtCtx, errHTTP := server.GetJwtCtx(req)
 	if errHTTP != nil {
-		return errHTTP.From("[getJwtCtx]")
+		return errHTTP.From("[server.GetJwtCtx]")
 	}
 	ctx := req.Context()
 	personID := jwtCtx.Claims.PersonID()
 
-	body, errHTTP := readBodyAs[PushSubscribeRequest](req)
+	body, errHTTP := server.ReadBodyAs[PushSubscribeRequest](req)
 	if errHTTP != nil {
-		return errHTTP.From("[readBodyAs]")
+		return errHTTP.From("[server.ReadBodyAs]")
 	}
 	if body.Endpoint == "" || body.Keys.P256dh == "" || body.Keys.Auth == "" {
 		return herr.BadRequest("A push subscription requires an endpoint and keys", nil)
@@ -158,16 +159,16 @@ func (action DeletePushSubscribe) ServeHTTP(w http.ResponseWriter, req *http.Req
 }
 
 func (action DeletePushSubscribe) unsubscribe(req *http.Request) *herr.HTTPError {
-	jwtCtx, errHTTP := getJwtCtx(req)
+	jwtCtx, errHTTP := server.GetJwtCtx(req)
 	if errHTTP != nil {
-		return errHTTP.From("[getJwtCtx]")
+		return errHTTP.From("[server.GetJwtCtx]")
 	}
 	ctx := req.Context()
 	personID := jwtCtx.Claims.PersonID()
 
-	body, errHTTP := readBodyAs[PushUnsubscribeRequest](req)
+	body, errHTTP := server.ReadBodyAs[PushUnsubscribeRequest](req)
 	if errHTTP != nil {
-		return errHTTP.From("[readBodyAs]")
+		return errHTTP.From("[server.ReadBodyAs]")
 	}
 	if body.Endpoint == "" {
 		return herr.BadRequest("An endpoint is required to unsubscribe", nil)

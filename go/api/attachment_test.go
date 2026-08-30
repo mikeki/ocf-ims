@@ -17,17 +17,18 @@
 package api
 
 import (
-	"github.com/mikeki/ocf-ims/conf"
-	"github.com/mikeki/ocf-ims/lib/attachment"
-	"github.com/mikeki/ocf-ims/lib/attachment/fake"
-	"github.com/stretchr/testify/assert"
-	"github.com/stretchr/testify/require"
 	"io"
 	"mime/multipart"
 	"net/http"
 	"os"
 	"path/filepath"
 	"testing"
+
+	"github.com/mikeki/ocf-ims/conf"
+	"github.com/mikeki/ocf-ims/lib/attachment"
+	"github.com/mikeki/ocf-ims/lib/attachment/fake"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func TestContentDisposition(t *testing.T) {

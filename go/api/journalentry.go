@@ -24,6 +24,7 @@ import (
 	"time"
 
 	"github.com/mikeki/ocf-ims/directory"
+	"github.com/mikeki/ocf-ims/internal/server"
 	imsjson "github.com/mikeki/ocf-ims/json"
 	"github.com/mikeki/ocf-ims/lib/authz"
 	"github.com/mikeki/ocf-ims/lib/conv"
@@ -35,7 +36,7 @@ import (
 type EditReportJournalEntry struct {
 	imsDBQ      *store.DBQ
 	userStore   directory.UserStore
-	eventSource *EventSourcerer
+	eventSource *server.EventSourcerer
 }
 
 func (action EditReportJournalEntry) ServeHTTP(w http.ResponseWriter, req *http.Request) {
@@ -48,9 +49,9 @@ func (action EditReportJournalEntry) ServeHTTP(w http.ResponseWriter, req *http.
 }
 
 func (action EditReportJournalEntry) editJournalEntry(req *http.Request) *herr.HTTPError {
-	event, jwtCtx, eventPermissions, errHTTP := getEventPermissions(req, action.imsDBQ, action.userStore)
+	event, jwtCtx, eventPermissions, errHTTP := server.GetEventPermissions(req, action.imsDBQ, action.userStore)
 	if errHTTP != nil {
-		return errHTTP.From("[getEventPermissions]")
+		return errHTTP.From("[server.GetEventPermissions]")
 	}
 	if eventPermissions&(authz.EventWriteAllReports|authz.EventWriteOwnReports) == 0 {
 		return herr.Forbidden("The requestor does not have permission to write Reports on this Event", nil)
@@ -68,9 +69,9 @@ func (action EditReportJournalEntry) editJournalEntry(req *http.Request) *herr.H
 		return herr.BadRequest("Failed to parse journalEntryId", err).From("[ParseInt32]")
 	}
 
-	re, errHTTP := readBodyAs[imsjson.JournalEntry](req)
+	re, errHTTP := server.ReadBodyAs[imsjson.JournalEntry](req)
 	if errHTTP != nil {
-		return errHTTP.From("[readBodyAs]")
+		return errHTTP.From("[server.ReadBodyAs]")
 	}
 
 	_, err = action.imsDBQ.Report(ctx, action.imsDBQ, imsdb.ReportParams{
@@ -115,7 +116,7 @@ func (action EditReportJournalEntry) editJournalEntry(req *http.Request) *herr.H
 	if err != nil {
 		return herr.InternalServerError("Error beginning transaction", err).From("[Begin]")
 	}
-	defer rollback(txn)
+	defer server.Rollback(txn)
 
 	err = action.imsDBQ.SetReportJournalEntryStricken(ctx, txn,
 		imsdb.SetReportJournalEntryStrickenParams{
@@ -141,7 +142,7 @@ func (action EditReportJournalEntry) editJournalEntry(req *http.Request) *herr.H
 		return herr.InternalServerError("Error committing transaction", err).From("[Commit]")
 	}
 
-	defer action.eventSource.notifyReportUpdate(event.ID, reportNumber)
+	defer action.eventSource.NotifyReportUpdate(event.ID, reportNumber)
 
 	return nil
 }
@@ -149,7 +150,7 @@ func (action EditReportJournalEntry) editJournalEntry(req *http.Request) *herr.H
 type EditIncidentJournalEntry struct {
 	imsDBQ      *store.DBQ
 	userStore   directory.UserStore
-	eventSource *EventSourcerer
+	eventSource *server.EventSourcerer
 }
 
 func (action EditIncidentJournalEntry) ServeHTTP(w http.ResponseWriter, req *http.Request) {
@@ -162,9 +163,9 @@ func (action EditIncidentJournalEntry) ServeHTTP(w http.ResponseWriter, req *htt
 }
 
 func (action EditIncidentJournalEntry) editIncidentJournalEntry(req *http.Request) *herr.HTTPError {
-	event, jwtCtx, eventPermissions, errHTTP := getEventPermissions(req, action.imsDBQ, action.userStore)
+	event, jwtCtx, eventPermissions, errHTTP := server.GetEventPermissions(req, action.imsDBQ, action.userStore)
 	if errHTTP != nil {
-		return errHTTP.From("[getEventPermissions]")
+		return errHTTP.From("[server.GetEventPermissions]")
 	}
 	if eventPermissions&(authz.EventWriteIncidents) == 0 {
 		return herr.Forbidden("The requestor does not have permission to write Journal Entries on this Event", nil)
@@ -182,9 +183,9 @@ func (action EditIncidentJournalEntry) editIncidentJournalEntry(req *http.Reques
 		return herr.BadRequest("Failed to parse journalEntryId", err).From("[ParseInt32]")
 	}
 
-	re, errHTTP := readBodyAs[imsjson.JournalEntry](req)
+	re, errHTTP := server.ReadBodyAs[imsjson.JournalEntry](req)
 	if errHTTP != nil {
-		return errHTTP.From("[readBodyAs]")
+		return errHTTP.From("[server.ReadBodyAs]")
 	}
 
 	if re.Stricken == nil {
@@ -196,7 +197,7 @@ func (action EditIncidentJournalEntry) editIncidentJournalEntry(req *http.Reques
 	if err != nil {
 		return herr.InternalServerError("Error beginning transaction", err).From("[Begin]")
 	}
-	defer rollback(txn)
+	defer server.Rollback(txn)
 
 	err = action.imsDBQ.SetIncidentJournalEntryStricken(ctx, txn,
 		imsdb.SetIncidentJournalEntryStrickenParams{
@@ -222,14 +223,14 @@ func (action EditIncidentJournalEntry) editIncidentJournalEntry(req *http.Reques
 		return herr.InternalServerError("Error committing transaction", err).From("[Commit]")
 	}
 
-	defer action.eventSource.notifyIncidentUpdate(event.ID, incidentNumber)
+	defer action.eventSource.NotifyIncidentUpdate(event.ID, incidentNumber)
 	return nil
 }
 
 type EditVisitJournalEntry struct {
 	imsDBQ      *store.DBQ
 	userStore   directory.UserStore
-	eventSource *EventSourcerer
+	eventSource *server.EventSourcerer
 }
 
 func (action EditVisitJournalEntry) ServeHTTP(w http.ResponseWriter, req *http.Request) {
@@ -242,9 +243,9 @@ func (action EditVisitJournalEntry) ServeHTTP(w http.ResponseWriter, req *http.R
 }
 
 func (action EditVisitJournalEntry) editVisitJournalEntry(req *http.Request) *herr.HTTPError {
-	event, jwtCtx, eventPermissions, errHTTP := getEventPermissions(req, action.imsDBQ, action.userStore)
+	event, jwtCtx, eventPermissions, errHTTP := server.GetEventPermissions(req, action.imsDBQ, action.userStore)
 	if errHTTP != nil {
-		return errHTTP.From("[getEventPermissions]")
+		return errHTTP.From("[server.GetEventPermissions]")
 	}
 	if eventPermissions&authz.EventWriteVisits == 0 {
 		return herr.Forbidden("The requestor does not have permission to write Visits on this Event", nil)
@@ -262,9 +263,9 @@ func (action EditVisitJournalEntry) editVisitJournalEntry(req *http.Request) *he
 		return herr.BadRequest("Failed to parse journalEntryId", err).From("[ParseInt32]")
 	}
 
-	re, errHTTP := readBodyAs[imsjson.JournalEntry](req)
+	re, errHTTP := server.ReadBodyAs[imsjson.JournalEntry](req)
 	if errHTTP != nil {
-		return errHTTP.From("[readBodyAs]")
+		return errHTTP.From("[server.ReadBodyAs]")
 	}
 
 	_, err = action.imsDBQ.Visit(ctx, action.imsDBQ, imsdb.VisitParams{
@@ -284,7 +285,7 @@ func (action EditVisitJournalEntry) editVisitJournalEntry(req *http.Request) *he
 	if err != nil {
 		return herr.InternalServerError("Error beginning transaction", err).From("[Begin]")
 	}
-	defer rollback(txn)
+	defer server.Rollback(txn)
 
 	err = action.imsDBQ.SetVisitJournalEntryStricken(ctx, txn,
 		imsdb.SetVisitJournalEntryStrickenParams{
@@ -310,7 +311,7 @@ func (action EditVisitJournalEntry) editVisitJournalEntry(req *http.Request) *he
 		return herr.InternalServerError("Error committing transaction", err).From("[Commit]")
 	}
 
-	defer action.eventSource.notifyVisitUpdate(event.ID, visitNumber)
+	defer action.eventSource.NotifyVisitUpdate(event.ID, visitNumber)
 
 	return nil
 }

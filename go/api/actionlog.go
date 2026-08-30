@@ -17,15 +17,17 @@
 package api
 
 import (
+	"net/http"
+	"time"
+
 	"github.com/mikeki/ocf-ims/directory"
+	"github.com/mikeki/ocf-ims/internal/server"
 	imsjson "github.com/mikeki/ocf-ims/json"
 	"github.com/mikeki/ocf-ims/lib/authz"
 	"github.com/mikeki/ocf-ims/lib/conv"
 	"github.com/mikeki/ocf-ims/lib/herr"
 	"github.com/mikeki/ocf-ims/store"
 	"github.com/mikeki/ocf-ims/store/imsdb"
-	"net/http"
-	"time"
 )
 
 type GetActionLogs struct {
@@ -39,13 +41,13 @@ func (action GetActionLogs) ServeHTTP(w http.ResponseWriter, req *http.Request) 
 		errHTTP.From("[getActionLogs]").WriteResponse(w)
 		return
 	}
-	mustWriteJSON(w, req, resp)
+	server.MustWriteJSON(w, req, resp)
 }
 
 func (action GetActionLogs) getActionLogs(req *http.Request) (imsjson.ActionLogs, *herr.HTTPError) {
-	_, globalPermissions, errHTTP := getGlobalPermissions(req, action.imsDBQ, action.userStore)
+	_, globalPermissions, errHTTP := server.GetGlobalPermissions(req, action.imsDBQ, action.userStore)
 	if errHTTP != nil {
-		return nil, errHTTP.From("[getGlobalPermissions]")
+		return nil, errHTTP.From("[server.GetGlobalPermissions]")
 	}
 	if globalPermissions&authz.GlobalAdministrateDebugging == 0 {
 		return nil, herr.Forbidden("The requestor does not have GlobalAdministrateDebugging permission", nil)

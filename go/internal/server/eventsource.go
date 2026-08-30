@@ -14,7 +14,7 @@
 // limitations under the License.
 //
 
-package api
+package server
 
 import (
 	"encoding/json"
@@ -104,7 +104,7 @@ func (es *EventSourcerer) Replay(channel, id string) chan eventsource.Event {
 	return out
 }
 
-func (es *EventSourcerer) notifyReportUpdate(eventID int32, reportNumber int32) {
+func (es *EventSourcerer) NotifyReportUpdate(eventID int32, reportNumber int32) {
 	if reportNumber == 0 {
 		return
 	}
@@ -117,7 +117,7 @@ func (es *EventSourcerer) notifyReportUpdate(eventID int32, reportNumber int32) 
 	})
 }
 
-func (es *EventSourcerer) notifyIncidentUpdate(eventID int32, incidentNumber int32) {
+func (es *EventSourcerer) NotifyIncidentUpdate(eventID int32, incidentNumber int32) {
 	if incidentNumber == 0 {
 		return
 	}
@@ -130,14 +130,14 @@ func (es *EventSourcerer) notifyIncidentUpdate(eventID int32, incidentNumber int
 	})
 }
 
-func (es *EventSourcerer) notifyIncidentUpdates(eventID int32, incident1, incident2 int32) {
-	es.notifyIncidentUpdate(eventID, incident1)
+func (es *EventSourcerer) NotifyIncidentUpdates(eventID int32, incident1, incident2 int32) {
+	es.NotifyIncidentUpdate(eventID, incident1)
 	if incident2 != incident1 {
-		es.notifyIncidentUpdate(eventID, incident2)
+		es.NotifyIncidentUpdate(eventID, incident2)
 	}
 }
 
-func (es *EventSourcerer) notifyVisitUpdate(eventID int32, visitNumber int32) {
+func (es *EventSourcerer) NotifyVisitUpdate(eventID int32, visitNumber int32) {
 	if visitNumber == 0 {
 		return
 	}

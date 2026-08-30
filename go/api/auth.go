@@ -25,6 +25,7 @@ import (
 	"time"
 
 	"github.com/mikeki/ocf-ims/directory"
+	"github.com/mikeki/ocf-ims/internal/server"
 	"github.com/mikeki/ocf-ims/lib/authn"
 	"github.com/mikeki/ocf-ims/lib/authz"
 	"github.com/mikeki/ocf-ims/lib/herr"
@@ -67,16 +68,16 @@ func (action PostAuth) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 		return
 	}
 	http.SetCookie(w, cookie)
-	mustWriteJSON(w, req, resp)
+	server.MustWriteJSON(w, req, resp)
 }
 func (action PostAuth) postAuth(req *http.Request) (PostAuthResponse, *http.Cookie, *herr.HTTPError) {
 	// This endpoint is unauthenticated (doesn't require an Authorization header)
 	// as the point of this is to take a username and password to create a new JWT.
 	var empty PostAuthResponse
 
-	vals, errHTTP := readBodyAs[PostAuthRequest](req)
+	vals, errHTTP := server.ReadBodyAs[PostAuthRequest](req)
 	if errHTTP != nil {
-		return empty, nil, errHTTP.From("[readBodyAs]")
+		return empty, nil, errHTTP.From("[server.ReadBodyAs]")
 	}
 
 	people, err := action.userStore.GetAllUsers(req.Context())
@@ -233,13 +234,13 @@ func (action GetAuth) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 		errHTTP.From("[getAuth]").WriteResponse(w)
 		return
 	}
-	mustWriteJSON(w, req, resp)
+	server.MustWriteJSON(w, req, resp)
 }
 func (action GetAuth) getAuth(req *http.Request) (GetAuthResponse, *herr.HTTPError) {
 	resp := GetAuthResponse{}
 
 	// This endpoint is unauthenticated (doesn't require an Authorization header).
-	jwtCtx, found := req.Context().Value(JWTContextKey).(JWTContext)
+	jwtCtx, found := req.Context().Value(server.JWTContextKey).(server.JWTContext)
 	if !found || jwtCtx.Error != nil || jwtCtx.Claims == nil {
 		resp = GetAuthResponse{
 			Authenticated: false,
@@ -300,10 +301,10 @@ func (action GetAuth) getAuth(req *http.Request) (GetAuthResponse, *herr.HTTPErr
 	// event_id is an optional query param for this endpoint
 	eventName := req.FormValue("event_id")
 	if eventName != "" {
-		event, errHTTP := getEvent(req, eventName, action.imsDBQ)
+		event, errHTTP := server.GetEvent(req, eventName, action.imsDBQ)
 		if errHTTP != nil {
 			if errHTTP.Code != http.StatusNotFound {
-				return resp, errHTTP.From("[getEvent]")
+				return resp, errHTTP.From("[server.GetEvent]")
 			} else {
 				// We don't want to return a 404 if the event doesn't exist.
 				// Just make it look like the event might exist, but that the
@@ -375,7 +376,7 @@ func (action RefreshAccessToken) ServeHTTP(w http.ResponseWriter, req *http.Requ
 		errHTTP.From("[refreshAccessToken]").WriteResponse(w)
 		return
 	}
-	mustWriteJSON(w, req, resp)
+	server.MustWriteJSON(w, req, resp)
 }
 func (action RefreshAccessToken) refreshAccessToken(req *http.Request) (RefreshAccessTokenResponse, *herr.HTTPError) {
 	var empty RefreshAccessTokenResponse

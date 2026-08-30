@@ -17,10 +17,11 @@
 package cmd
 
 import (
-	"github.com/mikeki/ocf-ims/conf"
-	"github.com/stretchr/testify/assert"
 	"testing"
 	"time"
+
+	"github.com/mikeki/ocf-ims/conf"
+	"github.com/stretchr/testify/assert"
 )
 
 // TestMustApplyEnvConfig should be the only test in the whole repo that

@@ -30,6 +30,7 @@ import (
 	"time"
 
 	"github.com/mikeki/ocf-ims/directory"
+	"github.com/mikeki/ocf-ims/internal/server"
 	imsjson "github.com/mikeki/ocf-ims/json"
 	"github.com/mikeki/ocf-ims/lib/authz"
 	"github.com/mikeki/ocf-ims/lib/conv"
@@ -51,14 +52,14 @@ func (action GetIncidents) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 		errHTTP.From("[getIncidents]").WriteResponse(w)
 		return
 	}
-	mustWriteJSON(w, req, resp)
+	server.MustWriteJSON(w, req, resp)
 }
 
 func (action GetIncidents) getIncidents(req *http.Request) (imsjson.Incidents, *herr.HTTPError) {
 	resp := make(imsjson.Incidents, 0)
-	event, jwt, eventPermissions, errHTTP := getEventPermissions(req, action.imsDBQ, action.userStore)
+	event, jwt, eventPermissions, errHTTP := server.GetEventPermissions(req, action.imsDBQ, action.userStore)
 	if errHTTP != nil {
-		return resp, errHTTP.From("[getEventPermissions]")
+		return resp, errHTTP.From("[server.GetEventPermissions]")
 	}
 	hasEventRead := eventPermissions&authz.EventReadIncidents != 0
 	viewerPersonID := jwt.Claims.PersonID()
@@ -181,15 +182,15 @@ func (action GetIncident) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 		errHTTP.From("[getIncident]").WriteResponse(w)
 		return
 	}
-	mustWriteJSON(w, req, resp)
+	server.MustWriteJSON(w, req, resp)
 }
 
 func (action GetIncident) getIncident(req *http.Request) (imsjson.Incident, *herr.HTTPError) {
 	var resp imsjson.Incident
 
-	event, jwt, eventPermissions, errHTTP := getEventPermissions(req, action.imsDBQ, action.userStore)
+	event, jwt, eventPermissions, errHTTP := server.GetEventPermissions(req, action.imsDBQ, action.userStore)
 	if errHTTP != nil {
-		return resp, errHTTP.From("[getEventPermissions]")
+		return resp, errHTTP.From("[server.GetEventPermissions]")
 	}
 	ctx := req.Context()
 
@@ -241,9 +242,9 @@ func (action GetIncident) getIncident(req *http.Request) (imsjson.Incident, *her
 		}
 	}
 
-	permsByEvent, errHTTP := permissionsByEvent(req.Context(), jwt, action.imsDBQ, action.userStore)
+	permsByEvent, errHTTP := server.PermissionsByEvent(req.Context(), jwt, action.imsDBQ, action.userStore)
 	if errHTTP != nil {
-		return resp, errHTTP.From("[permissionsByEvent]")
+		return resp, errHTTP.From("[server.PermissionsByEvent]")
 	}
 
 	peopleRows, err := action.imsDBQ.Incident_People(ctx, action.imsDBQ, imsdb.Incident_PeopleParams{
@@ -558,9 +559,9 @@ func resolveTypedMentionIDs(ctx context.Context, userStore directory.UserStore, 
 type NewIncident struct {
 	imsDBQ    *store.DBQ
 	userStore directory.UserStore
-	es        *EventSourcerer
-	pusher    *Pusher
-	metrics   *metricsCache
+	es        *server.EventSourcerer
+	pusher    *server.Pusher
+	metrics   *server.MetricsCache
 }
 
 func (action NewIncident) ServeHTTP(w http.ResponseWriter, req *http.Request) {
@@ -575,17 +576,17 @@ func (action NewIncident) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 	herr.WriteCreatedResponse(w, http.StatusText(http.StatusCreated))
 }
 func (action NewIncident) newIncident(req *http.Request) (incidentNumber int32, location string, errHTTP *herr.HTTPError) {
-	event, jwtCtx, eventPermissions, errHTTP := getEventPermissions(req, action.imsDBQ, action.userStore)
+	event, jwtCtx, eventPermissions, errHTTP := server.GetEventPermissions(req, action.imsDBQ, action.userStore)
 	if errHTTP != nil {
-		return 0, "", errHTTP.From("[getEventPermissions]")
+		return 0, "", errHTTP.From("[server.GetEventPermissions]")
 	}
 	if eventPermissions&authz.EventWriteIncidents == 0 {
 		return 0, "", herr.Forbidden("The requestor does not have EventWriteIncidents permission on this Event", nil)
 	}
 	ctx := req.Context()
-	newIncident, errHTTP := readBodyAs[imsjson.Incident](req)
+	newIncident, errHTTP := server.ReadBodyAs[imsjson.Incident](req)
 	if errHTTP != nil {
-		return 0, "", errHTTP.From("[readBodyAs]")
+		return 0, "", errHTTP.From("[server.ReadBodyAs]")
 	}
 
 	authorPersonID := jwtCtx.Claims.PersonID()
@@ -675,7 +676,7 @@ func isJournalOnly(inc imsjson.Incident) bool {
 		inc.LinkedIncidents == nil
 }
 
-func updateIncident(ctx context.Context, imsDBQ *store.DBQ, userStore directory.UserStore, es *EventSourcerer, pusher *Pusher, newIncident imsjson.Incident, authorPersonID int32, callerIsAdmin bool,
+func updateIncident(ctx context.Context, imsDBQ *store.DBQ, userStore directory.UserStore, es *server.EventSourcerer, pusher *server.Pusher, newIncident imsjson.Incident, authorPersonID int32, callerIsAdmin bool,
 ) *herr.HTTPError {
 	storedIncidentRow, err := imsDBQ.Incident(ctx, imsDBQ,
 		imsdb.IncidentParams{
@@ -734,7 +735,7 @@ func updateIncident(ctx context.Context, imsDBQ *store.DBQ, userStore directory.
 	if err != nil {
 		return herr.InternalServerError("Failed to start transaction", err).From("[Begin]")
 	}
-	defer rollback(txn)
+	defer server.Rollback(txn)
 
 	update := imsdb.UpdateIncidentParams{
 		Event:               storedIncident.Event,
@@ -1131,17 +1132,17 @@ func updateIncident(ctx context.Context, imsDBQ *store.DBQ, userStore directory.
 		return herr.InternalServerError("Failed to commit transaction", err).From("[Commit]")
 	}
 
-	es.notifyIncidentUpdate(newIncident.EventID, newIncident.Number)
+	es.NotifyIncidentUpdate(newIncident.EventID, newIncident.Number)
 	// Web push the mentioned people (plan 84c): after commit, off the request path.
-	pusher.notifyMentionedInIncident(ctx, eventNameById[newIncident.EventID], newIncident.Number, mentionedPersonIDs, authorPersonID)
+	pusher.NotifyMentionedInIncident(ctx, eventNameById[newIncident.EventID], newIncident.Number, mentionedPersonIDs, authorPersonID)
 	for _, fr := range updatedReports {
-		es.notifyReportUpdate(newIncident.EventID, fr)
+		es.NotifyReportUpdate(newIncident.EventID, fr)
 	}
 	for _, inc := range updatedLinkedIncidents {
-		es.notifyIncidentUpdate(inc.EventID, inc.Number)
+		es.NotifyIncidentUpdate(inc.EventID, inc.Number)
 	}
 	for _, s := range updatedVisits {
-		es.notifyVisitUpdate(newIncident.EventID, s)
+		es.NotifyVisitUpdate(newIncident.EventID, s)
 	}
 
 	return nil
@@ -1178,9 +1179,9 @@ func sliceSubtract[T comparable](a, b []T) []T {
 type EditIncident struct {
 	imsDBQ    *store.DBQ
 	userStore directory.UserStore
-	es        *EventSourcerer
-	pusher    *Pusher
-	metrics   *metricsCache
+	es        *server.EventSourcerer
+	pusher    *server.Pusher
+	metrics   *server.MetricsCache
 }
 
 func (action EditIncident) ServeHTTP(w http.ResponseWriter, req *http.Request) {
@@ -1193,9 +1194,9 @@ func (action EditIncident) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 }
 
 func (action EditIncident) editIncident(req *http.Request) *herr.HTTPError {
-	event, jwtCtx, eventPermissions, errHTTP := getEventPermissions(req, action.imsDBQ, action.userStore)
+	event, jwtCtx, eventPermissions, errHTTP := server.GetEventPermissions(req, action.imsDBQ, action.userStore)
 	if errHTTP != nil {
-		return errHTTP.From("[getEventPermissions]")
+		return errHTTP.From("[server.GetEventPermissions]")
 	}
 	ctx := req.Context()
 
@@ -1203,9 +1204,9 @@ func (action EditIncident) editIncident(req *http.Request) *herr.HTTPError {
 	if err != nil {
 		return herr.BadRequest("Invalid Incident Number", err).From("[ParseInt32]")
 	}
-	newIncident, errHTTP := readBodyAs[imsjson.Incident](req)
+	newIncident, errHTTP := server.ReadBodyAs[imsjson.Incident](req)
 	if errHTTP != nil {
-		return errHTTP.From("[readBodyAs]")
+		return errHTTP.From("[server.ReadBodyAs]")
 	}
 
 	// 52f: full edit needs EventWriteIncidents. A reporter granted per-incident access
@@ -1247,8 +1248,8 @@ func (action EditIncident) editIncident(req *http.Request) *herr.HTTPError {
 type AttachPersonToIncident struct {
 	imsDBQ    *store.DBQ
 	userStore directory.UserStore
-	es        *EventSourcerer
-	pusher    *Pusher
+	es        *server.EventSourcerer
+	pusher    *server.Pusher
 }
 
 func (action AttachPersonToIncident) ServeHTTP(w http.ResponseWriter, req *http.Request) {
@@ -1261,9 +1262,9 @@ func (action AttachPersonToIncident) ServeHTTP(w http.ResponseWriter, req *http.
 }
 
 func (action AttachPersonToIncident) attachPerson(req *http.Request) *herr.HTTPError {
-	event, jwtCtx, eventPermissions, errHTTP := getEventPermissions(req, action.imsDBQ, action.userStore)
+	event, jwtCtx, eventPermissions, errHTTP := server.GetEventPermissions(req, action.imsDBQ, action.userStore)
 	if errHTTP != nil {
-		return errHTTP.From("[getEventPermissions]")
+		return errHTTP.From("[server.GetEventPermissions]")
 	}
 	if eventPermissions&authz.EventWriteIncidents == 0 {
 		return herr.Forbidden("The requestor does not have EventWriteIncidents permission for this Event", nil)
@@ -1275,15 +1276,15 @@ func (action AttachPersonToIncident) attachPerson(req *http.Request) *herr.HTTPE
 		return herr.BadRequest("Invalid Incident Number", err).From("[ParseInt32]")
 	}
 
-	person, errHTTP := personByIDFromPath(ctx, action.imsDBQ, req)
+	person, errHTTP := server.PersonByIDFromPath(ctx, action.imsDBQ, req)
 	if errHTTP != nil {
-		return errHTTP.From("[personByIDFromPath]")
+		return errHTTP.From("[server.PersonByIDFromPath]")
 	}
 	personID := person.ID
 
-	body, errHTTP := readBodyAs[imsjson.IncidentPerson](req)
+	body, errHTTP := server.ReadBodyAs[imsjson.IncidentPerson](req)
 	if errHTTP != nil {
-		return errHTTP.From("[readBodyAs]")
+		return errHTTP.From("[server.ReadBodyAs]")
 	}
 
 	// Run the whole change in a retrying transaction: attach is a
@@ -1344,7 +1345,7 @@ func (action AttachPersonToIncident) attachPerson(req *http.Request) *herr.HTTPE
 
 		// Record what actually changed — the add, and/or the involvement and
 		// access-grant edits — as a single system entry. Nothing changed → no entry.
-		if lines := personChangeLog(personDisplayName(person), alreadyAttached, oldInvolvement, newInvolvement, oldGranted, body.GrantedAccess); len(lines) > 0 {
+		if lines := personChangeLog(server.PersonDisplayName(person), alreadyAttached, oldInvolvement, newInvolvement, oldGranted, body.GrantedAccess); len(lines) > 0 {
 			_, errJournal := addIncidentJournalEntry(
 				ctx, action.imsDBQ, txn, event.ID, incidentNumber,
 				jwtCtx.Claims.PersonID(), strings.Join(lines, "\n"),
@@ -1367,11 +1368,11 @@ func (action AttachPersonToIncident) attachPerson(req *http.Request) *herr.HTTPE
 	if runErr != nil {
 		return herr.AsHTTPError(runErr).From("[RunInTx]")
 	}
-	action.es.notifyIncidentUpdate(event.ID, incidentNumber)
+	action.es.NotifyIncidentUpdate(event.ID, incidentNumber)
 	// Web push the added person (plan 84c): after commit, off the request path, and
 	// only on a genuine new attach — same gate as the in-app notification.
 	if newlyAttached {
-		action.pusher.notifyAddedToIncident(ctx, event.Name, incidentNumber, personID, jwtCtx.Claims.PersonID())
+		action.pusher.NotifyAddedToIncident(ctx, event.Name, incidentNumber, personID, jwtCtx.Claims.PersonID())
 	}
 
 	return nil
@@ -1380,7 +1381,7 @@ func (action AttachPersonToIncident) attachPerson(req *http.Request) *herr.HTTPE
 type DetachPersonFromIncident struct {
 	imsDBQ    *store.DBQ
 	userStore directory.UserStore
-	es        *EventSourcerer
+	es        *server.EventSourcerer
 }
 
 func (action DetachPersonFromIncident) ServeHTTP(w http.ResponseWriter, req *http.Request) {
@@ -1393,9 +1394,9 @@ func (action DetachPersonFromIncident) ServeHTTP(w http.ResponseWriter, req *htt
 }
 
 func (action DetachPersonFromIncident) detachPerson(req *http.Request) *herr.HTTPError {
-	event, jwtCtx, eventPermissions, errHTTP := getEventPermissions(req, action.imsDBQ, action.userStore)
+	event, jwtCtx, eventPermissions, errHTTP := server.GetEventPermissions(req, action.imsDBQ, action.userStore)
 	if errHTTP != nil {
-		return errHTTP.From("[getEventPermissions]")
+		return errHTTP.From("[server.GetEventPermissions]")
 	}
 	if eventPermissions&authz.EventWriteIncidents == 0 {
 		return herr.Forbidden("The requestor does not have EventWriteIncidents permission for this Event", nil)
@@ -1407,9 +1408,9 @@ func (action DetachPersonFromIncident) detachPerson(req *http.Request) *herr.HTT
 		return herr.BadRequest("Invalid Incident Number", err).From("[ParseInt32]")
 	}
 
-	person, errHTTP := personByIDFromPath(ctx, action.imsDBQ, req)
+	person, errHTTP := server.PersonByIDFromPath(ctx, action.imsDBQ, req)
 	if errHTTP != nil {
-		return errHTTP.From("[personByIDFromPath]")
+		return errHTTP.From("[server.PersonByIDFromPath]")
 	}
 	personID := person.ID
 
@@ -1427,7 +1428,7 @@ func (action DetachPersonFromIncident) detachPerson(req *http.Request) *herr.HTT
 		}
 		_, errJournal := addIncidentJournalEntry(
 			ctx, action.imsDBQ, txn, event.ID, incidentNumber,
-			jwtCtx.Claims.PersonID(), fmt.Sprintf("Removed person: %v", personDisplayName(person)),
+			jwtCtx.Claims.PersonID(), fmt.Sprintf("Removed person: %v", server.PersonDisplayName(person)),
 			true, "", "", "",
 		)
 		if errJournal != nil {
@@ -1439,7 +1440,7 @@ func (action DetachPersonFromIncident) detachPerson(req *http.Request) *herr.HTT
 		return herr.AsHTTPError(runErr).From("[RunInTx]")
 	}
 
-	action.es.notifyIncidentUpdate(event.ID, incidentNumber)
+	action.es.NotifyIncidentUpdate(event.ID, incidentNumber)
 
 	return nil
 }

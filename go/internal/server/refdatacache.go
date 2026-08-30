@@ -14,7 +14,7 @@
 // limitations under the License.
 //
 
-package api
+package server
 
 import (
 	"context"
@@ -33,25 +33,25 @@ import (
 // window keeps the whole-table reads off the hot path.
 const refDataCacheTTL = 5 * time.Minute
 
-// incidentTypesCache memoizes the fully built, sorted incident-type list. The
+// IncidentTypesCache memoizes the fully built, sorted incident-type list. The
 // taxonomy is global (not event-scoped) and identical for every caller with read
 // access, so a single cache.InMemory serves them all. The entry is created lazily
 // on the first read with that caller's refresh func; concurrent readers coalesce
 // onto one database load (single-flight), so a burst of form loads can't stampede
 // the table.
-type incidentTypesCache struct {
+type IncidentTypesCache struct {
 	mu    sync.Mutex
 	inner *cache.InMemory[imsjson.IncidentTypes]
 }
 
-func newIncidentTypesCache() *incidentTypesCache {
-	return &incidentTypesCache{}
+func NewIncidentTypesCache() *IncidentTypesCache {
+	return &IncidentTypesCache{}
 }
 
 // Invalidate drops the cached list so the next read reloads from the database.
 // Called after any create/approve/rename/hide so a taxonomy change shows up
 // immediately rather than waiting out the TTL. A no-op before the first read.
-func (c *incidentTypesCache) Invalidate() {
+func (c *IncidentTypesCache) Invalidate() {
 	c.mu.Lock()
 	entry := c.inner
 	c.mu.Unlock()
@@ -60,10 +60,10 @@ func (c *incidentTypesCache) Invalidate() {
 	}
 }
 
-// get returns the cached incident-type list, loading it via refresh on a miss or
+// Get returns the cached incident-type list, loading it via refresh on a miss or
 // after the TTL. All callers pass an equivalent refresh; the first one wins and is
 // reused for the life of the entry.
-func (c *incidentTypesCache) get(
+func (c *IncidentTypesCache) Get(
 	ctx context.Context,
 	refresh func(context.Context) (imsjson.IncidentTypes, error),
 ) (imsjson.IncidentTypes, error) {
@@ -80,22 +80,22 @@ func (c *incidentTypesCache) get(
 	return *v, nil
 }
 
-// outcomesCache memoizes the fully built, sorted outcome list. Like the
+// OutcomesCache memoizes the fully built, sorted outcome list. Like the
 // incident-type taxonomy it is global (not event-scoped) and identical for every
 // caller with read access, so a single cache.InMemory serves them all with the same
 // lazy-create + single-flight behavior.
-type outcomesCache struct {
+type OutcomesCache struct {
 	mu    sync.Mutex
 	inner *cache.InMemory[imsjson.Outcomes]
 }
 
-func newOutcomesCache() *outcomesCache {
-	return &outcomesCache{}
+func NewOutcomesCache() *OutcomesCache {
+	return &OutcomesCache{}
 }
 
 // Invalidate drops the cached list so the next read reloads from the database.
 // Called after any create/approve/rename/hide. A no-op before the first read.
-func (c *outcomesCache) Invalidate() {
+func (c *OutcomesCache) Invalidate() {
 	c.mu.Lock()
 	entry := c.inner
 	c.mu.Unlock()
@@ -104,9 +104,9 @@ func (c *outcomesCache) Invalidate() {
 	}
 }
 
-// get returns the cached outcome list, loading it via refresh on a miss or after
+// Get returns the cached outcome list, loading it via refresh on a miss or after
 // the TTL. All callers pass an equivalent refresh; the first one wins.
-func (c *outcomesCache) get(
+func (c *OutcomesCache) Get(
 	ctx context.Context,
 	refresh func(context.Context) (imsjson.Outcomes, error),
 ) (imsjson.Outcomes, error) {
@@ -123,23 +123,23 @@ func (c *outcomesCache) get(
 	return *v, nil
 }
 
-// areasCache memoizes the built area list per event. Areas are per-event, so each
+// AreasCache memoizes the built area list per event. Areas are per-event, so each
 // event gets its own cache.InMemory (keyed by event name, the immutable event
 // identifier used everywhere else), giving the same TTL + single-flight behavior
 // as the metrics cache.
-type areasCache struct {
+type AreasCache struct {
 	mu      sync.Mutex
 	byEvent map[string]*cache.InMemory[imsjson.Areas]
 }
 
-func newAreasCache() *areasCache {
-	return &areasCache{byEvent: map[string]*cache.InMemory[imsjson.Areas]{}}
+func NewAreasCache() *AreasCache {
+	return &AreasCache{byEvent: map[string]*cache.InMemory[imsjson.Areas]{}}
 }
 
 // InvalidateEvent drops one event's cached area list after a create/approve/
 // merge/rename so the change is visible on the next read. A no-op if the event
 // was never cached.
-func (c *areasCache) InvalidateEvent(eventName string) {
+func (c *AreasCache) InvalidateEvent(eventName string) {
 	c.mu.Lock()
 	entry, ok := c.byEvent[eventName]
 	c.mu.Unlock()
@@ -148,10 +148,10 @@ func (c *areasCache) InvalidateEvent(eventName string) {
 	}
 }
 
-// get returns the cached area list for eventName, loading it via refresh on a miss
+// Get returns the cached area list for eventName, loading it via refresh on a miss
 // or after the TTL. refresh captures the event id; a given event name always maps
 // to the same id, so the first caller's refresh is safe to reuse.
-func (c *areasCache) get(
+func (c *AreasCache) Get(
 	ctx context.Context,
 	eventName string,
 	refresh func(context.Context) (imsjson.Areas, error),
@@ -170,22 +170,22 @@ func (c *areasCache) get(
 	return *v, nil
 }
 
-// crewsCache memoizes the built crew list (with membership) per event, exactly like
-// areasCache. Crews are per-event and only read on the admin Crews page, so a
+// CrewsCache memoizes the built crew list (with membership) per event, exactly like
+// AreasCache. Crews are per-event and only read on the admin Crews page, so a
 // per-event cache.InMemory keyed by event name gives the same TTL + single-flight
 // behavior; EditCrews invalidates the event's entry on every write.
-type crewsCache struct {
+type CrewsCache struct {
 	mu      sync.Mutex
 	byEvent map[string]*cache.InMemory[imsjson.Crews]
 }
 
-func newCrewsCache() *crewsCache {
-	return &crewsCache{byEvent: map[string]*cache.InMemory[imsjson.Crews]{}}
+func NewCrewsCache() *CrewsCache {
+	return &CrewsCache{byEvent: map[string]*cache.InMemory[imsjson.Crews]{}}
 }
 
 // InvalidateEvent drops one event's cached crew list after any crew or membership
 // write so the change is visible on the next read. A no-op if never cached.
-func (c *crewsCache) InvalidateEvent(eventName string) {
+func (c *CrewsCache) InvalidateEvent(eventName string) {
 	c.mu.Lock()
 	entry, ok := c.byEvent[eventName]
 	c.mu.Unlock()
@@ -194,10 +194,10 @@ func (c *crewsCache) InvalidateEvent(eventName string) {
 	}
 }
 
-// get returns the cached crew list for eventName, loading it via refresh on a miss
+// Get returns the cached crew list for eventName, loading it via refresh on a miss
 // or after the TTL. refresh captures the event id; a given event name always maps
 // to the same id, so the first caller's refresh is safe to reuse.
-func (c *crewsCache) get(
+func (c *CrewsCache) Get(
 	ctx context.Context,
 	eventName string,
 	refresh func(context.Context) (imsjson.Crews, error),

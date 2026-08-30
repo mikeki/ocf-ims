@@ -19,17 +19,19 @@ package api
 import (
 	"database/sql"
 	"errors"
-	_ "github.com/mikeki/ocf-ims/lib/noopdb"
-	"github.com/mikeki/ocf-ims/store"
-	"github.com/mikeki/ocf-ims/store/imsdb"
-	"github.com/stretchr/testify/assert"
-	"github.com/stretchr/testify/require"
 	"io"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
 	"strings"
 	"testing"
+
+	"github.com/mikeki/ocf-ims/internal/server"
+	_ "github.com/mikeki/ocf-ims/lib/noopdb"
+	"github.com/mikeki/ocf-ims/store"
+	"github.com/mikeki/ocf-ims/store/imsdb"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func TestMustWriteJSONErrors(t *testing.T) {
@@ -39,13 +41,13 @@ func TestMustWriteJSONErrors(t *testing.T) {
 	rec := httptest.NewRecorder()
 	req := &http.Request{URL: &url.URL{}}
 	cantBeMarshalled := complex64(1 + 1i)
-	ok := mustWriteJSON(rec, req, cantBeMarshalled)
+	ok := server.MustWriteJSON(rec, req, cantBeMarshalled)
 	assert.False(t, ok)
 	assert.Equal(t, http.StatusInternalServerError, rec.Result().StatusCode)
 
 	// error if the JSON can't be written to the response writer
 	w := angryResponseWriter{httptest.NewRecorder()}
-	ok = mustWriteJSON(w, req, "can be marshalled")
+	ok = server.MustWriteJSON(w, req, "can be marshalled")
 	assert.False(t, ok)
 	assert.Equal(t, http.StatusInternalServerError, rec.Result().StatusCode)
 }
@@ -57,7 +59,7 @@ func TestReadBodyAsErrors(t *testing.T) {
 	req := &http.Request{
 		Body: angryReader{},
 	}
-	_, errHTTP := readBodyAs[any](req)
+	_, errHTTP := server.ReadBodyAs[any](req)
 	require.NotNil(t, errHTTP)
 	assert.Equal(t, http.StatusBadRequest, errHTTP.Code)
 
@@ -65,7 +67,7 @@ func TestReadBodyAsErrors(t *testing.T) {
 	req = &http.Request{
 		Body: io.NopCloser(strings.NewReader("this isn't json")),
 	}
-	_, errHTTP = readBodyAs[any](req)
+	_, errHTTP = server.ReadBodyAs[any](req)
 	require.NotNil(t, errHTTP)
 	require.Equal(t, http.StatusBadRequest, errHTTP.Code)
 }
@@ -75,14 +77,14 @@ func TestEventFromFormValue(t *testing.T) {
 
 	// error if the form can't be parsed
 	req := &http.Request{URL: &url.URL{RawQuery: "this;is;invalid"}}
-	_, errHTTP := eventFromFormValue(req, nil)
+	_, errHTTP := server.EventFromFormValue(req, nil)
 	require.NotNil(t, errHTTP)
 	require.Equal(t, http.StatusBadRequest, errHTTP.Code)
 	require.Contains(t, errHTTP.ResponseMessage, "Failed to parse form")
 
 	// error if no event_id in request path
 	req = &http.Request{}
-	_, errHTTP = eventFromFormValue(req, nil)
+	_, errHTTP = server.EventFromFormValue(req, nil)
 	require.NotNil(t, errHTTP)
 	require.Equal(t, http.StatusBadRequest, errHTTP.Code)
 	require.Contains(t, errHTTP.ResponseMessage, "No event_id")
@@ -93,7 +95,7 @@ func TestEventFromFormValue(t *testing.T) {
 	db, err := sql.Open("noop", "")
 	require.NoError(t, err)
 	req = &http.Request{URL: u}
-	_, errHTTP = eventFromFormValue(req, store.NewDBQ(db, imsdb.New()))
+	_, errHTTP = server.EventFromFormValue(req, store.NewDBQ(db, imsdb.New()))
 	require.NotNil(t, errHTTP)
 	require.Equal(t, http.StatusInternalServerError, errHTTP.Code)
 	require.Contains(t, errHTTP.ResponseMessage, "Failed to get event")
@@ -107,13 +109,13 @@ func TestGetEvent(t *testing.T) {
 
 	// no eventName provided
 	req := &http.Request{}
-	_, errHTTP := getEvent(req, "", db)
+	_, errHTTP := server.GetEvent(req, "", db)
 	require.NotNil(t, errHTTP)
 	require.Equal(t, http.StatusBadRequest, errHTTP.Code)
 	require.Contains(t, errHTTP.ResponseMessage, "No eventName")
 
 	// other DB failure
-	_, errHTTP = getEvent(req, "dummy", db)
+	_, errHTTP = server.GetEvent(req, "dummy", db)
 	require.NotNil(t, errHTTP)
 	require.Equal(t, http.StatusInternalServerError, errHTTP.Code)
 	require.Contains(t, errHTTP.ResponseMessage, "Failed to fetch")

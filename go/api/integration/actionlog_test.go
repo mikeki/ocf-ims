@@ -17,13 +17,14 @@
 package integration_test
 
 import (
+	"net/http"
+	"testing"
+	"time"
+
 	imsjson "github.com/mikeki/ocf-ims/json"
 	"github.com/mikeki/ocf-ims/lib/conv"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	"net/http"
-	"testing"
-	"time"
 )
 
 func TestGetActionLog(t *testing.T) {

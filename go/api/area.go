@@ -28,6 +28,7 @@ import (
 	"time"
 
 	"github.com/mikeki/ocf-ims/directory"
+	"github.com/mikeki/ocf-ims/internal/server"
 	imsjson "github.com/mikeki/ocf-ims/json"
 	"github.com/mikeki/ocf-ims/lib/authz"
 	"github.com/mikeki/ocf-ims/lib/herr"
@@ -38,7 +39,7 @@ import (
 type GetAreas struct {
 	imsDBQ            *store.DBQ
 	userStore         directory.UserStore
-	cache             *areasCache
+	cache             *server.AreasCache
 	cacheControlShort time.Duration
 }
 
@@ -49,18 +50,18 @@ func (action GetAreas) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 		return
 	}
 	w.Header().Set("Cache-Control", fmt.Sprintf("max-age=%v, private", action.cacheControlShort.Milliseconds()/1000))
-	mustWriteJSON(w, req, resp)
+	server.MustWriteJSON(w, req, resp)
 }
 
 func (action GetAreas) run(req *http.Request) (imsjson.Areas, *herr.HTTPError) {
 	ctx := req.Context()
-	event, _, eventPermissions, errHTTP := getEventPermissions(req, action.imsDBQ, action.userStore)
+	event, _, eventPermissions, errHTTP := server.GetEventPermissions(req, action.imsDBQ, action.userStore)
 	if errHTTP != nil {
-		return nil, errHTTP.From("[getEventPermissions]")
+		return nil, errHTTP.From("[server.GetEventPermissions]")
 	}
-	_, globalPermissions, errHTTP := getGlobalPermissions(req, action.imsDBQ, action.userStore)
+	_, globalPermissions, errHTTP := server.GetGlobalPermissions(req, action.imsDBQ, action.userStore)
 	if errHTTP != nil {
-		return nil, errHTTP.From("[getGlobalPermissions]")
+		return nil, errHTTP.From("[server.GetGlobalPermissions]")
 	}
 	if eventPermissions&authz.EventReadAreas == 0 && globalPermissions&authz.GlobalAdministrateAreas == 0 {
 		return nil, herr.Forbidden("The requestor does not have EventReadAreas permission", nil)
@@ -70,7 +71,7 @@ func (action GetAreas) run(req *http.Request) (imsjson.Areas, *herr.HTTPError) {
 	// so it is served from an in-memory cache (refDataCacheTTL) keyed by event
 	// name; EditAreas invalidates it on every write. The refresher captures the
 	// resolved event id.
-	resp, err := action.cache.get(ctx, req.PathValue("eventName"), func(ctx context.Context) (imsjson.Areas, error) {
+	resp, err := action.cache.Get(ctx, req.PathValue("eventName"), func(ctx context.Context) (imsjson.Areas, error) {
 		return loadAreasJSON(ctx, action.imsDBQ, event.ID)
 	})
 	if err != nil {
@@ -97,8 +98,8 @@ func loadAreasJSON(ctx context.Context, imsDBQ *store.DBQ, eventID int32) (imsjs
 type EditAreas struct {
 	imsDBQ    *store.DBQ
 	userStore directory.UserStore
-	metrics   *metricsCache
-	areas     *areasCache
+	metrics   *server.MetricsCache
+	areas     *server.AreasCache
 }
 
 func (action EditAreas) ServeHTTP(w http.ResponseWriter, req *http.Request) {
@@ -120,17 +121,17 @@ func (action EditAreas) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 
 func (action EditAreas) run(req *http.Request) (newSlug string, errHTTP *herr.HTTPError) {
 	ctx := req.Context()
-	event, jwtCtx, eventPermissions, errHTTP := getEventPermissions(req, action.imsDBQ, action.userStore)
+	event, jwtCtx, eventPermissions, errHTTP := server.GetEventPermissions(req, action.imsDBQ, action.userStore)
 	if errHTTP != nil {
-		return "", errHTTP.From("[getEventPermissions]")
+		return "", errHTTP.From("[server.GetEventPermissions]")
 	}
-	_, globalPermissions, errHTTP := getGlobalPermissions(req, action.imsDBQ, action.userStore)
+	_, globalPermissions, errHTTP := server.GetGlobalPermissions(req, action.imsDBQ, action.userStore)
 	if errHTTP != nil {
-		return "", errHTTP.From("[getGlobalPermissions]")
+		return "", errHTTP.From("[server.GetGlobalPermissions]")
 	}
-	areaReq, errHTTP := readBodyAs[imsjson.Area](req)
+	areaReq, errHTTP := server.ReadBodyAs[imsjson.Area](req)
 	if errHTTP != nil {
-		return "", errHTTP.From("[readBodyAs]")
+		return "", errHTTP.From("[server.ReadBodyAs]")
 	}
 	isAreaAdmin := globalPermissions&authz.GlobalAdministrateAreas != 0
 

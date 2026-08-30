@@ -29,6 +29,7 @@ import (
 
 	"github.com/go-sql-driver/mysql"
 	"github.com/mikeki/ocf-ims/directory"
+	"github.com/mikeki/ocf-ims/internal/server"
 	imsjson "github.com/mikeki/ocf-ims/json"
 	"github.com/mikeki/ocf-ims/lib/authz"
 	"github.com/mikeki/ocf-ims/lib/conv"
@@ -40,7 +41,7 @@ import (
 type GetOutcomes struct {
 	imsDBQ            *store.DBQ
 	userStore         directory.UserStore
-	cache             *outcomesCache
+	cache             *server.OutcomesCache
 	cacheControlShort time.Duration
 }
 
@@ -51,12 +52,12 @@ func (action GetOutcomes) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 		return
 	}
 	w.Header().Set("Cache-Control", fmt.Sprintf("max-age=%v, private", action.cacheControlShort.Milliseconds()/1000))
-	mustWriteJSON(w, req, resp)
+	server.MustWriteJSON(w, req, resp)
 }
 func (action GetOutcomes) getOutcomes(req *http.Request) (imsjson.Outcomes, *herr.HTTPError) {
-	_, globalPermissions, errHTTP := getGlobalPermissions(req, action.imsDBQ, action.userStore)
+	_, globalPermissions, errHTTP := server.GetGlobalPermissions(req, action.imsDBQ, action.userStore)
 	if errHTTP != nil {
-		return nil, errHTTP.From("[getGlobalPermissions]")
+		return nil, errHTTP.From("[server.GetGlobalPermissions]")
 	}
 	if globalPermissions&authz.GlobalReadOutcomes == 0 {
 		return nil, herr.Forbidden("The requestor does not have GlobalReadOutcomes permission", nil)
@@ -65,7 +66,7 @@ func (action GetOutcomes) getOutcomes(req *http.Request) (imsjson.Outcomes, *her
 	// The taxonomy is global and identical for every reader, so it is served from
 	// an in-memory cache (refDataCacheTTL) rather than re-reading the whole table
 	// on every form load. Writes invalidate it; see loadOutcomesJSON.
-	response, err := action.cache.get(req.Context(), func(ctx context.Context) (imsjson.Outcomes, error) {
+	response, err := action.cache.Get(req.Context(), func(ctx context.Context) (imsjson.Outcomes, error) {
 		return loadOutcomesJSON(ctx, action.imsDBQ)
 	})
 	if err != nil {
@@ -116,7 +117,7 @@ func loadOutcomesJSON(ctx context.Context, imsDBQ *store.DBQ) (imsjson.Outcomes,
 type EditOutcomes struct {
 	imsDBQ    *store.DBQ
 	userStore directory.UserStore
-	outcomes  *outcomesCache
+	outcomes  *server.OutcomesCache
 }
 
 func (action EditOutcomes) ServeHTTP(w http.ResponseWriter, req *http.Request) {
@@ -133,17 +134,17 @@ func (action EditOutcomes) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 	herr.WriteNoContentResponse(w, "Success")
 }
 func (action EditOutcomes) editOutcomes(req *http.Request) (newOutcomeID *int32, errHTTP *herr.HTTPError) {
-	_, globalPermissions, errHTTP := getGlobalPermissions(req, action.imsDBQ, action.userStore)
+	_, globalPermissions, errHTTP := server.GetGlobalPermissions(req, action.imsDBQ, action.userStore)
 	if errHTTP != nil {
-		return nil, errHTTP.From("[getGlobalPermissions]")
+		return nil, errHTTP.From("[server.GetGlobalPermissions]")
 	}
 	if globalPermissions&authz.GlobalAdministrateOutcomes == 0 {
 		return nil, herr.Forbidden("The requestor does not have GlobalAdministrateOutcomes permission", nil)
 	}
 	ctx := req.Context()
-	outcomeReq, errHTTP := readBodyAs[imsjson.Outcome](req)
+	outcomeReq, errHTTP := server.ReadBodyAs[imsjson.Outcome](req)
 	if errHTTP != nil {
-		return nil, errHTTP.From("[readBodyAs]")
+		return nil, errHTTP.From("[server.ReadBodyAs]")
 	}
 	if outcomeReq.ID == 0 {
 		if outcomeReq.Name == nil {
@@ -204,7 +205,7 @@ func (action EditOutcomes) editOutcomes(req *http.Request) (newOutcomeID *int32,
 type ProposeOutcome struct {
 	imsDBQ    *store.DBQ
 	userStore directory.UserStore
-	outcomes  *outcomesCache
+	outcomes  *server.OutcomesCache
 }
 
 func (action ProposeOutcome) ServeHTTP(w http.ResponseWriter, req *http.Request) {
@@ -219,17 +220,17 @@ func (action ProposeOutcome) ServeHTTP(w http.ResponseWriter, req *http.Request)
 }
 
 func (action ProposeOutcome) proposeOutcome(req *http.Request) (int32, *herr.HTTPError) {
-	_, jwtCtx, eventPermissions, errHTTP := getEventPermissions(req, action.imsDBQ, action.userStore)
+	_, jwtCtx, eventPermissions, errHTTP := server.GetEventPermissions(req, action.imsDBQ, action.userStore)
 	if errHTTP != nil {
-		return 0, errHTTP.From("[getEventPermissions]")
+		return 0, errHTTP.From("[server.GetEventPermissions]")
 	}
 	if eventPermissions&authz.EventWriteIncidents == 0 {
 		return 0, herr.Forbidden("The requestor does not have permission to propose Outcomes on this Event", nil)
 	}
 	ctx := req.Context()
-	outcomeReq, errHTTP := readBodyAs[imsjson.Outcome](req)
+	outcomeReq, errHTTP := server.ReadBodyAs[imsjson.Outcome](req)
 	if errHTTP != nil {
-		return 0, errHTTP.From("[readBodyAs]")
+		return 0, errHTTP.From("[server.ReadBodyAs]")
 	}
 	if outcomeReq.Name == nil || strings.TrimSpace(*outcomeReq.Name) == "" {
 		return 0, herr.BadRequest("Outcome name is required", nil)

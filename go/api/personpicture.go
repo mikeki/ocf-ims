@@ -37,6 +37,7 @@ import (
 
 	"github.com/mikeki/ocf-ims/conf"
 	"github.com/mikeki/ocf-ims/directory"
+	"github.com/mikeki/ocf-ims/internal/server"
 	"github.com/mikeki/ocf-ims/lib/attachment"
 	"github.com/mikeki/ocf-ims/lib/authz"
 	"github.com/mikeki/ocf-ims/lib/format"
@@ -158,16 +159,16 @@ func (action SetPersonProfilePicture) setPersonProfilePicture(req *http.Request)
 	// Upload rights mirror the person-edit endpoint exactly: admin-only
 	// (GlobalAdministratePersonnel). Changing someone's picture is changing their
 	// profile, and profile edits are admin-only (EditPerson).
-	jwtCtx, globalPermissions, errHTTP := getGlobalPermissions(req, action.imsDBQ, action.userStore)
+	jwtCtx, globalPermissions, errHTTP := server.GetGlobalPermissions(req, action.imsDBQ, action.userStore)
 	if errHTTP != nil {
-		return errHTTP.From("[getGlobalPermissions]")
+		return errHTTP.From("[server.GetGlobalPermissions]")
 	}
 	if globalPermissions&authz.GlobalAdministratePersonnel == 0 {
 		return herr.Forbidden("The requestor does not have GlobalAdministratePersonnel permission", nil)
 	}
 	ctx := req.Context()
 
-	person, errHTTP := personByIDFromPath(ctx, action.imsDBQ, req)
+	person, errHTTP := server.PersonByIDFromPath(ctx, action.imsDBQ, req)
 	if errHTTP != nil {
 		return errHTTP
 	}
@@ -197,7 +198,7 @@ func storeProfilePicture(
 		}
 		return herr.BadRequest("Failed to parse file", err)
 	}
-	defer shut(fi)
+	defer server.Shut(fi)
 
 	// Cap the stored image size up front — before sniffing/decoding — so an oversized
 	// or undecodable blob is rejected cheaply. fiHead.Size is the multipart part's
@@ -283,16 +284,16 @@ func (action GetPersonProfilePicture) getPersonProfilePicture(
 	// Viewing a picture matches viewing the profile card: any personnel reader
 	// (GlobalReadPersonnel), the same gate personnelByID uses. Not admin-gated — a
 	// face helps identify people; it isn't contact PII like email/phone.
-	_, globalPermissions, errHTTP := getGlobalPermissions(req, action.imsDBQ, action.userStore)
+	_, globalPermissions, errHTTP := server.GetGlobalPermissions(req, action.imsDBQ, action.userStore)
 	if errHTTP != nil {
-		return nil, "", errHTTP.From("[getGlobalPermissions]")
+		return nil, "", errHTTP.From("[server.GetGlobalPermissions]")
 	}
 	if globalPermissions&authz.GlobalReadPersonnel == 0 {
 		return nil, "", herr.Forbidden("The requestor does not have GlobalReadPersonnel permission", nil)
 	}
 	ctx := req.Context()
 
-	person, errHTTP := personByIDFromPath(ctx, action.imsDBQ, req)
+	person, errHTTP := server.PersonByIDFromPath(ctx, action.imsDBQ, req)
 	if errHTTP != nil {
 		return nil, "", errHTTP
 	}
@@ -325,16 +326,16 @@ func (action DeletePersonProfilePicture) ServeHTTP(w http.ResponseWriter, req *h
 
 func (action DeletePersonProfilePicture) deletePersonProfilePicture(req *http.Request) *herr.HTTPError {
 	// Same admin-only gate as upload/edit.
-	_, globalPermissions, errHTTP := getGlobalPermissions(req, action.imsDBQ, action.userStore)
+	_, globalPermissions, errHTTP := server.GetGlobalPermissions(req, action.imsDBQ, action.userStore)
 	if errHTTP != nil {
-		return errHTTP.From("[getGlobalPermissions]")
+		return errHTTP.From("[server.GetGlobalPermissions]")
 	}
 	if globalPermissions&authz.GlobalAdministratePersonnel == 0 {
 		return herr.Forbidden("The requestor does not have GlobalAdministratePersonnel permission", nil)
 	}
 	ctx := req.Context()
 
-	person, errHTTP := personByIDFromPath(ctx, action.imsDBQ, req)
+	person, errHTTP := server.PersonByIDFromPath(ctx, action.imsDBQ, req)
 	if errHTTP != nil {
 		return errHTTP
 	}

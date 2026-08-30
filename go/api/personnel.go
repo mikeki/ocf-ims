@@ -21,16 +21,18 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"net/http"
+	"strconv"
+	"strings"
+	"time"
+
 	"github.com/mikeki/ocf-ims/directory"
+	"github.com/mikeki/ocf-ims/internal/server"
 	imsjson "github.com/mikeki/ocf-ims/json"
 	"github.com/mikeki/ocf-ims/lib/authz"
 	"github.com/mikeki/ocf-ims/lib/herr"
 	"github.com/mikeki/ocf-ims/store"
 	"github.com/mikeki/ocf-ims/store/imsdb"
-	"net/http"
-	"strconv"
-	"strings"
-	"time"
 )
 
 type GetPersonnel struct {
@@ -48,13 +50,13 @@ func (action GetPersonnel) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 		return
 	}
 	w.Header().Set("Cache-Control", fmt.Sprintf("max-age=%v, private", action.cacheControlShort.Milliseconds()/1000))
-	mustWriteJSON(w, req, resp)
+	server.MustWriteJSON(w, req, resp)
 }
 func (action GetPersonnel) getPersonnel(req *http.Request) (GetPersonnelResponse, *herr.HTTPError) {
 	response := make(GetPersonnelResponse, 0)
-	jwtCtx, globalPermissions, errHTTP := getGlobalPermissions(req, action.imsDBQ, action.userStore)
+	jwtCtx, globalPermissions, errHTTP := server.GetGlobalPermissions(req, action.imsDBQ, action.userStore)
 	if errHTTP != nil {
-		return response, errHTTP.From("[getGlobalPermissions]")
+		return response, errHTTP.From("[server.GetGlobalPermissions]")
 	}
 	if globalPermissions&authz.GlobalReadPersonnel == 0 {
 		return response, herr.Forbidden("The requestor does not have GlobalReadPersonnel permission", nil)
@@ -91,9 +93,9 @@ func (action GetPersonnel) getPersonnel(req *http.Request) (GetPersonnelResponse
 
 		var eventID int32
 		if eventName := strings.TrimSpace(req.FormValue("event")); eventName != "" {
-			event, errHTTP := getEvent(req, eventName, action.imsDBQ)
+			event, errHTTP := server.GetEvent(req, eventName, action.imsDBQ)
 			if errHTTP != nil {
-				return response, errHTTP.From("[getEvent]")
+				return response, errHTTP.From("[server.GetEvent]")
 			}
 			eventID = event.ID
 		}
@@ -256,9 +258,9 @@ func (action GetPersonnel) personnelByID(req *http.Request, pidStr string, globa
 	// With an event scoped, include that event's participation + wristband — the same
 	// per-event fields the roster/typeahead carry. A missing row is not an error.
 	if eventName := strings.TrimSpace(req.FormValue("event")); eventName != "" {
-		event, errHTTP := getEvent(req, eventName, action.imsDBQ)
+		event, errHTTP := server.GetEvent(req, eventName, action.imsDBQ)
 		if errHTTP != nil {
-			return response, errHTTP.From("[getEvent]")
+			return response, errHTTP.From("[server.GetEvent]")
 		}
 		pe, err := action.imsDBQ.PersonEvent(req.Context(), action.imsDBQ, imsdb.PersonEventParams{
 			PersonID: person.ID,
@@ -325,9 +327,9 @@ func (action GetPersonnel) searchPersonnel(req *http.Request, q string) (GetPers
 
 	var eventID int32
 	if eventName := strings.TrimSpace(req.FormValue("event")); eventName != "" {
-		event, errHTTP := getEvent(req, eventName, action.imsDBQ)
+		event, errHTTP := server.GetEvent(req, eventName, action.imsDBQ)
 		if errHTTP != nil {
-			return response, errHTTP.From("[getEvent]")
+			return response, errHTTP.From("[server.GetEvent]")
 		}
 		eventID = event.ID
 	}
