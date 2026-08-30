@@ -13,8 +13,14 @@ that occur at the Oregon Country Fair.
 4. (Optional: if you want to run the Playwright tests) install Playwright: https://playwright.dev/docs/intro
 5. Do a one-time fetch of external build dependencies into your repo, by running
    ```shell
-    go run bin/fetchbuilddeps/fetchbuilddeps.go
+    cd go && go run bin/fetchbuilddeps/fetchbuilddeps.go
    ```
+
+> **The Go module lives under `go/`.** Run every Go command (`go build`,
+> `go test`, `go run bin/…`, `make`, `go tool …`) from `go/`. The proto contract
+> (`proto/`), the buf configs, and the pnpm/TypeScript tier stay at the repo root;
+> `docker compose` and Playwright also run from the repo root. See
+> `docs/plans/09f-server-restructure.md`.
 
 ## Run IMS locally with docker compose
 
@@ -48,23 +54,24 @@ make compose/live
      -p 3306:3306 mariadb:10.5.27
    ```
 2. Copy `.env.example` as `.env`, and set the various flags. The user directory is
-   the local IMS-DB people table, seeded for dev from `store/fakeimsdb/seed.sql`.
-3. Run the following to build and launch the server. These *should* work on Windows as well as OSX
+   the local IMS-DB people table, seeded for dev from `go/store/fakeimsdb/seed.sql`.
+3. Run the following (from `go/`) to build and launch the server. These *should* work on Windows as well as OSX
    and Linux, but Windows is so far untested.
    ```shell
+   cd go
    go run bin/build/build.go
    ./ocf-ims serve
    ```
 
 ## Run tests
 
-To run all the tests (excluding Playwright), just do:
+To run all the tests (excluding Playwright), just do (from `go/`):
 
 ```shell
 go test ./...
 ```
 
-or to run all those tests and see a coverage report, do:
+or to run all those tests and see a coverage report, do (from `go/`):
 
 ```shell
 go test -coverprofile=coverage.out --coverpkg ./... ./... && go tool cover -html=coverage.out

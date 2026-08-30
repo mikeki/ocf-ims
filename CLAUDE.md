@@ -8,66 +8,74 @@ OCF IMS is an Incident Management System for the Oregon Country Fair, used to tr
 
 ## Development Commands
 
+> **The Go module lives under `go/`** (relocated in plan 09f). **Run every Go
+> command from `go/`** — `go build`, `go test`, `go run bin/…`, `make`,
+> `go tool …`, `golangci-lint`. The commands below assume that working directory.
+> The proto contract (`proto/`), the buf configs, and the pnpm/TypeScript tier
+> stay at the **repo root**; buf runs from `go/` pointed at `../proto`. Playwright
+> and `docker compose` also run from the **repo root**. See
+> `docs/plans/09f-server-restructure.md` (diverging roots).
+
 ### Initial Setup
 
-First-time setup to fetch external build dependencies:
+First-time setup to fetch external build dependencies (from `go/`):
 ```bash
-go run bin/fetchbuilddeps/fetchbuilddeps.go
+cd go && go run bin/fetchbuilddeps/fetchbuilddeps.go
 ```
 
 ### Building
 
-Build the server (runs sqlc, templ, and tsgo code generation, then compiles):
+Build the server (runs sqlc, templ, tsgo, and buf code generation, then compiles) — from `go/`:
 ```bash
 go run bin/build/build.go
 # or
 make build
 ```
 
-The build outputs an `ocf-ims` binary in the project root.
+The build outputs an `ocf-ims` binary in `go/` (the module root).
 
 ### Running the Server
 
-Run with MariaDB (requires `.env` file configuration):
+Run with MariaDB (requires `.env` file configuration) — from `go/`:
 ```bash
 ./ocf-ims serve
 ```
 
-Run with live reloading using air:
+Run with live reloading using air (from `go/`):
 ```bash
 make run/live
 # or
 go tool air
 ```
 
-Run with Docker Compose (includes auto-seeded databases):
+Run with Docker Compose (includes auto-seeded databases) — from the **repo root**:
 ```bash
 docker compose -f docker-compose.dev.yml up
 ```
 
 ### Testing
 
-Run all Go tests:
+Run all Go tests (from `go/`):
 ```bash
 go test ./...
 # or
 make test
 ```
 
-Run tests with coverage report:
+Run tests with coverage report (from `go/`):
 ```bash
 go test -coverprofile=coverage.out --coverpkg ./... ./... && go tool cover -html=coverage.out
 # or
 make cover
 ```
 
-Run integration tests (requires Docker):
+Run integration tests (requires Docker) — from `go/`:
 ```bash
 go test ./store/integration
 go test ./api/integration
 ```
 
-Run Playwright browser tests (requires Playwright installed):
+Run Playwright browser tests (requires Playwright installed) — from the **repo root**:
 ```bash
 cd playwright
 npx playwright test
@@ -75,7 +83,7 @@ npx playwright test
 
 ### Code Generation
 
-The build script runs all code generators, but you can run them individually:
+The build script runs all code generators, but you can run them individually (from `go/`):
 
 ```bash
 # Generate sqlc code from SQL schemas and queries
@@ -86,19 +94,25 @@ go tool templ generate
 
 # Generate JavaScript from TypeScript
 go tool tsgo
+
+# Generate Go + OpenAPI from the proto contract (buf runs from go/, points at ../proto)
+go tool buf generate --template ../buf.gen.yaml ../proto
 ```
 
 > **Generated code is NOT committed.** None of the generated output lives in the
-> tree — it is all git-ignored and produced at build time:
+> tree — it is all git-ignored and produced at build time. The Go outputs land
+> under `go/`; the proto TypeScript target stays with the repo-root pnpm workspace:
 >
 > | Generator | Output |
 > |---|---|
-> | sqlc | `store/imsdb/` |
-> | templ | `web/template/*_templ.go` |
-> | tsgo | `web/static/*.js` |
+> | sqlc | `go/store/imsdb/` |
+> | templ | `go/web/template/*_templ.go` |
+> | tsgo | `go/web/static/*.js` |
+> | buf (Go + OpenAPI) | `go/gen/` |
+> | buf (TypeScript, protoc-gen-es) | `packages/protocol-buffers/src/` (repo root) |
 >
-> **After a fresh clone, you must generate before anything compiles.** Run
-> `go run bin/build/build.go` (full build) or `go run bin/build/build.go
+> **After a fresh clone, you must generate before anything compiles.** From `go/`,
+> run `go run bin/build/build.go` (full build) or `go run bin/build/build.go
 > -generate-only` (generators only, no `go build`) — or the individual `go tool`
 > commands above. The same `-generate-only` step runs in the Docker build and in
 > CI (both the `build` and `lint` jobs) so generated code exists before compile.
@@ -172,7 +186,8 @@ To modify the schema:
    go run github.com/pressly/goose/v3/cmd/goose@v3.27.1 \
        -dir store/schema/migrations -s create <description> sql
    ```
-   (Run from the repo root. Pin the goose version to the one in `go.mod`. The
+   (Run from `go/` — goose is a `go run`, so it needs the module context, and
+   `-dir store/schema/migrations` then resolves under `go/`. Pin the goose version to the one in `go.mod`. The
    ad-hoc `@version` form is used deliberately — it keeps goose's heavy
    multi-driver CLI deps out of our `go.mod`. This writes
    `store/schema/migrations/NNNNN_<description>.sql`.)

@@ -30,17 +30,23 @@ repos:
       # - id: no-commit-to-branch
       - id: trailing-whitespace
 
-  - repo: https://github.com/golangci/golangci-lint
-    rev: v2.12.2
-    hooks:
-      - id: golangci-lint-full
-        args: ["--config=.golangci.yml"]
-
+  # The Go module lives under go/ (plan 09f). pre-commit runs from the repo root
+  # (where .git is), so every Go check cd's into go/ first — that also makes
+  # `go env GOMOD` resolve to go/go.mod for tools that self-locate (prependlicense).
+  # golangci-lint is a local `go run` at the pinned version (it is not a go tool in
+  # go.mod, and the hosted hook cannot target a nested module).
   - repo: local
     hooks:
+      - id: golangci-lint-full
+        name: golangci-lint
+        entry: bash -c 'cd go && exec go run github.com/golangci/golangci-lint/v2/cmd/golangci-lint@v2.12.2 run --config=.golangci.yml'
+        language: system
+        types_or: [ go, go-mod, go-sum ]
+        pass_filenames: false
+
       - id: fetch-build-deps
         name: fetch build deps
-        entry: go run bin/fetchbuilddeps/fetchbuilddeps.go
+        entry: bash -c 'cd go && exec go run bin/fetchbuilddeps/fetchbuilddeps.go'
         language: system
         pass_filenames: false
 
@@ -48,34 +54,34 @@ repos:
         name: prepend license
         # This program implicitly only operates on specific file types, which
         # are configured within the program itself, hence no "types_or" here.
-        entry: go run bin/prependlicense/prependlicense.go
+        entry: bash -c 'cd go && exec go run bin/prependlicense/prependlicense.go'
         language: system
         pass_filenames: false
 
       - id: govulncheck
         name: govulncheck
-        entry: go tool govulncheck ./...
+        entry: bash -c 'cd go && exec go tool govulncheck ./...'
         language: system
         types_or: [ go, go-mod, go-sum ]
         pass_filenames: false
 
       - id: go-fmt
         name: go fmt
-        entry: go fmt ./...
+        entry: bash -c 'cd go && exec go fmt ./...'
         language: system
         types_or: [ go, go-mod, go-sum ]
         pass_filenames: false
 
       - id: go-vet
         name: go vet
-        entry: go vet ./...
+        entry: bash -c 'cd go && exec go vet ./...'
         language: system
         types_or: [ go, go-mod, go-sum ]
         pass_filenames: false
 
       - id: go-mod-tidy
         name: go mod tidy
-        entry: go mod tidy
+        entry: bash -c 'cd go && exec go mod tidy'
         language: system
         types_or: [ go, go-mod, go-sum ]
         pass_filenames: false

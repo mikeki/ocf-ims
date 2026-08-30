@@ -42,27 +42,35 @@ func main() {
 	ctx, cancel := context.WithTimeout(ctx, 10*time.Minute)
 	defer cancel()
 
-	repo, err := os.OpenRoot(repoRoot(ctx))
+	// Diverging roots (plan 09f): after the go/ relocation the Go module root
+	// (holds go.mod) and the repo root (holds proto/ + the buf configs, shared
+	// with the TS tier) are different directories. Most generators run from the
+	// MODULE root; buf runs from the module root too — that is where `go tool`
+	// resolves the pinned buf — but is pointed UP at the repo root's proto/ and
+	// templates; pnpm runs from the REPO root, where the workspace lives.
+	modRoot := moduleRoot(ctx)
+	repoRoot := repoRootFrom(modRoot)
+	mod, err := os.OpenRoot(modRoot)
 	must(err)
 
 	eg, gCtx := errgroup.WithContext(ctx)
 	eg.Go(func() error {
-		mustRunInDir(exec.CommandContext(gCtx, "go", "tool", "sqlc", "generate"), repo.Name())
+		mustRunInDir(exec.CommandContext(gCtx, "go", "tool", "sqlc", "generate"), mod.Name())
 		return nil
 	})
 	eg.Go(func() error {
-		mustRunInDir(exec.CommandContext(gCtx, "go", "tool", "templ", "generate"), repo.Name())
+		mustRunInDir(exec.CommandContext(gCtx, "go", "tool", "templ", "generate"), mod.Name())
 		return nil
 	})
 	eg.Go(func() error {
-		mustRunInDir(exec.CommandContext(gCtx, "go", "tool", "tsgo"), repo.Name())
+		mustRunInDir(exec.CommandContext(gCtx, "go", "tool", "tsgo"), mod.Name())
 		// We presume that all of these JS files were generated from TypeScript, as
 		// that's currently the case. `tsc` had a `--listEmittedFiles` flag that would
 		// aid here, but `tsgo` doesn't yet have that feature.
-		jsFiles, err := fs.Glob(repo.FS(), filepath.Join("web", "static", "*.js"))
+		jsFiles, err := fs.Glob(mod.FS(), filepath.Join("web", "static", "*.js"))
 		must(err)
 		for _, match := range jsFiles {
-			addTSGeneratedHeader(repo, match)
+			addTSGeneratedHeader(mod, match)
 		}
 		return nil
 	})
@@ -74,7 +82,12 @@ func main() {
 		// build stage. The `proto` input generates only the first-party module;
 		// the vendored third_party/protovalidate is import-only (it resolves the
 		// buf/validate constraints but is never itself generated).
-		mustRunInDir(exec.CommandContext(gCtx, "go", "tool", "buf", "generate", "proto"), repo.Name())
+		mustRunInDir(
+			// #nosec G204 -- repoRoot is derived from `go env GOMOD`, not user input.
+			exec.CommandContext(gCtx, "go", "tool", "buf", "generate",
+				"--template", filepath.Join(repoRoot, "buf.gen.yaml"), filepath.Join(repoRoot, "proto")),
+			mod.Name(),
+		)
 		// The TypeScript target (buf.gen.web.yaml: protoc-gen-es) comes from pnpm,
 		// so it runs only where a JS toolchain exists (dev machines, the CI lint
 		// job) and is skipped otherwise (e.g. the Docker build image). The
@@ -84,17 +97,19 @@ func main() {
 			log.Printf("`pnpm` not on PATH; skipping TypeScript proto codegen (buf.gen.web.yaml).")
 			return nil
 		}
-		mustRunInDir(exec.CommandContext(gCtx, "pnpm", "install", "--frozen-lockfile"), repo.Name())
+		mustRunInDir(exec.CommandContext(gCtx, "pnpm", "install", "--frozen-lockfile"), repoRoot)
 		mustRunInDir(
-			exec.CommandContext(gCtx, "go", "tool", "buf", "generate", "--template", "buf.gen.web.yaml", "proto"),
-			repo.Name(),
+			// #nosec G204 -- repoRoot is derived from `go env GOMOD`, not user input.
+			exec.CommandContext(gCtx, "go", "tool", "buf", "generate",
+				"--template", filepath.Join(repoRoot, "buf.gen.web.yaml"), filepath.Join(repoRoot, "proto")),
+			mod.Name(),
 		)
 		return nil
 	})
 	eg.Go(func() error {
 		mustRunInDir(
 			exec.CommandContext(gCtx, "go", "run", "fetchbuilddeps.go"),
-			filepath.Join(repo.Name(), "bin", "fetchbuilddeps"),
+			filepath.Join(mod.Name(), "bin", "fetchbuilddeps"),
 		)
 		return nil
 	})
@@ -111,7 +126,9 @@ func main() {
 	}
 
 	// #nosec G204
-	mustRunInDir(exec.CommandContext(ctx, "go", "build", "-o", *outputApp), repo.Name())
+	// The entry point is go/cmd/ocf-ims (plan 09f); build it explicitly since the
+	// module root no longer holds a main package.
+	mustRunInDir(exec.CommandContext(ctx, "go", "build", "-o", *outputApp, "./cmd/ocf-ims"), mod.Name())
 	log.Printf("All done in %v. You can now run ./%v", time.Since(start), *outputApp)
 }
 
@@ -159,17 +176,36 @@ func mustRunInDir(cmd *exec.Cmd, dir string) {
 	log.Printf("`%v`: succeeded in %v", strings.Join(cmd.Args, " "), time.Since(start))
 }
 
-func repoRoot(ctx context.Context) string {
-	// The GOMOD variable gives an absolute path to go.mod, which we use to find
-	// the repo root directory
+// moduleRoot returns the Go module root — the directory holding go.mod. GOMOD is
+// an absolute path to the active go.mod, so its directory is the module root.
+func moduleRoot(ctx context.Context) string {
 	cmd := exec.CommandContext(ctx, "go", "env", "GOMOD")
 	goModPathBytes, err := cmd.CombinedOutput()
 	must(err)
-	repoRoot := filepath.Dir(strings.TrimSpace(string(goModPathBytes)))
-	if !pathExists(os.Stat(repoRoot)) {
-		must(fmt.Errorf("repo root %v does not exist", repoRoot))
+	modRoot := filepath.Dir(strings.TrimSpace(string(goModPathBytes)))
+	if !pathExists(os.Stat(modRoot)) {
+		must(fmt.Errorf("module root %v does not exist", modRoot))
 	}
-	return repoRoot
+	return modRoot
+}
+
+// repoRootFrom returns the repo root — the nearest ancestor of the module root
+// that holds buf.yaml. After the plan-09f relocation the Go module lives at go/
+// while proto/ and the buf configs stay at the repo root (shared with the TS
+// tier), so the two roots differ by one directory; walking up keeps this robust
+// if the depth ever changes.
+func repoRootFrom(modRoot string) string {
+	dir := modRoot
+	for {
+		if pathExists(os.Stat(filepath.Join(dir, "buf.yaml"))) {
+			return dir
+		}
+		parent := filepath.Dir(dir)
+		if parent == dir {
+			must(fmt.Errorf("repo root (dir holding buf.yaml) not found above module root %v", modRoot))
+		}
+		dir = parent
+	}
 }
 
 func pathExists(_ os.FileInfo, err error) bool {

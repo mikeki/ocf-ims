@@ -10,8 +10,11 @@
 # buf.gen.web.yaml so it never has to run in the server's build image. See
 # docs/plans/09a-codegen-skeleton.md.
 #
-# Run via `go tool buf generate` (wired into bin/build/build.go). Output under
-# gen/ is gitignored and produced at build time.
+# Run via `go tool buf generate` (wired into bin/build/build.go) from the go/
+# module root — that is where `go tool` resolves the pinned buf, and where buf's
+# CWD-relative `out: gen` lands: go/gen (the Go module owns the generated Go +
+# OpenAPI). See the diverging-roots note in docs/plans/09f-server-restructure.md.
+# Output under go/gen/ is gitignored and produced at build time.
 version: v2
 plugins:
   - local: ["go", "tool", "protoc-gen-go"]

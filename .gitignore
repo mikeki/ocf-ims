@@ -42,15 +42,17 @@ air_tmp
 # Generated code — NOT committed. All of it is produced at build time by
 # `go run bin/build/build.go` (use `-generate-only` to skip the final compile),
 # and also in the Docker build + CI. One convention: no generated code in the tree.
-#   sqlc  -> store/imsdb/, directory/clubhousedb/
-#   templ -> web/template/*_templ.go
-#   tsgo  -> web/static/*.js
-#   buf   -> gen/ (Go + connect-go + OpenAPI), packages/protocol-buffers/src/ (TS)
-/store/imsdb/
-/directory/clubhousedb/
-/web/template/*_templ.go
-/web/static/*.js
-/gen/
+# The Go tree lives under go/ (plan 09f); the proto TS target stays with the
+# repo-root pnpm workspace.
+#   sqlc  -> go/store/imsdb/, go/directory/clubhousedb/
+#   templ -> go/web/template/*_templ.go
+#   tsgo  -> go/web/static/*.js
+#   buf   -> go/gen/ (Go + connect-go + OpenAPI), packages/protocol-buffers/src/ (TS)
+/go/store/imsdb/
+/go/directory/clubhousedb/
+/go/web/template/*_templ.go
+/go/web/static/*.js
+/go/gen/
 /packages/protocol-buffers/src/
 
 # session/tool artifacts

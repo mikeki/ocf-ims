@@ -18,11 +18,14 @@ air_tmp
 # generated code — produced at build time inside the image (build.go
 # -generate-only), never copied from the build context. Mirrors .gitignore;
 # excluding it keeps stale/orphaned generated files (e.g. a renamed entity's
-# old *.js) out of the embed.FS. See docs/plans/07-proto-integration.md.
-/store/imsdb/
-/directory/clubhousedb/
-/web/template/*_templ.go
-/web/static/*.js
+# old *.js) out of the embed.FS. The Go tree lives under go/ (plan 09f); the
+# proto TS target stays with the repo-root pnpm workspace.
+/go/store/imsdb/
+/go/directory/clubhousedb/
+/go/web/template/*_templ.go
+/go/web/static/*.js
+/go/gen/
+/packages/protocol-buffers/src/
 
 # playwright generated stuff, including any node_modules anywhere
 **/node_modules

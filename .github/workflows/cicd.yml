@@ -55,7 +55,7 @@ jobs:
       - name: Set up Go
         uses: actions/setup-go@v6
         with:
-          go-version-file: "go.mod"
+          go-version-file: "go/go.mod"
 
       - name: Set up pnpm
         # pnpm supplies the protoc-gen-es plugin for the buf TypeScript target
@@ -69,10 +69,14 @@ jobs:
         # pre-commit's golangci-lint/govulncheck/go-vet compile ./.... build.go
         # -generate-only runs the generators (and fetches build deps) without the
         # final `go build`.
+        working-directory: go
         run: go run bin/build/build.go -generate-only
 
       - name: Lint protobuf (buf)
-        run: go tool buf lint
+        # buf runs from the go/ module root (that is where `go tool` resolves the
+        # pinned buf), pointed up at the repo-root proto/ (plan 09f diverging roots).
+        working-directory: go
+        run: go tool buf lint ../proto
 
       - name: Install Python
         uses: actions/setup-python@v6
@@ -122,7 +126,7 @@ jobs:
       - name: Set up Go
         uses: actions/setup-go@v6
         with:
-          go-version-file: "go.mod"
+          go-version-file: "go/go.mod"
 
       - name: Generate code (sqlc, templ, tsgo, buf)
         # None of the generated code is committed, so it must be produced before
@@ -131,16 +135,18 @@ jobs:
         # final `go build`. This job has no pnpm, so build.go generates the
         # hermetic Go proto targets (gen/) and skips the TypeScript target — the
         # latter is a client artifact, not a compile input for the server.
+        working-directory: go
         run: go run bin/build/build.go -generate-only
 
       - name: Compile, test, and cover
+        working-directory: go
         run: go test -race -covermode=atomic -coverprofile=coverage.txt --coverpkg ./... ./...
 
       - name: Upload coverage to Codecov
         uses: codecov/codecov-action@v6
         with:
           token: ${{ secrets.CODECOV_TOKEN }}
-          files: coverage.txt
+          files: go/coverage.txt
           env_vars: GITHUB_REF,GITHUB_COMMIT,GITHUB_USER,GITHUB_WORKFLOW
           fail_ci_if_error: false
         env:
@@ -231,7 +237,7 @@ jobs:
         run: gzip --uncompress --stdout docker_image.tgz | docker image load
 
       - name: Test Docker image
-        run: ./bin/test_docker
+        run: ./go/bin/test_docker
         env:
           IMAGE_TAG: ${{ github.sha }}
 

@@ -483,6 +483,46 @@ Queued before any code is written:
   (here, from the events list it already loads). A REST-URL natural key is not
   automatically the contract's key. *Adoption-path detail (#10).*
 
+### 1a — Server restructure: Step 0 spike + relocate to `go/` (2026-08-29)
+
+*(Slice 1a, step 1 — the `go/` relocation. The domain repackage lands next; its
+findings will be appended then.)*
+
+- **`go tool <x>` needs module context, which rewrites the diverging-roots plan.**
+  09f predicted buf would "run from the repo root" with `out:` changed `gen → go/gen`.
+  Reality: `go tool buf` resolves the pinned buf only from inside the module (there is
+  no go.mod at the repo root after the move), so **buf runs from the module root `go/`**,
+  pointed *up* at `../proto` with `--template ../buf.gen.*.yaml`. buf resolves `out:`
+  relative to its CWD, so `out: gen` **already** lands at `go/gen` with no edit; it is
+  the *TypeScript* target whose `out` had to reach back *up* to the repo-root pnpm
+  workspace (`../packages/...`). So `build.go` grew a `moduleRoot` (dir of `go env GOMOD`)
+  vs `repoRootFrom` (nearest ancestor holding `buf.yaml`) split: sqlc/templ/tsgo/go-build
+  run from the module root, buf from the module root pointed at the repo root, and
+  `pnpm install` from the repo root. Confirms the diverging-roots finding but corrects its
+  mechanism. *Adoption-path detail (#10); extends the blueprint's single-root assumption.*
+- **Docker context can't shrink to the module dir — confirmed.** The image regenerates
+  from proto at build time, so it needs `proto/` + the buf configs *and* `go/`. Kept the
+  `Dockerfile` at the repo root with context `.`, preserved the `go/` layout inside the
+  image, and ran the go steps from `/app/go` with buf reaching `/app/proto`. The
+  `golang:alpine` stage still has no pnpm, so `build.go` skips the TS proto target there
+  (a client artifact, never a compile input). *Extends finding #10.*
+- **The transport de-risk spike wired up cleanly (Step 0).** connect-go + the
+  `connectrpc.com/validate` interceptor coexist on the existing `http.ServeMux` (a plain
+  `http.Handler` at prefix `/ocf.ims.service.v1.ImsService/`, no second server, no
+  precedence clash with the REST/web muxes). Two corrections to the reference material:
+  `validate.NewInterceptor` is single-return in v0.6.0 (no `error`), and the interceptor
+  runs *before* the handler — an invalid request to an *unimplemented* RPC returns
+  `invalid_argument`, a valid one returns `unimplemented` — so validation is enforced
+  independently of whether a method is wired, exactly the affordance 1d needs. *Feeds
+  findings #2 and #6.*
+- **"Never commit generated code" bites `go tool`-based linters in a nested module.**
+  golangci-lint is a hosted pre-commit hook here (not a `go tool` in `go.mod`), and the
+  hosted hook can't target a module in a subdirectory; it became a local `go run
+  github.com/golangci/golangci-lint/v2/cmd/golangci-lint@v2.12.2` hook that `cd go` first.
+  Every `language: system` Go hook (govulncheck, go-fmt/vet/mod-tidy, fetch-build-deps,
+  prependlicense) likewise gained a `cd go`. *Extends finding #9 (the Go cost of the
+  no-committed-codegen rule) with a linters-in-a-polyglot-monorepo wrinkle.*
+
 ## 8. Open questions
 
 1. **Does the Go binary keep serving static assets in production**, or does Caddy?
