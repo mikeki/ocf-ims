@@ -562,6 +562,48 @@ was "move whole files, no logic moved" — decision #1's aggressive form.)*
   expect this wherever tests already use those nouns as variables. *Adoption-path
   detail (#10).*
 
+### 1b — Interceptor spine (2026-08-30)
+
+*(Slice 1b — the cross-cutting chain declared once and on by default, the
+ImsService Connect handler registered beside AddToMux, one RPC proven end-to-end.
+Detail in [09g](09g-interceptor-spine.md).)*
+
+- **The interceptor chain maps one-to-one onto the REST adapters, and its order is
+  the design.** Each interceptor mirrors an existing adapter (auth ≈ OptionalAuthN,
+  action log ≈ LogRequest, recovery ≈ RecoverFromPanic) so both transports behave
+  identically while both live (M13); both even store the same `JWTContext` under
+  the same context key, so one accessor serves handlers on either side. The
+  ordering carries real semantics: Validate innermost (reject before the handler),
+  the action log *outside* Validate (a rejected request is still audited as an
+  attempt), Auth outside the two things that read the caller (slog, action log),
+  Recovery outermost. A leaf `internal/server` holds the whole spine because none
+  of it needs a domain package — only authz/actionlog/directory/imsdb. *Concrete
+  shape behind the "interceptors, on by default" line (M9); extends finding #4.*
+- **"Declared once, on by default" needs a read/write signal, and the contract is
+  the right place to put it.** M9's default-on removes the "easy to omit"
+  per-route `LogRequest` footgun — but only if the interceptor can tell a read from
+  a mutation. The clean, declarative signal is `idempotency_level =
+  NO_SIDE_EFFECTS` in the proto: the action-log interceptor audits everything
+  except methods so marked. The default **fails safe** — an un-annotated read is
+  over-logged, never a *missed* mutation — so the read markers can land
+  incrementally (only `GetAuthStatus` in 1b) as each read RPC is implemented.
+  *Feeds finding #5 (protovalidate/M5 philosophy — the contract carries behaviour)
+  and the action-logging design.*
+- **Testing the audit read/write split needs the real `req.Spec()`.** A hand-built
+  `connect.NewRequest` carries an empty Spec (idempotency unknown), so the
+  interceptor's skip/log branch can't be exercised in a pure unit test; it is
+  proven end-to-end through the generated handler — where connect injects the
+  method's real idempotency level — with the interceptor's audit sink taken as an
+  interface so a spy can be injected (and the whole spine driven from a DB-free
+  httptest server). *Adoption-path detail (#10) for anyone testing connect
+  interceptors that branch on Spec.*
+- **`Unimplemented…` embedding is a mid-phase scaffold, gated at the exit.** The
+  60-method handler interface can't be satisfied incrementally without either
+  embedding `UnimplementedImsServiceHandler` or writing 60 throwaway stubs;
+  embedding is idiomatic and the Phase-1 exit gate (grep for the embedding) is the
+  enforcement that it never ships. Relaxes the Step-0 "spike/tests only" note with
+  that gate as the backstop. *Adoption-path detail (#10).*
+
 ## 8. Open questions
 
 1. **Does the Go binary keep serving static assets in production**, or does Caddy?
