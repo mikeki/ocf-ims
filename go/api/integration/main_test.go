@@ -18,9 +18,16 @@ package integration_test
 
 import (
 	"context"
+	"log"
+	"net/http/httptest"
+	"net/url"
+	"os"
+	"testing"
+
 	"github.com/mikeki/ocf-ims/api"
 	"github.com/mikeki/ocf-ims/conf"
 	"github.com/mikeki/ocf-ims/directory"
+	"github.com/mikeki/ocf-ims/internal/server"
 	_ "github.com/mikeki/ocf-ims/lib/noopdb"
 	"github.com/mikeki/ocf-ims/lib/rand"
 	"github.com/mikeki/ocf-ims/lib/testctr"
@@ -28,11 +35,6 @@ import (
 	"github.com/mikeki/ocf-ims/store/actionlog"
 	"github.com/mikeki/ocf-ims/store/imsdb"
 	"github.com/testcontainers/testcontainers-go"
-	"log"
-	"net/http/httptest"
-	"net/url"
-	"os"
-	"testing"
 )
 
 // mainTestInternal contains fields to be used only within main_test.go.
@@ -47,7 +49,7 @@ var shared struct {
 	cfg          *conf.IMSConfig
 	imsDBQ       *store.DBQ
 	userStore    directory.UserStore
-	es           *api.EventSourcerer
+	es           *server.EventSourcerer
 	testServer   *httptest.Server
 	serverURL    *url.URL
 	actionLogger *actionlog.Logger
@@ -177,7 +179,7 @@ func setup(ctx context.Context, tempDir string) {
 	// so it doesn't affect tests that pass an explicit password or none.
 	shared.cfg.Core.DefaultPassword = sharedDefaultPassword
 	must(shared.cfg.Validate())
-	shared.es = api.NewEventSourcerer()
+	shared.es = server.NewEventSourcerer()
 
 	// The user directory and the incident store share a single IMS database.
 	ctr, cleanup, dbHostPort, err := testctr.MariaDBContainer(

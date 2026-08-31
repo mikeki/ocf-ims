@@ -17,17 +17,18 @@
 package cmd
 
 import (
-	"github.com/mikeki/ocf-ims/api"
 	"net/http"
 	"net/http/httptest"
 	"testing"
+
+	"github.com/mikeki/ocf-ims/internal/server"
 )
 
 func TestHealthCheckSuccess(t *testing.T) {
 	t.Parallel()
 
 	// this serves the real endpoint used in the server
-	ser := httptest.NewServer(api.AddBasicHandlers(nil))
+	ser := httptest.NewServer(server.AddBasicHandlers(nil))
 
 	exitCode := runHealthCheckInternal(t.Context(), ser.URL)
 	if exitCode != 0 {

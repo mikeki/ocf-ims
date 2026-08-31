@@ -22,7 +22,9 @@ import (
 	"slices"
 	"testing"
 
-	"github.com/mikeki/ocf-ims/api"
+	authapi "github.com/mikeki/ocf-ims/internal/auth"
+	personapi "github.com/mikeki/ocf-ims/internal/person"
+
 	imsjson "github.com/mikeki/ocf-ims/json"
 	"github.com/mikeki/ocf-ims/lib/rand"
 	"github.com/stretchr/testify/require"
@@ -53,15 +55,15 @@ func TestCreateAndEditPerson(t *testing.T) {
 	const newPassword = "edith-password"
 
 	// A non-admin (no GlobalAdministratePersonnel) cannot create people.
-	resp := apisAlice.createPerson(ctx, api.CreatePersonRequest{Handle: newHandle, Password: newPassword})
+	resp := apisAlice.createPerson(ctx, personapi.CreatePersonRequest{Handle: newHandle, Password: newPassword})
 	require.Equal(t, http.StatusForbidden, resp.StatusCode)
 	require.NoError(t, resp.Body.Close())
 
 	// Validation: empty handle and too-short password are rejected.
-	resp = apisAdmin.createPerson(ctx, api.CreatePersonRequest{Handle: ""})
+	resp = apisAdmin.createPerson(ctx, personapi.CreatePersonRequest{Handle: ""})
 	require.Equal(t, http.StatusBadRequest, resp.StatusCode)
 	require.NoError(t, resp.Body.Close())
-	resp = apisAdmin.createPerson(ctx, api.CreatePersonRequest{Handle: newHandle, Email: "shorttest@example.com", Password: "short"})
+	resp = apisAdmin.createPerson(ctx, personapi.CreatePersonRequest{Handle: newHandle, Email: "shorttest@example.com", Password: "short"})
 	require.Equal(t, http.StatusBadRequest, resp.StatusCode)
 	require.NoError(t, resp.Body.Close())
 
@@ -69,20 +71,20 @@ func TestCreateAndEditPerson(t *testing.T) {
 	// round 9): the fair name is the identity the UI keys on, so a password without
 	// one is rejected — even when an email is present. A name-only person with a
 	// password is rejected...
-	resp = apisAdmin.createPerson(ctx, api.CreatePersonRequest{Name: "No Login Person", Password: newPassword})
+	resp = apisAdmin.createPerson(ctx, personapi.CreatePersonRequest{Name: "No Login Person", Password: newPassword})
 	require.Equal(t, http.StatusBadRequest, resp.StatusCode)
 	require.NoError(t, resp.Body.Close())
 	// ...and so is a legal-name + email person with a password but no fair name.
-	resp = apisAdmin.createPerson(ctx, api.CreatePersonRequest{Name: "No Fair Name", Email: "nofairname@example.com", Password: newPassword})
+	resp = apisAdmin.createPerson(ctx, personapi.CreatePersonRequest{Name: "No Fair Name", Email: "nofairname@example.com", Password: newPassword})
 	require.Equal(t, http.StatusBadRequest, resp.StatusCode)
 	require.NoError(t, resp.Body.Close())
 	// The same name-only person without a password is a fine registry entry, though.
-	resp = apisAdmin.createPerson(ctx, api.CreatePersonRequest{Name: "No Login Person"})
+	resp = apisAdmin.createPerson(ctx, personapi.CreatePersonRequest{Name: "No Login Person"})
 	require.Equal(t, http.StatusCreated, resp.StatusCode)
 	require.NoError(t, resp.Body.Close())
 
 	// The admin creates the person.
-	resp = apisAdmin.createPerson(ctx, api.CreatePersonRequest{
+	resp = apisAdmin.createPerson(ctx, personapi.CreatePersonRequest{
 		Handle:   newHandle,
 		Email:    "edithtestranger@example.com",
 		Password: newPassword,
@@ -100,7 +102,7 @@ func TestCreateAndEditPerson(t *testing.T) {
 	require.Positive(t, created.PersonID)
 
 	// A fair-name-only person (no email, no password) is a valid login-less contact.
-	resp = apisAdmin.createPerson(ctx, api.CreatePersonRequest{Handle: "FairNameOnly"})
+	resp = apisAdmin.createPerson(ctx, personapi.CreatePersonRequest{Handle: "FairNameOnly"})
 	require.Equal(t, http.StatusCreated, resp.StatusCode)
 	var fairNameOnly imsjson.Person
 	require.NoError(t, json.NewDecoder(resp.Body).Decode(&fairNameOnly))
@@ -108,7 +110,7 @@ func TestCreateAndEditPerson(t *testing.T) {
 
 	// Creating the same handle again is a conflict (a distinct email keeps the handle
 	// the sole collision).
-	resp = apisAdmin.createPerson(ctx, api.CreatePersonRequest{Handle: newHandle, Email: "edith-dup@example.com", Password: newPassword})
+	resp = apisAdmin.createPerson(ctx, personapi.CreatePersonRequest{Handle: newHandle, Email: "edith-dup@example.com", Password: newPassword})
 	require.Equal(t, http.StatusConflict, resp.StatusCode)
 	require.NoError(t, resp.Body.Close())
 
@@ -129,7 +131,7 @@ func TestCreateAndEditPerson(t *testing.T) {
 
 	// ...and can log in (by email — the sole login identifier) with the assigned
 	// password.
-	statusCode, _, token := apisNoAuth.postAuth(ctx, api.PostAuthRequest{
+	statusCode, _, token := apisNoAuth.postAuth(ctx, authapi.PostAuthRequest{
 		Identification: "edithtestranger@example.com",
 		Password:       newPassword,
 	})
@@ -139,18 +141,18 @@ func TestCreateAndEditPerson(t *testing.T) {
 	// A person who can sign in (has a password) can't have their email cleared —
 	// login is by email only, so clearing it would strand the account.
 	emptyEmail := ""
-	resp = apisAdmin.editPerson(ctx, created.PersonID, api.EditPersonRequest{Email: &emptyEmail})
+	resp = apisAdmin.editPerson(ctx, created.PersonID, personapi.EditPersonRequest{Email: &emptyEmail})
 	require.Equal(t, http.StatusBadRequest, resp.StatusCode)
 	require.NoError(t, resp.Body.Close())
 
 	// Granting access needs an email: a password with a fair name but no email is
 	// rejected (email is the login identifier).
-	resp = apisAdmin.createPerson(ctx, api.CreatePersonRequest{Handle: "NoEmailAccess", Password: newPassword})
+	resp = apisAdmin.createPerson(ctx, personapi.CreatePersonRequest{Handle: "NoEmailAccess", Password: newPassword})
 	require.Equal(t, http.StatusBadRequest, resp.StatusCode)
 	require.NoError(t, resp.Body.Close())
 
 	// Editing an unknown person is a 404.
-	resp = apisAdmin.editPerson(ctx, nonexistentPersonID, api.EditPersonRequest{})
+	resp = apisAdmin.editPerson(ctx, nonexistentPersonID, personapi.EditPersonRequest{})
 	require.Equal(t, http.StatusNotFound, resp.StatusCode)
 	require.NoError(t, resp.Body.Close())
 }
@@ -175,7 +177,7 @@ func TestEditPersonProfileAndParticipation(t *testing.T) {
 	require.NoError(t, resp.Body.Close())
 
 	// A login-capable person to edit.
-	resp = apisAdmin.createPerson(ctx, api.CreatePersonRequest{
+	resp = apisAdmin.createPerson(ctx, personapi.CreatePersonRequest{
 		Handle:   "FrankTestRanger",
 		Email:    "frank@example.com",
 		Password: "frank-password",
@@ -189,7 +191,7 @@ func TestEditPersonProfileAndParticipation(t *testing.T) {
 	// --- profile edit: name + email both change (the frozen-email gap is closed). ---
 	newName := "Franklin Delano"
 	newEmail := "franklin@example.com"
-	resp = apisAdmin.editPerson(ctx, frankID, api.EditPersonRequest{
+	resp = apisAdmin.editPerson(ctx, frankID, personapi.EditPersonRequest{
 		Name: &newName, Email: &newEmail,
 	})
 	require.Equal(t, http.StatusNoContent, resp.StatusCode)
@@ -203,7 +205,7 @@ func TestEditPersonProfileAndParticipation(t *testing.T) {
 	require.Equal(t, newEmail, got.Email)
 
 	// --- per-event participation upsert, with name/email left unchanged (nil). ---
-	resp = apisAdmin.editPerson(ctx, frankID, api.EditPersonRequest{
+	resp = apisAdmin.editPerson(ctx, frankID, personapi.EditPersonRequest{
 		Event: eventName, Wristband: "Z-9001", ParticipationType: "volunteer",
 	})
 	require.Equal(t, http.StatusNoContent, resp.StatusCode)
@@ -226,30 +228,30 @@ func TestEditPersonProfileAndParticipation(t *testing.T) {
 	require.Empty(t, gotNoEvent.ParticipationType)
 
 	// --- wristband uniqueness within an event is a conflict. ---
-	resp = apisAdmin.createPerson(ctx, api.CreatePersonRequest{Handle: "GraceTestRanger", Email: "grace@example.com", Password: "grace-password"})
+	resp = apisAdmin.createPerson(ctx, personapi.CreatePersonRequest{Handle: "GraceTestRanger", Email: "grace@example.com", Password: "grace-password"})
 	require.Equal(t, http.StatusCreated, resp.StatusCode)
 	var grace imsjson.Person
 	require.NoError(t, json.NewDecoder(resp.Body).Decode(&grace))
 	require.NoError(t, resp.Body.Close())
-	resp = apisAdmin.editPerson(ctx, grace.PersonID, api.EditPersonRequest{
+	resp = apisAdmin.editPerson(ctx, grace.PersonID, personapi.EditPersonRequest{
 		Event: eventName, Wristband: "Z-9001", ParticipationType: "volunteer",
 	})
 	require.Equal(t, http.StatusConflict, resp.StatusCode)
 	require.NoError(t, resp.Body.Close())
 
 	// --- identity invariant: a handle-less registry person can't have name cleared. ---
-	resp = apisAdmin.createPerson(ctx, api.CreatePersonRequest{Name: "Registry Only", Event: eventName})
+	resp = apisAdmin.createPerson(ctx, personapi.CreatePersonRequest{Name: "Registry Only", Event: eventName})
 	require.Equal(t, http.StatusCreated, resp.StatusCode)
 	var registry imsjson.Person
 	require.NoError(t, json.NewDecoder(resp.Body).Decode(&registry))
 	require.NoError(t, resp.Body.Close())
 	emptyName := ""
-	resp = apisAdmin.editPerson(ctx, registry.PersonID, api.EditPersonRequest{Name: &emptyName})
+	resp = apisAdmin.editPerson(ctx, registry.PersonID, personapi.EditPersonRequest{Name: &emptyName})
 	require.Equal(t, http.StatusBadRequest, resp.StatusCode)
 	require.NoError(t, resp.Body.Close())
 
 	// --- gating: a non-admin can't edit a person. ---
-	resp = apisAlice.editPerson(ctx, frankID, api.EditPersonRequest{})
+	resp = apisAlice.editPerson(ctx, frankID, personapi.EditPersonRequest{})
 	require.Equal(t, http.StatusForbidden, resp.StatusCode)
 	require.NoError(t, resp.Body.Close())
 }
@@ -266,7 +268,7 @@ func TestPersonPhoneAndEditableHandle(t *testing.T) {
 
 	// A login-less contact: just a name, plus phone + email contact info (no handle,
 	// no password).
-	resp := apisAdmin.createPerson(ctx, api.CreatePersonRequest{
+	resp := apisAdmin.createPerson(ctx, personapi.CreatePersonRequest{
 		Name:  "Contact Only Person",
 		Email: "contact@example.com",
 		Phone: "555-0100",
@@ -286,7 +288,7 @@ func TestPersonPhoneAndEditableHandle(t *testing.T) {
 	// Give them a handle and change the phone in one edit.
 	newHandle := "NowHasAHandle"
 	newPhone := "555-0199"
-	resp = apisAdmin.editPerson(ctx, contact.PersonID, api.EditPersonRequest{
+	resp = apisAdmin.editPerson(ctx, contact.PersonID, personapi.EditPersonRequest{
 		Handle: &newHandle, Phone: &newPhone,
 	})
 	require.Equal(t, http.StatusNoContent, resp.StatusCode)
@@ -300,12 +302,12 @@ func TestPersonPhoneAndEditableHandle(t *testing.T) {
 	require.Equal(t, "contact@example.com", got.Email)
 
 	// A second person can't take the same handle: the unique key surfaces as 409.
-	resp = apisAdmin.createPerson(ctx, api.CreatePersonRequest{Handle: "OtherHandle", Email: "otherhandle@example.com", Password: "other-password"})
+	resp = apisAdmin.createPerson(ctx, personapi.CreatePersonRequest{Handle: "OtherHandle", Email: "otherhandle@example.com", Password: "other-password"})
 	require.Equal(t, http.StatusCreated, resp.StatusCode)
 	var other imsjson.Person
 	require.NoError(t, json.NewDecoder(resp.Body).Decode(&other))
 	require.NoError(t, resp.Body.Close())
-	resp = apisAdmin.editPerson(ctx, other.PersonID, api.EditPersonRequest{Handle: &newHandle})
+	resp = apisAdmin.editPerson(ctx, other.PersonID, personapi.EditPersonRequest{Handle: &newHandle})
 	require.Equal(t, http.StatusConflict, resp.StatusCode)
 	require.NoError(t, resp.Body.Close())
 }
@@ -333,7 +335,7 @@ func TestEventRosterAddRemove(t *testing.T) {
 	require.NoError(t, resp.Body.Close())
 
 	makePerson := func(handle string) int64 {
-		r := apisAdmin.createPerson(ctx, api.CreatePersonRequest{Handle: handle, Email: handle + "@example.com", Password: handle + "-pw-12345"})
+		r := apisAdmin.createPerson(ctx, personapi.CreatePersonRequest{Handle: handle, Email: handle + "@example.com", Password: handle + "-pw-12345"})
 		require.Equal(t, http.StatusCreated, r.StatusCode)
 		var p imsjson.Person
 		require.NoError(t, json.NewDecoder(r.Body).Decode(&p))
@@ -355,7 +357,7 @@ func TestEventRosterAddRemove(t *testing.T) {
 	require.False(t, containsPerson(roster, juliaID))
 
 	// Enroll Ivan (only) as a volunteer.
-	resp = apisAdmin.setParticipation(ctx, ivanID, eventName, api.SetParticipationRequest{ParticipationType: "volunteer"})
+	resp = apisAdmin.setParticipation(ctx, ivanID, eventName, personapi.SetParticipationRequest{ParticipationType: "volunteer"})
 	require.Equal(t, http.StatusNoContent, resp.StatusCode)
 	require.NoError(t, resp.Body.Close())
 
@@ -372,10 +374,10 @@ func TestEventRosterAddRemove(t *testing.T) {
 	require.True(t, containsPerson(all, juliaID))
 
 	// Eject Ivan, resending the wristband so it's preserved on the kept row.
-	resp = apisAdmin.setParticipation(ctx, ivanID, eventName, api.SetParticipationRequest{Wristband: "W-1", ParticipationType: "volunteer"})
+	resp = apisAdmin.setParticipation(ctx, ivanID, eventName, personapi.SetParticipationRequest{Wristband: "W-1", ParticipationType: "volunteer"})
 	require.Equal(t, http.StatusNoContent, resp.StatusCode)
 	require.NoError(t, resp.Body.Close())
-	resp = apisAdmin.setParticipation(ctx, ivanID, eventName, api.SetParticipationRequest{Wristband: "W-1", ParticipationType: "ejected"})
+	resp = apisAdmin.setParticipation(ctx, ivanID, eventName, personapi.SetParticipationRequest{Wristband: "W-1", ParticipationType: "ejected"})
 	require.Equal(t, http.StatusNoContent, resp.StatusCode)
 	require.NoError(t, resp.Body.Close())
 
@@ -414,12 +416,12 @@ func TestEventRosterAddRemove(t *testing.T) {
 
 	// --- validation + gating ---
 	// Unknown participation type is rejected.
-	resp = apisAdmin.setParticipation(ctx, juliaID, eventName, api.SetParticipationRequest{ParticipationType: "bogus"})
+	resp = apisAdmin.setParticipation(ctx, juliaID, eventName, personapi.SetParticipationRequest{ParticipationType: "bogus"})
 	require.Equal(t, http.StatusBadRequest, resp.StatusCode)
 	require.NoError(t, resp.Body.Close())
 
 	// A non-admin can neither set nor remove participation.
-	resp = apisAlice.setParticipation(ctx, juliaID, eventName, api.SetParticipationRequest{ParticipationType: "volunteer"})
+	resp = apisAlice.setParticipation(ctx, juliaID, eventName, personapi.SetParticipationRequest{ParticipationType: "volunteer"})
 	require.Equal(t, http.StatusForbidden, resp.StatusCode)
 	require.NoError(t, resp.Body.Close())
 	resp = apisAlice.removeParticipation(ctx, ivanID, eventName)
@@ -447,7 +449,7 @@ func TestPersonProfileCard(t *testing.T) {
 	// A person with a full profile, enrolled in the event as a volunteer with a
 	// wristband, so every profile-card field is populated.
 	handle := "ProfileCardSubject"
-	r := apisAdmin.createPerson(ctx, api.CreatePersonRequest{
+	r := apisAdmin.createPerson(ctx, personapi.CreatePersonRequest{
 		Handle:            handle,
 		Name:              "Percy Card",
 		Email:             "percy-card@example.com",

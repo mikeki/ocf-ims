@@ -28,6 +28,7 @@ import (
 	"time"
 
 	"github.com/mikeki/ocf-ims/api"
+	pushapi "github.com/mikeki/ocf-ims/internal/push"
 	imsjson "github.com/mikeki/ocf-ims/json"
 	"github.com/mikeki/ocf-ims/lib/push"
 	"github.com/mikeki/ocf-ims/lib/rand"
@@ -67,8 +68,8 @@ func TestPushSubscriptions(t *testing.T) {
 	endpoint2 := "https://push.test/" + rand.NonCryptoText()
 	daveEndpoint := "https://push.test/" + rand.NonCryptoText()
 
-	sub := func(endpoint, p256dh, auth string) api.PushSubscribeRequest {
-		req := api.PushSubscribeRequest{Endpoint: endpoint}
+	sub := func(endpoint, p256dh, auth string) pushapi.PushSubscribeRequest {
+		req := pushapi.PushSubscribeRequest{Endpoint: endpoint}
 		req.Keys.P256dh = p256dh
 		req.Keys.Auth = auth
 		return req
@@ -132,14 +133,14 @@ func TestPushSubscriptions(t *testing.T) {
 
 	// Unsubscribe is caller-scoped: Alice trying to remove Dave's endpoint is a
 	// no-op for Dave's device (still present).
-	resp = alice.pushUnsubscribe(ctx, api.PushUnsubscribeRequest{Endpoint: daveEndpoint})
+	resp = alice.pushUnsubscribe(ctx, pushapi.PushUnsubscribeRequest{Endpoint: daveEndpoint})
 	require.Equal(t, http.StatusNoContent, resp.StatusCode)
 	require.NoError(t, resp.Body.Close())
 	_, _, found = pushSubByEndpoint(ctx, t, userDavePersonID, daveEndpoint)
 	require.True(t, found, "Alice must not be able to remove Dave's device")
 
 	// Alice removes her first device -> gone; her second remains.
-	resp = alice.pushUnsubscribe(ctx, api.PushUnsubscribeRequest{Endpoint: endpoint1})
+	resp = alice.pushUnsubscribe(ctx, pushapi.PushUnsubscribeRequest{Endpoint: endpoint1})
 	require.Equal(t, http.StatusNoContent, resp.StatusCode)
 	require.NoError(t, resp.Body.Close())
 	_, _, found = pushSubByEndpoint(ctx, t, userAlicePersonID, endpoint1)
@@ -148,7 +149,7 @@ func TestPushSubscriptions(t *testing.T) {
 	require.True(t, found)
 
 	// Unsubscribing an unknown endpoint is an idempotent no-op (still 204).
-	resp = alice.pushUnsubscribe(ctx, api.PushUnsubscribeRequest{Endpoint: endpoint1})
+	resp = alice.pushUnsubscribe(ctx, pushapi.PushUnsubscribeRequest{Endpoint: endpoint1})
 	require.Equal(t, http.StatusNoContent, resp.StatusCode)
 	require.NoError(t, resp.Body.Close())
 }
@@ -302,7 +303,7 @@ func TestPushSubscribeConcurrentSameEndpoint(t *testing.T) {
 	closeErrs := make([]error, n)
 	for i := range n {
 		wg.Go(func() {
-			req := api.PushSubscribeRequest{Endpoint: endpoint}
+			req := pushapi.PushSubscribeRequest{Endpoint: endpoint}
 			req.Keys.P256dh = "p256dh"
 			req.Keys.Auth = "auth"
 			resp := alice.pushSubscribe(ctx, req)

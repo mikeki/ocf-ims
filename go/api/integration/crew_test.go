@@ -21,7 +21,8 @@ import (
 	"slices"
 	"testing"
 
-	"github.com/mikeki/ocf-ims/api"
+	personapi "github.com/mikeki/ocf-ims/internal/person"
+
 	imsjson "github.com/mikeki/ocf-ims/json"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -290,7 +291,7 @@ func TestPersonCrewsInPersonnel(t *testing.T) {
 
 	// The roster (participation-scoped) carries the same crew annotation. Erin needs
 	// a participation row to appear on it.
-	resp = admin.setParticipation(ctx, erinPersonID, eventName, api.SetParticipationRequest{ParticipationType: "reporter"})
+	resp = admin.setParticipation(ctx, erinPersonID, eventName, personapi.SetParticipationRequest{ParticipationType: "reporter"})
 	require.Equal(t, http.StatusNoContent, resp.StatusCode)
 	require.NoError(t, resp.Body.Close())
 	roster, resp := admin.getEventRoster(ctx, eventName)
@@ -443,10 +444,10 @@ func TestCrewLeaderDerivedAccess(t *testing.T) {
 
 	// Dave (crew member) and Alice (outside the crew) are reporters so they can file
 	// reports; the report's CREATED_BY is the filer.
-	resp = admin.setParticipation(ctx, davePersonID, eventName, api.SetParticipationRequest{ParticipationType: "reporter"})
+	resp = admin.setParticipation(ctx, davePersonID, eventName, personapi.SetParticipationRequest{ParticipationType: "reporter"})
 	require.Equal(t, http.StatusNoContent, resp.StatusCode)
 	require.NoError(t, resp.Body.Close())
-	resp = admin.setParticipation(ctx, alicePersonID, eventName, api.SetParticipationRequest{ParticipationType: "reporter"})
+	resp = admin.setParticipation(ctx, alicePersonID, eventName, personapi.SetParticipationRequest{ParticipationType: "reporter"})
 	require.Equal(t, http.StatusNoContent, resp.StatusCode)
 	require.NoError(t, resp.Body.Close())
 

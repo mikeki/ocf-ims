@@ -18,13 +18,14 @@ package cmd
 
 import (
 	"fmt"
-	"github.com/joho/godotenv"
-	"github.com/mikeki/ocf-ims/conf"
-	"github.com/mikeki/ocf-ims/lib/conv"
 	"log/slog"
 	"os"
 	"strings"
 	"time"
+
+	"github.com/joho/godotenv"
+	"github.com/mikeki/ocf-ims/conf"
+	"github.com/mikeki/ocf-ims/lib/conv"
 )
 
 // mustApplyEnvConfig reads in the .env file and ENV variables and applies those to baseCfg.

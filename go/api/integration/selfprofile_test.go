@@ -25,14 +25,18 @@ import (
 	"testing"
 	"time"
 
-	"github.com/mikeki/ocf-ims/api"
+	incidentapi "github.com/mikeki/ocf-ims/internal/incident"
+
+	authapi "github.com/mikeki/ocf-ims/internal/auth"
+	personapi "github.com/mikeki/ocf-ims/internal/person"
+
 	imsjson "github.com/mikeki/ocf-ims/json"
 	"github.com/mikeki/ocf-ims/lib/rand"
 	"github.com/stretchr/testify/require"
 )
 
 // setOwnProfile POSTs a self-service profile edit (the caller edits themselves).
-func (a ApiHelper) setOwnProfile(ctx context.Context, body api.SetOwnProfileRequest) *http.Response {
+func (a ApiHelper) setOwnProfile(ctx context.Context, body personapi.SetOwnProfileRequest) *http.Response {
 	a.t.Helper()
 	return a.imsPost(ctx, body, a.serverURL.JoinPath("/ims/api/auth/profile").String())
 }
@@ -44,7 +48,7 @@ func (a ApiHelper) uploadOwnPicture(ctx context.Context, fileBytes []byte) *http
 
 	var requestBody bytes.Buffer
 	writer := multipart.NewWriter(&requestBody)
-	part, err := writer.CreateFormFile(api.IMSAttachmentFormKey, "pic-"+rand.NonCryptoText())
+	part, err := writer.CreateFormFile(incidentapi.IMSAttachmentFormKey, "pic-"+rand.NonCryptoText())
 	require.NoError(a.t, err)
 	_, err = part.Write(fileBytes)
 	require.NoError(a.t, err)
@@ -86,7 +90,7 @@ func TestSelfProfile(t *testing.T) {
 	email := handle + "@example.com"
 	const password = "selfie-password-123"
 
-	resp := admin.createPerson(ctx, api.CreatePersonRequest{
+	resp := admin.createPerson(ctx, personapi.CreatePersonRequest{
 		Handle: handle, Email: email, Password: password,
 	})
 	require.Equal(t, http.StatusCreated, resp.StatusCode)
@@ -96,20 +100,20 @@ func TestSelfProfile(t *testing.T) {
 	require.Positive(t, created.PersonID)
 
 	// Log in as the new person (by email) to get their own JWT.
-	statusCode, _, token := noAuth.postAuth(ctx, api.PostAuthRequest{Identification: email, Password: password})
+	statusCode, _, token := noAuth.postAuth(ctx, authapi.PostAuthRequest{Identification: email, Password: password})
 	require.Equal(t, http.StatusOK, statusCode)
 	require.NotEmpty(t, token)
 	self := ApiHelper{t: t, serverURL: shared.serverURL, jwt: token}
 
 	// --- Unauthenticated cannot self-edit. ---
-	resp = noAuth.setOwnProfile(ctx, api.SetOwnProfileRequest{})
+	resp = noAuth.setOwnProfile(ctx, personapi.SetOwnProfileRequest{})
 	require.Equal(t, http.StatusUnauthorized, resp.StatusCode)
 	require.NoError(t, resp.Body.Close())
 
 	// --- Self-edit succeeds; the change is resolved from the JWT (no path id). ---
 	newName := "Self Edited Name"
 	newPhone := "555-0199"
-	resp = self.setOwnProfile(ctx, api.SetOwnProfileRequest{Name: &newName, Phone: &newPhone})
+	resp = self.setOwnProfile(ctx, personapi.SetOwnProfileRequest{Name: &newName, Phone: &newPhone})
 	require.Equal(t, http.StatusNoContent, resp.StatusCode)
 	require.NoError(t, resp.Body.Close())
 

@@ -21,7 +21,9 @@ import (
 	"net/http"
 	"testing"
 
-	"github.com/mikeki/ocf-ims/api"
+	authapi "github.com/mikeki/ocf-ims/internal/auth"
+	personapi "github.com/mikeki/ocf-ims/internal/person"
+
 	imsjson "github.com/mikeki/ocf-ims/json"
 	"github.com/mikeki/ocf-ims/lib/rand"
 	"github.com/stretchr/testify/require"
@@ -65,7 +67,7 @@ func TestCrewLeaderInvite(t *testing.T) {
 	// --- 1) The crew leader invites a login-capable reporter on her event. ---
 	inviteeHandle := uniq("Invitee")
 	const inviteePassword = "invitee-password-123"
-	resp = apisErin.createPerson(ctx, api.CreatePersonRequest{
+	resp = apisErin.createPerson(ctx, personapi.CreatePersonRequest{
 		Handle:            inviteeHandle,
 		Email:             inviteeHandle + "@example.com",
 		Password:          inviteePassword,
@@ -81,7 +83,7 @@ func TestCrewLeaderInvite(t *testing.T) {
 
 	// The invitee can actually log in (by email — the sole login identifier) with the
 	// initial password they were given.
-	statusCode, _, token := apisNoAuth.postAuth(ctx, api.PostAuthRequest{
+	statusCode, _, token := apisNoAuth.postAuth(ctx, authapi.PostAuthRequest{
 		Identification: inviteeHandle + "@example.com",
 		Password:       inviteePassword,
 	})
@@ -97,7 +99,7 @@ func TestCrewLeaderInvite(t *testing.T) {
 
 	// --- 2) Anti-escalation: she cannot mint a writer or another crew leader. ---
 	for _, rung := range []string{"writer", "crew_leader"} {
-		resp = apisErin.createPerson(ctx, api.CreatePersonRequest{
+		resp = apisErin.createPerson(ctx, personapi.CreatePersonRequest{
 			Handle:            uniq("Escalate"),
 			Password:          "escalate-password-123",
 			Event:             eventName,
@@ -108,7 +110,7 @@ func TestCrewLeaderInvite(t *testing.T) {
 	}
 
 	// --- 3) She has no invite power on an event she lacks the bit on. ---
-	resp = apisErin.createPerson(ctx, api.CreatePersonRequest{
+	resp = apisErin.createPerson(ctx, personapi.CreatePersonRequest{
 		Handle:            uniq("Wrongevent"),
 		Password:          "wrongevent-password-123",
 		Event:             otherEvent,
@@ -118,7 +120,7 @@ func TestCrewLeaderInvite(t *testing.T) {
 	require.NoError(t, resp.Body.Close())
 
 	// --- 4) A plain non-participant (Alice, no role on eventName) cannot invite. ---
-	resp = apisAlice.createPerson(ctx, api.CreatePersonRequest{
+	resp = apisAlice.createPerson(ctx, personapi.CreatePersonRequest{
 		Handle:            uniq("Alicemade"),
 		Password:          "alicemade-password-123",
 		Event:             eventName,
@@ -129,41 +131,41 @@ func TestCrewLeaderInvite(t *testing.T) {
 
 	// --- SetPersonParticipation path (enroll an existing person). ---
 	// An existing registry person with no event role, created by the admin.
-	resp = apisAdmin.createPerson(ctx, api.CreatePersonRequest{Handle: uniq("Target"), Email: uniq("target") + "@example.com", Password: "target-password-123"})
+	resp = apisAdmin.createPerson(ctx, personapi.CreatePersonRequest{Handle: uniq("Target"), Email: uniq("target") + "@example.com", Password: "target-password-123"})
 	require.Equal(t, http.StatusCreated, resp.StatusCode)
 	var target imsjson.Person
 	require.NoError(t, json.NewDecoder(resp.Body).Decode(&target))
 	require.NoError(t, resp.Body.Close())
 
 	// The crew leader can set them to reporter on her event.
-	resp = apisErin.setParticipation(ctx, target.PersonID, eventName, api.SetParticipationRequest{ParticipationType: "reporter"})
+	resp = apisErin.setParticipation(ctx, target.PersonID, eventName, personapi.SetParticipationRequest{ParticipationType: "reporter"})
 	require.Equal(t, http.StatusNoContent, resp.StatusCode)
 	require.NoError(t, resp.Body.Close())
 
 	// But not to writer or crew_leader (the value ceiling).
 	for _, rung := range []string{"writer", "crew_leader"} {
-		resp = apisErin.setParticipation(ctx, target.PersonID, eventName, api.SetParticipationRequest{ParticipationType: rung})
+		resp = apisErin.setParticipation(ctx, target.PersonID, eventName, personapi.SetParticipationRequest{ParticipationType: rung})
 		require.Equalf(t, http.StatusForbidden, resp.StatusCode, "crew leader must not assign %s", rung)
 		require.NoError(t, resp.Body.Close())
 	}
 
 	// Nor act on an event she lacks the bit on.
-	resp = apisErin.setParticipation(ctx, target.PersonID, otherEvent, api.SetParticipationRequest{ParticipationType: "reporter"})
+	resp = apisErin.setParticipation(ctx, target.PersonID, otherEvent, personapi.SetParticipationRequest{ParticipationType: "reporter"})
 	require.Equal(t, http.StatusForbidden, resp.StatusCode)
 	require.NoError(t, resp.Body.Close())
 
 	// --- 5) She cannot modify a target who already outranks her ceiling. ---
-	resp = apisAdmin.createPerson(ctx, api.CreatePersonRequest{Handle: uniq("Bigshot"), Email: uniq("bigshot") + "@example.com", Password: "bigshot-password-123"})
+	resp = apisAdmin.createPerson(ctx, personapi.CreatePersonRequest{Handle: uniq("Bigshot"), Email: uniq("bigshot") + "@example.com", Password: "bigshot-password-123"})
 	require.Equal(t, http.StatusCreated, resp.StatusCode)
 	var bigshot imsjson.Person
 	require.NoError(t, json.NewDecoder(resp.Body).Decode(&bigshot))
 	require.NoError(t, resp.Body.Close())
 	// Admin makes bigshot a writer on the event.
-	resp = apisAdmin.setParticipation(ctx, bigshot.PersonID, eventName, api.SetParticipationRequest{ParticipationType: "writer"})
+	resp = apisAdmin.setParticipation(ctx, bigshot.PersonID, eventName, personapi.SetParticipationRequest{ParticipationType: "writer"})
 	require.Equal(t, http.StatusNoContent, resp.StatusCode)
 	require.NoError(t, resp.Body.Close())
 	// The crew leader cannot demote (or otherwise touch) a writer.
-	resp = apisErin.setParticipation(ctx, bigshot.PersonID, eventName, api.SetParticipationRequest{ParticipationType: "reporter"})
+	resp = apisErin.setParticipation(ctx, bigshot.PersonID, eventName, personapi.SetParticipationRequest{ParticipationType: "reporter"})
 	require.Equal(t, http.StatusForbidden, resp.StatusCode)
 	require.NoError(t, resp.Body.Close())
 
@@ -175,7 +177,7 @@ func TestCrewLeaderInvite(t *testing.T) {
 	resp = apisAdmin.addWriter(ctx, writerEvent, userAliceHandle)
 	require.Equal(t, http.StatusNoContent, resp.StatusCode)
 	require.NoError(t, resp.Body.Close())
-	resp = apisAlice.createPerson(ctx, api.CreatePersonRequest{
+	resp = apisAlice.createPerson(ctx, personapi.CreatePersonRequest{
 		Handle:            uniq("Writermade"),
 		Email:             uniq("writermade") + "@example.com",
 		Password:          "writermade-password-123",
@@ -186,7 +188,7 @@ func TestCrewLeaderInvite(t *testing.T) {
 	require.NoError(t, resp.Body.Close())
 
 	// --- 7) The admin path is unchanged: an admin may still mint a writer. ---
-	resp = apisAdmin.createPerson(ctx, api.CreatePersonRequest{
+	resp = apisAdmin.createPerson(ctx, personapi.CreatePersonRequest{
 		Handle:            uniq("Adminmade"),
 		Email:             uniq("adminmade") + "@example.com",
 		Password:          "adminmade-password-123",
@@ -278,7 +280,7 @@ func TestInviterRosterRead(t *testing.T) {
 	// Put a login-capable person (with an email) on the roster.
 	memberHandle := "RosterMember" + rand.NonCryptoText()
 	memberEmail := memberHandle + "@example.com"
-	resp = apisAdmin.createPerson(ctx, api.CreatePersonRequest{
+	resp = apisAdmin.createPerson(ctx, personapi.CreatePersonRequest{
 		Handle:            memberHandle,
 		Email:             memberEmail,
 		Password:          "rostermember-password-123",

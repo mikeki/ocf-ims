@@ -23,6 +23,8 @@ import (
 	"strconv"
 	"testing"
 
+	authapi "github.com/mikeki/ocf-ims/internal/auth"
+
 	"github.com/mikeki/ocf-ims/api"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -53,7 +55,7 @@ func TestLoginRateLimit(t *testing.T) {
 
 	// Baseline: a valid login works while the limiter is armed but untriggered, and
 	// the success leaves the per-IP/per-account counters clear for the loop below.
-	code, _, token := client.postAuth(ctx, api.PostAuthRequest{
+	code, _, token := client.postAuth(ctx, authapi.PostAuthRequest{
 		Identification: userAliceEmail,
 		Password:       userAlicePassword,
 	})
@@ -62,7 +64,7 @@ func TestLoginRateLimit(t *testing.T) {
 
 	// Grab a valid refresh cookie from a clean login to prove later that throttling
 	// /auth never blocks /auth/refresh (a different, cookie-authenticated route).
-	loginResp := client.imsPost(ctx, api.PostAuthRequest{
+	loginResp := client.imsPost(ctx, authapi.PostAuthRequest{
 		Identification: userAliceEmail,
 		Password:       userAlicePassword,
 	}, srvURL.JoinPath("/ims/api/auth").String())
@@ -79,7 +81,7 @@ func TestLoginRateLimit(t *testing.T) {
 	var got429 bool
 	var retryAfter string
 	for i := range 12 {
-		resp := client.imsPost(ctx, api.PostAuthRequest{
+		resp := client.imsPost(ctx, authapi.PostAuthRequest{
 			Identification: userAliceEmail,
 			Password:       "definitely-not-the-password",
 		}, srvURL.JoinPath("/ims/api/auth").String())
@@ -101,7 +103,7 @@ func TestLoginRateLimit(t *testing.T) {
 
 	// The correct password is now also throttled from this IP (the per-IP counter is
 	// tripped) — confirming the shed happens before the verify.
-	code, _, _ = client.postAuth(ctx, api.PostAuthRequest{
+	code, _, _ = client.postAuth(ctx, authapi.PostAuthRequest{
 		Identification: userAliceEmail,
 		Password:       userAlicePassword,
 	})

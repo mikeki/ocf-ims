@@ -18,14 +18,15 @@ package cmd
 
 import (
 	"context"
-	"github.com/mikeki/ocf-ims/conf"
-	"github.com/stretchr/testify/assert"
-	"github.com/stretchr/testify/require"
 	"os"
 	"path/filepath"
 	"runtime/debug"
 	"strconv"
 	"testing"
+
+	"github.com/mikeki/ocf-ims/conf"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func TestRunServer(t *testing.T) {
