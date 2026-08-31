@@ -21,6 +21,7 @@ import (
 	"net/http"
 	"testing"
 
+	resourcesv1 "github.com/mikeki/ocf-ims/gen/ocf/ims/resources/v1"
 	imsjson "github.com/mikeki/ocf-ims/json"
 	"github.com/mikeki/ocf-ims/lib/rand"
 	"github.com/stretchr/testify/require"
@@ -42,20 +43,20 @@ func TestGetAndEditEvent(t *testing.T) {
 	require.Equal(t, http.StatusNoContent, resp.StatusCode)
 	require.NoError(t, resp.Body.Close())
 
-	events, resp := apisAdmin.getEvents(ctx)
-	require.Equal(t, http.StatusOK, resp.StatusCode)
-	require.NoError(t, resp.Body.Close())
-	// The list may include events from other tests
-	var foundEvent *imsjson.Event
-	for _, event := range events {
-		if event.ID == eventID {
-			foundEvent = &event
+	// Listing is Connect-only now (the REST GET /events was retired in 1c); create
+	// is still REST until EditEvent is extracted.
+	listResp, err := apisAdmin.listEvents(ctx)
+	require.NoError(t, err)
+	// The list may include events from other tests.
+	var foundEvent *resourcesv1.Event
+	for _, event := range listResp.GetEvents() {
+		if event.GetId() == eventID {
+			foundEvent = event
 		}
 	}
 	require.NotNil(t, foundEvent)
-	require.NotNil(t, foundEvent.Name)
-	require.Equal(t, testEventName, *foundEvent.Name)
-	require.NotZero(t, foundEvent.ID)
+	require.Equal(t, testEventName, foundEvent.GetName())
+	require.NotZero(t, foundEvent.GetId())
 }
 
 func TestEditEvent_errors(t *testing.T) {

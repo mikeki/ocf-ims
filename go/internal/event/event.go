@@ -27,8 +27,6 @@ import (
 	"regexp"
 	"slices"
 	"strconv"
-	"strings"
-	"time"
 
 	"connectrpc.com/connect"
 	"github.com/mikeki/ocf-ims/directory"
@@ -43,53 +41,12 @@ import (
 	"github.com/mikeki/ocf-ims/store/imsdb"
 )
 
-type GetEvents struct {
-	ImsDBQ            *store.DBQ
-	UserStore         directory.UserStore
-	CacheControlShort time.Duration
-}
-
-func (action GetEvents) ServeHTTP(w http.ResponseWriter, req *http.Request) {
-	resp, errHTTP := action.getEvents(req)
-	if errHTTP != nil {
-		errHTTP.From("[getEvents]").WriteResponse(w)
-		return
-	}
-	w.Header().Set("Cache-Control", fmt.Sprintf(
-		"max-age=%v, private", action.CacheControlShort.Milliseconds()/1000))
-	server.MustWriteJSON(w, req, resp)
-}
-
-// getEvents is now a thin REST shim over the transport-agnostic ListEvents domain
-// function (plan 09h/1c): it reads the ?include_groups param into the proto
-// request, calls the one implementation, then maps the Connect error and proto
-// response back onto the REST tier's herr/json types. The RPC method calls the
-// same ListEvents with no such adaptation (M13 — one implementation, two
-// transports).
-func (action GetEvents) getEvents(req *http.Request) (imsjson.Events, *herr.HTTPError) {
-	err := req.ParseForm()
-	if err != nil {
-		return nil, herr.BadRequest("Failed to parse form", err)
-	}
-	protoReq := &rpcv1.ListEventsRequest{
-		IncludeGroups: strings.EqualFold(req.Form.Get("include_groups"), "true"),
-	}
-	protoResp, err := ListEvents(req.Context(), action.ImsDBQ, action.UserStore, protoReq)
-	if err != nil {
-		return nil, server.ConnectErrorToHTTP(err).From("[ListEvents]")
-	}
-	resp := make(imsjson.Events, 0, len(protoResp.GetEvents()))
-	for _, e := range protoResp.GetEvents() {
-		resp = append(resp, eventToJSON(e))
-	}
-	return resp, nil
-}
-
-// ListEvents is the transport-agnostic domain function for the ListEvents RPC
-// (plan 09h/1c): it authorizes the caller from the ctx claims (populated by the
-// auth interceptor over Connect, or the OptionalAuthN adapter over REST), builds
-// the authorized event list, and returns proto messages speaking Connect error
-// codes. Both the REST shim above and ImsService.ListEvents call it.
+// ListEvents is the domain function behind the ListEvents RPC (plan 09h/1c). The
+// REST GET /events endpoint was RETIRED with this extraction, not kept as a shim
+// (migration decision, plan 09 §Migration strategy) — listing events is
+// Connect-only now. It authorizes the caller from the ctx claims (populated by the
+// auth interceptor), builds the authorized event list, and returns proto messages
+// speaking Connect error codes.
 func ListEvents(
 	ctx context.Context,
 	imsDBQ *store.DBQ,
@@ -143,19 +100,6 @@ func eventToProto(e imsdb.Event) *resourcesv1.Event {
 		Name:        &e.Name,
 		IsGroup:     &e.IsGroup,
 		ParentGroup: conv.SqlToInt32(e.ParentGroup),
-	}
-}
-
-// eventToJSON maps a resources/v1.Event proto back to the frozen REST json.Event,
-// used by the REST shim while both transports live (deleted with json/ in Phase 2).
-func eventToJSON(e *resourcesv1.Event) imsjson.Event {
-	name := e.GetName()
-	isGroup := e.GetIsGroup()
-	return imsjson.Event{
-		ID:          e.GetId(),
-		Name:        &name,
-		IsGroup:     &isGroup,
-		ParentGroup: e.ParentGroup,
 	}
 }
 

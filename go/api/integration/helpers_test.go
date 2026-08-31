@@ -29,6 +29,9 @@ import (
 	"testing"
 	"time"
 
+	"connectrpc.com/connect"
+	servicerpcv1 "github.com/mikeki/ocf-ims/gen/ocf/ims/service/rpc/v1"
+	"github.com/mikeki/ocf-ims/gen/ocf/ims/service/v1/servicev1connect"
 	incidentapi "github.com/mikeki/ocf-ims/internal/incident"
 
 	authapi "github.com/mikeki/ocf-ims/internal/auth"
@@ -514,10 +517,20 @@ func (a ApiHelper) createEvent(ctx context.Context, req imsjson.Event) (eventID 
 	return eventID, resp
 }
 
-func (a ApiHelper) getEvents(ctx context.Context) (imsjson.Events, *http.Response) {
+// listEvents lists events through the generated Connect client. The REST GET
+// /events endpoint was retired when ListEvents was extracted (plan 09h/1c), so the
+// suite exercises the real RPC here, carrying the helper's JWT as the Bearer token
+// exactly as a browser or the Expo client will.
+func (a ApiHelper) listEvents(ctx context.Context) (*servicerpcv1.ListEventsResponse, error) {
 	a.t.Helper()
-	bod, resp := a.imsGet(ctx, a.serverURL.JoinPath("/ims/api/events").String(), &imsjson.Events{})
-	return *bod.(*imsjson.Events), resp
+	client := servicev1connect.NewImsServiceClient(http.DefaultClient, a.serverURL.String())
+	req := connect.NewRequest(&servicerpcv1.ListEventsRequest{})
+	req.Header().Set("Authorization", "Bearer "+a.jwt)
+	resp, err := client.ListEvents(ctx, req)
+	if err != nil {
+		return nil, err
+	}
+	return resp.Msg, nil
 }
 
 // addWriter / addReporter grant a per-event role by setting the person's

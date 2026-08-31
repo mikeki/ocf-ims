@@ -509,16 +509,12 @@ func AddToMux(
 		),
 	)
 
-	mux.Handle("GET /ims/api/events",
-		server.Adapt(
-			event.GetEvents{ImsDBQ: db, UserStore: userStore, CacheControlShort: cfg.Core.CacheControlShort},
-			server.RecoverFromPanic(),
-			server.RequireAuthN(jwter),
-			server.LogRequest(false, actionLogger, userStore),
-			server.LimitRequestBytes(cfg.Core.MaxRequestBytes),
-		),
-	)
-
+	// GET /ims/api/events was retired: listing events is now the ListEvents RPC
+	// (plan 09h/1c). Per the migration decision (plan 09 §Migration strategy), a
+	// resource's REST reads are DELETED as they are extracted rather than kept as
+	// shims — there is no live product to protect in the off-season, and the templ
+	// UI is being replaced by the Expo client, not ported. POST /events (event
+	// create/update) is still REST until its own extraction lands.
 	mux.Handle("POST /ims/api/events",
 		server.Adapt(
 			event.EditEvent{ImsDBQ: db, UserStore: userStore},

@@ -40,19 +40,32 @@ wire RPC → shim REST) before moving to the next, so this plan and 09i interlea
 
 ## Extraction pattern (per resource)
 
+> **Aggressive REST retirement (decided 2026-08-31, see [09 §6 Migration strategy](09-proto-connect-platform.md)):**
+> the REST endpoint is **deleted** as the resource is extracted — NOT kept as a
+> shim. No `*ToJSON` converters, no `ConnectErrorToHTTP`. The templ UI goes dark;
+> the `api/integration` cases move onto the generated Connect client.
+
 For each resource, in the ex-`api/`-now-`internal/<domain>` handler:
 
 - Identify the business logic (validation beyond protovalidate, authz checks,
   DB orchestration, notification/metric side effects).
 - Move it into a domain function with a **proto-shaped signature**:
-  `func (d *Domain) DoThing(ctx, *rpcv1.DoThingRequest) (*rpcv1.DoThingResponse, error)`,
-  returning `connect.NewError(connect.Code…, err)` for failures.
+  `func DoThing(ctx, deps…, *rpcv1.DoThingRequest) (*rpcv1.DoThingResponse, error)`,
+  returning `connect.NewError(connect.Code…, err)` for failures. Authorize from
+  `server.ClaimsFromContext(ctx)`.
 - **Authorization stays in Go** (M5 puts only *validation* in the contract) — keep
   the `authz` checks, the `mayViewIncident` privacy gate, the private-incident 404,
-  the last-admin guard, etc. exactly as they are; just relocate them.
+  the last-admin guard, etc. exactly as they are; just relocate them and re-express
+  the failures as Connect codes (404 → `CodeNotFound`, 403 → `CodePermissionDenied`, …).
+- Add the RPC method to `ImsService` (a one-line delegate) and give `ImsService`
+  whatever dep it needs (threaded via `AddConnectToMux` + `serve.go`). Mark reads
+  `NO_SIDE_EFFECTS` in the proto.
 - Wrap multi-statement writes in `RunInTx`.
-- The REST handler keeps working throughout (calls the new function, adapts to/from
-  its existing JSON DTOs for now); it becomes a pure shim in 1d.
+- **Delete the REST route + handler** for that endpoint (in `api/mux.go` and the
+  domain file). **Move its `api/integration` cases onto the Connect client**
+  (`servicev1connect.NewImsServiceClient`, Bearer JWT) — the shared test server now
+  also mounts `AddConnectToMux`. Prune the deleted route from
+  `TestAnyUnauthenticatedUserEndpoints`-style REST enumerations.
 
 ## Resource order (from 09 §6)
 
@@ -73,14 +86,19 @@ resources are extracted together.
   it over-logs, never misses a mutation). REST still uses `LogRequest(true,…)`.
 - **Admin escalation:** only `claims.PersonAdmin()` may mint admins; last-admin
   clear returns 409.
-- **No behaviour change:** the Playwright suite + both integration suites are the
-  regression net. Run `go test ./api/integration ./store/integration` after each
-  resource; they use raw-SQL seeds and catch schema/query drift.
+- **Domain behaviour is preserved (transport is not):** the RPC must do exactly
+  what the REST handler did — same authz, same data, same edge cases — even as the
+  REST route disappears. The **`api/integration` suite on the Connect client** is
+  the net (raw-SQL seeds, catches schema/query drift); run
+  `go test ./api/integration ./store/integration` after each resource. **Playwright
+  is no longer a Phase-1 net** — it drives the templ UI, which goes dark as routes
+  retire; the replacement client gets its own tests in Phase 3.
 
 ## Verification gate (per resource, and slice-wide)
 
 - [ ] `go build ./...`, `go vet`, `gofmt`, `go test ./...` green.
-- [ ] golangci-lint 0 issues **including the new path-scoped `funlen`**.
+- [ ] golangci-lint 0 issues (path-scoped `funlen` deferred to the end of 1c —
+      it can't be enabled until the handlers it scopes are thin).
 - [ ] `go run bin/build/build.go` regenerates + compiles; `buf lint` clean.
 - [ ] both integration suites green; Playwright smoke unaffected.
 - [ ] `RunInTx` has a test proving it retries 1213/1205 and gives up on others.
