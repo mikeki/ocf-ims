@@ -523,6 +523,45 @@ findings will be appended then.)*
   prependlicense) likewise gained a `cd go`. *Extends finding #9 (the Go cost of the
   no-committed-codegen rule) with a linters-in-a-polyglot-monorepo wrinkle.*
 
+### 1a — Server restructure: the api/ domain split (2026-08-30)
+
+*(Slice 1a, step 2 — flat `api` → leaf `internal/server` + per-domain
+`internal/<domain>`, AddToMux left in `api/` as the wiring. Extraction discipline
+was "move whole files, no logic moved" — decision #1's aggressive form.)*
+
+- **"Move whole handler files" hits three walls the guidance is silent on.** The
+  blueprint's package-by-feature makes it sound like a file move; splitting a real
+  brownfield's flat handler package is not. (1) **The server↔domain cycle**: the mux
+  wiring (`AddToMux`) imports every domain, and the domains need shared plumbing, so
+  neither can hold the other. Resolved by a **leaf `internal/server`** (helpers, ctx
+  types, middleware, caches, the SSE/push services) that imports no domain, plus
+  keeping `AddToMux` in a separate wiring package. (2) **Unexported handler-struct
+  fields set cross-package**: `AddToMux` builds each handler with a *positional*
+  struct literal; Go forbids setting another package's unexported fields even
+  positionally, so every handler field had to be exported and the literals rekeyed
+  (which also clears govet's `composites` check). (3) **Package-name collisions**:
+  `internal/push` vs `lib/push`, `internal/actionlog` vs `store/actionlog` — resolved
+  by aliasing the lib/store imports at the one call site that needs both. *Concrete
+  adoption-path detail the "package by feature" guidance (finding #4) omits.*
+- **The code's real coupling decides how fine-grained the split can be.** A symbol
+  dependency graph across the handler files (filtering false positives from generic
+  local names like `create`/`delete`/`Error`) showed the incident-management core —
+  incident, report, visit, journal entries, attachments — is **mutually recursive**
+  (incident↔report through `createdByJSON`/`addJournalEntry`/`addIncidentJournalEntry`).
+  Splitting it further than one `internal/incident` package would require *hoisting*
+  the shared helpers, i.e. pulling 1c extraction work forward. Everything outside that
+  cluster is a clean DAG (`crew→area`, `incident→notification`, `person→auth`,
+  `person→incident`, `push→person`) and splits finely. The lesson: "one package per
+  resource" is bounded by the existing call graph; a brownfield's coupling, not taste,
+  sets the granularity a *behavior-preserving* restructure can reach. *Refines
+  finding #4 and the adoption sequence (#10).*
+- **A shadowing hazard in the test tier.** Integration tests name local vars after the
+  domain nouns (`auth`, `incident`), which shadow the new domain packages when the
+  tests reference those packages' request DTOs — so the DTO-providing packages get an
+  `…api` alias in the tests. A move that renames packages after the domain nouns must
+  expect this wherever tests already use those nouns as variables. *Adoption-path
+  detail (#10).*
+
 ## 8. Open questions
 
 1. **Does the Go binary keep serving static assets in production**, or does Caddy?
