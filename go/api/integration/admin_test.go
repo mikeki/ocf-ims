@@ -20,7 +20,8 @@ import (
 	"net/http"
 	"testing"
 
-	"github.com/mikeki/ocf-ims/api"
+	authapi "github.com/mikeki/ocf-ims/internal/auth"
+
 	"github.com/stretchr/testify/require"
 )
 
@@ -50,7 +51,7 @@ func TestSetPersonAdmin(t *testing.T) {
 	require.NoError(t, resp.Body.Close())
 
 	// Carol is not an admin to start with: a fresh login reports admin=false.
-	statusCode, _, carolToken := apisNoAuth.postAuth(ctx, api.PostAuthRequest{
+	statusCode, _, carolToken := apisNoAuth.postAuth(ctx, authapi.PostAuthRequest{
 		Identification: userCarolEmail,
 		Password:       userCarolPassword,
 	})
@@ -67,7 +68,7 @@ func TestSetPersonAdmin(t *testing.T) {
 
 	// The cache was invalidated, so a fresh login for Carol now carries admin in
 	// the token and getAuth reports admin=true.
-	statusCode, _, carolToken = apisNoAuth.postAuth(ctx, api.PostAuthRequest{
+	statusCode, _, carolToken = apisNoAuth.postAuth(ctx, authapi.PostAuthRequest{
 		Identification: userCarolEmail,
 		Password:       userCarolPassword,
 	})

@@ -23,7 +23,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/mikeki/ocf-ims/api"
+	authapi "github.com/mikeki/ocf-ims/internal/auth"
+
 	imsjson "github.com/mikeki/ocf-ims/json"
 	"github.com/mikeki/ocf-ims/lib/authz"
 	"github.com/mikeki/ocf-ims/lib/rand"
@@ -38,7 +39,7 @@ func TestPostAuthAPIAuthorization(t *testing.T) {
 	apisNotAuthenticated := ApiHelper{t: t, serverURL: shared.serverURL, jwt: ""}
 
 	// A user who doesn't exist gets s 401
-	statusCode, body, token := apisNotAuthenticated.postAuth(ctx, api.PostAuthRequest{
+	statusCode, body, token := apisNotAuthenticated.postAuth(ctx, authapi.PostAuthRequest{
 		Identification: "Not a real user",
 		Password:       "password123",
 	})
@@ -48,7 +49,7 @@ func TestPostAuthAPIAuthorization(t *testing.T) {
 
 	// A user with the correct password gets logged in and gets a JWT
 	statusCode, _, token = apisNotAuthenticated.postAuth(ctx,
-		api.PostAuthRequest{
+		authapi.PostAuthRequest{
 			Identification: userAliceEmail,
 			Password:       userAlicePassword,
 		},
@@ -58,7 +59,7 @@ func TestPostAuthAPIAuthorization(t *testing.T) {
 
 	// Login is by EMAIL only: the fair name (handle) is no longer accepted as a login
 	// identifier, so logging in with it is rejected like any unknown user.
-	statusCode, _, token = apisNotAuthenticated.postAuth(ctx, api.PostAuthRequest{
+	statusCode, _, token = apisNotAuthenticated.postAuth(ctx, authapi.PostAuthRequest{
 		Identification: userAliceHandle,
 		Password:       userAlicePassword,
 	})
@@ -66,7 +67,7 @@ func TestPostAuthAPIAuthorization(t *testing.T) {
 	require.Empty(t, token)
 
 	// A valid user (matched by email) with the wrong password gets denied entry
-	statusCode, body, token = apisNotAuthenticated.postAuth(ctx, api.PostAuthRequest{
+	statusCode, body, token = apisNotAuthenticated.postAuth(ctx, authapi.PostAuthRequest{
 		Identification: userAliceEmail,
 		Password:       "not my password",
 	})
@@ -87,7 +88,7 @@ func TestGetAuthAPIAuthorization(t *testing.T) {
 	getAuth, resp := apisNonAdmin.getAuth(ctx, "")
 	require.NotNil(t, resp)
 	require.Equal(t, http.StatusOK, resp.StatusCode)
-	require.Equal(t, api.GetAuthResponse{
+	require.Equal(t, authapi.GetAuthResponse{
 		Authenticated: true,
 		User:          userAliceHandle,
 		PersonID:      userAlicePersonID,
@@ -99,7 +100,7 @@ func TestGetAuthAPIAuthorization(t *testing.T) {
 	getAuth, resp = apisAdmin.getAuth(ctx, "")
 	require.NotNil(t, resp)
 	require.Equal(t, http.StatusOK, resp.StatusCode)
-	require.Equal(t, api.GetAuthResponse{
+	require.Equal(t, authapi.GetAuthResponse{
 		Authenticated:      true,
 		User:               userAdminHandle,
 		PersonID:           userAdminPersonID,
@@ -112,7 +113,7 @@ func TestGetAuthAPIAuthorization(t *testing.T) {
 	getAuth, resp = apisNotAuthenticated.getAuth(ctx, "someNonExistentEvent")
 	require.NotNil(t, resp)
 	require.Equal(t, http.StatusOK, resp.StatusCode)
-	require.Equal(t, api.GetAuthResponse{
+	require.Equal(t, authapi.GetAuthResponse{
 		Authenticated: false,
 	}, getAuth)
 	require.NoError(t, resp.Body.Close())
@@ -137,13 +138,13 @@ func TestGetAuthWithEvent(t *testing.T) {
 	require.Equal(t, http.StatusOK, resp.StatusCode)
 	eventID := authResp.EventAccess[eventName].EventID
 	require.NotZero(t, eventID)
-	require.Equal(t, api.GetAuthResponse{
+	require.Equal(t, authapi.GetAuthResponse{
 		Authenticated:      true,
 		User:               userAdminHandle,
 		PersonID:           userAdminPersonID,
 		Admin:              true,
 		CanManagePersonnel: true,
-		EventAccess: map[string]api.AccessForEvent{
+		EventAccess: map[string]authapi.AccessForEvent{
 			eventName: {
 				EventID:         eventID,
 				ReadIncidents:   true,
@@ -171,7 +172,7 @@ func TestGetAuthWithBadEventNames(t *testing.T) {
 	assert.Equal(t, http.StatusOK, httpResp.StatusCode)
 	require.NoError(t, httpResp.Body.Close())
 	assert.Contains(t, gar.EventAccess, "ThisEventDoesNotExist")
-	assert.Equal(t, api.AccessForEvent{
+	assert.Equal(t, authapi.AccessForEvent{
 		ReadIncidents:  false,
 		WriteIncidents: false,
 		WriteReports:   false,
@@ -194,11 +195,11 @@ func TestPostAuthMakesRefreshCookie(t *testing.T) {
 	apisNotAuthenticated := ApiHelper{t: t, serverURL: shared.serverURL, jwt: ""}
 
 	// A user with the correct password can log in and get refresh and access tokens
-	req := api.PostAuthRequest{
+	req := authapi.PostAuthRequest{
 		Identification: userAliceEmail,
 		Password:       userAlicePassword,
 	}
-	response := &api.PostAuthResponse{}
+	response := &authapi.PostAuthResponse{}
 	resp := apisNotAuthenticated.imsPost(ctx, req, shared.serverURL.JoinPath("/ims/api/auth").String())
 	b, err := io.ReadAll(resp.Body)
 	require.NoError(t, err)

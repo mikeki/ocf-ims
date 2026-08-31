@@ -29,7 +29,12 @@ import (
 	"testing"
 	"time"
 
-	"github.com/mikeki/ocf-ims/api"
+	incidentapi "github.com/mikeki/ocf-ims/internal/incident"
+
+	authapi "github.com/mikeki/ocf-ims/internal/auth"
+	personapi "github.com/mikeki/ocf-ims/internal/person"
+
+	pushapi "github.com/mikeki/ocf-ims/internal/push"
 	imsjson "github.com/mikeki/ocf-ims/json"
 	"github.com/mikeki/ocf-ims/lib/conv"
 	"github.com/mikeki/ocf-ims/lib/rand"
@@ -43,9 +48,9 @@ type ApiHelper struct {
 	referrer  string
 }
 
-func (a ApiHelper) postAuth(ctx context.Context, req api.PostAuthRequest) (statusCode int, body, validJWT string) {
+func (a ApiHelper) postAuth(ctx context.Context, req authapi.PostAuthRequest) (statusCode int, body, validJWT string) {
 	a.t.Helper()
-	response := &api.PostAuthResponse{}
+	response := &authapi.PostAuthResponse{}
 	resp := a.imsPost(ctx, req, a.serverURL.JoinPath("/ims/api/auth").String())
 	b, err := io.ReadAll(resp.Body)
 	require.NoError(a.t, resp.Body.Close())
@@ -58,9 +63,9 @@ func (a ApiHelper) postAuth(ctx context.Context, req api.PostAuthRequest) (statu
 	return resp.StatusCode, string(b), response.Token
 }
 
-func (a ApiHelper) refreshAccessToken(ctx context.Context, refreshCookie *http.Cookie) (statusCode int, result *api.RefreshAccessTokenResponse) {
+func (a ApiHelper) refreshAccessToken(ctx context.Context, refreshCookie *http.Cookie) (statusCode int, result *authapi.RefreshAccessTokenResponse) {
 	a.t.Helper()
-	response := &api.RefreshAccessTokenResponse{}
+	response := &authapi.RefreshAccessTokenResponse{}
 	postBody, err := json.Marshal(struct{}{})
 	require.NoError(a.t, err)
 	httpPost, err := http.NewRequestWithContext(ctx, http.MethodPost, a.serverURL.JoinPath("/ims/api/auth/refresh").String(), bytes.NewReader(postBody))
@@ -88,26 +93,26 @@ func (a ApiHelper) refreshAccessToken(ctx context.Context, refreshCookie *http.C
 	return resp.StatusCode, response
 }
 
-func (a ApiHelper) getAuth(ctx context.Context, eventName string) (api.GetAuthResponse, *http.Response) {
+func (a ApiHelper) getAuth(ctx context.Context, eventName string) (authapi.GetAuthResponse, *http.Response) {
 	a.t.Helper()
 	path := a.serverURL.JoinPath("/ims/api/auth").String()
 	if eventName != "" {
 		path = path + "?event_id=" + eventName
 	}
-	bod, resp := a.imsGet(ctx, path, &api.GetAuthResponse{})
-	return *bod.(*api.GetAuthResponse), resp
+	bod, resp := a.imsGet(ctx, path, &authapi.GetAuthResponse{})
+	return *bod.(*authapi.GetAuthResponse), resp
 }
 
 func (a ApiHelper) setPersonPassword(ctx context.Context, personID int64, password string) *http.Response {
 	a.t.Helper()
 	path := a.serverURL.JoinPath("/ims/api/personnel", strconv.FormatInt(personID, 10), "password").String()
-	return a.imsPost(ctx, api.SetPersonPasswordRequest{Password: password}, path)
+	return a.imsPost(ctx, personapi.SetPersonPasswordRequest{Password: password}, path)
 }
 
 func (a ApiHelper) setPersonPasswordDefault(ctx context.Context, personID int64) *http.Response {
 	a.t.Helper()
 	path := a.serverURL.JoinPath("/ims/api/personnel", strconv.FormatInt(personID, 10), "password").String()
-	return a.imsPost(ctx, api.SetPersonPasswordRequest{UseDefaultPassword: true}, path)
+	return a.imsPost(ctx, personapi.SetPersonPasswordRequest{UseDefaultPassword: true}, path)
 }
 
 // changeOwnPassword calls the self-service endpoint (the caller sets their own
@@ -115,22 +120,22 @@ func (a ApiHelper) setPersonPasswordDefault(ctx context.Context, personID int64)
 func (a ApiHelper) changeOwnPassword(ctx context.Context, password string) *http.Response {
 	a.t.Helper()
 	path := a.serverURL.JoinPath("/ims/api/auth/password").String()
-	return a.imsPost(ctx, api.SetOwnPasswordRequest{Password: password}, path)
+	return a.imsPost(ctx, personapi.SetOwnPasswordRequest{Password: password}, path)
 }
 
 func (a ApiHelper) setPersonAdmin(ctx context.Context, personID int64, isAdmin bool) *http.Response {
 	a.t.Helper()
 	path := a.serverURL.JoinPath("/ims/api/personnel", strconv.FormatInt(personID, 10), "admin").String()
-	return a.imsPost(ctx, api.SetPersonAdminRequest{IsAdmin: isAdmin}, path)
+	return a.imsPost(ctx, personapi.SetPersonAdminRequest{IsAdmin: isAdmin}, path)
 }
 
-func (a ApiHelper) createPerson(ctx context.Context, body api.CreatePersonRequest) *http.Response {
+func (a ApiHelper) createPerson(ctx context.Context, body personapi.CreatePersonRequest) *http.Response {
 	a.t.Helper()
 	path := a.serverURL.JoinPath("/ims/api/personnel").String()
 	return a.imsPost(ctx, body, path)
 }
 
-func (a ApiHelper) editPerson(ctx context.Context, personID int64, body api.EditPersonRequest) *http.Response {
+func (a ApiHelper) editPerson(ctx context.Context, personID int64, body personapi.EditPersonRequest) *http.Response {
 	a.t.Helper()
 	path := a.serverURL.JoinPath("/ims/api/personnel", strconv.FormatInt(personID, 10)).String()
 	return a.imsPost(ctx, body, path)
@@ -182,7 +187,7 @@ func (a ApiHelper) getPersonnelByID(ctx context.Context, personID int64, eventNa
 
 // setParticipation upserts a person's per-event participation via the dedicated
 // endpoint (enroll / mark not-present / eject), without touching their profile.
-func (a ApiHelper) setParticipation(ctx context.Context, personID int64, eventName string, body api.SetParticipationRequest) *http.Response {
+func (a ApiHelper) setParticipation(ctx context.Context, personID int64, eventName string, body personapi.SetParticipationRequest) *http.Response {
 	a.t.Helper()
 	path := a.serverURL.JoinPath("/ims/api/personnel", strconv.FormatInt(personID, 10), "participation").String() +
 		"?event=" + url.QueryEscape(eventName)
@@ -521,13 +526,13 @@ func (a ApiHelper) getEvents(ctx context.Context) (imsjson.Events, *http.Respons
 func (a ApiHelper) addWriter(ctx context.Context, eventName, handle string) *http.Response {
 	a.t.Helper()
 	return a.setParticipation(ctx, personIDForHandle(a.t, handle), eventName,
-		api.SetParticipationRequest{ParticipationType: "writer"})
+		personapi.SetParticipationRequest{ParticipationType: "writer"})
 }
 
 func (a ApiHelper) addReporter(ctx context.Context, eventName, handle string) *http.Response {
 	a.t.Helper()
 	return a.setParticipation(ctx, personIDForHandle(a.t, handle), eventName,
-		api.SetParticipationRequest{ParticipationType: "reporter"})
+		personapi.SetParticipationRequest{ParticipationType: "reporter"})
 }
 
 // addVisitWriter grants the writer tier. The 52b ladder has no visit-only rung
@@ -536,7 +541,7 @@ func (a ApiHelper) addReporter(ctx context.Context, eventName, handle string) *h
 func (a ApiHelper) addVisitWriter(ctx context.Context, eventName, handle string) *http.Response {
 	a.t.Helper()
 	return a.setParticipation(ctx, personIDForHandle(a.t, handle), eventName,
-		api.SetParticipationRequest{ParticipationType: "writer"})
+		personapi.SetParticipationRequest{ParticipationType: "writer"})
 }
 
 // personIDForHandle maps the suite's fixed login handles to their seeded PERSON.ID
@@ -570,7 +575,7 @@ func (a ApiHelper) attachFileToIncident(ctx context.Context, eventName string, i
 	// Create a `multipart/form-data`-encoded request, with a single form file inside
 	var requestBody bytes.Buffer
 	writer := multipart.NewWriter(&requestBody)
-	part, err := writer.CreateFormFile(api.IMSAttachmentFormKey, "irrelevant-filename-"+rand.NonCryptoText())
+	part, err := writer.CreateFormFile(incidentapi.IMSAttachmentFormKey, "irrelevant-filename-"+rand.NonCryptoText())
 	require.NoError(a.t, err)
 	_, err = part.Write(fileBytes)
 	require.NoError(a.t, err)
@@ -602,7 +607,7 @@ func (a ApiHelper) attachFileToVisit(ctx context.Context, eventName string, visi
 	// Create a `multipart/form-data`-encoded request, with a single form file inside
 	var requestBody bytes.Buffer
 	writer := multipart.NewWriter(&requestBody)
-	part, err := writer.CreateFormFile(api.IMSAttachmentFormKey, "irrelevant-filename-"+rand.NonCryptoText())
+	part, err := writer.CreateFormFile(incidentapi.IMSAttachmentFormKey, "irrelevant-filename-"+rand.NonCryptoText())
 	require.NoError(a.t, err)
 	_, err = part.Write(fileBytes)
 	require.NoError(a.t, err)
@@ -646,7 +651,7 @@ func (a ApiHelper) attachFileToReport(ctx context.Context, eventName string, rep
 	// Create a `multipart/form-data`-encoded request, with a single form file inside
 	var requestBody bytes.Buffer
 	writer := multipart.NewWriter(&requestBody)
-	part, err := writer.CreateFormFile(api.IMSAttachmentFormKey, "irrelevant-filename-"+rand.NonCryptoText())
+	part, err := writer.CreateFormFile(incidentapi.IMSAttachmentFormKey, "irrelevant-filename-"+rand.NonCryptoText())
 	require.NoError(a.t, err)
 	_, err = part.Write(fileBytes)
 	require.NoError(a.t, err)
@@ -758,7 +763,7 @@ func (a ApiHelper) getActionLogs(ctx context.Context, minTime, maxTime string) (
 func jwtForAlice(t *testing.T, ctx context.Context) string {
 	t.Helper()
 	apisNotAuthenticated := ApiHelper{t: t, serverURL: shared.serverURL, jwt: ""}
-	statusCode, _, token := apisNotAuthenticated.postAuth(ctx, api.PostAuthRequest{
+	statusCode, _, token := apisNotAuthenticated.postAuth(ctx, authapi.PostAuthRequest{
 		Identification: userAliceEmail,
 		Password:       userAlicePassword,
 	})
@@ -769,7 +774,7 @@ func jwtForAlice(t *testing.T, ctx context.Context) string {
 func jwtForDave(t *testing.T, ctx context.Context) string {
 	t.Helper()
 	apisNotAuthenticated := ApiHelper{t: t, serverURL: shared.serverURL, jwt: ""}
-	statusCode, _, token := apisNotAuthenticated.postAuth(ctx, api.PostAuthRequest{
+	statusCode, _, token := apisNotAuthenticated.postAuth(ctx, authapi.PostAuthRequest{
 		Identification: userDaveEmail,
 		Password:       userDavePassword,
 	})
@@ -780,7 +785,7 @@ func jwtForDave(t *testing.T, ctx context.Context) string {
 func jwtForErin(t *testing.T, ctx context.Context) string {
 	t.Helper()
 	apisNotAuthenticated := ApiHelper{t: t, serverURL: shared.serverURL, jwt: ""}
-	statusCode, _, token := apisNotAuthenticated.postAuth(ctx, api.PostAuthRequest{
+	statusCode, _, token := apisNotAuthenticated.postAuth(ctx, authapi.PostAuthRequest{
 		Identification: userErinEmail,
 		Password:       userErinPassword,
 	})
@@ -794,7 +799,7 @@ func jwtForErin(t *testing.T, ctx context.Context) string {
 func (a ApiHelper) addCrewLeader(ctx context.Context, eventName, handle string) *http.Response {
 	a.t.Helper()
 	return a.setParticipation(ctx, personIDForHandle(a.t, handle), eventName,
-		api.SetParticipationRequest{ParticipationType: "crew_leader"})
+		personapi.SetParticipationRequest{ParticipationType: "crew_leader"})
 }
 
 func (a ApiHelper) getNotifications(ctx context.Context) (imsjson.NotificationList, *http.Response) {
@@ -828,14 +833,14 @@ func (a ApiHelper) notificationsForEvent(ctx context.Context, eventName string) 
 }
 
 // pushSubscribe POSTs a web-push subscription for the caller (plan 84).
-func (a ApiHelper) pushSubscribe(ctx context.Context, body api.PushSubscribeRequest) *http.Response {
+func (a ApiHelper) pushSubscribe(ctx context.Context, body pushapi.PushSubscribeRequest) *http.Response {
 	a.t.Helper()
 	return a.imsPost(ctx, body, a.serverURL.JoinPath("/ims/api/push/subscribe").String())
 }
 
 // pushUnsubscribe DELETEs the caller's device named by its endpoint. DELETE
 // carries a JSON body, so it can't reuse the no-body imsDelete helper.
-func (a ApiHelper) pushUnsubscribe(ctx context.Context, body api.PushUnsubscribeRequest) *http.Response {
+func (a ApiHelper) pushUnsubscribe(ctx context.Context, body pushapi.PushUnsubscribeRequest) *http.Response {
 	a.t.Helper()
 	reqBody, err := json.Marshal(body)
 	require.NoError(a.t, err)
@@ -855,7 +860,7 @@ func (a ApiHelper) pushUnsubscribe(ctx context.Context, body api.PushUnsubscribe
 func jwtForAdmin(ctx context.Context, t *testing.T) string {
 	t.Helper()
 	apisNotAuthenticated := ApiHelper{t: t, serverURL: shared.serverURL, jwt: ""}
-	statusCode, _, token := apisNotAuthenticated.postAuth(ctx, api.PostAuthRequest{
+	statusCode, _, token := apisNotAuthenticated.postAuth(ctx, authapi.PostAuthRequest{
 		Identification: userAdminEmail,
 		Password:       userAdminPassword,
 	})

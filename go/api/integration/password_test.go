@@ -21,7 +21,9 @@ import (
 	"net/http"
 	"testing"
 
-	"github.com/mikeki/ocf-ims/api"
+	authapi "github.com/mikeki/ocf-ims/internal/auth"
+	personapi "github.com/mikeki/ocf-ims/internal/person"
+
 	imsjson "github.com/mikeki/ocf-ims/json"
 	"github.com/mikeki/ocf-ims/lib/rand"
 	"github.com/stretchr/testify/require"
@@ -54,7 +56,7 @@ func TestSetPersonPassword(t *testing.T) {
 
 	// A person with no email can't be given a password: login matches EMAIL only, so
 	// the credential would be unusable. Create an email-less registry person and try.
-	resp = apisAdmin.createPerson(ctx, api.CreatePersonRequest{Handle: "NoEmailForPw" + rand.NonCryptoText()})
+	resp = apisAdmin.createPerson(ctx, personapi.CreatePersonRequest{Handle: "NoEmailForPw" + rand.NonCryptoText()})
 	require.Equal(t, http.StatusCreated, resp.StatusCode)
 	var noEmail imsjson.Person
 	require.NoError(t, json.NewDecoder(resp.Body).Decode(&noEmail))
@@ -70,7 +72,7 @@ func TestSetPersonPassword(t *testing.T) {
 
 	// Bob can now log in with the new password (cache was invalidated, so this is
 	// effective immediately)...
-	statusCode, _, token := apisNoAuth.postAuth(ctx, api.PostAuthRequest{
+	statusCode, _, token := apisNoAuth.postAuth(ctx, authapi.PostAuthRequest{
 		Identification: userBobEmail,
 		Password:       newPassword,
 	})
@@ -78,7 +80,7 @@ func TestSetPersonPassword(t *testing.T) {
 	require.NotEmpty(t, token)
 
 	// ...and the old password no longer works.
-	statusCode, _, _ = apisNoAuth.postAuth(ctx, api.PostAuthRequest{
+	statusCode, _, _ = apisNoAuth.postAuth(ctx, authapi.PostAuthRequest{
 		Identification: userBobEmail,
 		Password:       userBobInitialPassword,
 	})

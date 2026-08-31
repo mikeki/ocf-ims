@@ -23,13 +23,26 @@ import (
 
 	"github.com/mikeki/ocf-ims/conf"
 	"github.com/mikeki/ocf-ims/directory"
+	"github.com/mikeki/ocf-ims/internal/actionlog"
+	"github.com/mikeki/ocf-ims/internal/area"
+	"github.com/mikeki/ocf-ims/internal/auth"
+	"github.com/mikeki/ocf-ims/internal/crew"
+	"github.com/mikeki/ocf-ims/internal/debug"
+	"github.com/mikeki/ocf-ims/internal/event"
+	"github.com/mikeki/ocf-ims/internal/incident"
+	"github.com/mikeki/ocf-ims/internal/incidenttype"
+	"github.com/mikeki/ocf-ims/internal/metrics"
+	"github.com/mikeki/ocf-ims/internal/notification"
+	"github.com/mikeki/ocf-ims/internal/outcome"
+	"github.com/mikeki/ocf-ims/internal/person"
+	"github.com/mikeki/ocf-ims/internal/push"
 	"github.com/mikeki/ocf-ims/internal/server"
 	"github.com/mikeki/ocf-ims/lib/attachment"
 	"github.com/mikeki/ocf-ims/lib/authz"
 	"github.com/mikeki/ocf-ims/lib/herr"
-	"github.com/mikeki/ocf-ims/lib/push"
+	pushlib "github.com/mikeki/ocf-ims/lib/push"
 	"github.com/mikeki/ocf-ims/store"
-	"github.com/mikeki/ocf-ims/store/actionlog"
+	actionlogstore "github.com/mikeki/ocf-ims/store/actionlog"
 )
 
 func AddToMux(
@@ -39,8 +52,8 @@ func AddToMux(
 	db *store.DBQ,
 	userStore directory.UserStore,
 	s3Client *attachment.S3Client,
-	actionLogger *actionlog.Logger,
-	pushSender push.Sender,
+	actionLogger *actionlogstore.Logger,
+	pushSender pushlib.Sender,
 ) *http.ServeMux {
 	if mux == nil {
 		mux = http.NewServeMux()
@@ -53,11 +66,11 @@ func AddToMux(
 	// VAPID-signing sender when push is configured, else a no-op so every fan-out
 	// short-circuits. A nil sender is treated as the no-op backend.
 	if pushSender == nil {
-		pushSender = push.NoopSender{}
+		pushSender = pushlib.NoopSender{}
 	}
 	pusher := server.NewPusher(db, pushSender)
 
-	// One dashboard-metrics cache shared by the read handler (GetMetrics) and the
+	// One dashboard-metrics cache shared by the read handler (metrics.GetMetrics) and the
 	// mutation handlers that must invalidate it on a write, so the dashboard
 	// reflects changes immediately rather than waiting out the TTL.
 	metricsCache := server.NewMetricsCache()
@@ -76,7 +89,7 @@ func AddToMux(
 
 	mux.Handle("GET /ims/api/actionlogs",
 		server.Adapt(
-			GetActionLogs{db, userStore},
+			actionlog.GetActionLogs{ImsDBQ: db, UserStore: userStore},
 			server.RecoverFromPanic(),
 			server.RequireAuthN(jwter),
 			server.LogRequest(true, actionLogger, userStore),
@@ -86,13 +99,7 @@ func AddToMux(
 
 	mux.Handle("POST /ims/api/auth",
 		server.Adapt(
-			PostAuth{
-				db,
-				userStore,
-				cfg.Core.JWTSecret,
-				cfg.Core.AccessTokenLifetime,
-				cfg.Core.RefreshTokenLifetime,
-			},
+			auth.PostAuth{ImsDBQ: db, UserStore: userStore, JwtSecret: cfg.Core.JWTSecret, AccessTokenDuration: cfg.Core.AccessTokenLifetime, RefreshTokenDuration: cfg.Core.RefreshTokenLifetime},
 			server.RecoverFromPanic(),
 			server.LogRequest(true, actionLogger, userStore),
 			server.LimitRequestBytes(cfg.Core.MaxRequestBytes),
@@ -108,14 +115,7 @@ func AddToMux(
 
 	mux.Handle("GET /ims/api/auth",
 		server.Adapt(
-			GetAuth{
-				db,
-				userStore,
-				cfg.Core.JWTSecret,
-				attachmentsEnabled,
-				cfg.Push.VAPIDPublicKey,
-				cfg.Core.DefaultPassword,
-			},
+			auth.GetAuth{ImsDBQ: db, UserStore: userStore, JwtSecret: cfg.Core.JWTSecret, AttachmentsEnabled: attachmentsEnabled, PushVAPIDPublicKey: cfg.Push.VAPIDPublicKey, DefaultPassword: cfg.Core.DefaultPassword},
 			server.RecoverFromPanic(),
 			// This endpoint does not require authentication or authorization, by design
 			server.OptionalAuthN(jwter),
@@ -126,12 +126,7 @@ func AddToMux(
 
 	mux.Handle("POST /ims/api/auth/refresh",
 		server.Adapt(
-			RefreshAccessToken{
-				db,
-				userStore,
-				cfg.Core.JWTSecret,
-				cfg.Core.AccessTokenLifetime,
-			},
+			auth.RefreshAccessToken{ImsDBQ: db, UserStore: userStore, JwtSecret: cfg.Core.JWTSecret, AccessTokenDuration: cfg.Core.AccessTokenLifetime},
 			server.RecoverFromPanic(),
 			server.LogRequest(false, actionLogger, userStore),
 			server.LimitRequestBytes(cfg.Core.MaxRequestBytes),
@@ -146,7 +141,7 @@ func AddToMux(
 	// default password" post-login prompt. Mutating → logged.
 	mux.Handle("POST /ims/api/auth/password",
 		server.Adapt(
-			SetOwnPassword{db, userStore, cfg.Core.DefaultPassword},
+			person.SetOwnPassword{ImsDBQ: db, UserStore: userStore, DefaultPassword: cfg.Core.DefaultPassword},
 			server.RecoverFromPanic(),
 			server.RequireAuthN(jwter),
 			server.LogRequest(true, actionLogger, userStore),
@@ -159,7 +154,7 @@ func AddToMux(
 	// admin flag are not editable here — those stay admin-only. Mutating → logged.
 	mux.Handle("POST /ims/api/auth/profile",
 		server.Adapt(
-			SetOwnProfile{db, userStore},
+			person.SetOwnProfile{ImsDBQ: db, UserStore: userStore},
 			server.RecoverFromPanic(),
 			server.RequireAuthN(jwter),
 			server.LogRequest(true, actionLogger, userStore),
@@ -172,7 +167,7 @@ func AddToMux(
 	// GET /ims/api/personnel/{personId}/picture (any personnel reader). Mutating → logged.
 	mux.Handle("POST /ims/api/auth/picture",
 		server.Adapt(
-			SetOwnProfilePicture{db, cfg.AttachmentsStore, s3Client},
+			person.SetOwnProfilePicture{ImsDBQ: db, AttachmentsStore: cfg.AttachmentsStore, S3Client: s3Client},
 			server.RecoverFromPanic(),
 			server.RequireAuthN(jwter),
 			server.LogRequest(true, actionLogger, userStore),
@@ -182,7 +177,7 @@ func AddToMux(
 
 	mux.Handle("DELETE /ims/api/auth/picture",
 		server.Adapt(
-			DeleteOwnProfilePicture{db, cfg.AttachmentsStore, s3Client},
+			person.DeleteOwnProfilePicture{ImsDBQ: db, AttachmentsStore: cfg.AttachmentsStore, S3Client: s3Client},
 			server.RecoverFromPanic(),
 			server.RequireAuthN(jwter),
 			server.LogRequest(true, actionLogger, userStore),
@@ -192,7 +187,7 @@ func AddToMux(
 
 	mux.Handle("GET /ims/api/events/{eventName}/incidents",
 		server.Adapt(
-			GetIncidents{db, userStore, attachmentsEnabled},
+			incident.GetIncidents{ImsDBQ: db, UserStore: userStore, AttachmentsEnabled: attachmentsEnabled},
 			server.RecoverFromPanic(),
 			server.RequireAuthN(jwter),
 			server.LogRequest(false, actionLogger, userStore),
@@ -202,7 +197,7 @@ func AddToMux(
 
 	mux.Handle("POST /ims/api/events/{eventName}/incidents",
 		server.Adapt(
-			NewIncident{db, userStore, es, pusher, metricsCache},
+			incident.NewIncident{ImsDBQ: db, UserStore: userStore, Es: es, Pusher: pusher, Metrics: metricsCache},
 			server.RecoverFromPanic(),
 			server.RequireAuthN(jwter),
 			server.LogRequest(true, actionLogger, userStore),
@@ -212,7 +207,7 @@ func AddToMux(
 
 	mux.Handle("GET /ims/api/events/{eventName}/incidents/{incidentNumber}",
 		server.Adapt(
-			GetIncident{db, userStore, attachmentsEnabled},
+			incident.GetIncident{ImsDBQ: db, UserStore: userStore, AttachmentsEnabled: attachmentsEnabled},
 			server.RecoverFromPanic(),
 			server.RequireAuthN(jwter),
 			server.LogRequest(false, actionLogger, userStore),
@@ -222,7 +217,7 @@ func AddToMux(
 
 	mux.Handle("POST /ims/api/events/{eventName}/incidents/{incidentNumber}",
 		server.Adapt(
-			EditIncident{db, userStore, es, pusher, metricsCache},
+			incident.EditIncident{ImsDBQ: db, UserStore: userStore, Es: es, Pusher: pusher, Metrics: metricsCache},
 			server.RecoverFromPanic(),
 			server.RequireAuthN(jwter),
 			server.LogRequest(true, actionLogger, userStore),
@@ -232,7 +227,7 @@ func AddToMux(
 
 	mux.Handle("GET /ims/api/events/{eventName}/incidents/{incidentNumber}/attachments/{attachmentNumber}",
 		server.Adapt(
-			GetIncidentAttachment{db, userStore, cfg.AttachmentsStore, s3Client},
+			incident.GetIncidentAttachment{ImsDBQ: db, UserStore: userStore, AttachmentsStore: cfg.AttachmentsStore, S3Client: s3Client},
 			server.RecoverFromPanic(),
 			server.RequireAuthN(jwter),
 			server.LogRequest(true, actionLogger, userStore),
@@ -242,7 +237,7 @@ func AddToMux(
 
 	mux.Handle("POST /ims/api/events/{eventName}/incidents/{incidentNumber}/attachments",
 		server.Adapt(
-			AttachToIncident{db, userStore, es, cfg.AttachmentsStore, s3Client, cfg.Core.MaxAttachmentBytes},
+			incident.AttachToIncident{ImsDBQ: db, UserStore: userStore, Es: es, AttachmentsStore: cfg.AttachmentsStore, S3Client: s3Client, MaxAttachmentBytes: cfg.Core.MaxAttachmentBytes},
 			server.RecoverFromPanic(),
 			server.RequireAuthN(jwter),
 			server.LogRequest(true, actionLogger, userStore),
@@ -252,7 +247,7 @@ func AddToMux(
 
 	mux.Handle("POST /ims/api/events/{eventName}/incidents/{incidentNumber}/people/{personId}",
 		server.Adapt(
-			AttachPersonToIncident{db, userStore, es, pusher},
+			incident.AttachPersonToIncident{ImsDBQ: db, UserStore: userStore, Es: es, Pusher: pusher},
 			server.RecoverFromPanic(),
 			server.RequireAuthN(jwter),
 			server.LogRequest(true, actionLogger, userStore),
@@ -262,7 +257,7 @@ func AddToMux(
 
 	mux.Handle("DELETE /ims/api/events/{eventName}/incidents/{incidentNumber}/people/{personId}",
 		server.Adapt(
-			DetachPersonFromIncident{db, userStore, es},
+			incident.DetachPersonFromIncident{ImsDBQ: db, UserStore: userStore, Es: es},
 			server.RecoverFromPanic(),
 			server.RequireAuthN(jwter),
 			server.LogRequest(true, actionLogger, userStore),
@@ -272,7 +267,7 @@ func AddToMux(
 
 	mux.Handle("POST /ims/api/events/{eventName}/incidents/{incidentNumber}/journal_entries/{journalEntryId}",
 		server.Adapt(
-			EditIncidentJournalEntry{db, userStore, es},
+			incident.EditIncidentJournalEntry{ImsDBQ: db, UserStore: userStore, EventSource: es},
 			server.RecoverFromPanic(),
 			server.RequireAuthN(jwter),
 			server.LogRequest(true, actionLogger, userStore),
@@ -282,7 +277,7 @@ func AddToMux(
 
 	mux.Handle("GET /ims/api/events/{eventName}/reports",
 		server.Adapt(
-			GetReports{db, userStore, attachmentsEnabled},
+			incident.GetReports{ImsDBQ: db, UserStore: userStore, AttachmentsEnabled: attachmentsEnabled},
 			server.RecoverFromPanic(),
 			server.RequireAuthN(jwter),
 			server.LogRequest(false, actionLogger, userStore),
@@ -292,7 +287,7 @@ func AddToMux(
 
 	mux.Handle("POST /ims/api/events/{eventName}/reports",
 		server.Adapt(
-			NewReport{db, userStore, es, pusher},
+			incident.NewReport{ImsDBQ: db, UserStore: userStore, EventSource: es, Pusher: pusher},
 			server.RecoverFromPanic(),
 			server.RequireAuthN(jwter),
 			server.LogRequest(true, actionLogger, userStore),
@@ -302,7 +297,7 @@ func AddToMux(
 
 	mux.Handle("GET /ims/api/events/{eventName}/reports/{reportNumber}",
 		server.Adapt(
-			GetReport{db, userStore, attachmentsEnabled},
+			incident.GetReport{ImsDBQ: db, UserStore: userStore, AttachmentsEnabled: attachmentsEnabled},
 			server.RecoverFromPanic(),
 			server.RequireAuthN(jwter),
 			server.LogRequest(false, actionLogger, userStore),
@@ -312,7 +307,7 @@ func AddToMux(
 
 	mux.Handle("POST /ims/api/events/{eventName}/reports/{reportNumber}",
 		server.Adapt(
-			EditReport{db, userStore, es, pusher},
+			incident.EditReport{ImsDBQ: db, UserStore: userStore, EventSource: es, Pusher: pusher},
 			server.RecoverFromPanic(),
 			server.RequireAuthN(jwter),
 			server.LogRequest(true, actionLogger, userStore),
@@ -322,7 +317,7 @@ func AddToMux(
 
 	mux.Handle("GET /ims/api/events/{eventName}/reports/{reportNumber}/attachments/{attachmentNumber}",
 		server.Adapt(
-			GetReportAttachment{db, userStore, cfg.AttachmentsStore, s3Client},
+			incident.GetReportAttachment{ImsDBQ: db, UserStore: userStore, AttachmentsStore: cfg.AttachmentsStore, S3Client: s3Client},
 			server.RecoverFromPanic(),
 			server.RequireAuthN(jwter),
 			server.LogRequest(true, actionLogger, userStore),
@@ -332,7 +327,7 @@ func AddToMux(
 
 	mux.Handle("POST /ims/api/events/{eventName}/reports/{reportNumber}/attachments",
 		server.Adapt(
-			AttachToReport{db, userStore, es, cfg.AttachmentsStore, s3Client, cfg.Core.MaxAttachmentBytes},
+			incident.AttachToReport{ImsDBQ: db, UserStore: userStore, Es: es, AttachmentsStore: cfg.AttachmentsStore, S3Client: s3Client, MaxAttachmentBytes: cfg.Core.MaxAttachmentBytes},
 			server.RecoverFromPanic(),
 			server.RequireAuthN(jwter),
 			server.LogRequest(true, actionLogger, userStore),
@@ -342,7 +337,7 @@ func AddToMux(
 
 	mux.Handle("POST /ims/api/events/{eventName}/reports/{reportNumber}/journal_entries/{journalEntryId}",
 		server.Adapt(
-			EditReportJournalEntry{db, userStore, es},
+			incident.EditReportJournalEntry{ImsDBQ: db, UserStore: userStore, EventSource: es},
 			server.RecoverFromPanic(),
 			server.RequireAuthN(jwter),
 			server.LogRequest(true, actionLogger, userStore),
@@ -352,7 +347,7 @@ func AddToMux(
 
 	mux.Handle("GET /ims/api/events/{eventName}/visits",
 		server.Adapt(
-			GetVisits{db, userStore, attachmentsEnabled},
+			incident.GetVisits{ImsDBQ: db, UserStore: userStore, AttachmentsEnabled: attachmentsEnabled},
 			server.RecoverFromPanic(),
 			server.RequireAuthN(jwter),
 			server.LogRequest(false, actionLogger, userStore),
@@ -362,7 +357,7 @@ func AddToMux(
 
 	mux.Handle("GET /ims/api/events/{eventName}/visits/{visitNumber}",
 		server.Adapt(
-			GetVisit{db, userStore, attachmentsEnabled},
+			incident.GetVisit{ImsDBQ: db, UserStore: userStore, AttachmentsEnabled: attachmentsEnabled},
 			server.RecoverFromPanic(),
 			server.RequireAuthN(jwter),
 			server.LogRequest(false, actionLogger, userStore),
@@ -372,7 +367,7 @@ func AddToMux(
 
 	mux.Handle("POST /ims/api/events/{eventName}/visits",
 		server.Adapt(
-			NewVisit{db, userStore, es},
+			incident.NewVisit{ImsDBQ: db, UserStore: userStore, Es: es},
 			server.RecoverFromPanic(),
 			server.RequireAuthN(jwter),
 			server.LogRequest(true, actionLogger, userStore),
@@ -382,7 +377,7 @@ func AddToMux(
 
 	mux.Handle("POST /ims/api/events/{eventName}/visits/{visitNumber}",
 		server.Adapt(
-			EditVisit{db, userStore, es},
+			incident.EditVisit{ImsDBQ: db, UserStore: userStore, Es: es},
 			server.RecoverFromPanic(),
 			server.RequireAuthN(jwter),
 			server.LogRequest(true, actionLogger, userStore),
@@ -392,7 +387,7 @@ func AddToMux(
 
 	mux.Handle("POST /ims/api/events/{eventName}/visits/{visitNumber}/people/{personId}",
 		server.Adapt(
-			AttachPersonToVisit{db, userStore, es},
+			incident.AttachPersonToVisit{ImsDBQ: db, UserStore: userStore, Es: es},
 			server.RecoverFromPanic(),
 			server.RequireAuthN(jwter),
 			server.LogRequest(true, actionLogger, userStore),
@@ -402,7 +397,7 @@ func AddToMux(
 
 	mux.Handle("DELETE /ims/api/events/{eventName}/visits/{visitNumber}/people/{personId}",
 		server.Adapt(
-			DetachPersonFromVisit{db, userStore, es},
+			incident.DetachPersonFromVisit{ImsDBQ: db, UserStore: userStore, Es: es},
 			server.RecoverFromPanic(),
 			server.RequireAuthN(jwter),
 			server.LogRequest(true, actionLogger, userStore),
@@ -412,7 +407,7 @@ func AddToMux(
 
 	mux.Handle("GET /ims/api/events/{eventName}/visits/{visitNumber}/attachments/{attachmentNumber}",
 		server.Adapt(
-			GetVisitAttachment{db, userStore, cfg.AttachmentsStore, s3Client},
+			incident.GetVisitAttachment{ImsDBQ: db, UserStore: userStore, AttachmentsStore: cfg.AttachmentsStore, S3Client: s3Client},
 			server.RecoverFromPanic(),
 			server.RequireAuthN(jwter),
 			server.LogRequest(true, actionLogger, userStore),
@@ -422,7 +417,7 @@ func AddToMux(
 
 	mux.Handle("POST /ims/api/events/{eventName}/visits/{visitNumber}/attachments",
 		server.Adapt(
-			AttachToVisit{db, userStore, es, cfg.AttachmentsStore, s3Client, cfg.Core.MaxAttachmentBytes},
+			incident.AttachToVisit{ImsDBQ: db, UserStore: userStore, Es: es, AttachmentsStore: cfg.AttachmentsStore, S3Client: s3Client, MaxAttachmentBytes: cfg.Core.MaxAttachmentBytes},
 			server.RecoverFromPanic(),
 			server.RequireAuthN(jwter),
 			server.LogRequest(true, actionLogger, userStore),
@@ -432,7 +427,7 @@ func AddToMux(
 
 	mux.Handle("POST /ims/api/events/{eventName}/visits/{visitNumber}/journal_entries/{journalEntryId}",
 		server.Adapt(
-			EditVisitJournalEntry{db, userStore, es},
+			incident.EditVisitJournalEntry{ImsDBQ: db, UserStore: userStore, EventSource: es},
 			server.RecoverFromPanic(),
 			server.RequireAuthN(jwter),
 			server.LogRequest(true, actionLogger, userStore),
@@ -442,7 +437,7 @@ func AddToMux(
 
 	mux.Handle("GET /ims/api/events/{eventName}/areas",
 		server.Adapt(
-			GetAreas{db, userStore, areasCache, cfg.Core.CacheControlShort},
+			area.GetAreas{ImsDBQ: db, UserStore: userStore, Cache: areasCache, CacheControlShort: cfg.Core.CacheControlShort},
 			server.RecoverFromPanic(),
 			server.RequireAuthN(jwter),
 			server.LogRequest(true, actionLogger, userStore),
@@ -452,7 +447,7 @@ func AddToMux(
 
 	mux.Handle("POST /ims/api/events/{eventName}/areas",
 		server.Adapt(
-			EditAreas{db, userStore, metricsCache, areasCache},
+			area.EditAreas{ImsDBQ: db, UserStore: userStore, Metrics: metricsCache, Areas: areasCache},
 			server.RecoverFromPanic(),
 			server.RequireAuthN(jwter),
 			server.LogRequest(true, actionLogger, userStore),
@@ -462,7 +457,7 @@ func AddToMux(
 
 	mux.Handle("GET /ims/api/events/{eventName}/crews",
 		server.Adapt(
-			GetCrews{db, userStore, crewsCache, cfg.Core.CacheControlShort},
+			crew.GetCrews{ImsDBQ: db, UserStore: userStore, Cache: crewsCache, CacheControlShort: cfg.Core.CacheControlShort},
 			server.RecoverFromPanic(),
 			server.RequireAuthN(jwter),
 			server.LogRequest(false, actionLogger, userStore),
@@ -472,7 +467,7 @@ func AddToMux(
 
 	mux.Handle("POST /ims/api/events/{eventName}/crews",
 		server.Adapt(
-			EditCrews{db, userStore, crewsCache},
+			crew.EditCrews{ImsDBQ: db, UserStore: userStore, Crews: crewsCache},
 			server.RecoverFromPanic(),
 			server.RequireAuthN(jwter),
 			server.LogRequest(true, actionLogger, userStore),
@@ -486,7 +481,7 @@ func AddToMux(
 	// reach these and only ever act on crews they lead.
 	mux.Handle("GET /ims/api/events/{eventName}/crews/mine",
 		server.Adapt(
-			MyCrews{db, userStore},
+			crew.MyCrews{ImsDBQ: db, UserStore: userStore},
 			server.RecoverFromPanic(),
 			server.RequireAuthN(jwter),
 			server.LogRequest(false, actionLogger, userStore),
@@ -496,7 +491,7 @@ func AddToMux(
 
 	mux.Handle("POST /ims/api/events/{eventName}/crews/mine",
 		server.Adapt(
-			EditMyCrew{db, userStore, crewsCache},
+			crew.EditMyCrew{ImsDBQ: db, UserStore: userStore, Crews: crewsCache},
 			server.RecoverFromPanic(),
 			server.RequireAuthN(jwter),
 			server.LogRequest(true, actionLogger, userStore),
@@ -506,7 +501,7 @@ func AddToMux(
 
 	mux.Handle("GET /ims/api/events/{eventName}/metrics",
 		server.Adapt(
-			GetMetrics{db, userStore, metricsCache},
+			metrics.GetMetrics{ImsDBQ: db, UserStore: userStore, Cache: metricsCache},
 			server.RecoverFromPanic(),
 			server.RequireAuthN(jwter),
 			server.LogRequest(false, actionLogger, userStore),
@@ -516,7 +511,7 @@ func AddToMux(
 
 	mux.Handle("GET /ims/api/events",
 		server.Adapt(
-			GetEvents{db, userStore, cfg.Core.CacheControlShort},
+			event.GetEvents{ImsDBQ: db, UserStore: userStore, CacheControlShort: cfg.Core.CacheControlShort},
 			server.RecoverFromPanic(),
 			server.RequireAuthN(jwter),
 			server.LogRequest(false, actionLogger, userStore),
@@ -526,7 +521,7 @@ func AddToMux(
 
 	mux.Handle("POST /ims/api/events",
 		server.Adapt(
-			EditEvent{db, userStore},
+			event.EditEvent{ImsDBQ: db, UserStore: userStore},
 			server.RecoverFromPanic(),
 			server.RequireAuthN(jwter),
 			server.LogRequest(true, actionLogger, userStore),
@@ -536,7 +531,7 @@ func AddToMux(
 
 	mux.Handle("GET /ims/api/incident_types",
 		server.Adapt(
-			GetIncidentTypes{db, userStore, incidentTypesCache, cfg.Core.CacheControlShort},
+			incidenttype.GetIncidentTypes{ImsDBQ: db, UserStore: userStore, Cache: incidentTypesCache, CacheControlShort: cfg.Core.CacheControlShort},
 			server.RecoverFromPanic(),
 			server.RequireAuthN(jwter),
 			server.LogRequest(false, actionLogger, userStore),
@@ -546,7 +541,7 @@ func AddToMux(
 
 	mux.Handle("POST /ims/api/incident_types",
 		server.Adapt(
-			EditIncidentTypes{db, userStore, metricsCache, incidentTypesCache},
+			incidenttype.EditIncidentTypes{ImsDBQ: db, UserStore: userStore, Metrics: metricsCache, Types: incidentTypesCache},
 			server.RecoverFromPanic(),
 			server.RequireAuthN(jwter),
 			server.LogRequest(true, actionLogger, userStore),
@@ -559,7 +554,7 @@ func AddToMux(
 	// global). Approval happens back on the global admin endpoint above.
 	mux.Handle("POST /ims/api/events/{eventName}/incident_types",
 		server.Adapt(
-			ProposeIncidentType{db, userStore, metricsCache, incidentTypesCache},
+			incidenttype.ProposeIncidentType{ImsDBQ: db, UserStore: userStore, Metrics: metricsCache, Types: incidentTypesCache},
 			server.RecoverFromPanic(),
 			server.RequireAuthN(jwter),
 			server.LogRequest(true, actionLogger, userStore),
@@ -569,7 +564,7 @@ func AddToMux(
 
 	mux.Handle("GET /ims/api/outcomes",
 		server.Adapt(
-			GetOutcomes{db, userStore, outcomesCache, cfg.Core.CacheControlShort},
+			outcome.GetOutcomes{ImsDBQ: db, UserStore: userStore, Cache: outcomesCache, CacheControlShort: cfg.Core.CacheControlShort},
 			server.RecoverFromPanic(),
 			server.RequireAuthN(jwter),
 			server.LogRequest(false, actionLogger, userStore),
@@ -579,7 +574,7 @@ func AddToMux(
 
 	mux.Handle("POST /ims/api/outcomes",
 		server.Adapt(
-			EditOutcomes{db, userStore, outcomesCache},
+			outcome.EditOutcomes{ImsDBQ: db, UserStore: userStore, Outcomes: outcomesCache},
 			server.RecoverFromPanic(),
 			server.RequireAuthN(jwter),
 			server.LogRequest(true, actionLogger, userStore),
@@ -592,7 +587,7 @@ func AddToMux(
 	// Approval happens back on the global admin endpoint above.
 	mux.Handle("POST /ims/api/events/{eventName}/outcomes",
 		server.Adapt(
-			ProposeOutcome{db, userStore, outcomesCache},
+			outcome.ProposeOutcome{ImsDBQ: db, UserStore: userStore, Outcomes: outcomesCache},
 			server.RecoverFromPanic(),
 			server.RequireAuthN(jwter),
 			server.LogRequest(true, actionLogger, userStore),
@@ -602,7 +597,7 @@ func AddToMux(
 
 	mux.Handle("GET /ims/api/personnel",
 		server.Adapt(
-			GetPersonnel{db, userStore, cfg.Core.CacheControlShort},
+			person.GetPersonnel{ImsDBQ: db, UserStore: userStore, CacheControlShort: cfg.Core.CacheControlShort},
 			server.RecoverFromPanic(),
 			server.RequireAuthN(jwter),
 			server.LogRequest(false, actionLogger, userStore),
@@ -612,7 +607,7 @@ func AddToMux(
 
 	mux.Handle("POST /ims/api/personnel",
 		server.Adapt(
-			CreatePerson{db, userStore, cfg.Core.DefaultPassword},
+			person.CreatePerson{ImsDBQ: db, UserStore: userStore, DefaultPassword: cfg.Core.DefaultPassword},
 			server.RecoverFromPanic(),
 			server.RequireAuthN(jwter),
 			server.LogRequest(true, actionLogger, userStore),
@@ -622,7 +617,7 @@ func AddToMux(
 
 	mux.Handle("POST /ims/api/personnel/{personId}",
 		server.Adapt(
-			EditPerson{db, userStore},
+			person.EditPerson{ImsDBQ: db, UserStore: userStore},
 			server.RecoverFromPanic(),
 			server.RequireAuthN(jwter),
 			server.LogRequest(true, actionLogger, userStore),
@@ -632,7 +627,7 @@ func AddToMux(
 
 	mux.Handle("POST /ims/api/personnel/{personId}/password",
 		server.Adapt(
-			SetPersonPassword{db, userStore, cfg.Core.DefaultPassword},
+			person.SetPersonPassword{ImsDBQ: db, UserStore: userStore, DefaultPassword: cfg.Core.DefaultPassword},
 			server.RecoverFromPanic(),
 			server.RequireAuthN(jwter),
 			server.LogRequest(true, actionLogger, userStore),
@@ -642,7 +637,7 @@ func AddToMux(
 
 	mux.Handle("POST /ims/api/personnel/{personId}/admin",
 		server.Adapt(
-			SetPersonAdmin{db, userStore},
+			person.SetPersonAdmin{ImsDBQ: db, UserStore: userStore},
 			server.RecoverFromPanic(),
 			server.RequireAuthN(jwter),
 			server.LogRequest(true, actionLogger, userStore),
@@ -652,7 +647,7 @@ func AddToMux(
 
 	mux.Handle("POST /ims/api/personnel/{personId}/participation",
 		server.Adapt(
-			SetPersonParticipation{db, userStore},
+			person.SetPersonParticipation{ImsDBQ: db, UserStore: userStore},
 			server.RecoverFromPanic(),
 			server.RequireAuthN(jwter),
 			server.LogRequest(true, actionLogger, userStore),
@@ -662,7 +657,7 @@ func AddToMux(
 
 	mux.Handle("DELETE /ims/api/personnel/{personId}/participation",
 		server.Adapt(
-			RemovePersonEvent{db, userStore},
+			person.RemovePersonEvent{ImsDBQ: db, UserStore: userStore},
 			server.RecoverFromPanic(),
 			server.RequireAuthN(jwter),
 			// Logged: this is the audit trail for who removed/ejected whom from an
@@ -672,12 +667,12 @@ func AddToMux(
 		),
 	)
 
-	// Profile picture: upload/remove are admin-only (mirror EditPerson), serving is
+	// Profile picture: upload/remove are admin-only (mirror person.EditPerson), serving is
 	// open to any personnel reader (mirror the profile card). Upload/remove mutate →
 	// logged; the GET is a read → unlogged.
 	mux.Handle("POST /ims/api/personnel/{personId}/picture",
 		server.Adapt(
-			SetPersonProfilePicture{db, userStore, cfg.AttachmentsStore, s3Client},
+			person.SetPersonProfilePicture{ImsDBQ: db, UserStore: userStore, AttachmentsStore: cfg.AttachmentsStore, S3Client: s3Client},
 			server.RecoverFromPanic(),
 			server.RequireAuthN(jwter),
 			server.LogRequest(true, actionLogger, userStore),
@@ -687,7 +682,7 @@ func AddToMux(
 
 	mux.Handle("DELETE /ims/api/personnel/{personId}/picture",
 		server.Adapt(
-			DeletePersonProfilePicture{db, userStore, cfg.AttachmentsStore, s3Client},
+			person.DeletePersonProfilePicture{ImsDBQ: db, UserStore: userStore, AttachmentsStore: cfg.AttachmentsStore, S3Client: s3Client},
 			server.RecoverFromPanic(),
 			server.RequireAuthN(jwter),
 			server.LogRequest(true, actionLogger, userStore),
@@ -697,7 +692,7 @@ func AddToMux(
 
 	mux.Handle("GET /ims/api/personnel/{personId}/picture",
 		server.Adapt(
-			GetPersonProfilePicture{db, userStore, cfg.AttachmentsStore, s3Client},
+			person.GetPersonProfilePicture{ImsDBQ: db, UserStore: userStore, AttachmentsStore: cfg.AttachmentsStore, S3Client: s3Client},
 			server.RecoverFromPanic(),
 			server.RequireAuthN(jwter),
 			server.LogRequest(false, actionLogger, userStore),
@@ -709,7 +704,7 @@ func AddToMux(
 	// authentication is required — no event scoping.
 	mux.Handle("GET /ims/api/notifications",
 		server.Adapt(
-			GetNotifications{db, userStore, cfg.Core.CacheControlShort},
+			notification.GetNotifications{ImsDBQ: db, UserStore: userStore, CacheControlShort: cfg.Core.CacheControlShort},
 			server.RecoverFromPanic(),
 			server.RequireAuthN(jwter),
 			server.LogRequest(false, actionLogger, userStore),
@@ -719,7 +714,7 @@ func AddToMux(
 
 	mux.Handle("POST /ims/api/notifications/read",
 		server.Adapt(
-			MarkNotificationsRead{db, userStore},
+			notification.MarkNotificationsRead{ImsDBQ: db, UserStore: userStore},
 			server.RecoverFromPanic(),
 			server.RequireAuthN(jwter),
 			server.LogRequest(true, actionLogger, userStore),
@@ -729,7 +724,7 @@ func AddToMux(
 
 	mux.Handle("POST /ims/api/notifications/{notificationId}/read",
 		server.Adapt(
-			MarkNotificationsRead{db, userStore},
+			notification.MarkNotificationsRead{ImsDBQ: db, UserStore: userStore},
 			server.RecoverFromPanic(),
 			server.RequireAuthN(jwter),
 			server.LogRequest(true, actionLogger, userStore),
@@ -741,7 +736,7 @@ func AddToMux(
 	// authentication is required — no event scoping. Mutating, so server.LogRequest(true).
 	mux.Handle("POST /ims/api/push/subscribe",
 		server.Adapt(
-			PostPushSubscribe{db},
+			push.PostPushSubscribe{ImsDBQ: db},
 			server.RecoverFromPanic(),
 			server.RequireAuthN(jwter),
 			server.LogRequest(true, actionLogger, userStore),
@@ -751,7 +746,7 @@ func AddToMux(
 
 	mux.Handle("DELETE /ims/api/push/subscribe",
 		server.Adapt(
-			DeletePushSubscribe{db},
+			push.DeletePushSubscribe{ImsDBQ: db},
 			server.RecoverFromPanic(),
 			server.RequireAuthN(jwter),
 			server.LogRequest(true, actionLogger, userStore),
@@ -770,7 +765,7 @@ func AddToMux(
 
 	mux.Handle("GET /ims/api/debug/buildinfo",
 		server.Adapt(
-			GetBuildInfo{db, userStore},
+			debug.GetBuildInfo{ImsDBQ: db, UserStore: userStore},
 			server.RecoverFromPanic(),
 			server.RequireAuthN(jwter),
 			server.LogRequest(true, actionLogger, userStore),
@@ -780,7 +775,7 @@ func AddToMux(
 
 	mux.Handle("GET /ims/api/debug/runtimemetrics",
 		server.Adapt(
-			GetRuntimeMetrics{db, userStore},
+			debug.GetRuntimeMetrics{ImsDBQ: db, UserStore: userStore},
 			server.RecoverFromPanic(),
 			server.RequireAuthN(jwter),
 			server.LogRequest(true, actionLogger, userStore),
@@ -790,7 +785,7 @@ func AddToMux(
 
 	mux.Handle("POST /ims/api/debug/gc",
 		server.Adapt(
-			PerformGC{db, userStore},
+			debug.PerformGC{ImsDBQ: db, UserStore: userStore},
 			server.RecoverFromPanic(),
 			server.RequireAuthN(jwter),
 			server.LogRequest(true, actionLogger, userStore),

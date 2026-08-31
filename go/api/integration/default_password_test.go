@@ -21,7 +21,9 @@ import (
 	"net/http"
 	"testing"
 
-	"github.com/mikeki/ocf-ims/api"
+	authapi "github.com/mikeki/ocf-ims/internal/auth"
+	personapi "github.com/mikeki/ocf-ims/internal/person"
+
 	imsjson "github.com/mikeki/ocf-ims/json"
 	"github.com/mikeki/ocf-ims/lib/rand"
 	"github.com/stretchr/testify/require"
@@ -42,7 +44,7 @@ func TestDefaultPasswordCreate(t *testing.T) {
 	email := handle + "@example.com"
 
 	// Grant access using the shared default password (no password field supplied).
-	resp := apisAdmin.createPerson(ctx, api.CreatePersonRequest{
+	resp := apisAdmin.createPerson(ctx, personapi.CreatePersonRequest{
 		Handle:             handle,
 		Email:              email,
 		UseDefaultPassword: true,
@@ -54,7 +56,7 @@ func TestDefaultPasswordCreate(t *testing.T) {
 
 	// The new person can sign in with the shared default password (the cache was
 	// invalidated on create, so this is effective immediately).
-	statusCode, _, token := apisNoAuth.postAuth(ctx, api.PostAuthRequest{
+	statusCode, _, token := apisNoAuth.postAuth(ctx, authapi.PostAuthRequest{
 		Identification: email,
 		Password:       sharedDefaultPassword,
 	})
@@ -62,7 +64,7 @@ func TestDefaultPasswordCreate(t *testing.T) {
 	require.NotEmpty(t, token)
 
 	// Default-password access still requires a fair name (the operational identity)...
-	resp = apisAdmin.createPerson(ctx, api.CreatePersonRequest{
+	resp = apisAdmin.createPerson(ctx, personapi.CreatePersonRequest{
 		Name:               "No Handle",
 		UseDefaultPassword: true,
 	})
@@ -70,7 +72,7 @@ func TestDefaultPasswordCreate(t *testing.T) {
 	require.NoError(t, resp.Body.Close())
 
 	// ...and an email (the login identifier).
-	resp = apisAdmin.createPerson(ctx, api.CreatePersonRequest{
+	resp = apisAdmin.createPerson(ctx, personapi.CreatePersonRequest{
 		Handle:             "NoEmail" + rand.NonCryptoText(),
 		UseDefaultPassword: true,
 	})
@@ -93,7 +95,7 @@ func TestSetPersonPasswordDefault(t *testing.T) {
 	email := handle + "@example.com"
 
 	// A login-capable person created with a specific password...
-	resp := apisAdmin.createPerson(ctx, api.CreatePersonRequest{
+	resp := apisAdmin.createPerson(ctx, personapi.CreatePersonRequest{
 		Handle:   handle,
 		Email:    email,
 		Password: initialPassword,
@@ -109,7 +111,7 @@ func TestSetPersonPasswordDefault(t *testing.T) {
 	require.NoError(t, resp.Body.Close())
 
 	// They can now log in with the shared default...
-	statusCode, _, token := apisNoAuth.postAuth(ctx, api.PostAuthRequest{
+	statusCode, _, token := apisNoAuth.postAuth(ctx, authapi.PostAuthRequest{
 		Identification: email,
 		Password:       sharedDefaultPassword,
 	})
@@ -117,7 +119,7 @@ func TestSetPersonPasswordDefault(t *testing.T) {
 	require.NotEmpty(t, token)
 
 	// ...and the old specific password no longer works.
-	statusCode, _, _ = apisNoAuth.postAuth(ctx, api.PostAuthRequest{
+	statusCode, _, _ = apisNoAuth.postAuth(ctx, authapi.PostAuthRequest{
 		Identification: email,
 		Password:       initialPassword,
 	})
@@ -138,7 +140,7 @@ func TestDefaultPasswordPromptAndSelfChange(t *testing.T) {
 	email := handle + "@example.com"
 
 	// A login-capable person on the shared default password.
-	resp := apisAdmin.createPerson(ctx, api.CreatePersonRequest{
+	resp := apisAdmin.createPerson(ctx, personapi.CreatePersonRequest{
 		Handle:             handle,
 		Email:              email,
 		UseDefaultPassword: true,
@@ -147,7 +149,7 @@ func TestDefaultPasswordPromptAndSelfChange(t *testing.T) {
 	require.NoError(t, resp.Body.Close())
 
 	// They log in with the default...
-	statusCode, _, token := apisNoAuth.postAuth(ctx, api.PostAuthRequest{
+	statusCode, _, token := apisNoAuth.postAuth(ctx, authapi.PostAuthRequest{
 		Identification: email,
 		Password:       sharedDefaultPassword,
 	})
@@ -184,23 +186,23 @@ func TestDefaultPasswordPromptAndSelfChange(t *testing.T) {
 	require.False(t, auth.UsingDefaultPassword)
 
 	// The new password works; the shared default no longer does.
-	statusCode, _, _ = apisNoAuth.postAuth(ctx, api.PostAuthRequest{Identification: email, Password: newPassword})
+	statusCode, _, _ = apisNoAuth.postAuth(ctx, authapi.PostAuthRequest{Identification: email, Password: newPassword})
 	require.Equal(t, http.StatusOK, statusCode)
-	statusCode, _, _ = apisNoAuth.postAuth(ctx, api.PostAuthRequest{Identification: email, Password: sharedDefaultPassword})
+	statusCode, _, _ = apisNoAuth.postAuth(ctx, authapi.PostAuthRequest{Identification: email, Password: sharedDefaultPassword})
 	require.Equal(t, http.StatusUnauthorized, statusCode)
 
 	// A user created with their own (non-default) password is flagged off the default
 	// immediately (PASSWORD_CHANGED set on create), so it's never flagged.
 	handle2 := "SpecificPw" + rand.NonCryptoText()
 	email2 := handle2 + "@example.com"
-	resp = apisAdmin.createPerson(ctx, api.CreatePersonRequest{
+	resp = apisAdmin.createPerson(ctx, personapi.CreatePersonRequest{
 		Handle:   handle2,
 		Email:    email2,
 		Password: "a-specific-password",
 	})
 	require.Equal(t, http.StatusCreated, resp.StatusCode)
 	require.NoError(t, resp.Body.Close())
-	_, _, token2 := apisNoAuth.postAuth(ctx, api.PostAuthRequest{Identification: email2, Password: "a-specific-password"})
+	_, _, token2 := apisNoAuth.postAuth(ctx, authapi.PostAuthRequest{Identification: email2, Password: "a-specific-password"})
 	require.NotEmpty(t, token2)
 	apisUser2 := ApiHelper{t: t, serverURL: shared.serverURL, jwt: token2}
 	auth2, resp := apisUser2.getAuth(ctx, "")
@@ -231,7 +233,7 @@ func TestSelfChangeRejectsDefault(t *testing.T) {
 
 	handle := "RejectDefault" + rand.NonCryptoText()
 	email := handle + "@example.com"
-	resp := apisAdmin.createPerson(ctx, api.CreatePersonRequest{
+	resp := apisAdmin.createPerson(ctx, personapi.CreatePersonRequest{
 		Handle:             handle,
 		Email:              email,
 		UseDefaultPassword: true,
@@ -239,7 +241,7 @@ func TestSelfChangeRejectsDefault(t *testing.T) {
 	require.Equal(t, http.StatusCreated, resp.StatusCode)
 	require.NoError(t, resp.Body.Close())
 
-	_, _, token := apisNoAuth.postAuth(ctx, api.PostAuthRequest{Identification: email, Password: sharedDefaultPassword})
+	_, _, token := apisNoAuth.postAuth(ctx, authapi.PostAuthRequest{Identification: email, Password: sharedDefaultPassword})
 	require.NotEmpty(t, token)
 	apisUser := ApiHelper{t: t, serverURL: shared.serverURL, jwt: token}
 

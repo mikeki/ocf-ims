@@ -30,7 +30,10 @@ import (
 	"testing"
 	"time"
 
-	"github.com/mikeki/ocf-ims/api"
+	incidentapi "github.com/mikeki/ocf-ims/internal/incident"
+
+	personapi "github.com/mikeki/ocf-ims/internal/person"
+
 	imsjson "github.com/mikeki/ocf-ims/json"
 	"github.com/mikeki/ocf-ims/lib/rand"
 	"github.com/stretchr/testify/require"
@@ -76,7 +79,7 @@ func (a ApiHelper) uploadProfilePicture(ctx context.Context, personID int64, fil
 
 	var requestBody bytes.Buffer
 	writer := multipart.NewWriter(&requestBody)
-	part, err := writer.CreateFormFile(api.IMSAttachmentFormKey, "pic-"+rand.NonCryptoText())
+	part, err := writer.CreateFormFile(incidentapi.IMSAttachmentFormKey, "pic-"+rand.NonCryptoText())
 	require.NoError(a.t, err)
 	_, err = part.Write(fileBytes)
 	require.NoError(a.t, err)
@@ -138,7 +141,7 @@ func TestPersonProfilePicture(t *testing.T) {
 
 	// Create a plain registry person (no login needed) to hang a picture on.
 	handle := "PicPerson" + rand.NonCryptoText()
-	resp := admin.createPerson(ctx, api.CreatePersonRequest{Handle: handle})
+	resp := admin.createPerson(ctx, personapi.CreatePersonRequest{Handle: handle})
 	require.Equal(t, http.StatusCreated, resp.StatusCode)
 	var created imsjson.Person
 	require.NoError(t, json.NewDecoder(resp.Body).Decode(&created))
