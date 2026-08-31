@@ -25,8 +25,10 @@ import (
 	"github.com/mikeki/ocf-ims/directory"
 	servicerpcv1 "github.com/mikeki/ocf-ims/gen/ocf/ims/service/rpc/v1"
 	"github.com/mikeki/ocf-ims/gen/ocf/ims/service/v1/servicev1connect"
+	"github.com/mikeki/ocf-ims/internal/event"
 	"github.com/mikeki/ocf-ims/internal/server"
 	"github.com/mikeki/ocf-ims/lib/authz"
+	"github.com/mikeki/ocf-ims/store"
 )
 
 // ImsService is the Connect implementation of the ocf.ims.service.v1.ImsService
@@ -42,6 +44,25 @@ import (
 // the idiomatic connect-go way to stand up a partial service. See plan 09g.
 type ImsService struct {
 	servicev1connect.UnimplementedImsServiceHandler
+
+	ImsDBQ    *store.DBQ
+	UserStore directory.UserStore
+}
+
+// ListEvents is a thin RPC method over the event.ListEvents domain function — the
+// same function the REST handler now shims (plan 09h/1c, M13). The interceptor
+// spine has already populated the caller's claims into ctx, so the method just
+// delegates; the domain function speaks Connect errors, so no error mapping is
+// needed here (unlike the REST shim, which maps them back to herr).
+func (s ImsService) ListEvents(
+	ctx context.Context,
+	req *connect.Request[servicerpcv1.ListEventsRequest],
+) (*connect.Response[servicerpcv1.ListEventsResponse], error) {
+	resp, err := event.ListEvents(ctx, s.ImsDBQ, s.UserStore, req.Msg)
+	if err != nil {
+		return nil, err
+	}
+	return connect.NewResponse(resp), nil
 }
 
 // GetAuthStatus is the one RPC implemented end-to-end in slice 1b, to prove the
@@ -80,6 +101,7 @@ func (ImsService) GetAuthStatus(
 func AddConnectToMux(
 	mux *http.ServeMux,
 	cfg *conf.IMSConfig,
+	imsDBQ *store.DBQ,
 	actionLogger server.ActionLogger,
 	userStore directory.UserStore,
 ) *http.ServeMux {
@@ -89,7 +111,7 @@ func AddConnectToMux(
 	jwter := authz.JWTer{SecretKey: cfg.Core.JWTSecret}
 	interceptors := server.Interceptors(jwter, actionLogger, userStore, server.NewValidateInterceptor())
 	path, handler := servicev1connect.NewImsServiceHandler(
-		ImsService{},
+		ImsService{ImsDBQ: imsDBQ, UserStore: userStore},
 		connect.WithInterceptors(interceptors...),
 	)
 	mux.Handle(path, handler)

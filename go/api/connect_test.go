@@ -77,7 +77,10 @@ func newTestConnectClient(t *testing.T) (servicev1connect.ImsServiceClient, auth
 func newTestConnectClientWithLogger(t *testing.T, logger server.ActionLogger) (servicev1connect.ImsServiceClient, authz.JWTer) {
 	t.Helper()
 	cfg := conf.DefaultIMS()
-	mux := api.AddConnectToMux(http.NewServeMux(), cfg, logger, nil)
+	// imsDBQ is nil: the RPCs these tests exercise (GetAuthStatus, Login,
+	// unauthenticated ListEvents) all answer before any DB access. Anything that
+	// queries the DB is covered by the api/integration suite instead.
+	mux := api.AddConnectToMux(http.NewServeMux(), cfg, nil, logger, nil)
 
 	srv := httptest.NewServer(mux)
 	t.Cleanup(srv.Close)
@@ -184,4 +187,19 @@ func TestConnectActionLogAuditsMutations(t *testing.T) {
 	require.Equal(t, servicev1connect.ImsServiceLoginProcedure, row.Path.String)
 	require.Equal(t, http.MethodPost, row.Method.String)
 	require.False(t, row.UserName.Valid, "anonymous caller: no user recorded")
+}
+
+// TestConnectListEventsUnauthenticated proves the first real domain RPC (1c) is
+// wired and that its domain function (event.ListEvents) rejects an anonymous
+// caller with CodeUnauthenticated — the check that fires before any DB access, so
+// it needs no MariaDB. The authorized path is covered by the api/integration
+// suite through the REST shim over the same function.
+func TestConnectListEventsUnauthenticated(t *testing.T) {
+	t.Parallel()
+	client, _ := newTestConnectClient(t)
+
+	_, err := client.ListEvents(context.Background(),
+		connect.NewRequest(&servicerpcv1.ListEventsRequest{}))
+	require.Error(t, err)
+	require.Equal(t, connect.CodeUnauthenticated, connect.CodeOf(err))
 }

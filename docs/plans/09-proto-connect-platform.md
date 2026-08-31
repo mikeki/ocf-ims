@@ -604,6 +604,38 @@ Detail in [09g](09g-interceptor-spine.md).)*
   enforcement that it never ships. Relaxes the Step-0 "spike/tests only" note with
   that gate as the backstop. *Adoption-path detail (#10).*
 
+### 1c — Domain extraction: the pattern, proven on ListEvents (2026-08-31)
+
+*(Slice 1c, first resource — a tracer taking `ListEvents` end-to-end to prove the
+extraction shape before the incident bulk. Detail in
+[09h](09h-domain-extraction.md).)*
+
+- **The extraction shape that avoids two implementations (M13):** one
+  transport-agnostic domain function per RPC — `event.ListEvents(ctx, deps, *rpcv1.…Request) (*rpcv1.…Response, error)`
+  — that authorizes from **ctx claims** (the auth interceptor and the REST
+  OptionalAuthN adapter both populate the same `JWTContext`, so `ClaimsFromContext`
+  works under either transport) and returns **proto messages speaking Connect
+  error codes**. The RPC method is a one-line delegate; the REST handler becomes a
+  shim that maps the Connect error back to `herr` and the proto response back to
+  `json`. Two small reusable pieces make the shim mechanical: `server.ConnectErrorToHTTP`
+  (Connect code → `*herr.HTTPError`) and a per-resource `…ToProto`/`…ToJSON` pair.
+  The frozen REST `json` types live only in that shim now, so Phase 2 deletes them
+  by deleting shims. *Concrete realization of M10/M13; extends finding #4.*
+- **The permission helpers were already ctx-based underneath.** `GetGlobalPermissions`/
+  `GetEventPermissions` are thin `*http.Request` wrappers over `authz.EventPermissions(ctx, …, claims)`
+  and `server.PermissionsByEvent(ctx, …)`, which the domain function calls
+  directly — so making handlers transport-agnostic did **not** require rewriting
+  authz, just bypassing the request-shaped wrappers. *De-risks the bulk (1c).*
+- **Extraction surfaces contract gaps — fix them in the proto, not the handler.**
+  `ListEventsRequest` was empty, but the REST route carries `?include_groups=true`
+  (the admin events page uses it), so a behaviour-preserving RPC needs the field:
+  added `bool include_groups` (non-breaking) rather than smuggling the param past
+  the contract. Expect one such gap per resource as its logic moves. *Adoption
+  detail (#10); the contract, not the handler, is the source of truth.*
+- **`RunInTx` was already built** (`store/tx.go`, retries 1213/1205 via `errors.As`)
+  from the earlier attach/detach de-flake — so 1c's "add RunInTx" item is really
+  "apply the existing one to the writes being extracted." *Corrects the 09h plan.*
+
 ## 8. Open questions
 
 1. **Does the Go binary keep serving static assets in production**, or does Caddy?

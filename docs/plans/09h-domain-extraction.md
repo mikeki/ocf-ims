@@ -100,9 +100,12 @@ resources are extracted together.
 State lives in git + memory, not here. To continue: `git log --oneline -5` on
 `feat/1c-domain-extraction` (or master, if a chunk merged), read the newest §7
 finding and the memory file `maybloom-stack-go-adoption.md`, then take the next
-resource in the order above. `RunInTx` already exists (item 1) — **start with the
-incidents extraction**: pick the first incident RPC (e.g. `GetIncident`, a read),
-move its handler logic in `internal/incident` into a proto-shaped domain function
-returning Connect errors, wire the RPC method (replacing the `Unimplemented`
-stub for that one method) and reduce the REST handler to a shim, then verify.
-Add the path-scoped `funlen` to `.golangci.yml` in the same chunk.
+resource in the order above. `RunInTx` already exists (item 1), and the pattern is
+proven end-to-end on **`ListEvents`** (the tracer — see `internal/event/event.go`,
+`api/connect.go`, `server.ConnectErrorToHTTP`, and the §7 "1c" finding). Next:
+**incidents** — pick an incident RPC (e.g. `GetIncident`, a read), move its handler
+logic in `internal/incident` into a proto-shaped domain function returning Connect
+errors, add the RPC method to `ImsService`, reduce the REST handler to a shim, then
+verify. **Defer `funlen`:** the path-scoped rule can only be enabled once the files
+it scopes are actually thin, so it lands near the END of 1c — turning it on now
+would fail lint on every not-yet-extracted handler.

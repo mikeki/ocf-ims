@@ -148,7 +148,7 @@ func mustStartServer(ctx context.Context, unvalidatedCfg *conf.IMSConfig, printC
 	// is mounted at the ImsService path prefix beside the REST routes, with the
 	// cross-cutting interceptor spine attached once (auth, action log,
 	// protovalidate, …). REST stays live and frozen alongside it (M13).
-	api.AddConnectToMux(mux, imsCfg, actionLogger, userStore)
+	api.AddConnectToMux(mux, imsCfg, imsDBQ, actionLogger, userStore)
 	web.AddToMux(mux, imsCfg)
 
 	s := &http.Server{
