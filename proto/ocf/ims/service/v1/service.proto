@@ -52,7 +52,11 @@ service ImsService {
   rpc DeleteOwnProfilePicture(rpc.v1.DeleteOwnProfilePictureRequest) returns (rpc.v1.DeleteOwnProfilePictureResponse);
 
   // --- Incidents ---
-  rpc ListIncidents(rpc.v1.ListIncidentsRequest) returns (rpc.v1.ListIncidentsResponse);
+  // A read (see the GetAuthStatus note): NO_SIDE_EFFECTS so the action-log
+  // interceptor skips it. Landed with GetIncidents (plural) in 1c.
+  rpc ListIncidents(rpc.v1.ListIncidentsRequest) returns (rpc.v1.ListIncidentsResponse) {
+    option idempotency_level = NO_SIDE_EFFECTS;
+  }
   // A read (see the GetAuthStatus note): NO_SIDE_EFFECTS so the action-log
   // interceptor skips it. Landed with GetIncident in 1c.
   rpc GetIncident(rpc.v1.GetIncidentRequest) returns (rpc.v1.GetIncidentResponse) {

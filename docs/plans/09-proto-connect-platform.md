@@ -725,6 +725,42 @@ proved. Detail in [09h](09h-domain-extraction.md).)*
   next is what lets `incidentToJSON` be replaced by a direct DB→proto mapping and
   retires both bridges. *Sequencing: plural read before the writes.*
 
+### 1c — Domain extraction: ListIncidents (the plural read) (2026-09-01)
+
+*(Slice 1c, third resource, branch `feat/1c-incident-listincidents` off master. The
+list sibling of GetIncident; the same shape, and the last incident **read** before the
+writes.)*
+
+- **The plural was the singular with a fan-out, and reusing the proven bridge kept it
+  boring.** `incident.ListIncidents` ports the REST `getIncidents` verbatim — the same
+  52f grant scoping (`GrantedIncidentNumbersForPerson`), the same `mayViewIncident`
+  private-drop, the same three concurrent queries (`errgroup`) — keyed off ctx claims,
+  returning `repeated IncidentView`. Each row goes through the *same*
+  `incidentToJSON`→`incidentJSONToProto` bridge GetIncident uses, so no new mapping code
+  and no new fidelity surface. `GET .../incidents` was deleted from `api/mux.go`, no shim.
+- **I deferred the direct DB→proto mapper the earlier finding teed up — deliberately.**
+  The plan pointer said extracting the plural would replace `incidentToJSON` with a direct
+  mapper and retire both bridges. Two facts on contact with the code said *not yet*: (a)
+  the **test-side** bridge (`incidentViewToJSON`) can't die while the write path is REST —
+  tests still read→mutate→re-POST `imsjson.Incident` — so half the "retirement" isn't
+  available at this step regardless; and (b) a hand-written `incidentToProto` would have
+  to re-derive every empty-vs-nil / `SqlToString` nuance the current two-hop path already
+  gets *proven-correct* by the passing suite, risking silent `requireEqualIncident`
+  breaks for a two-function payoff. So the mapper cleanup moves to the Create/Update PR,
+  where the test bridge also dies and the whole thing can be rewritten and re-validated
+  **atomically**. *Retire a bridge when both of its ends can go, not one.*
+- **`viewer_may_add_journal` per row came for free and more honest than REST.** The list
+  never surfaced the flag (`json.Incidents` has no such field), but the `IncidentView`
+  contract carries it and the grant set is already in hand — so the plural fills it in
+  accurately (`hasEventWrite || grantedSet[n]`), matching the singular. Safe because
+  `requireEqualIncident` zeroes it before comparing; no test asserts it on a plural row.
+- **A dropped query param became a contract field.** REST read `?exclude_system_entries`
+  off the query string; the RPC can't, so `ListIncidentsRequest` gained
+  `bool exclude_system_entries` (same move as `ListEvents`'s `include_groups`). Default
+  false = include them, so the test helper (which passes nothing) sees the system entries
+  the plural round-trip asserts on. *Every real query param the REST read honored is a
+  field the contract owes the client.*
+
 ## 8. Open questions
 
 1. **Does the Go binary keep serving static assets in production**, or does Caddy?

@@ -25,6 +25,11 @@ message IncidentView {
 
 message ListIncidentsRequest {
   int32 event_id = 1 [(buf.validate.field).int32.gt = 0];
+  // exclude_system_entries drops the generated ("system") journal entries from each
+  // incident in the list — the list view renders summaries, not full journals, so it
+  // asks for the lighter payload (the REST list read carried this as a query param).
+  // Default false includes them, matching a single GetIncident read.
+  bool exclude_system_entries = 2;
 }
 
 message ListIncidentsResponse {

@@ -185,15 +185,10 @@ func AddToMux(
 		),
 	)
 
-	mux.Handle("GET /ims/api/events/{eventName}/incidents",
-		server.Adapt(
-			incident.GetIncidents{ImsDBQ: db, UserStore: userStore, AttachmentsEnabled: attachmentsEnabled},
-			server.RecoverFromPanic(),
-			server.RequireAuthN(jwter),
-			server.LogRequest(false, actionLogger, userStore),
-			server.LimitRequestBytes(cfg.Core.MaxRequestBytes),
-		),
-	)
+	// GET /events/{eventName}/incidents (list) was RETIRED when ListIncidents moved
+	// onto Connect (plan 09h/1c, aggressive migration path — plan 09 §6). Listing an
+	// event's incidents is now the ImsService.ListIncidents RPC (registered via
+	// AddConnectToMux); there is deliberately no REST shim.
 
 	mux.Handle("POST /ims/api/events/{eventName}/incidents",
 		server.Adapt(
