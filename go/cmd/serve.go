@@ -145,9 +145,10 @@ func mustStartServer(ctx context.Context, unvalidatedCfg *conf.IMSConfig, printC
 	mux := http.NewServeMux()
 	api.AddToMux(mux, eventSource, imsCfg, imsDBQ, userStore, s3Client, actionLogger, pushSender)
 	// The Connect/RPC surface (plan 09 Phase 1) shares the same mux: its handler
-	// is mounted at the ImsService path prefix beside the REST routes, with the
-	// cross-cutting interceptor spine attached once (auth, action log,
-	// protovalidate, …). REST stays live and frozen alongside it (M13).
+	// is mounted at the ImsService path prefix beside the remaining REST routes,
+	// with the cross-cutting interceptor spine attached once (auth, action log,
+	// protovalidate, …). REST routes are retired one resource at a time as they are
+	// extracted onto Connect (the aggressive migration path, plan 09 §6).
 	api.AddConnectToMux(mux, imsCfg, imsDBQ, actionLogger, userStore)
 	web.AddToMux(mux, imsCfg)
 

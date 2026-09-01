@@ -33,9 +33,10 @@ import (
 
 // ImsService is the Connect implementation of the ocf.ims.service.v1.ImsService
 // contract (plan 09, Phase 1). It sits beside AddToMux in this wiring package
-// because — like AddToMux — it aggregates every domain: as each RPC lands in
-// slice 1d its method becomes a thin shim over the matching internal/<domain>
-// function, the same function its frozen REST handler calls (M13).
+// because — like AddToMux — it aggregates every domain: each method delegates to
+// its internal/<domain> function. As a resource is extracted (1c/1d) its REST
+// route is DELETED, not shimmed — the aggressive migration path in plan 09 §6, so
+// the RPC becomes the sole transport for that resource.
 //
 // SCAFFOLD (removed at the Phase-1 exit gate): the embedded
 // UnimplementedImsServiceHandler satisfies the 60-method interface while the
@@ -49,11 +50,11 @@ type ImsService struct {
 	UserStore directory.UserStore
 }
 
-// ListEvents is a thin RPC method over the event.ListEvents domain function — the
-// same function the REST handler now shims (plan 09h/1c, M13). The interceptor
-// spine has already populated the caller's claims into ctx, so the method just
-// delegates; the domain function speaks Connect errors, so no error mapping is
-// needed here (unlike the REST shim, which maps them back to herr).
+// ListEvents is a thin RPC method over the event.ListEvents domain function (plan
+// 09h/1c). Its REST predecessor (GET /events) was deleted in the same slice, so
+// this is the only transport for listing events. The interceptor spine has already
+// populated the caller's claims into ctx, so the method just delegates; the domain
+// function already speaks Connect errors, so there is nothing to map.
 func (s ImsService) ListEvents(
 	ctx context.Context,
 	req *connect.Request[servicerpcv1.ListEventsRequest],

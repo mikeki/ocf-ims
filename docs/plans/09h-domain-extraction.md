@@ -15,12 +15,14 @@ how `updateIncident` reached 470 lines. ~11.6k LOC of handler code has to find i
 real home.
 
 1b gave us the spine (interceptors + one proven RPC). 1c gives every RPC a real
-domain function to call. **1d** (next slice) then writes the thin RPC method and
-reduces each REST handler to a shim over the *same* domain function — so the two
-transports never carry two implementations (M13). 1c and 1d are close cousins;
-the split is: **1c = the domain functions exist and are tested; 1d = both
-transports call them.** In practice a resource is taken end-to-end (extract →
-wire RPC → shim REST) before moving to the next, so this plan and 09i interleave.
+domain function to call, and — under the aggressive migration decision (plan 09 §6,
+2026-08-31) — **retires the REST route it replaces in the same change** rather than
+leaving a shim. So 1c and 1d collapse into one per-resource pass: extract the logic
+into a proto-shaped domain function → add the thin RPC method → **delete the REST
+route + handler** → move that resource's `api/integration` cases onto the generated
+Connect client. When the last REST route is gone, `json/` is deleted with it. (The
+old M13 "two transports, one implementation via a shim" framing no longer applies —
+there is one transport, Connect, the moment a resource lands.)
 
 ## The three things that land in this slice
 
@@ -42,8 +44,9 @@ wire RPC → shim REST) before moving to the next, so this plan and 09i interlea
 
 > **Aggressive REST retirement (decided 2026-08-31, see [09 §6 Migration strategy](09-proto-connect-platform.md)):**
 > the REST endpoint is **deleted** as the resource is extracted — NOT kept as a
-> shim. No `*ToJSON` converters, no `ConnectErrorToHTTP`. The templ UI goes dark;
-> the `api/integration` cases move onto the generated Connect client.
+> shim. No proto→json converters, no Connect-error→herr mapping (the `ListEvents`
+> tracer briefly had both, then deleted them). The templ UI goes dark; the
+> `api/integration` cases move onto the generated Connect client.
 
 For each resource, in the ex-`api/`-now-`internal/<domain>` handler:
 
@@ -119,11 +122,15 @@ State lives in git + memory, not here. To continue: `git log --oneline -5` on
 `feat/1c-domain-extraction` (or master, if a chunk merged), read the newest §7
 finding and the memory file `maybloom-stack-go-adoption.md`, then take the next
 resource in the order above. `RunInTx` already exists (item 1), and the pattern is
-proven end-to-end on **`ListEvents`** (the tracer — see `internal/event/event.go`,
-`api/connect.go`, `server.ConnectErrorToHTTP`, and the §7 "1c" finding). Next:
-**incidents** — pick an incident RPC (e.g. `GetIncident`, a read), move its handler
-logic in `internal/incident` into a proto-shaped domain function returning Connect
-errors, add the RPC method to `ImsService`, reduce the REST handler to a shim, then
-verify. **Defer `funlen`:** the path-scoped rule can only be enabled once the files
-it scopes are actually thin, so it lands near the END of 1c — turning it on now
-would fail lint on every not-yet-extracted handler.
+proven end-to-end on **`ListEvents`** — the reference implementation to copy: the
+domain function `event.ListEvents` (`internal/event/event.go`), its one-line RPC
+method (`api/connect.go`), the deleted REST route (`api/mux.go`), and the
+Connect-client test move (`api/integration/{main,helpers,event}_test.go`); see the
+§7 "1c" finding. Next: **incidents** — pick an incident RPC (e.g. `GetIncident`, a
+read), move its handler logic in `internal/incident` into a proto-shaped domain
+function returning Connect errors, add the RPC method to `ImsService`, **delete the
+REST route + handler and move its `api/integration` cases onto the Connect client**
+(NOT a shim — the aggressive path, plan 09 §6), then verify. **Defer `funlen`:** the
+path-scoped rule can only be enabled once the files it scopes are actually thin, so
+it lands near the END of 1c — turning it on now would fail lint on every
+not-yet-extracted handler.
