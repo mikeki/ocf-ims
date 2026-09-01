@@ -53,7 +53,11 @@ service ImsService {
 
   // --- Incidents ---
   rpc ListIncidents(rpc.v1.ListIncidentsRequest) returns (rpc.v1.ListIncidentsResponse);
-  rpc GetIncident(rpc.v1.GetIncidentRequest) returns (rpc.v1.GetIncidentResponse);
+  // A read (see the GetAuthStatus note): NO_SIDE_EFFECTS so the action-log
+  // interceptor skips it. Landed with GetIncident in 1c.
+  rpc GetIncident(rpc.v1.GetIncidentRequest) returns (rpc.v1.GetIncidentResponse) {
+    option idempotency_level = NO_SIDE_EFFECTS;
+  }
   rpc CreateIncident(rpc.v1.CreateIncidentRequest) returns (rpc.v1.CreateIncidentResponse);
   rpc UpdateIncident(rpc.v1.UpdateIncidentRequest) returns (rpc.v1.UpdateIncidentResponse);
   rpc AttachPersonToIncident(rpc.v1.AttachPersonToIncidentRequest) returns (rpc.v1.AttachPersonToIncidentResponse);

@@ -119,7 +119,9 @@ func TestEventEndpoints_ForNoEventPerms(t *testing.T) {
 
 	eventPath := "/ims/api/events/" + eventName
 	getIncidents := MethodURL{http.MethodGet, eventPath + "/incidents"}
-	getIncident := MethodURL{http.MethodGet, eventPath + "/incidents/1"}
+	// GET .../incidents/{n} retired from REST (plan 09h/1c) — it is now the
+	// ImsService.GetIncident RPC. Its unauth/forbidden behavior is covered through the
+	// Connect client in TestIncidentAPIAuthorization, so it is no longer enumerated here.
 	getIncidentAttachment := MethodURL{http.MethodGet, eventPath + "/incidents/1/attachments/1"}
 	createIncident := MethodURL{http.MethodPost, eventPath + "/incidents"}
 	updateIncident := MethodURL{http.MethodPost, eventPath + "/incidents/1"}
@@ -147,7 +149,6 @@ func TestEventEndpoints_ForNoEventPerms(t *testing.T) {
 
 	allPerms := []MethodURL{
 		getIncidents,
-		getIncident,
 		getIncidentAttachment,
 		createIncident,
 		updateIncident,

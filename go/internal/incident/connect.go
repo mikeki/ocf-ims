@@ -1,0 +1,342 @@
+//
+// See the file COPYRIGHT for copyright information.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+//
+
+package incident
+
+import (
+	"context"
+	"database/sql"
+	"errors"
+	"fmt"
+	"net/http"
+
+	"connectrpc.com/connect"
+	"github.com/mikeki/ocf-ims/directory"
+	commonv1 "github.com/mikeki/ocf-ims/gen/ocf/ims/common/v1"
+	resourcesv1 "github.com/mikeki/ocf-ims/gen/ocf/ims/resources/v1"
+	rpcv1 "github.com/mikeki/ocf-ims/gen/ocf/ims/service/rpc/v1"
+	"github.com/mikeki/ocf-ims/internal/server"
+	imsjson "github.com/mikeki/ocf-ims/json"
+	"github.com/mikeki/ocf-ims/lib/authz"
+	"github.com/mikeki/ocf-ims/lib/conv"
+	"github.com/mikeki/ocf-ims/lib/herr"
+	"github.com/mikeki/ocf-ims/store"
+	"github.com/mikeki/ocf-ims/store/imsdb"
+	"google.golang.org/protobuf/types/known/timestamppb"
+)
+
+// GetIncident is the domain function behind the GetIncident RPC (plan 09h/1c). The
+// REST GET /events/{eventName}/incidents/{incidentNumber} endpoint was RETIRED with
+// this extraction, not kept as a shim (migration decision, plan 09 §Migration
+// strategy) — reading a single incident is Connect-only now. It ports the REST
+// getIncident authorization verbatim (event-wide incident read OR a 52f per-incident
+// grant; a private incident stays hidden behind a 404, not a 403), keyed off the ctx
+// claims the auth interceptor populated rather than the *http.Request, and returns the
+// IncidentView proto speaking Connect error codes.
+//
+// The request keys the event by its numeric id (not the REST path's event name), so
+// this resolves the event row up front; a missing event is NotFound before any
+// permission check, matching the REST GetEvent behavior.
+func GetIncident(
+	ctx context.Context,
+	imsDBQ *store.DBQ,
+	userStore directory.UserStore,
+	attachmentsEnabled bool,
+	req *rpcv1.GetIncidentRequest,
+) (*rpcv1.GetIncidentResponse, error) {
+	claims, ok := server.ClaimsFromContext(ctx)
+	if !ok {
+		return nil, connect.NewError(connect.CodeUnauthenticated, errors.New("authentication required"))
+	}
+
+	eventRow, err := imsDBQ.Event(ctx, imsDBQ, req.GetEventId())
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return nil, connect.NewError(connect.CodeNotFound, errors.New("event not found"))
+		}
+		return nil, connect.NewError(connect.CodeInternal, fmt.Errorf("failed to fetch event: %w", err))
+	}
+	event := eventRow.Event
+
+	eventPerms, _, err := authz.EventPermissions(ctx, &event.ID, imsDBQ, *claims)
+	if err != nil {
+		return nil, connect.NewError(connect.CodeInternal, fmt.Errorf("failed to compute permissions: %w", err))
+	}
+	eventPermissions := eventPerms[event.ID]
+
+	incidentNumber := req.GetIncidentNumber()
+	hasEventRead := eventPermissions&authz.EventReadIncidents != 0
+	viewerPersonID := claims.PersonID()
+	viewerIsAdmin := claims.PersonAdmin()
+
+	// 52f: without event-wide incident read, allow only if the caller has a
+	// per-incident grant (an involved reporter). Deny before the DB fetch so we
+	// don't leak the incident's existence. hasGrant also decides whether the caller
+	// may add journal entries (viewer_may_add_journal below).
+	hasGrant := false
+	if !hasEventRead {
+		hasGrant, err = imsDBQ.IncidentPersonHasGrant(ctx, imsDBQ, imsdb.IncidentPersonHasGrantParams{
+			Event: event.ID, IncidentNumber: incidentNumber, PersonID: viewerPersonID,
+		})
+		if err != nil {
+			return nil, connect.NewError(connect.CodeInternal, fmt.Errorf("failed to check incident grant: %w", err))
+		}
+		if !hasGrant {
+			return nil, connect.NewError(connect.CodePermissionDenied,
+				errors.New("the requestor does not have EventReadIncidents permission on this Event"))
+		}
+	}
+
+	storedRow, journalEntries, errHTTP := fetchIncident(ctx, imsDBQ, event.ID, incidentNumber, attachmentsEnabled)
+	if errHTTP != nil {
+		return nil, herrToConnect(errHTTP)
+	}
+
+	// A private incident is off-limits to event-wide readers who aren't its creator,
+	// an admin, or a grant-holder. If a grant hasn't already been confirmed (i.e. the
+	// caller reached here via event-wide read), check for one now; still no access →
+	// NotFound so the incident's very existence stays hidden.
+	if storedRow.Incident.Private && !hasGrant && !viewerIsAdmin &&
+		!(storedRow.Incident.CreatedBy.Valid && storedRow.Incident.CreatedBy.Int32 == viewerPersonID) {
+		hasGrant, err = imsDBQ.IncidentPersonHasGrant(ctx, imsDBQ, imsdb.IncidentPersonHasGrantParams{
+			Event: event.ID, IncidentNumber: incidentNumber, PersonID: viewerPersonID,
+		})
+		if err != nil {
+			return nil, connect.NewError(connect.CodeInternal, fmt.Errorf("failed to check incident grant: %w", err))
+		}
+		if !hasGrant {
+			return nil, connect.NewError(connect.CodeNotFound, errors.New("incident not found"))
+		}
+	}
+
+	permsByEvent, errHTTP := server.PermissionsByEvent(ctx, server.JWTContext{Claims: claims}, imsDBQ, userStore)
+	if errHTTP != nil {
+		return nil, herrToConnect(errHTTP)
+	}
+
+	peopleRows, err := imsDBQ.Incident_People(ctx, imsDBQ, imsdb.Incident_PeopleParams{
+		Event:          event.ID,
+		IncidentNumber: incidentNumber,
+	})
+	if err != nil {
+		return nil, connect.NewError(connect.CodeInternal, fmt.Errorf("failed to fetch people: %w", err))
+	}
+	people := make([]imsjson.IncidentPerson, len(peopleRows))
+	for i, row := range peopleRows {
+		people[i] = imsjson.IncidentPerson{PersonID: int64(row.IncidentPerson.PersonID), Handle: row.Handle.String, Name: row.Name.String, Involvement: conv.SqlToString(row.IncidentPerson.Involvement), GrantedAccess: row.IncidentPerson.GrantedAccess, HasEventAccess: row.HasEventAccess.Bool}
+	}
+
+	linkedIncidents, err := imsDBQ.Incident_LinkedIncidents(ctx, imsDBQ, imsdb.Incident_LinkedIncidentsParams{
+		Event1:          event.ID,
+		IncidentNumber1: incidentNumber,
+	})
+	if err != nil {
+		return nil, connect.NewError(connect.CodeInternal, fmt.Errorf("failed to fetch linked incidents: %w", err))
+	}
+	for i := range linkedIncidents {
+		li := linkedIncidents[i]
+		noEventRead := permsByEvent[li.LinkedEvent]&authz.EventReadIncidents == 0
+		// Withhold a private linked incident's summary from anyone who isn't an admin
+		// or its creator. The link's event/number stay visible (a grant-holder can open
+		// it directly); only the summary content is hidden here.
+		privateHidden := li.LinkedIncidentPrivate && !viewerIsAdmin &&
+			!(li.LinkedIncidentCreatedBy.Valid && li.LinkedIncidentCreatedBy.Int32 == viewerPersonID)
+		if noEventRead || privateHidden {
+			linkedIncidents[i].LinkedIncidentSummary = sql.NullString{}
+		}
+	}
+
+	// Reuse the REST-era assembly (incidentToJSON), still shared with GetIncidents
+	// (plural) and the attachment reads, then bridge the result onto the wire proto.
+	// When the rest of the incident surface moves onto Connect this json hop collapses
+	// into a direct DB→proto mapping (plan 09 §Migration strategy).
+	incJSON, errHTTP := incidentToJSON(storedRow, people, journalEntries, linkedIncidents, event, attachmentsEnabled)
+	if errHTTP != nil {
+		return nil, herrToConnect(errHTTP)
+	}
+	// 52f: a writer (or admin) may always add journal entries; an involved reporter
+	// may too, but only on incidents they were granted.
+	viewerMayAddJournal := eventPermissions&authz.EventWriteIncidents != 0 || hasGrant
+
+	return &rpcv1.GetIncidentResponse{
+		Incident: &rpcv1.IncidentView{
+			Incident:            incidentJSONToProto(incJSON),
+			ViewerMayAddJournal: viewerMayAddJournal,
+		},
+	}, nil
+}
+
+// herrToConnect maps an herr.HTTPError from the reused REST-era helpers
+// (fetchIncident, PermissionsByEvent) onto the equivalent Connect error code, so the
+// extracted domain function speaks Connect codes end to end. Only the client-facing
+// ResponseMessage crosses the boundary; the internal error detail stays server-side.
+func herrToConnect(e *herr.HTTPError) error {
+	code := connect.CodeInternal
+	switch e.Code {
+	case http.StatusBadRequest:
+		code = connect.CodeInvalidArgument
+	case http.StatusUnauthorized:
+		code = connect.CodeUnauthenticated
+	case http.StatusForbidden:
+		code = connect.CodePermissionDenied
+	case http.StatusNotFound:
+		code = connect.CodeNotFound
+	}
+	return connect.NewError(code, errors.New(e.ResponseMessage))
+}
+
+// incidentJSONToProto maps the assembled imsjson.Incident — still the shared read/
+// write shape while the incident write path is REST (plan 09 §Migration strategy) —
+// onto the resources/v1.Incident proto. It is the throwaway bridge from the condemned
+// json layer to the wire; when the rest of the incident surface moves onto Connect it
+// collapses into a direct DB→proto mapping. Visits (json.Incident.Visits) are
+// intentionally dropped: the contract excludes the visits subsystem (09e).
+func incidentJSONToProto(inc imsjson.Incident) *resourcesv1.Incident {
+	out := &resourcesv1.Incident{
+		Event:        inc.Event,
+		EventId:      inc.EventID,
+		Number:       inc.Number,
+		Created:      timestamppb.New(inc.Created),
+		LastModified: timestamppb.New(inc.LastModified),
+		CreatedBy:    mentionToPersonRef(inc.CreatedBy),
+		State:        incidentStateToProto(inc.State),
+		Private:      inc.Private,
+		OutcomeId:    inc.OutcomeID,
+		Started:      timestamppb.New(inc.Started),
+		Priority:     incidentPriorityToProto(inc.Priority),
+		Summary:      inc.Summary,
+		Location: &resourcesv1.IncidentLocation{
+			AreaSlug:    inc.Location.AreaSlug,
+			Description: inc.Location.Description,
+			Booth:       inc.Location.Booth,
+		},
+	}
+	if !inc.Closed.IsZero() {
+		out.Closed = timestamppb.New(inc.Closed)
+	}
+	if inc.IncidentTypeIDs != nil {
+		out.IncidentTypeIds = *inc.IncidentTypeIDs
+	}
+	if inc.Reports != nil {
+		out.Reports = *inc.Reports
+	}
+	if inc.People != nil {
+		out.People = make([]*resourcesv1.IncidentPerson, 0, len(*inc.People))
+		for _, p := range *inc.People {
+			out.People = append(out.People, incidentPersonToProto(p))
+		}
+	}
+	if inc.LinkedIncidents != nil {
+		out.LinkedIncidents = make([]*commonv1.IncidentRef, 0, len(*inc.LinkedIncidents))
+		for _, li := range *inc.LinkedIncidents {
+			out.LinkedIncidents = append(out.LinkedIncidents, &commonv1.IncidentRef{
+				EventName:      li.EventName,
+				EventId:        li.EventID,
+				IncidentNumber: li.Number,
+				Summary:        li.Summary,
+			})
+		}
+	}
+	out.JournalEntries = make([]*resourcesv1.JournalEntry, 0, len(inc.JournalEntries))
+	for _, je := range inc.JournalEntries {
+		out.JournalEntries = append(out.JournalEntries, journalEntryToProto(je))
+	}
+	return out
+}
+
+func journalEntryToProto(je imsjson.JournalEntry) *resourcesv1.JournalEntry {
+	out := &resourcesv1.JournalEntry{
+		Id:          je.ID,
+		Created:     timestamppb.New(je.Created),
+		Author:      je.Author,
+		SystemEntry: je.SystemEntry,
+		Text:        je.Text,
+		Stricken:    je.Stricken,
+		OnBehalfOf:  mentionToPersonRef(je.OnBehalfOf),
+	}
+	if je.Attachment.Name != "" {
+		out.Attachment = &resourcesv1.Attachment{
+			Id:          je.Attachment.Name,
+			Previewable: je.Attachment.Previewable,
+		}
+	}
+	for _, m := range je.Mentions {
+		out.Mentions = append(out.Mentions, &commonv1.PersonRef{
+			PersonId: m.PersonID,
+			Handle:   strPtrIfNonEmpty(m.Handle),
+			Name:     strPtrIfNonEmpty(m.Name),
+		})
+	}
+	return out
+}
+
+func incidentPersonToProto(p imsjson.IncidentPerson) *resourcesv1.IncidentPerson {
+	return &resourcesv1.IncidentPerson{
+		Person: &commonv1.PersonRef{
+			PersonId: int32(p.PersonID),
+			Handle:   strPtrIfNonEmpty(p.Handle),
+			Name:     strPtrIfNonEmpty(p.Name),
+		},
+		Involvement:    p.Involvement,
+		GrantedAccess:  p.GrantedAccess,
+		HasEventAccess: p.HasEventAccess,
+	}
+}
+
+func mentionToPersonRef(m *imsjson.Mention) *commonv1.PersonRef {
+	if m == nil {
+		return nil
+	}
+	return &commonv1.PersonRef{
+		PersonId: m.PersonID,
+		Handle:   strPtrIfNonEmpty(m.Handle),
+		Name:     strPtrIfNonEmpty(m.Name),
+	}
+}
+
+func incidentStateToProto(s string) resourcesv1.IncidentState {
+	switch imsdb.IncidentState(s) {
+	case imsdb.IncidentStateOpen:
+		return resourcesv1.IncidentState_INCIDENT_STATE_OPEN
+	case imsdb.IncidentStateClosed:
+		return resourcesv1.IncidentState_INCIDENT_STATE_CLOSED
+	default:
+		return resourcesv1.IncidentState_INCIDENT_STATE_UNSPECIFIED
+	}
+}
+
+func incidentPriorityToProto(p int8) resourcesv1.IncidentPriority {
+	switch p {
+	case imsjson.IncidentPriorityHigh:
+		return resourcesv1.IncidentPriority_INCIDENT_PRIORITY_HIGH
+	case imsjson.IncidentPriorityNormal:
+		return resourcesv1.IncidentPriority_INCIDENT_PRIORITY_NORMAL
+	case imsjson.IncidentPriorityLow:
+		return resourcesv1.IncidentPriority_INCIDENT_PRIORITY_LOW
+	default:
+		return resourcesv1.IncidentPriority_INCIDENT_PRIORITY_UNSPECIFIED
+	}
+}
+
+// strPtrIfNonEmpty returns nil for an empty string so an absent handle/name maps to an
+// unset optional proto field (and round-trips back to "" on the read side), matching
+// the PersonRef contract's "unset for a login-less person who has none".
+func strPtrIfNonEmpty(s string) *string {
+	if s == "" {
+		return nil
+	}
+	return &s
+}
