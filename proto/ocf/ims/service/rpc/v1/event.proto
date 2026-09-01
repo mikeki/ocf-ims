@@ -11,7 +11,12 @@ option go_package = "github.com/mikeki/ocf-ims/gen/ocf/ims/service/rpc/v1;servic
 
 // Request/response envelopes for the event RPCs (declared in ../../v1/service.proto).
 
-message ListEventsRequest {}
+message ListEventsRequest {
+  // include_groups mirrors the REST ?include_groups=true query param (the admin
+  // events page uses it). When false/unset, event *groups* are excluded — the
+  // same default the REST handler applies when the param is absent.
+  bool include_groups = 1;
+}
 
 message ListEventsResponse {
   repeated ocf.ims.resources.v1.Event events = 1;

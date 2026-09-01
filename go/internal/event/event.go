@@ -18,17 +18,20 @@ package event
 
 import (
 	"cmp"
+	"context"
 	"database/sql"
+	"errors"
 	"fmt"
 	"log/slog"
 	"net/http"
 	"regexp"
 	"slices"
 	"strconv"
-	"strings"
-	"time"
 
+	"connectrpc.com/connect"
 	"github.com/mikeki/ocf-ims/directory"
+	resourcesv1 "github.com/mikeki/ocf-ims/gen/ocf/ims/resources/v1"
+	rpcv1 "github.com/mikeki/ocf-ims/gen/ocf/ims/service/rpc/v1"
 	"github.com/mikeki/ocf-ims/internal/server"
 	imsjson "github.com/mikeki/ocf-ims/json"
 	"github.com/mikeki/ocf-ims/lib/authz"
@@ -38,71 +41,66 @@ import (
 	"github.com/mikeki/ocf-ims/store/imsdb"
 )
 
-type GetEvents struct {
-	ImsDBQ            *store.DBQ
-	UserStore         directory.UserStore
-	CacheControlShort time.Duration
-}
-
-func (action GetEvents) ServeHTTP(w http.ResponseWriter, req *http.Request) {
-	resp, errHTTP := action.getEvents(req)
-	if errHTTP != nil {
-		errHTTP.From("[getEvents]").WriteResponse(w)
-		return
+// ListEvents is the domain function behind the ListEvents RPC (plan 09h/1c). The
+// REST GET /events endpoint was RETIRED with this extraction, not kept as a shim
+// (migration decision, plan 09 §Migration strategy) — listing events is
+// Connect-only now. It authorizes the caller from the ctx claims (populated by the
+// auth interceptor), builds the authorized event list, and returns proto messages
+// speaking Connect error codes.
+func ListEvents(
+	ctx context.Context,
+	imsDBQ *store.DBQ,
+	userStore directory.UserStore,
+	req *rpcv1.ListEventsRequest,
+) (*rpcv1.ListEventsResponse, error) {
+	claims, ok := server.ClaimsFromContext(ctx)
+	if !ok {
+		return nil, connect.NewError(connect.CodeUnauthenticated, errors.New("authentication required"))
 	}
-	w.Header().Set("Cache-Control", fmt.Sprintf(
-		"max-age=%v, private", action.CacheControlShort.Milliseconds()/1000))
-	server.MustWriteJSON(w, req, resp)
-}
-func (action GetEvents) getEvents(req *http.Request) (imsjson.Events, *herr.HTTPError) {
-	var empty imsjson.Events
-	jwt, globalPermissions, errHTTP := server.GetGlobalPermissions(req, action.ImsDBQ, action.UserStore)
-	if errHTTP != nil {
-		return empty, errHTTP.From("[server.GetGlobalPermissions]")
+	// First level of authorization (global). Per-event filtering happens below.
+	_, globalPermissions, err := authz.EventPermissions(ctx, nil, imsDBQ, *claims)
+	if err != nil {
+		return nil, connect.NewError(connect.CodeInternal, fmt.Errorf("failed to compute permissions: %w", err))
 	}
-	// This is the first level of authorization. Per-event filtering is done farther down.
 	if globalPermissions&authz.GlobalListEvents == 0 {
-		return empty, herr.Forbidden("The requestor does not have GlobalListEvents permission", nil)
+		return nil, connect.NewError(connect.CodePermissionDenied,
+			errors.New("the requestor does not have GlobalListEvents permission"))
 	}
-	err := req.ParseForm()
-	if err != nil {
-		return nil, herr.BadRequest("Failed to parse form", err)
-	}
-	excludeGroups := !strings.EqualFold(req.Form.Get("include_groups"), "true")
 
-	allEvents, err := action.ImsDBQ.Events(req.Context(), action.ImsDBQ)
+	allEvents, err := imsDBQ.Events(ctx, imsDBQ)
 	if err != nil {
-		return nil, herr.InternalServerError("Failed to get events", err).From("[Events]")
+		return nil, connect.NewError(connect.CodeInternal, fmt.Errorf("failed to get events: %w", err))
 	}
-	permsByEvent, errHTTP := server.PermissionsByEvent(req.Context(), jwt, action.ImsDBQ, action.UserStore)
+	permsByEvent, errHTTP := server.PermissionsByEvent(ctx, server.JWTContext{Claims: claims}, imsDBQ, userStore)
 	if errHTTP != nil {
-		return empty, errHTTP.From("[server.PermissionsByEvent]")
+		return nil, connect.NewError(connect.CodeInternal, errHTTP)
 	}
 
-	var authorizedEvents []imsdb.EventsRow
+	excludeGroups := !req.GetIncludeGroups()
+	events := make([]*resourcesv1.Event, 0, len(allEvents))
 	for _, eve := range allEvents {
 		if eve.Event.IsGroup && excludeGroups {
 			continue
 		}
-		if permsByEvent[eve.Event.ID]&authz.EventReadEventName != 0 || globalPermissions&authz.GlobalAdministrateEvents != 0 {
-			authorizedEvents = append(authorizedEvents, eve)
+		if permsByEvent[eve.Event.ID]&authz.EventReadEventName != 0 ||
+			globalPermissions&authz.GlobalAdministrateEvents != 0 {
+			events = append(events, eventToProto(eve.Event))
 		}
 	}
-	resp := make(imsjson.Events, 0, len(authorizedEvents))
-	for _, eve := range authorizedEvents {
-		resp = append(resp, imsjson.Event{
-			ID:          eve.Event.ID,
-			Name:        &eve.Event.Name,
-			IsGroup:     &eve.Event.IsGroup,
-			ParentGroup: conv.SqlToInt32(eve.Event.ParentGroup),
-		})
-	}
-
-	slices.SortFunc(resp, func(a, b imsjson.Event) int {
-		return cmp.Compare(a.ID, b.ID)
+	slices.SortFunc(events, func(a, b *resourcesv1.Event) int {
+		return cmp.Compare(a.GetId(), b.GetId())
 	})
+	return &rpcv1.ListEventsResponse{Events: events}, nil
+}
 
-	return resp, nil
+// eventToProto maps a stored event row to its resources/v1.Event proto.
+func eventToProto(e imsdb.Event) *resourcesv1.Event {
+	return &resourcesv1.Event{
+		Id:          e.ID,
+		Name:        &e.Name,
+		IsGroup:     &e.IsGroup,
+		ParentGroup: conv.SqlToInt32(e.ParentGroup),
+	}
 }
 
 type EditEvent struct {

@@ -156,6 +156,38 @@ Each phase keeps `go build` / `go test` green and the running system deployable.
 Slices get their own numbered plan file (`09a-…`, `09b-…`) as work begins, per the
 folder convention.
 
+> ### Migration strategy — decided 2026-08-31 (supersedes the Phase 2 "port then retire" approach)
+>
+> **Context:** this is the off-season — there is no live event to protect, no
+> downtime concern, and the full migration to the Expo client will land before next
+> year. The legacy templ UI is being **replaced** by the Expo client (Phase 3), not
+> kept — so *porting* it onto Connect (the old Phase 2) is throwaway work on a
+> condemned surface.
+>
+> **Decision — the aggressive path:**
+> 1. **REST endpoints are retired per-resource during Phase 1 extraction (1c/1d),
+>    not shimmed.** As a resource's logic moves into its domain function + RPC, its
+>    REST route and handler are **deleted** in the same change. No `*ToJSON`
+>    converters, no `ConnectErrorToHTTP`, no dual-format bookkeeping. `json/` shrinks
+>    resource by resource and is gone when the last REST route dies.
+> 2. **The `api/integration` suite moves onto the generated Connect client** as each
+>    resource is retired (the shared test server now also mounts `AddConnectToMux`).
+>    Its per-resource cases are rewritten to call the RPCs; Playwright is retired as
+>    a Phase-1 net (it drives the templ UI, which now goes dark).
+> 3. **The legacy templ UI is NOT ported and progressively goes dark** as REST
+>    routes are deleted. That is accepted: there is no interim web product to keep
+>    running, and Expo (Phase 3) is the replacement. If Expo slips, the fallback is
+>    to bring specific screens back, not to have kept REST.
+>
+> **What this changes below:** **Phase 2 as written (port the 95 call sites, then
+> retire REST) is dropped.** REST + `json/` retirement folds into Phase 1; the
+> "freeze the legacy UI" rule is moot (it is being deleted, not frozen). Phase 3
+> (build Expo on the RPCs) and Phase 4 (delete templ + `web/typescript`) stand,
+> with Phase 4's REST/`json` deletion already done in Phase 1. The M13
+> "REST-stays-frozen, one implementation two transports" constraint no longer
+> applies — there is one transport (Connect) the moment a resource is extracted.
+> Proven first on `ListEvents` (slice 1c; see 09h and the §7 "1c" finding).
+
 ### Phase 0 — Contract and codegen tooling
 
 No behaviour change. This phase defines the protobuf interface and everything
@@ -244,7 +276,12 @@ identical data over REST and Connect; **no business logic remains in either
 transport layer**, enforced by `funlen`; the existing web UI and Playwright suite
 are untouched and still green.
 
-### Phase 2 — The legacy UI onto the contract (retires REST)
+### Phase 2 — The legacy UI onto the contract (retires REST) — ~~SUPERSEDED 2026-08-31~~
+
+> **Dropped by the Migration-strategy decision above.** REST + `json/` retirement
+> folds into Phase 1 (per-resource, no UI port); the templ UI is deleted in Phase 4,
+> not ported here. The 2a `connectUnary` transport is still needed — but for the
+> **Expo** client (Phase 3a), not to port the templ UI. Kept below for history.
 
 A transport swap under an unchanged UI, not a rewrite. It leaves exactly one wire
 format for the long Phase 3.
@@ -603,6 +640,48 @@ Detail in [09g](09g-interceptor-spine.md).)*
   embedding is idiomatic and the Phase-1 exit gate (grep for the embedding) is the
   enforcement that it never ships. Relaxes the Step-0 "spike/tests only" note with
   that gate as the backstop. *Adoption-path detail (#10).*
+
+### 1c — Domain extraction: the pattern, proven on ListEvents (2026-08-31)
+
+*(Slice 1c, first resource — a tracer taking `ListEvents` end-to-end to prove the
+extraction shape before the incident bulk. Detail in
+[09h](09h-domain-extraction.md).)*
+
+- **The extraction shape:** one transport-agnostic domain function per RPC —
+  `event.ListEvents(ctx, deps, *rpcv1.…Request) (*rpcv1.…Response, error)` — that
+  authorizes from **ctx claims** (`server.ClaimsFromContext`, populated by the auth
+  interceptor) and returns **proto messages speaking Connect error codes**. The RPC
+  method is a one-line delegate. **The REST route is then deleted, not shimmed** —
+  see the Migration-strategy decision (§6): in the off-season, with the templ UI
+  being replaced (not ported), keeping a shim + `json` converters would be throwaway
+  work on a condemned surface. So `ListEvents` shipped with `GET /events` removed
+  from `api/mux.go`, and its `api/integration` case rewritten onto the generated
+  Connect client. *(An earlier cut of this slice kept a REST shim with a reusable
+  `server.ConnectErrorToHTTP` and a `…ToJSON` converter; both were removed when the
+  aggressive path was chosen — the converter was the exact throwaway the decision
+  avoids.)* *Concrete realization of M10; supersedes M13's two-transports framing.*
+- **The permission helpers were already ctx-based underneath.** `GetGlobalPermissions`/
+  `GetEventPermissions` are thin `*http.Request` wrappers over `authz.EventPermissions(ctx, …, claims)`
+  and `server.PermissionsByEvent(ctx, …)`, which the domain function calls
+  directly — so making handlers transport-agnostic did **not** require rewriting
+  authz, just bypassing the request-shaped wrappers. *De-risks the bulk (1c).*
+- **Extraction surfaces contract gaps — fix them in the proto, not the handler.**
+  `ListEventsRequest` was empty, but the REST route carries `?include_groups=true`
+  (the admin events page uses it), so a behaviour-preserving RPC needs the field:
+  added `bool include_groups` (non-breaking) rather than smuggling the param past
+  the contract. Expect one such gap per resource as its logic moves. *Adoption
+  detail (#10); the contract, not the handler, is the source of truth.*
+- **`RunInTx` was already built** (`store/tx.go`, retries 1213/1205 via `errors.As`)
+  from the earlier attach/detach de-flake — so 1c's "add RunInTx" item is really
+  "apply the existing one to the writes being extracted." *Corrects the 09h plan.*
+- **Moving the test tier onto Connect is cheap** (the aggressive path's cost): the
+  shared `api/integration` server already returns its mux from `AddToMux`, so
+  mounting `AddConnectToMux` on it is a two-line change; a per-resource case then
+  swaps its REST helper for `servicev1connect.NewImsServiceClient` with the JWT as a
+  Bearer header. The one non-obvious follow-through: prune the retired route from
+  REST-surface enumerations like `TestAnyUnauthenticatedUserEndpoints`, whose
+  unauth (401) assertion turns into a 404 the moment the route is gone. *Adoption
+  detail (#10) for the REST-retirement decision (§6).*
 
 ## 8. Open questions
 

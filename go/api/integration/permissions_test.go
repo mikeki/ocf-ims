@@ -81,7 +81,8 @@ func TestAnyUnauthenticatedUserEndpoints(t *testing.T) {
 	anyAuthenticatedUserEndpoints := []MethodURL{
 		{http.MethodGet, "/ims/api/personnel"},
 		{http.MethodGet, "/ims/api/incident_types"},
-		{http.MethodGet, "/ims/api/events"},
+		// GET /ims/api/events retired in 1c — it is the ListEvents RPC now, whose
+		// unauthenticated behavior is covered by api.TestConnectListEventsUnauthenticated.
 	}
 
 	for _, api := range anyAuthenticatedUserEndpoints {

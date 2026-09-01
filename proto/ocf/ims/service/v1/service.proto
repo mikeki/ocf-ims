@@ -68,7 +68,9 @@ service ImsService {
   rpc UpdateReportJournalEntry(rpc.v1.UpdateReportJournalEntryRequest) returns (rpc.v1.UpdateReportJournalEntryResponse);
 
   // --- Events ---
-  rpc ListEvents(rpc.v1.ListEventsRequest) returns (rpc.v1.ListEventsResponse);
+  rpc ListEvents(rpc.v1.ListEventsRequest) returns (rpc.v1.ListEventsResponse) {
+    option idempotency_level = NO_SIDE_EFFECTS;
+  }
   rpc CreateEvent(rpc.v1.CreateEventRequest) returns (rpc.v1.CreateEventResponse);
   rpc UpdateEvent(rpc.v1.UpdateEventRequest) returns (rpc.v1.UpdateEventResponse);
 
