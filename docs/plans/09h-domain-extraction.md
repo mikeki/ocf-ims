@@ -118,16 +118,25 @@ resources are extracted together.
 
 ## Resume pointer (for an autonomous continuation)
 
-State lives in git + memory, not here. To continue: `git log --oneline -5` on
-`feat/1c-domain-extraction` (or master, if a chunk merged), read the newest §7
-finding and the memory file `maybloom-stack-go-adoption.md`, then take the next
-resource in the order above. `RunInTx` already exists (item 1), and the pattern is
-proven end-to-end on **`ListEvents`** — the reference implementation to copy: the
-domain function `event.ListEvents` (`internal/event/event.go`), its one-line RPC
-method (`api/connect.go`), the deleted REST route (`api/mux.go`), and the
-Connect-client test move (`api/integration/{main,helpers,event}_test.go`); see the
-§7 "1c" finding. Next: **incidents** — pick an incident RPC (e.g. `GetIncident`, a
-read), move its handler logic in `internal/incident` into a proto-shaped domain
+State lives in git + memory, not here. To continue: `git log --oneline -5` on the
+current 1c branch (or master, if a chunk merged), read the newest §7 finding and the
+memory file `maybloom-stack-go-adoption.md`, then take the next resource in the order
+above. `RunInTx` already exists (item 1), and the pattern is proven end-to-end on
+**`ListEvents`** (a flat list) and **`GetIncident`** (a rich nested read) — the two
+reference implementations to copy: the domain function (`internal/event/event.go`
+`ListEvents`; `internal/incident/connect.go` `GetIncident`), its one-line RPC method
+(`api/connect.go`), the deleted REST route (`api/mux.go`), and the Connect-client test
+move (`api/integration/{main,helpers,event,proto_convert}_test.go`); see the §7 "1c"
+findings.
+
+**GetIncident is the branch `feat/1c-incident-getincident`** (off master, ListEvents
+already merged). Next incident RPCs, still on the aggressive path: **`GetIncidents`
+(plural)** — extracting it lets `incidentToJSON` be replaced by a direct DB→proto
+mapping and retires the `incidentJSONToProto`/`incidentViewToJSON` throwaway bridge —
+then **`CreateIncident`/`UpdateIncident`** (which flips the test read↔write round-trips
+fully onto proto and lets the `getIncident` test helper stop synthesizing an
+`*http.Response`). Then reports → people/auth → taxonomies → events(EditEvent)/areas/
+crews → metrics/action log. For each: move handler logic into a proto-shaped domain
 function returning Connect errors, add the RPC method to `ImsService`, **delete the
 REST route + handler and move its `api/integration` cases onto the Connect client**
 (NOT a shim — the aggressive path, plan 09 §6), then verify. **Defer `funlen`:** the

@@ -26,6 +26,7 @@ import (
 	servicerpcv1 "github.com/mikeki/ocf-ims/gen/ocf/ims/service/rpc/v1"
 	"github.com/mikeki/ocf-ims/gen/ocf/ims/service/v1/servicev1connect"
 	"github.com/mikeki/ocf-ims/internal/event"
+	"github.com/mikeki/ocf-ims/internal/incident"
 	"github.com/mikeki/ocf-ims/internal/server"
 	"github.com/mikeki/ocf-ims/lib/authz"
 	"github.com/mikeki/ocf-ims/store"
@@ -48,6 +49,9 @@ type ImsService struct {
 
 	ImsDBQ    *store.DBQ
 	UserStore directory.UserStore
+	// AttachmentsEnabled mirrors the REST handlers' flag (cfg.AttachmentsStore.Type
+	// != none): it gates whether a read surfaces journal-entry attachment metadata.
+	AttachmentsEnabled bool
 }
 
 // ListEvents is a thin RPC method over the event.ListEvents domain function (plan
@@ -60,6 +64,22 @@ func (s ImsService) ListEvents(
 	req *connect.Request[servicerpcv1.ListEventsRequest],
 ) (*connect.Response[servicerpcv1.ListEventsResponse], error) {
 	resp, err := event.ListEvents(ctx, s.ImsDBQ, s.UserStore, req.Msg)
+	if err != nil {
+		return nil, err
+	}
+	return connect.NewResponse(resp), nil
+}
+
+// GetIncident is a thin RPC method over the incident.GetIncident domain function
+// (plan 09h/1c). Its REST predecessor (GET .../incidents/{n}) was deleted in the same
+// slice, so this is the only transport for reading a single incident. The domain
+// function already authorizes from ctx claims and speaks Connect errors, so this just
+// delegates.
+func (s ImsService) GetIncident(
+	ctx context.Context,
+	req *connect.Request[servicerpcv1.GetIncidentRequest],
+) (*connect.Response[servicerpcv1.GetIncidentResponse], error) {
+	resp, err := incident.GetIncident(ctx, s.ImsDBQ, s.UserStore, s.AttachmentsEnabled, req.Msg)
 	if err != nil {
 		return nil, err
 	}
@@ -111,8 +131,9 @@ func AddConnectToMux(
 	}
 	jwter := authz.JWTer{SecretKey: cfg.Core.JWTSecret}
 	interceptors := server.Interceptors(jwter, actionLogger, userStore, server.NewValidateInterceptor())
+	attachmentsEnabled := cfg.AttachmentsStore.Type != conf.AttachmentsStoreNone
 	path, handler := servicev1connect.NewImsServiceHandler(
-		ImsService{ImsDBQ: imsDBQ, UserStore: userStore},
+		ImsService{ImsDBQ: imsDBQ, UserStore: userStore, AttachmentsEnabled: attachmentsEnabled},
 		connect.WithInterceptors(interceptors...),
 	)
 	mux.Handle(path, handler)

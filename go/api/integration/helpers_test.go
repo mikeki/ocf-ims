@@ -26,6 +26,7 @@ import (
 	"net/http"
 	"net/url"
 	"strconv"
+	"sync"
 	"testing"
 	"time"
 
@@ -415,11 +416,50 @@ func (a ApiHelper) newVisitSuccess(ctx context.Context, visitReq imsjson.Visit) 
 	return num
 }
 
+// getIncident reads a single incident through the generated Connect client. The REST
+// GET .../incidents/{n} endpoint was retired when GetIncident was extracted (plan
+// 09h/1c), so the suite exercises the real RPC here. Two adaptations keep the ~50
+// existing call sites unchanged: the proto keys the event by numeric id (resolved from
+// the name via resolveEventID), and the IncidentView response is mapped back to the
+// legacy imsjson.Incident (incidentViewToJSON) with a synthesized *http.Response whose
+// status mirrors the retired endpoint (connectStatus). The write path is still REST and
+// still json-shaped, so tests read→modify→re-POST the same imsjson.Incident.
 func (a ApiHelper) getIncident(ctx context.Context, eventName string, incident int32) (imsjson.Incident, *http.Response) {
 	a.t.Helper()
-	path := a.serverURL.JoinPath("/ims/api/events/", eventName, "/incidents/", strconv.Itoa(int(incident))).String()
-	bod, resp := a.imsGet(ctx, path, &imsjson.Incident{})
-	return *bod.(*imsjson.Incident), resp
+	eventID := a.resolveEventID(ctx, eventName)
+	client := servicev1connect.NewImsServiceClient(http.DefaultClient, a.serverURL.String())
+	req := connect.NewRequest(&servicerpcv1.GetIncidentRequest{EventId: eventID, IncidentNumber: incident})
+	if a.jwt != "" {
+		req.Header().Set("Authorization", "Bearer "+a.jwt)
+	}
+	resp, err := client.GetIncident(ctx, req)
+	// A synthesized in-process response, so the existing status-code assertions and
+	// Body.Close() calls at the call sites keep working; there is no real body.
+	httpResp := &http.Response{StatusCode: connectStatus(err), Body: http.NoBody}
+	if err != nil {
+		return imsjson.Incident{}, httpResp
+	}
+	return incidentViewToJSON(resp.Msg.GetIncident()), httpResp
+}
+
+// resolveEventID maps an event name to its numeric id for the id-keyed incident RPCs.
+// It lists events as an admin (cached token), independent of the caller's own JWT — so
+// it still resolves for the unauthenticated / no-access callers the negative-auth tests
+// use, where the incident RPC itself is what must reject.
+func (a ApiHelper) resolveEventID(ctx context.Context, eventName string) int32 {
+	a.t.Helper()
+	client := servicev1connect.NewImsServiceClient(http.DefaultClient, a.serverURL.String())
+	req := connect.NewRequest(&servicerpcv1.ListEventsRequest{IncludeGroups: true})
+	req.Header().Set("Authorization", "Bearer "+adminJWTCached(a.t, ctx))
+	resp, err := client.ListEvents(ctx, req)
+	require.NoError(a.t, err)
+	for _, e := range resp.Msg.GetEvents() {
+		if e.GetName() == eventName {
+			return e.GetId()
+		}
+	}
+	require.Failf(a.t, "event not found", "resolveEventID: no event named %q", eventName)
+	return 0
 }
 
 func (a ApiHelper) getVisit(ctx context.Context, eventName string, visit int32) (imsjson.Visit, *http.Response) {
@@ -879,4 +919,19 @@ func jwtForAdmin(ctx context.Context, t *testing.T) string {
 	})
 	require.Equal(t, http.StatusOK, statusCode)
 	return token
+}
+
+var adminJWTOnce sync.Once
+var adminJWTValue string
+
+// adminJWTCached logs in as the admin once for the whole package and reuses the token.
+// resolveEventID needs an always-authorized identity to translate event names to ids,
+// and argon2id login is deliberately slow, so a single cached token avoids re-hashing
+// on every incident read across the parallel suite.
+func adminJWTCached(t *testing.T, ctx context.Context) string {
+	t.Helper()
+	adminJWTOnce.Do(func() {
+		adminJWTValue = jwtForAdmin(ctx, t)
+	})
+	return adminJWTValue
 }

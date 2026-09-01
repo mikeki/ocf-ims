@@ -1,0 +1,183 @@
+//
+// See the file COPYRIGHT for copyright information.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+//
+
+package integration_test
+
+import (
+	"net/http"
+
+	"connectrpc.com/connect"
+	commonv1 "github.com/mikeki/ocf-ims/gen/ocf/ims/common/v1"
+	resourcesv1 "github.com/mikeki/ocf-ims/gen/ocf/ims/resources/v1"
+	servicerpcv1 "github.com/mikeki/ocf-ims/gen/ocf/ims/service/rpc/v1"
+	imsjson "github.com/mikeki/ocf-ims/json"
+)
+
+// incidentViewToJSON maps the GetIncident RPC's IncidentView proto back to the legacy
+// imsjson.Incident the incident tests assert against (and feed back into the still-REST
+// update/link write helpers). It is the exact inverse of the server's
+// incident.incidentJSONToProto: empty repeated fields, which the proto wire drops to
+// nil, are restored to the non-nil empty slices incidentToJSON always emitted, so the
+// read↔write round-trips and requireEqualIncident keep working unchanged while the
+// incident write path is still REST. This test-only bridge dies with json/ once the
+// whole incident surface moves onto Connect (plan 09 §Migration strategy).
+func incidentViewToJSON(view *servicerpcv1.IncidentView) imsjson.Incident {
+	inc := view.GetIncident()
+	out := imsjson.Incident{
+		Event:               inc.GetEvent(),
+		EventID:             inc.GetEventId(),
+		Number:              inc.GetNumber(),
+		Created:             inc.GetCreated().AsTime(),
+		LastModified:        inc.GetLastModified().AsTime(),
+		CreatedBy:           personRefToMention(inc.GetCreatedBy()),
+		State:               incidentStateToString(inc.GetState()),
+		Private:             inc.Private,
+		OutcomeID:           inc.OutcomeId,
+		Started:             inc.GetStarted().AsTime(),
+		Priority:            int8(inc.GetPriority()),
+		Summary:             inc.Summary,
+		ViewerMayAddJournal: view.GetViewerMayAddJournal(),
+	}
+	// Closed is unset (zero time) when the incident is open; incidentToJSON emitted a
+	// zero time.Time in that case, which AsTime() on a nil timestamp also yields.
+	if c := inc.GetClosed(); c != nil {
+		out.Closed = c.AsTime()
+	}
+	if loc := inc.GetLocation(); loc != nil {
+		out.Location = imsjson.Location{
+			AreaSlug:    loc.AreaSlug,
+			Description: loc.Description,
+			Booth:       loc.Booth,
+		}
+	}
+
+	// incidentToJSON always emitted non-nil pointers for these collection fields, but
+	// the proto wire drops an empty repeated field to a nil slice — restore the empty
+	// slice so requireEqualIncident's &[]T{} expectations still hold.
+	typeIDs := inc.GetIncidentTypeIds()
+	if typeIDs == nil {
+		typeIDs = []int32{}
+	}
+	out.IncidentTypeIDs = &typeIDs
+
+	reports := inc.GetReports()
+	if reports == nil {
+		reports = []int32{}
+	}
+	out.Reports = &reports
+
+	// Visits are excluded from the contract (09e). incidentToJSON always emitted a
+	// slice (empty for the beta, since visits are disabled), so restore the empty shape.
+	visits := []int32{}
+	out.Visits = &visits
+
+	people := []imsjson.IncidentPerson{}
+	for _, p := range inc.GetPeople() {
+		person := p.GetPerson()
+		people = append(people, imsjson.IncidentPerson{
+			PersonID:       int64(person.GetPersonId()),
+			Handle:         person.GetHandle(),
+			Name:           person.GetName(),
+			Involvement:    p.Involvement,
+			GrantedAccess:  p.GetGrantedAccess(),
+			HasEventAccess: p.GetHasEventAccess(),
+		})
+	}
+	out.People = &people
+
+	linked := []imsjson.LinkedIncident{}
+	for _, li := range inc.GetLinkedIncidents() {
+		linked = append(linked, imsjson.LinkedIncident{
+			EventName: li.GetEventName(),
+			EventID:   li.GetEventId(),
+			Number:    li.GetIncidentNumber(),
+			Summary:   li.GetSummary(),
+		})
+	}
+	out.LinkedIncidents = &linked
+
+	for _, je := range inc.GetJournalEntries() {
+		out.JournalEntries = append(out.JournalEntries, journalEntryProtoToJSON(je))
+	}
+	return out
+}
+
+func journalEntryProtoToJSON(je *resourcesv1.JournalEntry) imsjson.JournalEntry {
+	out := imsjson.JournalEntry{
+		ID:          je.GetId(),
+		Created:     je.GetCreated().AsTime(),
+		Author:      je.GetAuthor(),
+		SystemEntry: je.GetSystemEntry(),
+		Text:        je.GetText(),
+		Stricken:    je.Stricken,
+		OnBehalfOf:  personRefToMention(je.GetOnBehalfOf()),
+	}
+	if att := je.GetAttachment(); att != nil {
+		out.Attachment = imsjson.Attachment{Name: att.GetId(), Previewable: att.GetPreviewable()}
+	}
+	for _, m := range je.GetMentions() {
+		out.Mentions = append(out.Mentions, imsjson.Mention{
+			PersonID: m.GetPersonId(),
+			Handle:   m.GetHandle(),
+			Name:     m.GetName(),
+		})
+	}
+	return out
+}
+
+func personRefToMention(ref *commonv1.PersonRef) *imsjson.Mention {
+	if ref == nil {
+		return nil
+	}
+	return &imsjson.Mention{
+		PersonID: ref.GetPersonId(),
+		Handle:   ref.GetHandle(),
+		Name:     ref.GetName(),
+	}
+}
+
+func incidentStateToString(s resourcesv1.IncidentState) string {
+	switch s {
+	case resourcesv1.IncidentState_INCIDENT_STATE_OPEN:
+		return "open"
+	case resourcesv1.IncidentState_INCIDENT_STATE_CLOSED:
+		return "closed"
+	default:
+		return ""
+	}
+}
+
+// connectStatus maps a Connect RPC error back to the HTTP status the retired REST
+// endpoint would have returned, so the incident tests' existing status-code assertions
+// keep working while the read helper drives the RPC (the response body is synthesized
+// as http.NoBody — see ApiHelper.getIncident).
+func connectStatus(err error) int {
+	if err == nil {
+		return http.StatusOK
+	}
+	switch connect.CodeOf(err) {
+	case connect.CodeUnauthenticated:
+		return http.StatusUnauthorized
+	case connect.CodePermissionDenied:
+		return http.StatusForbidden
+	case connect.CodeNotFound:
+		return http.StatusNotFound
+	case connect.CodeInvalidArgument:
+		return http.StatusBadRequest
+	default:
+		return http.StatusInternalServerError
+	}
+}

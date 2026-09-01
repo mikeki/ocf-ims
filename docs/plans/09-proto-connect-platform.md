@@ -683,6 +683,48 @@ extraction shape before the incident bulk. Detail in
   unauth (401) assertion turns into a 404 the moment the route is gone. *Adoption
   detail (#10) for the REST-retirement decision (§6).*
 
+### 1c — Domain extraction: GetIncident (a rich nested read) (2026-08-31)
+
+*(Slice 1c, second resource, branch `feat/1c-incident-getincident` off master. The
+first resource with a deep object graph — location, people, journal entries with
+attachments/mentions, linked incidents — so it stress-tests the shape `ListEvents`
+proved. Detail in [09h](09h-domain-extraction.md).)*
+
+- **The read moved cleanly; the sticking point was the tests, not the handler.** The
+  domain function `incident.GetIncident` (`internal/incident/connect.go`) ports the
+  REST `getIncident` authorization *verbatim* — event-wide read **or** a 52f
+  per-incident grant, with a private incident hidden behind **NotFound (404), not
+  PermissionDenied** so its existence never leaks — keyed off ctx claims and returning
+  Connect codes. `GET .../incidents/{n}` was deleted from `api/mux.go`, no shim.
+- **A read-only extraction still ripples into the still-REST write path — via the
+  tests.** ~50 `api/integration` sites fetch an incident, mutate it, and re-`POST` the
+  *same* `imsjson.Incident` to the (still-REST) update/link endpoints. Flipping only
+  the read to proto would have forced a proto→json hop at every round-trip. Instead the
+  `getIncident` **test helper** drives the real RPC but maps the `IncidentView` proto
+  back to `imsjson.Incident` (`incidentViewToJSON`) and synthesizes an `*http.Response`,
+  so all ~50 call sites and `requireEqualIncident` stayed byte-for-byte unchanged. *The
+  cost of extracting a read before its sibling writes is a throwaway proto↔json test
+  bridge; it dies when Create/Update move.*
+- **The proto wire drops empty repeated fields — the test bridge must restore them.**
+  `incidentToJSON` always emitted non-nil `&[]T{}` for people/reports/types/links, but
+  an empty proto `repeated` arrives as a `nil` slice, so `incidentViewToJSON`
+  re-inflates the empties or `requireEqualIncident`'s `&[]T{}` expectations fail. The
+  two converters are exact inverses, so whatever `incidentToJSON` produces round-trips
+  identically and every existing assertion holds. *The subtle part of a json↔proto
+  bridge is empty-vs-nil, not field mapping.*
+- **The id-keyed contract vs. name-keyed tests.** `GetIncidentRequest` keys the event by
+  numeric id (0e), but the suite passes event *names*. The helper resolves name→id via
+  an admin-authenticated `ListEvents` (cached token), independent of the caller — so it
+  still resolves for the unauthenticated / no-access callers the negative-auth tests
+  use, where the RPC itself is what must reject (auth is checked before the event
+  lookup, so a bad-perms caller reaches PermissionDenied, not a resolution failure).
+- **Reused `incidentToJSON` rather than writing a parallel `incidentToProto`.** It is
+  still shared by `GetIncidents` (plural) and the attachment reads, so the domain
+  function assembles the json then bridges json→proto (`incidentJSONToProto`) — one
+  throwaway hop, not a second full mapper to keep in sync. Extracting `GetIncidents`
+  next is what lets `incidentToJSON` be replaced by a direct DB→proto mapping and
+  retires both bridges. *Sequencing: plural read before the writes.*
+
 ## 8. Open questions
 
 1. **Does the Go binary keep serving static assets in production**, or does Caddy?

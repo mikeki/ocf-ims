@@ -205,15 +205,10 @@ func AddToMux(
 		),
 	)
 
-	mux.Handle("GET /ims/api/events/{eventName}/incidents/{incidentNumber}",
-		server.Adapt(
-			incident.GetIncident{ImsDBQ: db, UserStore: userStore, AttachmentsEnabled: attachmentsEnabled},
-			server.RecoverFromPanic(),
-			server.RequireAuthN(jwter),
-			server.LogRequest(false, actionLogger, userStore),
-			server.LimitRequestBytes(cfg.Core.MaxRequestBytes),
-		),
-	)
+	// GET .../incidents/{incidentNumber} was RETIRED when GetIncident moved onto
+	// Connect (plan 09h/1c, aggressive migration path — plan 09 §6). Reading a single
+	// incident is now the ImsService.GetIncident RPC (registered via AddConnectToMux);
+	// there is deliberately no REST shim.
 
 	mux.Handle("POST /ims/api/events/{eventName}/incidents/{incidentNumber}",
 		server.Adapt(
