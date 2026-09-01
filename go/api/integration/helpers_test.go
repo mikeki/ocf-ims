@@ -515,11 +515,31 @@ func (a ApiHelper) getMetrics(ctx context.Context, eventName string) (imsjson.Me
 	return *bod.(*imsjson.Metrics), resp
 }
 
+// getIncidents lists an event's incidents through the generated Connect client. The REST
+// GET .../incidents list endpoint was retired when ListIncidents was extracted (plan
+// 09h/1c). As with getIncident, the event is resolved to its numeric id (resolveEventID)
+// and each IncidentView is mapped back to the legacy imsjson.Incident (incidentViewToJSON)
+// with a synthesized *http.Response mirroring the retired endpoint's status. Callers pass
+// no exclude_system_entries, so — as with the old REST list without the query param — the
+// list includes system entries.
 func (a ApiHelper) getIncidents(ctx context.Context, eventName string) (imsjson.Incidents, *http.Response) {
 	a.t.Helper()
-	path := a.serverURL.JoinPath(fmt.Sprint("/ims/api/events/", eventName, "/incidents")).String()
-	bod, resp := a.imsGet(ctx, path, &imsjson.Incidents{})
-	return *bod.(*imsjson.Incidents), resp
+	eventID := a.resolveEventID(ctx, eventName)
+	client := servicev1connect.NewImsServiceClient(http.DefaultClient, a.serverURL.String())
+	req := connect.NewRequest(&servicerpcv1.ListIncidentsRequest{EventId: eventID})
+	if a.jwt != "" {
+		req.Header().Set("Authorization", "Bearer "+a.jwt)
+	}
+	resp, err := client.ListIncidents(ctx, req)
+	httpResp := &http.Response{StatusCode: connectStatus(err), Body: http.NoBody}
+	if err != nil {
+		return nil, httpResp
+	}
+	incidents := make(imsjson.Incidents, 0, len(resp.Msg.GetIncidents()))
+	for _, view := range resp.Msg.GetIncidents() {
+		incidents = append(incidents, incidentViewToJSON(view))
+	}
+	return incidents, httpResp
 }
 
 func (a ApiHelper) getVisits(ctx context.Context, eventName string) (imsjson.Visits, *http.Response) {

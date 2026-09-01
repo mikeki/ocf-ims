@@ -38,145 +38,15 @@ import (
 	"github.com/mikeki/ocf-ims/lib/herr"
 	"github.com/mikeki/ocf-ims/store"
 	"github.com/mikeki/ocf-ims/store/imsdb"
-	"golang.org/x/sync/errgroup"
 )
 
-type GetIncidents struct {
-	ImsDBQ             *store.DBQ
-	UserStore          directory.UserStore
-	AttachmentsEnabled bool
-}
-
-func (action GetIncidents) ServeHTTP(w http.ResponseWriter, req *http.Request) {
-	resp, errHTTP := action.getIncidents(req)
-	if errHTTP != nil {
-		errHTTP.From("[getIncidents]").WriteResponse(w)
-		return
-	}
-	server.MustWriteJSON(w, req, resp)
-}
-
-func (action GetIncidents) getIncidents(req *http.Request) (imsjson.Incidents, *herr.HTTPError) {
-	resp := make(imsjson.Incidents, 0)
-	event, jwt, eventPermissions, errHTTP := server.GetEventPermissions(req, action.ImsDBQ, action.UserStore)
-	if errHTTP != nil {
-		return resp, errHTTP.From("[server.GetEventPermissions]")
-	}
-	hasEventRead := eventPermissions&authz.EventReadIncidents != 0
-	viewerPersonID := jwt.Claims.PersonID()
-	viewerIsAdmin := jwt.Claims.PersonAdmin()
-
-	// Per-incident grants (52f) now do double duty: they're the only incidents a
-	// reporter without event-wide read may see, AND they reveal a private incident to
-	// a granted viewer who otherwise couldn't. Admins bypass both (mayViewIncident),
-	// so skip the query for them. A non-admin with neither the read bit nor any grant
-	// stays forbidden, so volunteer/public access isn't loosened.
-	grantedSet := map[int32]bool{}
-	if !viewerIsAdmin {
-		grantedNums, err := action.ImsDBQ.GrantedIncidentNumbersForPerson(req.Context(), action.ImsDBQ,
-			imsdb.GrantedIncidentNumbersForPersonParams{Event: event.ID, PersonID: viewerPersonID})
-		if err != nil {
-			return nil, herr.InternalServerError("Failed to fetch granted incidents", err).From("[GrantedIncidentNumbersForPerson]")
-		}
-		if !hasEventRead && len(grantedNums) == 0 {
-			return nil, herr.Forbidden("The requestor does not have EventReadIncidents permission", nil)
-		}
-		for _, n := range grantedNums {
-			grantedSet[n] = true
-		}
-	}
-	err := req.ParseForm()
-	if err != nil {
-		return nil, herr.BadRequest("Failed to parse form", err)
-	}
-	includeSystemEntries := !strings.EqualFold(req.Form.Get("exclude_system_entries"), "true")
-
-	// The Incidents and JournalEntries queries both request a lot of data, and we can query
-	// and process those results concurrently.
-	group, groupCtx := errgroup.WithContext(req.Context())
-
-	entriesByIncident := make(map[int32][]imsjson.JournalEntry)
-	group.Go(func() error {
-		journalEntries, err := action.ImsDBQ.Incidents_JournalEntries(
-			groupCtx,
-			action.ImsDBQ,
-			imsdb.Incidents_JournalEntriesParams{
-				Event:     event.ID,
-				Generated: includeSystemEntries,
-			},
-		)
-		if err != nil {
-			return herr.InternalServerError("Failed to fetch Incident Journal Entries", err).From("[Incidents_JournalEntries]")
-		}
-		for _, row := range journalEntries {
-			entriesByIncident[row.IncidentNumber] = append(
-				entriesByIncident[row.IncidentNumber],
-				// Incidents don't set "on behalf of" (6m is reports-only for now).
-				journalEntryToJSON(row.JournalEntry, row.Author.String, nil, action.AttachmentsEnabled),
-			)
-		}
-		return nil
-	})
-
-	peopleByIncident := make(map[int32][]imsjson.IncidentPerson)
-	group.Go(func() error {
-		peopleRows, err := action.ImsDBQ.Incidents_People(groupCtx, action.ImsDBQ, event.ID)
-		if err != nil {
-			return herr.InternalServerError("Failed to fetch people", err).From("[Incidents_People]")
-		}
-		for _, row := range peopleRows {
-			peopleByIncident[row.IncidentPerson.IncidentNumber] = append(peopleByIncident[row.IncidentPerson.IncidentNumber],
-				imsjson.IncidentPerson{PersonID: int64(row.IncidentPerson.PersonID), Handle: row.Handle.String, Name: row.Name.String, Involvement: conv.SqlToString(row.IncidentPerson.Involvement), GrantedAccess: row.IncidentPerson.GrantedAccess, HasEventAccess: row.HasEventAccess.Bool})
-		}
-		return nil
-	})
-
-	var incidentsRows []imsdb.IncidentsRow
-	group.Go(func() error {
-		var err error
-		incidentsRows, err = action.ImsDBQ.Incidents(groupCtx, action.ImsDBQ, event.ID)
-		if err != nil {
-			return herr.InternalServerError("Failed to fetch Incidents", err).From("[Incidents]")
-		}
-		return nil
-	})
-	err = group.Wait()
-	if err != nil {
-		return resp, herr.AsHTTPError(err)
-	}
-
-	for _, r := range incidentsRows {
-		// One check covers both the granted-reporter scope (52f) and the private flag:
-		// a private incident is dropped for anyone who isn't its creator, an admin, or
-		// a grant-holder; a reporter without event read still sees only granted ones.
-		if !mayViewIncident(r.Incident.Private, r.Incident.CreatedBy, viewerPersonID, viewerIsAdmin, hasEventRead, grantedSet[r.Incident.Number]) {
-			continue
-		}
-		// The conversion from IncidentsRow to IncidentRow works because the Incident and Incidents
-		// query row structs currently have the same fields in the same order. If that changes in the
-		// future, this won't compile, and we may need to duplicate the readExtraIncidentRowFields
-		// function.
-		incidentRow := imsdb.IncidentRow(r)
-
-		// we don't bother looking up linked incidents for the GetIncidents call
-		var emptyLinkedIncidents []imsdb.Incident_LinkedIncidentsRow
-
-		incJSON, errHTTP := incidentToJSON(incidentRow, peopleByIncident[r.Incident.Number], entriesByIncident[r.Incident.Number], emptyLinkedIncidents, event, action.AttachmentsEnabled)
-		if errHTTP != nil {
-			return resp, errHTTP.From("[incidentToJSON]")
-		}
-		resp = append(resp, incJSON)
-	}
-
-	return resp, nil
-}
-
-// GetIncident (the singular read) was extracted onto Connect (plan 09h/1c):
-// the domain function, its proto authorization, and the json→proto bridge live in
-// connect.go (incident.GetIncident), and the REST GET route was retired. The shared
-// assembly helpers below (incidentToJSON, fetchIncident, mayViewIncident) stay — they
-// are still used by GetIncidents (plural), the attachment reads, and the extracted
-// Connect path.
+// The incident reads — GetIncident (singular) and GetIncidents (plural, formerly the
+// GET .../incidents list handler here) — were extracted onto Connect (plan 09h/1c):
+// their domain functions, proto authorization, and the json→proto bridge live in
+// connect.go (incident.GetIncident, incident.ListIncidents), and both REST GET routes
+// were retired, not shimmed (aggressive migration, plan 09 §6). The shared assembly
+// helpers below (incidentToJSON, fetchIncident, mayViewIncident) stay — they are still
+// used by those Connect reads and by the attachment reads.
 
 func incidentToJSON(storedRow imsdb.IncidentRow, incidentPeople []imsjson.IncidentPerson,
 	resultEntries []imsjson.JournalEntry, linkedIncidents []imsdb.Incident_LinkedIncidentsRow,

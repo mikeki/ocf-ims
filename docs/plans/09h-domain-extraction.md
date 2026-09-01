@@ -129,14 +129,20 @@ reference implementations to copy: the domain function (`internal/event/event.go
 move (`api/integration/{main,helpers,event,proto_convert}_test.go`); see the §7 "1c"
 findings.
 
-**GetIncident is the branch `feat/1c-incident-getincident`** (off master, ListEvents
-already merged). Next incident RPCs, still on the aggressive path: **`GetIncidents`
-(plural)** — extracting it lets `incidentToJSON` be replaced by a direct DB→proto
-mapping and retires the `incidentJSONToProto`/`incidentViewToJSON` throwaway bridge —
-then **`CreateIncident`/`UpdateIncident`** (which flips the test read↔write round-trips
-fully onto proto and lets the `getIncident` test helper stop synthesizing an
-`*http.Response`). Then reports → people/auth → taxonomies → events(EditEvent)/areas/
-crews → metrics/action log. For each: move handler logic into a proto-shaped domain
+The incident **reads** are done: **`GetIncident`** (branch `feat/1c-incident-getincident`,
+merged #210) and **`GetIncidents`/`ListIncidents`** (branch `feat/1c-incident-listincidents`).
+Both reuse the shared `incidentToJSON`→`incidentJSONToProto` bridge. The direct DB→proto
+mapper that would retire `incidentToJSON`/`incidentJSONToProto` was **deliberately deferred
+to the write PR** (see the §7 "ListIncidents" finding): the *test-side* bridge
+(`incidentViewToJSON`) can't retire while writes are REST anyway, and rewriting the mapper
+by hand risks silent `requireEqualIncident` drift for a small payoff — so it's cleaner to
+do it atomically when the write path moves. Next incident RPCs, still on the aggressive
+path: **`CreateIncident`/`UpdateIncident`** — flips the test read↔write round-trips fully
+onto proto, lets the `getIncident`/`getIncidents` test helpers stop synthesizing an
+`*http.Response`, and is where `incidentToJSON`/`incidentJSONToProto`/`incidentViewToJSON`
+all finally die together in one direct DB→proto rewrite. Then reports → people/auth →
+taxonomies → events(EditEvent)/areas/crews → metrics/action log. For each: move handler
+logic into a proto-shaped domain
 function returning Connect errors, add the RPC method to `ImsService`, **delete the
 REST route + handler and move its `api/integration` cases onto the Connect client**
 (NOT a shim — the aggressive path, plan 09 §6), then verify. **Defer `funlen`:** the

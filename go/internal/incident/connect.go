@@ -35,6 +35,7 @@ import (
 	"github.com/mikeki/ocf-ims/lib/herr"
 	"github.com/mikeki/ocf-ims/store"
 	"github.com/mikeki/ocf-ims/store/imsdb"
+	"golang.org/x/sync/errgroup"
 	"google.golang.org/protobuf/types/known/timestamppb"
 )
 
@@ -177,6 +178,145 @@ func GetIncident(
 			ViewerMayAddJournal: viewerMayAddJournal,
 		},
 	}, nil
+}
+
+// ListIncidents is the domain function behind the ListIncidents RPC (plan 09h/1c). The
+// REST GET /events/{eventName}/incidents endpoint was RETIRED with this extraction, not
+// shimmed (migration decision, plan 09 §Migration strategy) — listing incidents is
+// Connect-only now. It ports the REST getIncidents authorization and assembly verbatim:
+// 52f grants scope which incidents a caller without event-wide read may see and reveal a
+// private incident to a granted viewer, and mayViewIncident drops a private incident for
+// anyone who isn't its creator, an admin, or a grant-holder. Like GetIncident it reuses
+// the shared incidentToJSON assembly and bridges each result onto the wire proto; that
+// json hop collapses when the incident write path also moves onto Connect.
+//
+// Unlike the singular read, the plural computes viewer_may_add_journal per incident (a
+// writer/admin may add to any, an involved reporter only to the ones granted). The REST
+// list never surfaced that flag, but the IncidentView contract carries it, and the
+// grant set is already in hand — so it costs nothing to fill in accurately.
+func ListIncidents(
+	ctx context.Context,
+	imsDBQ *store.DBQ,
+	attachmentsEnabled bool,
+	req *rpcv1.ListIncidentsRequest,
+) (*rpcv1.ListIncidentsResponse, error) {
+	claims, ok := server.ClaimsFromContext(ctx)
+	if !ok {
+		return nil, connect.NewError(connect.CodeUnauthenticated, errors.New("authentication required"))
+	}
+
+	eventRow, err := imsDBQ.Event(ctx, imsDBQ, req.GetEventId())
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return nil, connect.NewError(connect.CodeNotFound, errors.New("event not found"))
+		}
+		return nil, connect.NewError(connect.CodeInternal, fmt.Errorf("failed to fetch event: %w", err))
+	}
+	event := eventRow.Event
+
+	eventPerms, _, err := authz.EventPermissions(ctx, &event.ID, imsDBQ, *claims)
+	if err != nil {
+		return nil, connect.NewError(connect.CodeInternal, fmt.Errorf("failed to compute permissions: %w", err))
+	}
+	eventPermissions := eventPerms[event.ID]
+	hasEventRead := eventPermissions&authz.EventReadIncidents != 0
+	hasEventWrite := eventPermissions&authz.EventWriteIncidents != 0
+	viewerPersonID := claims.PersonID()
+	viewerIsAdmin := claims.PersonAdmin()
+
+	// 52f grants scope what a caller without event-wide read may see, and reveal a
+	// private incident to a granted viewer. Admins bypass both (mayViewIncident), so
+	// skip the query for them. A non-admin with neither the read bit nor any grant is
+	// forbidden — volunteer/public access isn't loosened.
+	grantedSet := map[int32]bool{}
+	if !viewerIsAdmin {
+		grantedNums, err := imsDBQ.GrantedIncidentNumbersForPerson(ctx, imsDBQ,
+			imsdb.GrantedIncidentNumbersForPersonParams{Event: event.ID, PersonID: viewerPersonID})
+		if err != nil {
+			return nil, connect.NewError(connect.CodeInternal, fmt.Errorf("failed to fetch granted incidents: %w", err))
+		}
+		if !hasEventRead && len(grantedNums) == 0 {
+			return nil, connect.NewError(connect.CodePermissionDenied,
+				errors.New("the requestor does not have EventReadIncidents permission"))
+		}
+		for _, n := range grantedNums {
+			grantedSet[n] = true
+		}
+	}
+
+	includeSystemEntries := !req.GetExcludeSystemEntries()
+
+	// The incidents, people, and journal-entry queries each pull a lot of data; run
+	// them concurrently as the REST handler did.
+	group, groupCtx := errgroup.WithContext(ctx)
+
+	entriesByIncident := make(map[int32][]imsjson.JournalEntry)
+	group.Go(func() error {
+		journalEntries, err := imsDBQ.Incidents_JournalEntries(groupCtx, imsDBQ,
+			imsdb.Incidents_JournalEntriesParams{Event: event.ID, Generated: includeSystemEntries})
+		if err != nil {
+			return connect.NewError(connect.CodeInternal, fmt.Errorf("failed to fetch incident journal entries: %w", err))
+		}
+		for _, row := range journalEntries {
+			// Incidents don't set "on behalf of" (6m is reports-only for now).
+			entriesByIncident[row.IncidentNumber] = append(entriesByIncident[row.IncidentNumber],
+				journalEntryToJSON(row.JournalEntry, row.Author.String, nil, attachmentsEnabled))
+		}
+		return nil
+	})
+
+	peopleByIncident := make(map[int32][]imsjson.IncidentPerson)
+	group.Go(func() error {
+		peopleRows, err := imsDBQ.Incidents_People(groupCtx, imsDBQ, event.ID)
+		if err != nil {
+			return connect.NewError(connect.CodeInternal, fmt.Errorf("failed to fetch people: %w", err))
+		}
+		for _, row := range peopleRows {
+			peopleByIncident[row.IncidentPerson.IncidentNumber] = append(peopleByIncident[row.IncidentPerson.IncidentNumber],
+				imsjson.IncidentPerson{PersonID: int64(row.IncidentPerson.PersonID), Handle: row.Handle.String, Name: row.Name.String, Involvement: conv.SqlToString(row.IncidentPerson.Involvement), GrantedAccess: row.IncidentPerson.GrantedAccess, HasEventAccess: row.HasEventAccess.Bool})
+		}
+		return nil
+	})
+
+	var incidentsRows []imsdb.IncidentsRow
+	group.Go(func() error {
+		var err error
+		incidentsRows, err = imsDBQ.Incidents(groupCtx, imsDBQ, event.ID)
+		if err != nil {
+			return connect.NewError(connect.CodeInternal, fmt.Errorf("failed to fetch incidents: %w", err))
+		}
+		return nil
+	})
+	err = group.Wait()
+	if err != nil {
+		return nil, err
+	}
+
+	views := make([]*rpcv1.IncidentView, 0, len(incidentsRows))
+	for _, r := range incidentsRows {
+		// One check covers both the granted-reporter scope (52f) and the private flag:
+		// a private incident is dropped for anyone who isn't its creator, an admin, or a
+		// grant-holder; a reporter without event read still sees only granted ones.
+		if !mayViewIncident(r.Incident.Private, r.Incident.CreatedBy, viewerPersonID, viewerIsAdmin, hasEventRead, grantedSet[r.Incident.Number]) {
+			continue
+		}
+		// The IncidentsRow → IncidentRow conversion works because the two query row
+		// structs currently have the same fields in the same order (as the retired
+		// getIncidents noted); if that changes this stops compiling.
+		incidentRow := imsdb.IncidentRow(r)
+		// The list read doesn't look up linked incidents.
+		var emptyLinkedIncidents []imsdb.Incident_LinkedIncidentsRow
+		incJSON, errHTTP := incidentToJSON(incidentRow, peopleByIncident[r.Incident.Number], entriesByIncident[r.Incident.Number], emptyLinkedIncidents, event, attachmentsEnabled)
+		if errHTTP != nil {
+			return nil, herrToConnect(errHTTP)
+		}
+		views = append(views, &rpcv1.IncidentView{
+			Incident:            incidentJSONToProto(incJSON),
+			ViewerMayAddJournal: hasEventWrite || grantedSet[r.Incident.Number],
+		})
+	}
+
+	return &rpcv1.ListIncidentsResponse{Incidents: views}, nil
 }
 
 // herrToConnect maps an herr.HTTPError from the reused REST-era helpers

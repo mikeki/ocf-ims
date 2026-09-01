@@ -70,6 +70,22 @@ func (s ImsService) ListEvents(
 	return connect.NewResponse(resp), nil
 }
 
+// ListIncidents is a thin RPC method over the incident.ListIncidents domain function
+// (plan 09h/1c). Its REST predecessor (GET /events/{eventName}/incidents) was deleted in
+// the same slice, so this is the only transport for listing an event's incidents. The
+// domain function authorizes from ctx claims and speaks Connect errors, so this just
+// delegates.
+func (s ImsService) ListIncidents(
+	ctx context.Context,
+	req *connect.Request[servicerpcv1.ListIncidentsRequest],
+) (*connect.Response[servicerpcv1.ListIncidentsResponse], error) {
+	resp, err := incident.ListIncidents(ctx, s.ImsDBQ, s.AttachmentsEnabled, req.Msg)
+	if err != nil {
+		return nil, err
+	}
+	return connect.NewResponse(resp), nil
+}
+
 // GetIncident is a thin RPC method over the incident.GetIncident domain function
 // (plan 09h/1c). Its REST predecessor (GET .../incidents/{n}) was deleted in the same
 // slice, so this is the only transport for reading a single incident. The domain
