@@ -320,6 +320,37 @@ func incidentTypeGroupPtrToString(g *resourcesv1.IncidentTypeGroup) *string {
 	return &s
 }
 
+// crewProtoToJSON maps a resources/v1.Crew from the ListCrews / ListMyCrews RPC back to the legacy
+// imsjson.Crew the crew tests assert against — the inverse of the server's crew.crewsToProto. Each
+// member's PersonRef flattens into the imsjson.CrewMember's person fields. Dies with json/ when the
+// read is rebuilt DB→proto.
+func crewProtoToJSON(p *resourcesv1.Crew) imsjson.Crew {
+	members := make([]imsjson.CrewMember, 0, len(p.GetMembers()))
+	for _, m := range p.GetMembers() {
+		pr := m.GetPerson()
+		members = append(members, imsjson.CrewMember{
+			PersonID: pr.GetPersonId(),
+			Handle:   pr.GetHandle(),
+			Name:     pr.GetName(),
+			IsLeader: m.GetIsLeader(),
+		})
+	}
+	return imsjson.Crew{
+		Slug:    p.GetSlug(),
+		Name:    p.Name,
+		Members: members,
+	}
+}
+
+// crewMsgFromJSON builds the resources/v1.Crew the create/update crew helpers send from the legacy
+// imsjson.Crew the call sites still construct. Only name is a writable resource field; the slug is
+// server-derived (create) or passed as the UpdateCrew request key, and members are read-only.
+func crewMsgFromJSON(req imsjson.Crew) *resourcesv1.Crew {
+	return &resourcesv1.Crew{
+		Name: req.Name,
+	}
+}
+
 // areaProtoToJSON maps a resources/v1.Area from the ListAreas RPC back to the legacy imsjson.Area the
 // area tests assert against — the inverse of the server's area.areaToProto. The optional scalars carry
 // straight across; the proposer PersonRef becomes a *Mention (reusing personRefToMention). Dies with

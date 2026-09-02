@@ -607,29 +607,99 @@ func (a ApiHelper) getAreas(ctx context.Context, eventName string) (imsjson.Area
 	return out, &http.Response{StatusCode: http.StatusOK, Body: http.NoBody}
 }
 
+// editCrew dispatches the legacy admin EditCrews multiplexer DTO onto the decomposed crew write RPCs
+// by the same selectors the retired REST handler switched on (empty slug → CreateCrew, Delete →
+// DeleteCrew, Member → SetCrewMembership, else → UpdateCrew). The REST POST /crews route was retired
+// in 1c. Create returns the server-generated slug (the retired endpoint's IMS-Crew-Slug header); the
+// rest synthesize 204 / connectStatus. Crew tests assert on status only, so no body is carried.
 func (a ApiHelper) editCrew(ctx context.Context, eventName string, req imsjson.Crew) (slug string, resp *http.Response) {
 	a.t.Helper()
-	httpResp := a.imsPost(ctx, req, a.serverURL.JoinPath("/ims/api/events/", eventName, "/crews").String())
-	return httpResp.Header.Get("IMS-Crew-Slug"), httpResp
+	client := servicev1connect.NewImsServiceClient(http.DefaultClient, a.serverURL.String())
+	eventID := a.resolveEventID(ctx, eventName)
+	switch {
+	case req.Slug == "":
+		rpcReq := connect.NewRequest(&servicerpcv1.CreateCrewRequest{EventId: eventID, Crew: crewMsgFromJSON(req)})
+		a.authorizeRPC(rpcReq)
+		createResp, err := client.CreateCrew(ctx, rpcReq)
+		if err != nil {
+			return "", &http.Response{StatusCode: connectStatus(err), Body: http.NoBody}
+		}
+		return createResp.Msg.GetCrewSlug(), &http.Response{StatusCode: http.StatusNoContent, Body: http.NoBody}
+	case req.Delete:
+		rpcReq := connect.NewRequest(&servicerpcv1.DeleteCrewRequest{EventId: eventID, CrewSlug: req.Slug})
+		a.authorizeRPC(rpcReq)
+		_, err := client.DeleteCrew(ctx, rpcReq)
+		return "", writeRPCStatus(err)
+	case req.Member != nil:
+		rpcReq := connect.NewRequest(&servicerpcv1.SetCrewMembershipRequest{
+			EventId: eventID, CrewSlug: req.Slug,
+			PersonId: req.Member.PersonID, Remove: req.Member.Remove, IsLeader: req.Member.IsLeader,
+		})
+		a.authorizeRPC(rpcReq)
+		_, err := client.SetCrewMembership(ctx, rpcReq)
+		return "", writeRPCStatus(err)
+	default:
+		rpcReq := connect.NewRequest(&servicerpcv1.UpdateCrewRequest{EventId: eventID, CrewSlug: req.Slug, Crew: crewMsgFromJSON(req)})
+		a.authorizeRPC(rpcReq)
+		_, err := client.UpdateCrew(ctx, rpcReq)
+		return "", writeRPCStatus(err)
+	}
 }
 
 func (a ApiHelper) getCrews(ctx context.Context, eventName string) (imsjson.Crews, *http.Response) {
 	a.t.Helper()
-	path := a.serverURL.JoinPath("/ims/api/events/", eventName, "/crews").String()
-	bod, resp := a.imsGet(ctx, path, &imsjson.Crews{})
-	return *bod.(*imsjson.Crews), resp
+	client := servicev1connect.NewImsServiceClient(http.DefaultClient, a.serverURL.String())
+	rpcReq := connect.NewRequest(&servicerpcv1.ListCrewsRequest{EventId: a.resolveEventID(ctx, eventName)})
+	a.authorizeRPC(rpcReq)
+	resp, err := client.ListCrews(ctx, rpcReq)
+	if err != nil {
+		return nil, &http.Response{StatusCode: connectStatus(err), Body: http.NoBody}
+	}
+	out := make(imsjson.Crews, 0, len(resp.Msg.GetCrews()))
+	for _, c := range resp.Msg.GetCrews() {
+		out = append(out, crewProtoToJSON(c))
+	}
+	return out, &http.Response{StatusCode: http.StatusOK, Body: http.NoBody}
 }
 
 func (a ApiHelper) getMyCrews(ctx context.Context, eventName string) (imsjson.Crews, *http.Response) {
 	a.t.Helper()
-	path := a.serverURL.JoinPath("/ims/api/events/", eventName, "/crews/mine").String()
-	bod, resp := a.imsGet(ctx, path, &imsjson.Crews{})
-	return *bod.(*imsjson.Crews), resp
+	client := servicev1connect.NewImsServiceClient(http.DefaultClient, a.serverURL.String())
+	rpcReq := connect.NewRequest(&servicerpcv1.ListMyCrewsRequest{EventId: a.resolveEventID(ctx, eventName)})
+	a.authorizeRPC(rpcReq)
+	resp, err := client.ListMyCrews(ctx, rpcReq)
+	if err != nil {
+		return nil, &http.Response{StatusCode: connectStatus(err), Body: http.NoBody}
+	}
+	out := make(imsjson.Crews, 0, len(resp.Msg.GetCrews()))
+	for _, c := range resp.Msg.GetCrews() {
+		out = append(out, crewProtoToJSON(c))
+	}
+	return out, &http.Response{StatusCode: http.StatusOK, Body: http.NoBody}
 }
 
+// editMyCrew drives the crew-leader self-service member edit through SetMyCrewMembership. The DTO's
+// Member fields become the request's person_id/remove/is_leader; a DTO with no Member (a would-be
+// create / rename / delete on this path) leaves person_id 0, which the request's int32.gt=0
+// constraint rejects as InvalidArgument (400) — the same rejection the retired handler gave for a
+// non-member change.
 func (a ApiHelper) editMyCrew(ctx context.Context, eventName string, req imsjson.Crew) *http.Response {
 	a.t.Helper()
-	return a.imsPost(ctx, req, a.serverURL.JoinPath("/ims/api/events/", eventName, "/crews/mine").String())
+	client := servicev1connect.NewImsServiceClient(http.DefaultClient, a.serverURL.String())
+	var personID int32
+	var remove, isLeader bool
+	if req.Member != nil {
+		personID = req.Member.PersonID
+		remove = req.Member.Remove
+		isLeader = req.Member.IsLeader
+	}
+	rpcReq := connect.NewRequest(&servicerpcv1.SetMyCrewMembershipRequest{
+		EventId: a.resolveEventID(ctx, eventName), CrewSlug: req.Slug,
+		PersonId: personID, Remove: remove, IsLeader: isLeader,
+	})
+	a.authorizeRPC(rpcReq)
+	_, err := client.SetMyCrewMembership(ctx, rpcReq)
+	return writeRPCStatus(err)
 }
 
 // newReport creates a field report through the generated Connect client. The REST POST

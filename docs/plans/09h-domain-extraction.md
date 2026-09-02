@@ -368,7 +368,21 @@ the incident writes), so an area write resolves the name to invalidate it (best-
 left the per-event route sweep in `TestEventEndpoints_ForNoEventPerms` → focused
 `TestListAreasAuthorization`; area write-auth was already covered inline in `area_test.go`.
 
-Next: **crews → notifications/push →
+The **crew** surface is now done (branch `feat/1c-crews`, stacked on `feat/1c-areas`) — a new
+`crew.Service` with seven RPCs: the admin `ListCrews` + `CreateCrew`/`UpdateCrew`/`DeleteCrew`/
+`SetCrewMembership`, plus the crew-leader self-service pair `ListMyCrews` + `SetMyCrewMembership`,
+retiring REST GET/POST /events/{eventName}/crews and .../crews/mine. Like areas, the writes are thin
+wrappers over the herr-returning cores ported verbatim from the retired `EditCrews`/`EditMyCrew`
+handlers (delete is a members-then-crew transaction; the self-service member edit refuses to touch
+leader flags). No contract gap — the Crew resource deliberately omits `sort_order` (the comment says
+so; crew tests never set it, unlike areas), and `CreateCrewResponse` already returns the slug.
+`CrewsCache` moved to AddConnectToMux, keyed by event id (private to the Service; no metrics
+dependency — crews don't feed the dashboard). The single-member mutation RPCs carry `person_id`/
+`remove`/`is_leader` explicitly, so a self-service DTO that isn't a member change (rename/delete) now
+maps to `person_id == 0` and is rejected by the request's `int32.gt = 0` constraint — the same 400 the
+handler gave. Crew auth was already inline in `crew_test.go`; nothing left a permissions sweep.
+
+Next: **notifications/push →
 metrics/action log**. For each: move handler logic into a
 proto-shaped domain method on its domain `Service` returning Connect errors, add the RPC
 method to `ImsService`, **delete the REST route + handler and move its `api/integration`
