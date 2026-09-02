@@ -26,4 +26,7 @@ message Area {
   // proposer is the person who proposed a still-unapproved area; read-only, and
   // unset for canonical/admin-created/approved areas.
   optional ocf.ims.common.v1.PersonRef proposer = 5;
+  // sort_order controls the area's position in the admin Areas list and the
+  // incident-form picker (ascending). Defaults to 0 on create when unset.
+  optional int32 sort_order = 6;
 }

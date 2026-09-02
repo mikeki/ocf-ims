@@ -204,6 +204,48 @@ func TestListOutcomesAuthorization(t *testing.T) {
 	require.NoError(t, resp.Body.Close())
 }
 
+// TestListAreasAuthorization pins the ListAreas RPC's read-authorization now that GET
+// /ims/api/events/{eventName}/areas is retired from REST (it was an entry in the per-event route
+// sweep). A reader needs EventReadAreas on the event (the reporter and writer 52b rungs both have it;
+// the admin bypass also applies): an unauthenticated caller is 401, a non-admin with no participation
+// row is 403, and a reporter (or writer) may read.
+func TestListAreasAuthorization(t *testing.T) {
+	t.Parallel()
+	ctx := t.Context()
+
+	apisAdmin := ApiHelper{t: t, serverURL: shared.serverURL, jwt: jwtForAdmin(ctx, t)}
+	apisAlice := ApiHelper{t: t, serverURL: shared.serverURL, jwt: jwtForAlice(t, ctx)}
+	apisNotAuthenticated := ApiHelper{t: t, serverURL: shared.serverURL, jwt: ""}
+
+	eventName := rand.NonCryptoText()
+	_, resp := apisAdmin.createEvent(ctx, imsjson.Event{Name: &eventName})
+	require.Equal(t, http.StatusNoContent, resp.StatusCode)
+	require.NoError(t, resp.Body.Close())
+
+	// Unauthenticated: 401.
+	_, resp = apisNotAuthenticated.getAreas(ctx, eventName)
+	require.Equal(t, http.StatusUnauthorized, resp.StatusCode)
+	require.NoError(t, resp.Body.Close())
+
+	// A non-admin with no participation row on this event: 403.
+	_, resp = apisAlice.getAreas(ctx, eventName)
+	require.Equal(t, http.StatusForbidden, resp.StatusCode)
+	require.NoError(t, resp.Body.Close())
+
+	// Once a reporter, Alice has EventReadAreas and may read.
+	resp = apisAdmin.addReporter(ctx, eventName, userAliceHandle)
+	require.Equal(t, http.StatusNoContent, resp.StatusCode)
+	require.NoError(t, resp.Body.Close())
+	_, resp = apisAlice.getAreas(ctx, eventName)
+	require.Equal(t, http.StatusOK, resp.StatusCode)
+	require.NoError(t, resp.Body.Close())
+
+	// The admin (bypass) may always read.
+	_, resp = apisAdmin.getAreas(ctx, eventName)
+	require.Equal(t, http.StatusOK, resp.StatusCode)
+	require.NoError(t, resp.Body.Close())
+}
+
 func TestEventEndpoints_ForNoEventPerms(t *testing.T) {
 	t.Parallel()
 	ctx := t.Context()
@@ -231,7 +273,9 @@ func TestEventEndpoints_ForNoEventPerms(t *testing.T) {
 	// unauth (401) and forbidden (403) behavior is covered through the Connect client in
 	// TestIncidentAPIAuthorization, TestIncidentSubresourceWriteAuthorization,
 	// TestReportReadAuthorization and TestReportWriteAuthorization, so they are no longer
-	// enumerated here. Only the report-attachment upload/download (still REST) remains below.
+	// enumerated here. GET /areas was likewise retired (→ ImsService.ListAreas); its
+	// no-perms/reporter/writer read-authorization moved to TestListAreasAuthorization below. Only the
+	// report-attachment upload/download (still REST) remains below.
 	getIncidentAttachment := MethodURL{http.MethodGet, eventPath + "/incidents/1/attachments/1"}
 	postIncidentAttachment := MethodURL{http.MethodPost, eventPath + "/incidents/1/attachments"}
 	getReportAttachment := MethodURL{http.MethodGet, eventPath + "/reports/1/attachments/1"}
@@ -245,7 +289,6 @@ func TestEventEndpoints_ForNoEventPerms(t *testing.T) {
 	postVisitRE := MethodURL{http.MethodPost, eventPath + "/visits/9999999/journal_entries/2"}
 	postVisitPerson := MethodURL{http.MethodPost, eventPath + "/visits/1/people/some_name"}
 	deleteVisitPerson := MethodURL{http.MethodDelete, eventPath + "/visits/1/people/some_name"}
-	getAreas := MethodURL{http.MethodGet, eventPath + "/areas"}
 
 	allPerms := []MethodURL{
 		getIncidentAttachment,
@@ -261,12 +304,10 @@ func TestEventEndpoints_ForNoEventPerms(t *testing.T) {
 		postVisitRE,
 		postVisitPerson,
 		deleteVisitPerson,
-		getAreas,
 	}
 	reporter := []MethodURL{
 		getReportAttachment,
 		postReportAttachment,
-		getAreas,
 	}
 
 	// The 52b ladder has no read-only rung: a non-writer/non-reporter sees nothing.
