@@ -601,7 +601,7 @@ func (s Service) AttachPersonToIncident(
 	if runErr != nil {
 		return nil, herrToConnect(herr.AsHTTPError(runErr))
 	}
-	s.Es.NotifyIncidentUpdate(event.ID, incidentNumber)
+	s.Es.NotifyIncidentUpdate(ctx, event.ID, incidentNumber)
 	// Web push the added person (plan 84c): after commit, off the request path, and only on a
 	// genuine new attach — same gate as the in-app notification.
 	if newlyAttached {
@@ -664,7 +664,7 @@ func (s Service) DetachPersonFromIncident(
 		return nil, herrToConnect(herr.AsHTTPError(runErr))
 	}
 
-	s.Es.NotifyIncidentUpdate(event.ID, incidentNumber)
+	s.Es.NotifyIncidentUpdate(ctx, event.ID, incidentNumber)
 	return &rpcv1.DetachPersonFromIncidentResponse{}, nil
 }
 
@@ -725,7 +725,7 @@ func (s Service) UpdateIncidentJournalEntry(
 		return nil, connect.NewError(connect.CodeInternal, fmt.Errorf("failed to commit transaction: %w", err))
 	}
 
-	defer s.Es.NotifyIncidentUpdate(event.ID, incidentNumber)
+	defer s.Es.NotifyIncidentUpdate(ctx, event.ID, incidentNumber)
 	return &rpcv1.UpdateIncidentJournalEntryResponse{}, nil
 }
 
@@ -986,7 +986,7 @@ func (s Service) CreateReport(
 	if incidentNumber.Valid {
 		// The incident just gained a report; refresh its subscribers too (0 = no
 		// previous incident, mirroring an attach from unattached).
-		defer s.Es.NotifyIncidentUpdates(event.ID, 0, incidentNumber.Int32)
+		defer s.Es.NotifyIncidentUpdates(ctx, event.ID, 0, incidentNumber.Int32)
 	}
 	s.Pusher.NotifyMentionedInReport(ctx, event.Name, report.Number, mentionedPersonIDs, authorPersonID)
 	return &rpcv1.CreateReportResponse{ReportNumber: report.Number}, nil
@@ -1332,7 +1332,7 @@ func (s Service) reconcileReportLink(
 		}
 	}
 	s.Es.NotifyReportUpdate(event.ID, reportNumber)
-	s.Es.NotifyIncidentUpdates(event.ID, previous.Int32, target.Int32)
+	s.Es.NotifyIncidentUpdates(ctx, event.ID, previous.Int32, target.Int32)
 	return nil
 }
 

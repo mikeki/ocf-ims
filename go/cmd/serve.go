@@ -141,7 +141,19 @@ func mustStartServer(ctx context.Context, unvalidatedCfg *conf.IMSConfig, printC
 		pushSender = push.NewWebPushSender(imsCfg.Push.VAPIDPublicKey, imsCfg.Push.VAPIDPrivateKey, imsCfg.Push.VAPIDSubject)
 	}
 
-	eventSource := server.NewEventSourcerer()
+	// The SSE hub redacts a private incident's number before broadcasting (plan 09 §6
+	// M8), so it needs to know whether a given incident is private. Inject that as a
+	// small lookup over the IMS DB — internal/server stays a leaf package, unaware of
+	// the store.
+	eventSource := server.NewEventSourcerer(
+		func(ctx context.Context, eventID, incidentNumber int32) (bool, error) {
+			row, err := imsDBQ.Incident(ctx, imsDBQ, imsdb.IncidentParams{Event: eventID, Number: incidentNumber})
+			if err != nil {
+				return false, err
+			}
+			return row.Incident.Private, nil
+		},
+	)
 	// The dashboard-aggregate cache is shared state (a per-event map guarded by a mutex):
 	// the metrics dashboard read now lives on Connect (ImsService.GetMetrics) alongside the
 	// incident/area/type writes that invalidate it, so the cache is threaded into AddConnectToMux

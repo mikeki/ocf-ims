@@ -313,10 +313,16 @@ func AddToMux(
 	// ListNotifications, POST /notifications/read[/{id}] → MarkAllNotificationsRead /
 	// MarkNotificationRead, and POST/DELETE /push/subscribe → SubscribePush / UnsubscribePush.
 
+	// The SSE poke stream is authenticated by the refresh-token cookie, not a bearer
+	// header: the browser EventSource API can't set headers but does send same-site
+	// cookies (the web client opens it with withCredentials). Requiring a valid cookie
+	// closes the former anonymous broadcast of incident activity; private incidents are
+	// additionally redacted at publish time (see EventSourcerer.NotifyIncidentUpdate).
 	mux.Handle("GET /ims/api/eventsource",
 		server.Adapt(
 			es.Server.Handler(server.EventSourceChannel),
 			server.RecoverFromPanic(),
+			server.RequireRefreshCookieAuthN(jwter),
 			server.LogRequest(false, actionLogger, userStore),
 			server.LimitRequestBytes(cfg.Core.MaxRequestBytes),
 		),

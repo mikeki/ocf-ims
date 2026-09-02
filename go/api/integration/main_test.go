@@ -180,7 +180,18 @@ func setup(ctx context.Context, tempDir string) {
 	// so it doesn't affect tests that pass an explicit password or none.
 	shared.cfg.Core.DefaultPassword = sharedDefaultPassword
 	must(shared.cfg.Validate())
-	shared.es = server.NewEventSourcerer()
+	// The oracle reads shared.imsDBQ lazily (it's assigned below, after the container is
+	// up); a notify only fires during a test, long after setup, so the DBQ is populated
+	// by then. This is how the stream redacts a private incident's number.
+	shared.es = server.NewEventSourcerer(
+		func(ctx context.Context, eventID, incidentNumber int32) (bool, error) {
+			row, err := shared.imsDBQ.Incident(ctx, shared.imsDBQ, imsdb.IncidentParams{Event: eventID, Number: incidentNumber})
+			if err != nil {
+				return false, err
+			}
+			return row.Incident.Private, nil
+		},
+	)
 	// Shared with the Connect surface (like es): the dashboard cache must be one instance
 	// so an incident write on Connect invalidates the counts the REST metrics read serves.
 	shared.metricsCache = server.NewMetricsCache()

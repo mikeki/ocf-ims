@@ -24,6 +24,7 @@ import (
 	"time"
 
 	imsjson "github.com/mikeki/ocf-ims/json"
+	"github.com/mikeki/ocf-ims/lib/authz"
 	"github.com/mikeki/ocf-ims/lib/rand"
 	"github.com/stretchr/testify/require"
 )
@@ -415,27 +416,62 @@ func TestPublicAPIs_RequireNoAuthn(t *testing.T) {
 	}
 }
 
-func TestEventSource_RequiresNoAuthn(t *testing.T) {
+// TestEventSource_RequiresAuthn proves the SSE poke stream is no longer an anonymous
+// broadcast (plan 09 §6 M8): a subscriber must present a valid refresh-token cookie.
+// The browser EventSource API can't set an Authorization header but does send same-site
+// cookies (the web client opens the stream with withCredentials), so the refresh cookie
+// is the credential the endpoint accepts. An anonymous request is rejected with 401; a
+// request carrying a login-issued refresh cookie is accepted and starts streaming.
+func TestEventSource_RequiresAuthn(t *testing.T) {
 	t.Parallel()
 	ctx := t.Context()
 
 	path := shared.serverURL.JoinPath("ims/api/eventsource")
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, path.String(), nil)
-	require.NoError(t, err)
 	client := http.Client{Timeout: 10 * time.Second}
 
+	// Anonymous — no cookie — is rejected.
+	anonReq, err := http.NewRequestWithContext(ctx, http.MethodGet, path.String(), nil)
+	require.NoError(t, err)
 	// #nosec G704 // SSRF via taint analysis.
-	resp, err := client.Do(req)
+	anonResp, err := client.Do(anonReq)
 	require.NoError(t, err)
-	require.Equal(t, http.StatusOK, resp.StatusCode)
+	require.NoError(t, anonResp.Body.Close())
+	require.Equal(t, http.StatusUnauthorized, anonResp.StatusCode)
 
-	// The response body will keep streaming until the test ends, so we can just read
-	// a prefix of the expect response to know that things look good.
-	expectedFirstBytes := []byte("id: 0\nevent: InitialEvent")
-	buf := make([]byte, len(expectedFirstBytes))
-	_, err = io.ReadFull(resp.Body, buf)
+	// Mint a valid refresh token with the server's signing secret — the same credential
+	// the Login RPC issues in its refresh cookie. Minting (rather than logging in) keeps
+	// this test independent of a shared user's live login state, which parallel tests
+	// mutate; the adapter validates the token, not the person behind it.
+	jwter := authz.JWTer{SecretKey: shared.cfg.Core.JWTSecret}
+	refreshToken, err := jwter.CreateRefreshToken(userAliceHandle, userAlicePersonID, time.Now().Add(time.Hour))
 	require.NoError(t, err)
-	require.NoError(t, resp.Body.Close())
+	// The security attributes are cosmetic on a request cookie (only name=value is sent),
+	// but set them to mirror the server's real cookie and satisfy gosec G124.
+	cookie := &http.Cookie{
+		Name:     authz.RefreshTokenCookieName,
+		Value:    refreshToken,
+		Secure:   true,
+		HttpOnly: true,
+		SameSite: http.SameSiteStrictMode,
+	}
+
+	// With the refresh cookie, the stream is accepted and starts emitting.
+	authReq, err := http.NewRequestWithContext(ctx, http.MethodGet, path.String(), nil)
+	require.NoError(t, err)
+	authReq.AddCookie(cookie)
+	// #nosec G704 // SSRF via taint analysis.
+	authResp, err := client.Do(authReq)
+	require.NoError(t, err)
+	require.Equal(t, http.StatusOK, authResp.StatusCode)
+
+	// The body streams until the test ends, so read the start of the InitialEvent
+	// handshake. The SSE message id is the shared, ever-advancing counter (other
+	// parallel tests publish), so assert on the event name, not a specific id.
+	buf := make([]byte, 40)
+	_, err = io.ReadFull(authResp.Body, buf)
+	require.NoError(t, err)
+	require.Contains(t, string(buf), "event: InitialEvent")
+	require.NoError(t, authResp.Body.Close())
 }
 
 func apiCall(t *testing.T, api MethodURL, user ApiHelper) (statusCode int) {

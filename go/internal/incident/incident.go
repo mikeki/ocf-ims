@@ -825,14 +825,14 @@ func updateIncident(ctx context.Context, imsDBQ *store.DBQ, userStore directory.
 		return herr.InternalServerError("Failed to commit transaction", err).From("[Commit]")
 	}
 
-	es.NotifyIncidentUpdate(newIncident.EventID, newIncident.Number)
+	es.NotifyIncidentUpdate(ctx, newIncident.EventID, newIncident.Number)
 	// Web push the mentioned people (plan 84c): after commit, off the request path.
 	pusher.NotifyMentionedInIncident(ctx, eventNameById[newIncident.EventID], newIncident.Number, mentionedPersonIDs, authorPersonID)
 	for _, fr := range updatedReports {
 		es.NotifyReportUpdate(newIncident.EventID, fr)
 	}
 	for _, inc := range updatedLinkedIncidents {
-		es.NotifyIncidentUpdate(inc.EventID, inc.Number)
+		es.NotifyIncidentUpdate(ctx, inc.EventID, inc.Number)
 	}
 	for _, s := range updatedVisits {
 		es.NotifyVisitUpdate(newIncident.EventID, s)

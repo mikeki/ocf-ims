@@ -216,6 +216,36 @@ func RequireAuthN(j authz.JWTer) Adapter {
 	}
 }
 
+// RequireRefreshCookieAuthN authenticates a request from the HttpOnly refresh-token
+// cookie (authz.RefreshTokenCookieName) rather than the Authorization: Bearer header.
+// It exists for the SSE endpoint: the browser EventSource API cannot set a bearer
+// header, but it sends same-site cookies (the web client opens the stream with
+// withCredentials), so the refresh cookie is the credential available there. Gating
+// the stream on a valid cookie closes the anonymous broadcast — an unauthenticated
+// party can no longer subscribe and watch incident activity (plan 09 §6 M8). Absent
+// or invalid cookie ⇒ 401.
+func RequireRefreshCookieAuthN(j authz.JWTer) Adapter {
+	return func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			cookie, err := r.Cookie(authz.RefreshTokenCookieName)
+			if err != nil {
+				herr.Unauthorized("Missing refresh token cookie", err).WriteResponse(w)
+				return
+			}
+			claims, err := j.AuthenticateRefreshToken(cookie.Value)
+			if err != nil || claims == nil {
+				herr.Unauthorized("Invalid refresh token cookie", err).WriteResponse(w)
+				return
+			}
+			jwtCtx := context.WithValue(r.Context(), JWTContextKey, JWTContext{
+				Claims: claims,
+				Error:  err,
+			})
+			next.ServeHTTP(w, r.WithContext(jwtCtx))
+		})
+	}
+}
+
 func Adapt(handler http.Handler, adapters ...Adapter) http.Handler {
 	for i := range adapters {
 		adapter := adapters[len(adapters)-1-i] // range in reverse
