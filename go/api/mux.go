@@ -48,6 +48,7 @@ import (
 func AddToMux(
 	mux *http.ServeMux,
 	es *server.EventSourcerer,
+	metricsCache *server.MetricsCache,
 	cfg *conf.IMSConfig,
 	db *store.DBQ,
 	userStore directory.UserStore,
@@ -70,10 +71,11 @@ func AddToMux(
 	}
 	pusher := server.NewPusher(db, pushSender)
 
-	// One dashboard-metrics cache shared by the read handler (metrics.GetMetrics) and the
-	// mutation handlers that must invalidate it on a write, so the dashboard
-	// reflects changes immediately rather than waiting out the TTL.
-	metricsCache := server.NewMetricsCache()
+	// metricsCache is created by the caller and shared with the Connect surface
+	// (AddConnectToMux): the dashboard read handler (metrics.GetMetrics) lives here on
+	// REST while the incident-mutation RPCs that must invalidate it on a write live on
+	// Connect, so both must hold the *same* cache or the dashboard would go stale until
+	// the TTL. (Passed in like es for the same reason — one shared instance.)
 
 	// Reference-data caches: the incident-type taxonomy (global) and each event's
 	// area list are read on nearly every incident form load but change rarely, so
@@ -200,20 +202,11 @@ func AddToMux(
 		),
 	)
 
-	// GET .../incidents/{incidentNumber} was RETIRED when GetIncident moved onto
-	// Connect (plan 09h/1c, aggressive migration path — plan 09 §6). Reading a single
-	// incident is now the ImsService.GetIncident RPC (registered via AddConnectToMux);
-	// there is deliberately no REST shim.
-
-	mux.Handle("POST /ims/api/events/{eventName}/incidents/{incidentNumber}",
-		server.Adapt(
-			incident.EditIncident{ImsDBQ: db, UserStore: userStore, Es: es, Pusher: pusher, Metrics: metricsCache},
-			server.RecoverFromPanic(),
-			server.RequireAuthN(jwter),
-			server.LogRequest(true, actionLogger, userStore),
-			server.LimitRequestBytes(cfg.Core.MaxRequestBytes),
-		),
-	)
+	// GET and POST .../incidents/{incidentNumber} were RETIRED when the single-incident
+	// read (GetIncident) and edit (UpdateIncident) moved onto Connect (plan 09h/1c,
+	// aggressive migration path — plan 09 §6). Reading and editing one incident are now
+	// the ImsService.GetIncident / ImsService.UpdateIncident RPCs (registered via
+	// AddConnectToMux); there is deliberately no REST shim.
 
 	mux.Handle("GET /ims/api/events/{eventName}/incidents/{incidentNumber}/attachments/{attachmentNumber}",
 		server.Adapt(

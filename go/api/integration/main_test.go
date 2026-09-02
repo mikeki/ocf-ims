@@ -50,6 +50,7 @@ var shared struct {
 	imsDBQ       *store.DBQ
 	userStore    directory.UserStore
 	es           *server.EventSourcerer
+	metricsCache *server.MetricsCache
 	testServer   *httptest.Server
 	serverURL    *url.URL
 	actionLogger *actionlog.Logger
@@ -180,6 +181,9 @@ func setup(ctx context.Context, tempDir string) {
 	shared.cfg.Core.DefaultPassword = sharedDefaultPassword
 	must(shared.cfg.Validate())
 	shared.es = server.NewEventSourcerer()
+	// Shared with the Connect surface (like es): the dashboard cache must be one instance
+	// so an incident write on Connect invalidates the counts the REST metrics read serves.
+	shared.metricsCache = server.NewMetricsCache()
 
 	// The user directory and the incident store share a single IMS database.
 	ctr, cleanup, dbHostPort, err := testctr.MariaDBContainer(
@@ -204,11 +208,13 @@ func setup(ctx context.Context, tempDir string) {
 	shared.actionLogger = actionlog.NewLogger(ctx, shared.imsDBQ, shared.cfg.Core.ActionLogEnabled, true)
 	// nil push sender → the no-op backend, so the shared suite does no push work;
 	// the push fan-out is exercised on its own server in push_test.go.
-	mux := api.AddToMux(nil, shared.es, shared.cfg, shared.imsDBQ, shared.userStore, nil, shared.actionLogger, nil)
+	mux := api.AddToMux(nil, shared.es, shared.metricsCache, shared.cfg, shared.imsDBQ, shared.userStore, nil, shared.actionLogger, nil)
 	// The Connect/RPC surface shares the mux (plan 09h/1c): as resources are
 	// extracted their REST endpoint is retired and the suite exercises them through
 	// the generated Connect client instead (e.g. TestGetAndEditEvent's ListEvents).
-	api.AddConnectToMux(mux, shared.cfg, shared.imsDBQ, shared.actionLogger, shared.userStore)
+	// It shares es + metricsCache so an extracted write fans out SSE and invalidates the
+	// dashboard exactly as the REST path did; nil push sender → the no-op backend.
+	api.AddConnectToMux(mux, shared.cfg, shared.imsDBQ, shared.actionLogger, shared.userStore, shared.es, shared.metricsCache, nil)
 	shared.testServer = httptest.NewServer(mux)
 	shared.serverURL, err = url.Parse(shared.testServer.URL)
 	must(err)

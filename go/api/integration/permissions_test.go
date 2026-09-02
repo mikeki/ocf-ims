@@ -118,13 +118,13 @@ func TestEventEndpoints_ForNoEventPerms(t *testing.T) {
 	require.NoError(t, resp.Body.Close())
 
 	eventPath := "/ims/api/events/" + eventName
-	// GET .../incidents (list) and GET .../incidents/{n} were retired from REST (plan
-	// 09h/1c) — they are now the ImsService.ListIncidents / GetIncident RPCs. Their
-	// unauth (401) and forbidden (403) behavior is covered through the Connect client in
-	// TestIncidentAPIAuthorization, so they are no longer enumerated here.
+	// GET .../incidents (list), GET .../incidents/{n}, and POST .../incidents/{n} (edit)
+	// were retired from REST (plan 09h/1c) — they are now the ImsService.ListIncidents /
+	// GetIncident / UpdateIncident RPCs. Their unauth (401) and forbidden (403) behavior is
+	// covered through the Connect client in TestIncidentAPIAuthorization, so they are no
+	// longer enumerated here.
 	getIncidentAttachment := MethodURL{http.MethodGet, eventPath + "/incidents/1/attachments/1"}
 	createIncident := MethodURL{http.MethodPost, eventPath + "/incidents"}
-	updateIncident := MethodURL{http.MethodPost, eventPath + "/incidents/1"}
 	postIncidentAttachment := MethodURL{http.MethodPost, eventPath + "/incidents/1/attachments"}
 	postIncidentRE := MethodURL{http.MethodPost, eventPath + "/incidents/1/journal_entries/2"}
 	postIncidentPerson := MethodURL{http.MethodPost, eventPath + "/incidents/1/people/some_name"}
@@ -150,7 +150,6 @@ func TestEventEndpoints_ForNoEventPerms(t *testing.T) {
 	allPerms := []MethodURL{
 		getIncidentAttachment,
 		createIncident,
-		updateIncident,
 		postIncidentAttachment,
 		postIncidentRE,
 		postIncidentPerson,

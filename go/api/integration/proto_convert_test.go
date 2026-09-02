@@ -24,6 +24,7 @@ import (
 	resourcesv1 "github.com/mikeki/ocf-ims/gen/ocf/ims/resources/v1"
 	servicerpcv1 "github.com/mikeki/ocf-ims/gen/ocf/ims/service/rpc/v1"
 	imsjson "github.com/mikeki/ocf-ims/json"
+	"google.golang.org/protobuf/types/known/timestamppb"
 )
 
 // incidentViewToJSON maps the GetIncident RPC's IncidentView proto back to the legacy
@@ -146,6 +147,86 @@ func personRefToMention(ref *commonv1.PersonRef) *imsjson.Mention {
 		PersonID: ref.GetPersonId(),
 		Handle:   ref.GetHandle(),
 		Name:     ref.GetName(),
+	}
+}
+
+// incidentUpdateFromJSON maps the legacy imsjson.Incident that the incident write helpers
+// still build at their call sites onto the presence-tracked IncidentUpdate the UpdateIncident
+// RPC takes — the write-side mirror of incidentViewToJSON, and the exact inverse of the
+// server's incident.incidentUpdateToJSON. imsjson.Incident's pointer/zero fields already carry
+// the presence the proto needs: a nil scalar/list stays absent ("leave unchanged"), while a
+// non-nil (even empty) list becomes a present Int32List/IncidentRefList ("set exactly these",
+// empty clears). Visits and People have no IncidentUpdate field — visits are excluded from
+// the contract (09e) and people are managed via AttachPersonToIncident; the shared write helper
+// never applied either from the incident body, so they are intentionally not carried here. This
+// test-only bridge dies with json/ once the incident write path maps proto straight to the
+// store (plan 09 §Migration strategy).
+func incidentUpdateFromJSON(inc imsjson.Incident) *servicerpcv1.IncidentUpdate {
+	out := &servicerpcv1.IncidentUpdate{
+		State:     incidentStateToProtoEnum(inc.State),
+		Private:   inc.Private,
+		OutcomeId: inc.OutcomeID,
+		Priority:  incidentPriorityToProtoEnum(inc.Priority),
+		Summary:   inc.Summary,
+	}
+	if !inc.Started.IsZero() {
+		out.Started = timestamppb.New(inc.Started)
+	}
+	// Only send a location when at least one piece is set; an all-nil Location means "touch
+	// nothing", which an absent proto location expresses.
+	if inc.Location.AreaSlug != nil || inc.Location.Description != nil || inc.Location.Booth != nil {
+		out.Location = &resourcesv1.IncidentLocation{
+			AreaSlug:    inc.Location.AreaSlug,
+			Description: inc.Location.Description,
+			Booth:       inc.Location.Booth,
+		}
+	}
+	if inc.IncidentTypeIDs != nil {
+		out.IncidentTypeIds = &servicerpcv1.Int32List{Values: *inc.IncidentTypeIDs}
+	}
+	if inc.Reports != nil {
+		out.Reports = &servicerpcv1.Int32List{Values: *inc.Reports}
+	}
+	if inc.LinkedIncidents != nil {
+		refs := make([]*commonv1.IncidentRef, 0, len(*inc.LinkedIncidents))
+		for _, li := range *inc.LinkedIncidents {
+			refs = append(refs, &commonv1.IncidentRef{
+				EventId:        li.EventID,
+				IncidentNumber: li.Number,
+			})
+		}
+		out.LinkedIncidents = &servicerpcv1.IncidentRefList{Refs: refs}
+	}
+	for _, je := range inc.JournalEntries {
+		out.JournalEntries = append(out.JournalEntries, &servicerpcv1.NewJournalEntry{
+			Text:               je.Text,
+			MentionedPersonIds: je.MentionedPersonIDs,
+		})
+	}
+	return out
+}
+
+func incidentStateToProtoEnum(s string) resourcesv1.IncidentState {
+	switch s {
+	case "open":
+		return resourcesv1.IncidentState_INCIDENT_STATE_OPEN
+	case "closed":
+		return resourcesv1.IncidentState_INCIDENT_STATE_CLOSED
+	default:
+		return resourcesv1.IncidentState_INCIDENT_STATE_UNSPECIFIED
+	}
+}
+
+func incidentPriorityToProtoEnum(p int8) resourcesv1.IncidentPriority {
+	switch p {
+	case imsjson.IncidentPriorityHigh:
+		return resourcesv1.IncidentPriority_INCIDENT_PRIORITY_HIGH
+	case imsjson.IncidentPriorityNormal:
+		return resourcesv1.IncidentPriority_INCIDENT_PRIORITY_NORMAL
+	case imsjson.IncidentPriorityLow:
+		return resourcesv1.IncidentPriority_INCIDENT_PRIORITY_LOW
+	default:
+		return resourcesv1.IncidentPriority_INCIDENT_PRIORITY_UNSPECIFIED
 	}
 }
 

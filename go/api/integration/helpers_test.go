@@ -469,9 +469,33 @@ func (a ApiHelper) getVisit(ctx context.Context, eventName string, visit int32) 
 	return *bod.(*imsjson.Visit), resp
 }
 
+// updateIncident edits an incident through the generated Connect client. The REST
+// POST .../incidents/{n} endpoint was retired when UpdateIncident was extracted (plan
+// 09h/1c). Call sites still express the edit as an imsjson.Incident, so it is converted to
+// the presence-tracked IncidentUpdate (incidentUpdateFromJSON) and the event is resolved to
+// its numeric id (resolveEventID). The retired endpoint returned 204 on success, so the
+// synthesized *http.Response mirrors that (else connectStatus(err)) — keeping the ~30 call
+// sites and their status assertions unchanged. Like getIncident, resolveEventID uses an
+// admin token so the negative-auth tests still resolve the event and let the RPC itself do
+// the rejecting.
 func (a ApiHelper) updateIncident(ctx context.Context, eventName string, incident int32, req imsjson.Incident) *http.Response {
 	a.t.Helper()
-	return a.imsPost(ctx, req, a.serverURL.JoinPath("/ims/api/events/", eventName, "/incidents/", strconv.Itoa(int(incident))).String())
+	eventID := a.resolveEventID(ctx, eventName)
+	client := servicev1connect.NewImsServiceClient(http.DefaultClient, a.serverURL.String())
+	rpcReq := connect.NewRequest(&servicerpcv1.UpdateIncidentRequest{
+		EventId:        eventID,
+		IncidentNumber: incident,
+		Update:         incidentUpdateFromJSON(req),
+	})
+	if a.jwt != "" {
+		rpcReq.Header().Set("Authorization", "Bearer "+a.jwt)
+	}
+	_, err := client.UpdateIncident(ctx, rpcReq)
+	status := http.StatusNoContent
+	if err != nil {
+		status = connectStatus(err)
+	}
+	return &http.Response{StatusCode: status, Body: http.NoBody}
 }
 
 func (a ApiHelper) updateVisit(ctx context.Context, eventName string, visit int32, req imsjson.Visit) *http.Response {

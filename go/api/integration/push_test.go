@@ -217,7 +217,7 @@ func TestPushFanoutDelivery(t *testing.T) {
 	// suite's no-op sender, and so other parallel tests' triggers don't reach it.
 	spy := &capturingSender{}
 	srv := httptest.NewServer(
-		api.AddToMux(nil, shared.es, shared.cfg, shared.imsDBQ, shared.userStore, nil, shared.actionLogger, spy),
+		api.AddToMux(nil, shared.es, shared.metricsCache, shared.cfg, shared.imsDBQ, shared.userStore, nil, shared.actionLogger, spy),
 	)
 	defer srv.Close()
 	srvURL, err := url.Parse(srv.URL)

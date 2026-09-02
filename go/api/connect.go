@@ -29,13 +29,14 @@ import (
 	"github.com/mikeki/ocf-ims/internal/incident"
 	"github.com/mikeki/ocf-ims/internal/server"
 	"github.com/mikeki/ocf-ims/lib/authz"
+	pushlib "github.com/mikeki/ocf-ims/lib/push"
 	"github.com/mikeki/ocf-ims/store"
 )
 
 // ImsService is the Connect implementation of the ocf.ims.service.v1.ImsService
 // contract (plan 09, Phase 1). It sits beside AddToMux in this wiring package
-// because — like AddToMux — it aggregates every domain: each method delegates to
-// its internal/<domain> function. As a resource is extracted (1c/1d) its REST
+// because — like AddToMux — it aggregates every domain: it composes each domain's
+// internal/<domain>.Service and every method delegates to it. As a resource is extracted (1c/1d) its REST
 // route is DELETED, not shimmed — the aggressive migration path in plan 09 §6, so
 // the RPC becomes the sole transport for that resource.
 //
@@ -47,14 +48,17 @@ import (
 type ImsService struct {
 	servicev1connect.UnimplementedImsServiceHandler
 
-	ImsDBQ    *store.DBQ
-	UserStore directory.UserStore
-	// AttachmentsEnabled mirrors the REST handlers' flag (cfg.AttachmentsStore.Type
-	// != none): it gates whether a read surfaces journal-entry attachment metadata.
-	AttachmentsEnabled bool
+	// Each domain package exposes a Service that holds the dependencies its RPCs share;
+	// ImsService composes them (each built once in AddConnectToMux) and every RPC method
+	// delegates to the matching domain Service. A resource is extracted by adding its
+	// domain Service here and wiring it below — that is where the shared, mutable
+	// cross-surface state (the SSE EventSourcerer, the dashboard MetricsCache) is threaded
+	// in so a Connect write fans out and invalidates exactly as the REST surface does.
+	Event    event.Service
+	Incident incident.Service
 }
 
-// ListEvents is a thin RPC method over the event.ListEvents domain function (plan
+// ListEvents is a thin RPC method over the event.ListEvents domain method (plan
 // 09h/1c). Its REST predecessor (GET /events) was deleted in the same slice, so
 // this is the only transport for listing events. The interceptor spine has already
 // populated the caller's claims into ctx, so the method just delegates; the domain
@@ -63,30 +67,30 @@ func (s ImsService) ListEvents(
 	ctx context.Context,
 	req *connect.Request[servicerpcv1.ListEventsRequest],
 ) (*connect.Response[servicerpcv1.ListEventsResponse], error) {
-	resp, err := event.ListEvents(ctx, s.ImsDBQ, s.UserStore, req.Msg)
+	resp, err := s.Event.ListEvents(ctx, req.Msg)
 	if err != nil {
 		return nil, err
 	}
 	return connect.NewResponse(resp), nil
 }
 
-// ListIncidents is a thin RPC method over the incident.ListIncidents domain function
+// ListIncidents is a thin RPC method over the incident.ListIncidents domain method
 // (plan 09h/1c). Its REST predecessor (GET /events/{eventName}/incidents) was deleted in
 // the same slice, so this is the only transport for listing an event's incidents. The
-// domain function authorizes from ctx claims and speaks Connect errors, so this just
+// domain method authorizes from ctx claims and speaks Connect errors, so this just
 // delegates.
 func (s ImsService) ListIncidents(
 	ctx context.Context,
 	req *connect.Request[servicerpcv1.ListIncidentsRequest],
 ) (*connect.Response[servicerpcv1.ListIncidentsResponse], error) {
-	resp, err := incident.ListIncidents(ctx, s.ImsDBQ, s.AttachmentsEnabled, req.Msg)
+	resp, err := s.Incident.ListIncidents(ctx, req.Msg)
 	if err != nil {
 		return nil, err
 	}
 	return connect.NewResponse(resp), nil
 }
 
-// GetIncident is a thin RPC method over the incident.GetIncident domain function
+// GetIncident is a thin RPC method over the incident.GetIncident domain method
 // (plan 09h/1c). Its REST predecessor (GET .../incidents/{n}) was deleted in the same
 // slice, so this is the only transport for reading a single incident. The domain
 // function already authorizes from ctx claims and speaks Connect errors, so this just
@@ -95,7 +99,23 @@ func (s ImsService) GetIncident(
 	ctx context.Context,
 	req *connect.Request[servicerpcv1.GetIncidentRequest],
 ) (*connect.Response[servicerpcv1.GetIncidentResponse], error) {
-	resp, err := incident.GetIncident(ctx, s.ImsDBQ, s.UserStore, s.AttachmentsEnabled, req.Msg)
+	resp, err := s.Incident.GetIncident(ctx, req.Msg)
+	if err != nil {
+		return nil, err
+	}
+	return connect.NewResponse(resp), nil
+}
+
+// UpdateIncident is a thin RPC method over the incident.UpdateIncident domain method
+// (plan 09h/1c). Its REST predecessor (POST .../incidents/{n}) was deleted in the same
+// slice. The domain method authorizes from ctx claims and speaks Connect errors, so
+// this just delegates; it carries the shared EventSourcerer / Pusher / MetricsCache so
+// the write fans out SSE + push and invalidates the dashboard exactly as REST did.
+func (s ImsService) UpdateIncident(
+	ctx context.Context,
+	req *connect.Request[servicerpcv1.UpdateIncidentRequest],
+) (*connect.Response[servicerpcv1.UpdateIncidentResponse], error) {
+	resp, err := s.Incident.UpdateIncident(ctx, req.Msg)
 	if err != nil {
 		return nil, err
 	}
@@ -141,6 +161,9 @@ func AddConnectToMux(
 	imsDBQ *store.DBQ,
 	actionLogger server.ActionLogger,
 	userStore directory.UserStore,
+	es *server.EventSourcerer,
+	metricsCache *server.MetricsCache,
+	pushSender pushlib.Sender,
 ) *http.ServeMux {
 	if mux == nil {
 		mux = http.NewServeMux()
@@ -148,8 +171,25 @@ func AddConnectToMux(
 	jwter := authz.JWTer{SecretKey: cfg.Core.JWTSecret}
 	interceptors := server.Interceptors(jwter, actionLogger, userStore, server.NewValidateInterceptor())
 	attachmentsEnabled := cfg.AttachmentsStore.Type != conf.AttachmentsStoreNone
+	// Pusher is stateless (store + send backend), so a Connect-side instance built from
+	// the same sender fans out identically to the REST one; a nil sender is the no-op
+	// backend (push unconfigured), matching AddToMux.
+	if pushSender == nil {
+		pushSender = pushlib.NoopSender{}
+	}
+	pusher := server.NewPusher(imsDBQ, pushSender)
 	path, handler := servicev1connect.NewImsServiceHandler(
-		ImsService{ImsDBQ: imsDBQ, UserStore: userStore, AttachmentsEnabled: attachmentsEnabled},
+		ImsService{
+			Event: event.Service{ImsDBQ: imsDBQ, UserStore: userStore},
+			Incident: incident.Service{
+				ImsDBQ:             imsDBQ,
+				UserStore:          userStore,
+				Es:                 es,
+				Pusher:             pusher,
+				Metrics:            metricsCache,
+				AttachmentsEnabled: attachmentsEnabled,
+			},
+		},
 		connect.WithInterceptors(interceptors...),
 	)
 	mux.Handle(path, handler)
