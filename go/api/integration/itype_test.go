@@ -111,11 +111,10 @@ func TestIncidentTypeGroup(t *testing.T) {
 	require.NoError(t, resp.Body.Close())
 	require.Contains(t, types, imsjson.IncidentType{ID: *id, Name: &name, Hidden: new(false), Approved: new(true)})
 
-	// An unrecognized group is rejected with 400.
-	badName, badGroup := rand.NonCryptoText(), "nonsense"
-	_, resp = apis.editType(ctx, imsjson.IncidentType{Name: &badName, Group: &badGroup})
-	require.Equal(t, http.StatusBadRequest, resp.StatusCode)
-	require.NoError(t, resp.Body.Close())
+	// (The REST "unrecognized group string → 400" case has no analogue: the contract types group
+	// as a closed enum, so an undefined value can't be sent — an unknown/empty value collapses to
+	// UNSPECIFIED = ungrouped. Dropped with the RPC extraction, like the participation-type and
+	// event-name string-validation 400s.)
 }
 
 func findType(types imsjson.IncidentTypes, id int32) *imsjson.IncidentType {

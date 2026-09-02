@@ -242,6 +242,84 @@ func personProtoToJSON(p *resourcesv1.Person) imsjson.Person {
 	return out
 }
 
+// incidentTypeProtoToJSON maps a resources/v1.IncidentType from the ListIncidentTypes RPC back to
+// the legacy imsjson.IncidentType the itype tests assert against — the inverse of the server's
+// incidenttype.incidentTypeToProto. The optional scalar pointers carry straight across; the
+// optional group enum becomes json's *string (nil = ungrouped), and the proposer PersonRef becomes
+// a *Mention (reusing personRefToMention). Dies with json/ when the read is rebuilt DB→proto.
+func incidentTypeProtoToJSON(p *resourcesv1.IncidentType) imsjson.IncidentType {
+	return imsjson.IncidentType{
+		ID:          p.GetId(),
+		Name:        p.Name,
+		Description: p.Description,
+		Hidden:      p.Hidden,
+		Group:       incidentTypeGroupPtrToString(p.Group),
+		Approved:    p.Approved,
+		Proposer:    personRefToMention(p.GetProposer()),
+	}
+}
+
+// incidentTypeMsgFromJSON builds the resources/v1.IncidentType the create/update/propose helpers
+// send from the legacy imsjson.IncidentType the call sites still construct. Only the writable
+// fields (name/description/hidden/group) are carried; id/approved/proposer are not part of the
+// write body (approve is its own RPC).
+func incidentTypeMsgFromJSON(req imsjson.IncidentType) *resourcesv1.IncidentType {
+	return &resourcesv1.IncidentType{
+		Name:        req.Name,
+		Description: req.Description,
+		Hidden:      req.Hidden,
+		Group:       incidentTypeGroupToProtoEnumPtr(req.Group),
+	}
+}
+
+// incidentTypeGroupToProtoEnumPtr maps json's group *string onto the optional proto enum pointer:
+// nil leaves it unset ("leave unchanged" on an update); a present value (including "" and any
+// unrecognized string) becomes a present enum, with "" / unknown collapsing to UNSPECIFIED
+// ("ungrouped"). (The REST "unknown group string → 400" case has no analogue under the closed enum.)
+func incidentTypeGroupToProtoEnumPtr(g *string) *resourcesv1.IncidentTypeGroup {
+	if g == nil {
+		return nil
+	}
+	var e resourcesv1.IncidentTypeGroup
+	switch *g {
+	case "safety":
+		e = resourcesv1.IncidentTypeGroup_INCIDENT_TYPE_GROUP_SAFETY
+	case "conduct":
+		e = resourcesv1.IncidentTypeGroup_INCIDENT_TYPE_GROUP_CONDUCT
+	case "operations":
+		e = resourcesv1.IncidentTypeGroup_INCIDENT_TYPE_GROUP_OPERATIONS
+	case "compliance":
+		e = resourcesv1.IncidentTypeGroup_INCIDENT_TYPE_GROUP_COMPLIANCE
+	default:
+		e = resourcesv1.IncidentTypeGroup_INCIDENT_TYPE_GROUP_UNSPECIFIED
+	}
+	return &e
+}
+
+// incidentTypeGroupPtrToString is the inverse: the optional proto enum pointer back to json's
+// *string (nil or UNSPECIFIED → nil = ungrouped).
+func incidentTypeGroupPtrToString(g *resourcesv1.IncidentTypeGroup) *string {
+	if g == nil {
+		return nil
+	}
+	var s string
+	switch *g {
+	case resourcesv1.IncidentTypeGroup_INCIDENT_TYPE_GROUP_SAFETY:
+		s = "safety"
+	case resourcesv1.IncidentTypeGroup_INCIDENT_TYPE_GROUP_CONDUCT:
+		s = "conduct"
+	case resourcesv1.IncidentTypeGroup_INCIDENT_TYPE_GROUP_OPERATIONS:
+		s = "operations"
+	case resourcesv1.IncidentTypeGroup_INCIDENT_TYPE_GROUP_COMPLIANCE:
+		s = "compliance"
+	case resourcesv1.IncidentTypeGroup_INCIDENT_TYPE_GROUP_UNSPECIFIED:
+		return nil
+	default:
+		return nil
+	}
+	return &s
+}
+
 // participationTypeToProtoEnum maps a stored MySQL participation string onto the proto enum for the
 // personnel-write helpers that build requests from the legacy DTOs (empty → UNSPECIFIED, i.e.
 // "default from wristband"). The server-side equivalent is person.participationTypeFromProto.

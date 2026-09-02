@@ -373,37 +373,75 @@ func (a ApiHelper) removeParticipation(ctx context.Context, personID int64, even
 	return writeRPCStatus(err)
 }
 
+// editType drives the incident-type admin write through the generated Connect client. The REST POST
+// /incident_types multiplexed create/update/approve/set-hidden on one body; the contract decomposed
+// it into four RPCs (plan 09h/1c), so this helper dispatches on the legacy imsjson.IncidentType the
+// call sites still build — the same selectors the old handler switched on. Only Create returns an id
+// (the retired endpoint's IMS-Incident-Type-ID header); the rest synthesize 204 / connectStatus.
 func (a ApiHelper) editType(ctx context.Context, req imsjson.IncidentType) (*int32, *http.Response) {
 	a.t.Helper()
-	httpResp := a.imsPost(ctx, req, a.serverURL.JoinPath("/ims/api/incident_types").String())
-	numStr := httpResp.Header.Get("IMS-Incident-Type-ID")
-	require.NoError(a.t, httpResp.Body.Close())
-	if numStr == "" {
-		return nil, httpResp
+	client := servicev1connect.NewImsServiceClient(http.DefaultClient, a.serverURL.String())
+	switch {
+	case req.ID == 0:
+		rpcReq := connect.NewRequest(&servicerpcv1.CreateIncidentTypeRequest{IncidentType: incidentTypeMsgFromJSON(req)})
+		a.authorizeRPC(rpcReq)
+		resp, err := client.CreateIncidentType(ctx, rpcReq)
+		if err != nil {
+			return nil, &http.Response{StatusCode: connectStatus(err), Body: http.NoBody}
+		}
+		id := resp.Msg.GetIncidentTypeId()
+		return &id, &http.Response{StatusCode: http.StatusNoContent, Body: http.NoBody}
+	case req.Approved != nil && *req.Approved:
+		rpcReq := connect.NewRequest(&servicerpcv1.ApproveIncidentTypeRequest{IncidentTypeId: req.ID})
+		a.authorizeRPC(rpcReq)
+		_, err := client.ApproveIncidentType(ctx, rpcReq)
+		return nil, writeRPCStatus(err)
+	case req.Hidden != nil && req.Name == nil && req.Description == nil && req.Group == nil:
+		rpcReq := connect.NewRequest(&servicerpcv1.SetIncidentTypeHiddenRequest{IncidentTypeId: req.ID, Hidden: *req.Hidden})
+		a.authorizeRPC(rpcReq)
+		_, err := client.SetIncidentTypeHidden(ctx, rpcReq)
+		return nil, writeRPCStatus(err)
+	default:
+		rpcReq := connect.NewRequest(&servicerpcv1.UpdateIncidentTypeRequest{IncidentTypeId: req.ID, IncidentType: incidentTypeMsgFromJSON(req)})
+		a.authorizeRPC(rpcReq)
+		_, err := client.UpdateIncidentType(ctx, rpcReq)
+		return nil, writeRPCStatus(err)
 	}
-	num, err := conv.ParseInt32(numStr)
-	require.NoError(a.t, err)
-	return &num, httpResp
 }
 
 func (a ApiHelper) getTypes(ctx context.Context) (imsjson.IncidentTypes, *http.Response) {
 	a.t.Helper()
-	path := a.serverURL.JoinPath("/ims/api/incident_types").String()
-	bod, resp := a.imsGet(ctx, path, &imsjson.IncidentTypes{})
-	return *bod.(*imsjson.IncidentTypes), resp
+	client := servicev1connect.NewImsServiceClient(http.DefaultClient, a.serverURL.String())
+	rpcReq := connect.NewRequest(&servicerpcv1.ListIncidentTypesRequest{})
+	a.authorizeRPC(rpcReq)
+	resp, err := client.ListIncidentTypes(ctx, rpcReq)
+	if err != nil {
+		return nil, &http.Response{StatusCode: connectStatus(err), Body: http.NoBody}
+	}
+	out := make(imsjson.IncidentTypes, 0, len(resp.Msg.GetIncidentTypes()))
+	for _, t := range resp.Msg.GetIncidentTypes() {
+		out = append(out, incidentTypeProtoToJSON(t))
+	}
+	return out, &http.Response{StatusCode: http.StatusOK, Body: http.NoBody}
 }
 
+// proposeType drives the writer's incident-type proposal through the generated Connect client
+// (ProposeIncidentType). The REST POST /events/{eventName}/incident_types route was retired; the
+// event name resolves to its id, and the returned id (new or resolved-duplicate) is handed back.
 func (a ApiHelper) proposeType(ctx context.Context, eventName string, req imsjson.IncidentType) (*int32, *http.Response) {
 	a.t.Helper()
-	httpResp := a.imsPost(ctx, req, a.serverURL.JoinPath("/ims/api/events/", eventName, "/incident_types").String())
-	numStr := httpResp.Header.Get("IMS-Incident-Type-ID")
-	require.NoError(a.t, httpResp.Body.Close())
-	if numStr == "" {
-		return nil, httpResp
+	client := servicev1connect.NewImsServiceClient(http.DefaultClient, a.serverURL.String())
+	rpcReq := connect.NewRequest(&servicerpcv1.ProposeIncidentTypeRequest{
+		EventId:      a.resolveEventID(ctx, eventName),
+		IncidentType: incidentTypeMsgFromJSON(req),
+	})
+	a.authorizeRPC(rpcReq)
+	resp, err := client.ProposeIncidentType(ctx, rpcReq)
+	if err != nil {
+		return nil, &http.Response{StatusCode: connectStatus(err), Body: http.NoBody}
 	}
-	num, err := conv.ParseInt32(numStr)
-	require.NoError(a.t, err)
-	return &num, httpResp
+	id := resp.Msg.GetIncidentTypeId()
+	return &id, &http.Response{StatusCode: http.StatusCreated, Body: http.NoBody}
 }
 
 func (a ApiHelper) editOutcome(ctx context.Context, req imsjson.Outcome) (*int32, *http.Response) {
