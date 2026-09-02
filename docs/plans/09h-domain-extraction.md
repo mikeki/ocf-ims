@@ -352,7 +352,23 @@ interceptor records no Referer), and `createEvent` was the last such — repoint
 **profile-picture upload**, which stays REST for the whole migration (binary, M8), so this fixture is
 now durable. `POST /events` left the admin-only sweep → focused `TestEventWriteAuthorization`.
 
-Next: **areas/crews → notifications/push →
+The **area** surface is now done (branch `feat/1c-areas`, stacked on `feat/1c-events`) — a new
+`area.Service` with five RPCs (ListAreas + CreateArea/UpdateArea/ApproveArea/MarkAreaDuplicate),
+retiring REST GET/POST /events/{eventName}/areas. The POST multiplexer decomposed the same way the
+taxonomies did, but the write RPCs are **thin wrappers over the herr-returning cores ported verbatim**
+from the retired `EditAreas` handler (create/approve/markDuplicate/update moved onto `area.Service`,
+mapped via `server.HerrToConnect`) — the personnel-writes pattern, chosen because `markDuplicate`'s
+re-point-then-delete transaction is intricate and best not rewritten. `CreateArea` keeps the
+writer-proposes/admin-approves split (an event writer's create is an unapproved proposal); every
+existing-area op stays admin-only. **Contract gap filled: the Area resource was missing `sort_order`**
+(a real, writable AREA column the admin list + a copyAreas-ordering test rely on) — added
+`optional int32 sort_order = 6`. `AreasCache` moved from AddToMux into AddConnectToMux and is now keyed
+by **event id** (private to the Service); the metrics cache stays keyed by event **name** (shared with
+the incident writes), so an area write resolves the name to invalidate it (best-effort). GET /areas
+left the per-event route sweep in `TestEventEndpoints_ForNoEventPerms` → focused
+`TestListAreasAuthorization`; area write-auth was already covered inline in `area_test.go`.
+
+Next: **crews → notifications/push →
 metrics/action log**. For each: move handler logic into a
 proto-shaped domain method on its domain `Service` returning Connect errors, add the RPC
 method to `ImsService`, **delete the REST route + handler and move its `api/integration`
