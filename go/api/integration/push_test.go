@@ -215,11 +215,11 @@ func TestPushFanoutDelivery(t *testing.T) {
 
 	// A dedicated server so this test's pushes go to our spy, not the shared
 	// suite's no-op sender, and so other parallel tests' triggers don't reach it.
-	// Incident creation is Connect-only now (plan 09h/1c), so the Connect surface must
-	// share this mux too — and carry the same spy sender, since the create's push
-	// fan-out runs through CreateIncident's Pusher (built from that sender).
+	// The push-firing writes (incident create, attach-person) are Connect-only now
+	// (plan 09h/1c), and the REST surface no longer holds a Pusher at all — so the spy
+	// rides on the Connect surface, whose Pusher is built from that sender.
 	spy := &capturingSender{}
-	mux := api.AddToMux(nil, shared.es, shared.metricsCache, shared.cfg, shared.imsDBQ, shared.userStore, nil, shared.actionLogger, spy)
+	mux := api.AddToMux(nil, shared.es, shared.metricsCache, shared.cfg, shared.imsDBQ, shared.userStore, nil, shared.actionLogger)
 	api.AddConnectToMux(mux, shared.cfg, shared.imsDBQ, shared.actionLogger, shared.userStore, shared.es, shared.metricsCache, spy)
 	srv := httptest.NewServer(mux)
 	defer srv.Close()
