@@ -252,28 +252,10 @@ func AddToMux(
 	// GET .../reports (list) and GET .../reports/{n} (single) were RETIRED when
 	// ListReports and GetReport moved onto Connect (plan 09h/1c, aggressive migration
 	// path — plan 09 §6). Reading field reports is now the ImsService.ListReports /
-	// GetReport RPCs (registered via AddConnectToMux); there is deliberately no REST shim.
-	// The report writes (create/edit) stay REST for now.
-
-	mux.Handle("POST /ims/api/events/{eventName}/reports",
-		server.Adapt(
-			incident.NewReport{ImsDBQ: db, UserStore: userStore, EventSource: es, Pusher: pusher},
-			server.RecoverFromPanic(),
-			server.RequireAuthN(jwter),
-			server.LogRequest(true, actionLogger, userStore),
-			server.LimitRequestBytes(cfg.Core.MaxRequestBytes),
-		),
-	)
-
-	mux.Handle("POST /ims/api/events/{eventName}/reports/{reportNumber}",
-		server.Adapt(
-			incident.EditReport{ImsDBQ: db, UserStore: userStore, EventSource: es, Pusher: pusher},
-			server.RecoverFromPanic(),
-			server.RequireAuthN(jwter),
-			server.LogRequest(true, actionLogger, userStore),
-			server.LimitRequestBytes(cfg.Core.MaxRequestBytes),
-		),
-	)
+	// The field-report reads (Get/List) AND writes (Create/Update/UpdateReportJournalEntry) are
+	// all Connect RPCs now (registered via AddConnectToMux); their REST routes were retired, not
+	// shimmed (aggressive migration, plan 09 §6). Only the report-attachment upload/download
+	// (binary/multipart, outside the proto contract) stays REST below.
 
 	mux.Handle("GET /ims/api/events/{eventName}/reports/{reportNumber}/attachments/{attachmentNumber}",
 		server.Adapt(
@@ -288,16 +270,6 @@ func AddToMux(
 	mux.Handle("POST /ims/api/events/{eventName}/reports/{reportNumber}/attachments",
 		server.Adapt(
 			incident.AttachToReport{ImsDBQ: db, UserStore: userStore, Es: es, AttachmentsStore: cfg.AttachmentsStore, S3Client: s3Client, MaxAttachmentBytes: cfg.Core.MaxAttachmentBytes},
-			server.RecoverFromPanic(),
-			server.RequireAuthN(jwter),
-			server.LogRequest(true, actionLogger, userStore),
-			server.LimitRequestBytes(cfg.Core.MaxRequestBytes),
-		),
-	)
-
-	mux.Handle("POST /ims/api/events/{eventName}/reports/{reportNumber}/journal_entries/{journalEntryId}",
-		server.Adapt(
-			incident.EditReportJournalEntry{ImsDBQ: db, UserStore: userStore, EventSource: es},
 			server.RecoverFromPanic(),
 			server.RequireAuthN(jwter),
 			server.LogRequest(true, actionLogger, userStore),

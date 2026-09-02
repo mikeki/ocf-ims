@@ -25,10 +25,12 @@ import (
 	"time"
 
 	"connectrpc.com/connect"
+	"github.com/go-sql-driver/mysql"
 	"github.com/mikeki/ocf-ims/directory"
 	commonv1 "github.com/mikeki/ocf-ims/gen/ocf/ims/common/v1"
 	resourcesv1 "github.com/mikeki/ocf-ims/gen/ocf/ims/resources/v1"
 	rpcv1 "github.com/mikeki/ocf-ims/gen/ocf/ims/service/rpc/v1"
+	"github.com/mikeki/ocf-ims/internal/notification"
 	"github.com/mikeki/ocf-ims/internal/server"
 	imsjson "github.com/mikeki/ocf-ims/json"
 	"github.com/mikeki/ocf-ims/lib/authz"
@@ -646,6 +648,528 @@ func (s Service) ListReports(
 		reports = append(reports, reportViewFromJSON(reportJSON))
 	}
 	return &rpcv1.ListReportsResponse{Reports: reports}, nil
+}
+
+// CreateReport is the domain method behind the CreateReport RPC (plan 09h/1c, reports). The
+// REST POST /events/{eventName}/reports endpoint was RETIRED with this extraction, not shimmed
+// (migration decision, plan 09 §Migration strategy). It ports the REST newReport flow verbatim:
+// writing a report needs EventWriteAllReports or EventWriteOwnReports; the report may be created
+// already linked to an incident (10e — the reporter enters the IMS# before/without a summary),
+// which trips a friendly NotFound if that incident doesn't exist. The incident link follows the
+// visit-field convention (a present, positive report.incident links; absent or non-positive
+// leaves it unlinked), replacing the REST create's "any non-nil incident" read. It reserves the
+// next per-event number, inserts the row, then writes the summary/link/journal-entry records in a
+// transaction, generating @mention notifications and web-push exactly as REST did.
+func (s Service) CreateReport(
+	ctx context.Context,
+	req *rpcv1.CreateReportRequest,
+) (*rpcv1.CreateReportResponse, error) {
+	claims, ok := server.ClaimsFromContext(ctx)
+	if !ok {
+		return nil, connect.NewError(connect.CodeUnauthenticated, errors.New("authentication required"))
+	}
+
+	event, _, errConn := s.reportWriteContext(ctx, req.GetEventId(), *claims)
+	if errConn != nil {
+		return nil, errConn
+	}
+
+	report := reportWriteToJSON(req.GetReport())
+	authorPersonID := claims.PersonID()
+
+	var incidentNumber sql.NullInt32
+	if report.Incident != nil && *report.Incident > 0 {
+		incidentNumber = sql.NullInt32{Int32: *report.Incident, Valid: true}
+	}
+
+	newReportNum, err := s.ImsDBQ.NextReportNumber(ctx, s.ImsDBQ, event.ID)
+	if err != nil {
+		return nil, connect.NewError(connect.CodeInternal, fmt.Errorf("failed to find next report number: %w", err))
+	}
+	report.Number = newReportNum
+
+	err = s.ImsDBQ.CreateReport(ctx, s.ImsDBQ, imsdb.CreateReportParams{
+		Event:          event.ID,
+		Number:         newReportNum,
+		Created:        conv.TimeToFloat(time.Now()),
+		Summary:        conv.StringToSql(report.Summary, 0),
+		IncidentNumber: incidentNumber,
+		CreatedBy:      sql.NullInt32{Int32: authorPersonID, Valid: true},
+	})
+	if err != nil {
+		if isNoReferencedRow(err) {
+			return nil, connect.NewError(connect.CodeNotFound, errors.New("no such Incident"))
+		}
+		return nil, connect.NewError(connect.CodeInternal, fmt.Errorf("failed to create report: %w", err))
+	}
+
+	txn, err := s.ImsDBQ.Begin()
+	if err != nil {
+		return nil, connect.NewError(connect.CodeInternal, fmt.Errorf("failed to begin transaction: %w", err))
+	}
+	defer server.Rollback(txn)
+
+	if report.Summary != nil {
+		errConn := s.addGeneratedReportEntry(ctx, txn, event.ID, report.Number, authorPersonID,
+			"Changed summary to: "+*report.Summary)
+		if errConn != nil {
+			return nil, errConn
+		}
+	}
+	if incidentNumber.Valid {
+		errConn := s.addGeneratedReportEntry(ctx, txn, event.ID, report.Number, authorPersonID,
+			fmt.Sprintf("Attached to incident: %v", incidentNumber.Int32))
+		if errConn != nil {
+			return nil, errConn
+		}
+		// Mirror the link onto the incident's journal too, so it shows on both timelines.
+		errConn = s.addGeneratedIncidentEntry(ctx, txn, event.ID, incidentNumber.Int32, authorPersonID,
+			fmt.Sprintf("Report added: %v", report.Number))
+		if errConn != nil {
+			return nil, errConn
+		}
+	}
+
+	mentionedPersonIDs, errConn := s.applyReportJournalEntries(ctx, txn, event.ID, report.Number, authorPersonID, report.JournalEntries)
+	if errConn != nil {
+		return nil, errConn
+	}
+
+	err = txn.Commit()
+	if err != nil {
+		return nil, connect.NewError(connect.CodeInternal, fmt.Errorf("failed to commit transaction: %w", err))
+	}
+
+	defer s.Es.NotifyReportUpdate(event.ID, report.Number)
+	if incidentNumber.Valid {
+		// The incident just gained a report; refresh its subscribers too (0 = no
+		// previous incident, mirroring an attach from unattached).
+		defer s.Es.NotifyIncidentUpdates(event.ID, 0, incidentNumber.Int32)
+	}
+	s.Pusher.NotifyMentionedInReport(ctx, event.Name, report.Number, mentionedPersonIDs, authorPersonID)
+	return &rpcv1.CreateReportResponse{ReportNumber: report.Number}, nil
+}
+
+// UpdateReport is the domain method behind the UpdateReport RPC (plan 09h/1c, reports). The
+// REST POST /events/{eventName}/reports/{reportNumber} endpoint was RETIRED with this extraction
+// (migration decision, plan 09 §Migration strategy). It ports the REST editReport authorization
+// verbatim: the write gate (EventWriteAllReports / EventWriteOwnReports) plus an ownership floor
+// (write-all, or the report's creator, or a previous journal-entry author) that a limited caller
+// must clear, and the stricter per-action gates from reportEditRights (only the creator/admin may
+// edit the summary; the writer role may additionally add entries).
+//
+// The one deliberate behavior change: the REST handler linked/unlinked a report to an incident
+// through a "?action=attach|detach" form param and IGNORED the body's incident field; the RPC
+// takes a plain Report, so the incident link is now reconciled from report.incident following the
+// visit-field convention (present & >0 links, present & ≤0 detaches, absent leaves it unchanged),
+// and only when it actually changes — so an edit that carries the current link writes no spurious
+// journal entry. This retires the legacy action framework the REST TODO called out.
+func (s Service) UpdateReport(
+	ctx context.Context,
+	req *rpcv1.UpdateReportRequest,
+) (*rpcv1.UpdateReportResponse, error) {
+	claims, ok := server.ClaimsFromContext(ctx)
+	if !ok {
+		return nil, connect.NewError(connect.CodeUnauthenticated, errors.New("authentication required"))
+	}
+
+	event, eventPermissions, errConn := s.reportWriteContext(ctx, req.GetEventId(), *claims)
+	if errConn != nil {
+		return nil, errConn
+	}
+
+	reportNumber := req.GetReportNumber()
+	report := reportWriteToJSON(req.GetReport())
+	authorPersonID := claims.PersonID()
+
+	reportRow, err := s.ImsDBQ.Report(ctx, s.ImsDBQ, imsdb.ReportParams{Event: event.ID, Number: reportNumber})
+	if errors.Is(err, sql.ErrNoRows) {
+		return nil, connect.NewError(connect.CodeNotFound, errors.New("report does not exist"))
+	}
+	if err != nil {
+		return nil, connect.NewError(connect.CodeInternal, fmt.Errorf("failed to fetch report: %w", err))
+	}
+	storedReport := reportRow.Report
+
+	// Ownership floor (governs the link action and is the baseline for the edits): a caller
+	// with EventWriteAllReports always qualifies; a limited caller must be the creator or a
+	// previous author of one of the report's journal entries.
+	hasWriteAll := eventPermissions&authz.EventWriteAllReports != 0
+	isCreator := storedReport.CreatedBy.Valid && storedReport.CreatedBy.Int32 == authorPersonID
+	if !hasWriteAll && !isCreator {
+		isPrevAuthor, errConn := s.isPreviousReportAuthor(ctx, event.ID, reportNumber, claims.PersonHandle())
+		if errConn != nil {
+			return nil, errConn
+		}
+		if !isPrevAuthor {
+			return nil, connect.NewError(connect.CodePermissionDenied,
+				errors.New("the requestor does not have permission to edit this Report"))
+		}
+	}
+
+	errConn = s.reconcileReportLink(ctx, storedReport, event, report.Incident, authorPersonID)
+	if errConn != nil {
+		return nil, errConn
+	}
+
+	editsSummary := report.Summary != nil
+	addsEntry := false
+	for _, entry := range report.JournalEntries {
+		if entry.Text != "" {
+			addsEntry = true
+			break
+		}
+	}
+	if !editsSummary && !addsEntry {
+		// Link-only (or no-op) request: the link reconciliation above is all there was.
+		return &rpcv1.UpdateReportResponse{}, nil
+	}
+
+	// Per-action authorization: editing the summary is limited to the creator and admins;
+	// adding journal entries additionally allows the writer role.
+	mayEditSummary, mayAddEntry := reportEditRights(storedReport, authorPersonID, claims.PersonAdmin(), eventPermissions)
+	if editsSummary && !mayEditSummary {
+		return nil, connect.NewError(connect.CodePermissionDenied,
+			errors.New("only the report's creator or an admin may edit the summary"))
+	}
+	if addsEntry && !mayAddEntry {
+		return nil, connect.NewError(connect.CodePermissionDenied,
+			errors.New("only the report's creator, a writer, or an admin may add journal entries"))
+	}
+
+	txn, err := s.ImsDBQ.Begin()
+	if err != nil {
+		return nil, connect.NewError(connect.CodeInternal, fmt.Errorf("failed to begin transaction: %w", err))
+	}
+	defer server.Rollback(txn)
+
+	if editsSummary {
+		storedReport.Summary = conv.StringToSql(report.Summary, 0)
+		errConn := s.addGeneratedReportEntry(ctx, txn, event.ID, storedReport.Number, authorPersonID,
+			"Changed summary to: "+*report.Summary)
+		if errConn != nil {
+			return nil, errConn
+		}
+	}
+	err = s.ImsDBQ.UpdateReport(ctx, txn, imsdb.UpdateReportParams{
+		Event:          storedReport.Event,
+		Number:         storedReport.Number,
+		Summary:        storedReport.Summary,
+		IncidentNumber: storedReport.IncidentNumber,
+	})
+	if err != nil {
+		return nil, connect.NewError(connect.CodeInternal, fmt.Errorf("failed to update report: %w", err))
+	}
+
+	mentionedPersonIDs, errConn := s.applyReportJournalEntries(ctx, txn, event.ID, storedReport.Number, authorPersonID, report.JournalEntries)
+	if errConn != nil {
+		return nil, errConn
+	}
+
+	err = txn.Commit()
+	if err != nil {
+		return nil, connect.NewError(connect.CodeInternal, fmt.Errorf("failed to commit transaction: %w", err))
+	}
+
+	defer s.Es.NotifyReportUpdate(event.ID, storedReport.Number)
+	s.Pusher.NotifyMentionedInReport(ctx, event.Name, storedReport.Number, mentionedPersonIDs, authorPersonID)
+	return &rpcv1.UpdateReportResponse{}, nil
+}
+
+// UpdateReportJournalEntry is the domain method behind the UpdateReportJournalEntry RPC (plan
+// 09h/1c, reports). The REST POST /events/{eventName}/reports/{reportNumber}/journal_entries/{id}
+// endpoint was RETIRED with this extraction (migration decision, plan 09 §Migration strategy).
+// It ports the REST editReportJournalEntry verbatim: striking is the only field this endpoint can
+// change, and a caller with only EventWriteOwnReports (a reporter) may strike/unstrike only the
+// entries they authored — writers/admins (EventWriteAllReports) may strike any (plan 90 M1). An
+// entry with no stricken value set is a no-op.
+func (s Service) UpdateReportJournalEntry(
+	ctx context.Context,
+	req *rpcv1.UpdateReportJournalEntryRequest,
+) (*rpcv1.UpdateReportJournalEntryResponse, error) {
+	claims, ok := server.ClaimsFromContext(ctx)
+	if !ok {
+		return nil, connect.NewError(connect.CodeUnauthenticated, errors.New("authentication required"))
+	}
+
+	event, eventPermissions, errConn := s.reportWriteContext(ctx, req.GetEventId(), *claims)
+	if errConn != nil {
+		return nil, errConn
+	}
+
+	reportNumber := req.GetReportNumber()
+	journalEntryID := req.GetJournalEntryId()
+	authorPersonID := claims.PersonID()
+
+	_, err := s.ImsDBQ.Report(ctx, s.ImsDBQ, imsdb.ReportParams{Event: event.ID, Number: reportNumber})
+	if err != nil {
+		return nil, connect.NewError(connect.CodeNotFound, errors.New("there is no Report for the provided ID"))
+	}
+
+	stricken := req.GetEntry().Stricken
+	if stricken == nil {
+		// Stricken is the only field this endpoint can modify; nothing to do.
+		return &rpcv1.UpdateReportJournalEntryResponse{}, nil
+	}
+
+	// A reporter (EventWriteOwnReports only) may strike only their own entries.
+	if eventPermissions&authz.EventWriteAllReports == 0 {
+		author, err := s.ImsDBQ.ReportJournalEntryAuthor(ctx, s.ImsDBQ, imsdb.ReportJournalEntryAuthorParams{
+			Event: event.ID, ReportNumber: reportNumber, JournalEntry: journalEntryID,
+		})
+		if errors.Is(err, sql.ErrNoRows) {
+			return nil, connect.NewError(connect.CodeNotFound, errors.New("there is no such JournalEntry on this Report"))
+		}
+		if err != nil {
+			return nil, connect.NewError(connect.CodeInternal, fmt.Errorf("failed to fetch journal entry author: %w", err))
+		}
+		if author.String != claims.PersonHandle() {
+			return nil, connect.NewError(connect.CodePermissionDenied,
+				errors.New("the requestor may only strike their own journal entries"))
+		}
+	}
+
+	txn, err := s.ImsDBQ.Begin()
+	if err != nil {
+		return nil, connect.NewError(connect.CodeInternal, fmt.Errorf("failed to begin transaction: %w", err))
+	}
+	defer server.Rollback(txn)
+
+	err = s.ImsDBQ.SetReportJournalEntryStricken(ctx, txn, imsdb.SetReportJournalEntryStrickenParams{
+		Stricken: *stricken, Event: event.ID, ReportNumber: reportNumber, JournalEntry: journalEntryID,
+	})
+	if err != nil {
+		return nil, connect.NewError(connect.CodeInternal, fmt.Errorf("failed to set journal entry stricken: %w", err))
+	}
+	struckVerb := "Struck"
+	if !*stricken {
+		struckVerb = "Unstruck"
+	}
+	errConn = s.addGeneratedReportEntry(ctx, txn, event.ID, reportNumber, authorPersonID,
+		fmt.Sprintf("%v journalEntry %v", struckVerb, journalEntryID))
+	if errConn != nil {
+		return nil, errConn
+	}
+	err = txn.Commit()
+	if err != nil {
+		return nil, connect.NewError(connect.CodeInternal, fmt.Errorf("failed to commit transaction: %w", err))
+	}
+
+	defer s.Es.NotifyReportUpdate(event.ID, reportNumber)
+	return &rpcv1.UpdateReportJournalEntryResponse{}, nil
+}
+
+// reportWriteContext resolves the event and the caller's permissions for a report-write RPC and
+// enforces the shared write gate (EventWriteAllReports or EventWriteOwnReports). A missing event
+// is NotFound; a caller without either write bit is PermissionDenied. It factors out the identical
+// preamble the three report-write methods share.
+func (s Service) reportWriteContext(
+	ctx context.Context, eventID int32, claims authz.IMSClaims,
+) (imsdb.Event, authz.EventPermissionMask, error) {
+	eventRow, err := s.ImsDBQ.Event(ctx, s.ImsDBQ, eventID)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return imsdb.Event{}, 0, connect.NewError(connect.CodeNotFound, errors.New("event not found"))
+		}
+		return imsdb.Event{}, 0, connect.NewError(connect.CodeInternal, fmt.Errorf("failed to fetch event: %w", err))
+	}
+	event := eventRow.Event
+
+	eventPerms, _, err := authz.EventPermissions(ctx, &event.ID, s.ImsDBQ, claims)
+	if err != nil {
+		return imsdb.Event{}, 0, connect.NewError(connect.CodeInternal, fmt.Errorf("failed to compute permissions: %w", err))
+	}
+	eventPermissions := eventPerms[event.ID]
+	if eventPermissions&(authz.EventWriteAllReports|authz.EventWriteOwnReports) == 0 {
+		return imsdb.Event{}, 0, connect.NewError(connect.CodePermissionDenied,
+			errors.New("the requestor does not have permission to write Reports on this Event"))
+	}
+	return event, eventPermissions, nil
+}
+
+// isPreviousReportAuthor reports whether the caller authored any of the report's journal entries
+// — the legacy fallback in the edit-path ownership floor (see ownsReport / EditReport).
+func (s Service) isPreviousReportAuthor(ctx context.Context, eventID, reportNumber int32, handle string) (bool, error) {
+	entries, err := s.ImsDBQ.Report_JournalEntries(ctx, s.ImsDBQ, imsdb.Report_JournalEntriesParams{
+		Event: eventID, ReportNumber: reportNumber,
+	})
+	if err != nil {
+		return false, connect.NewError(connect.CodeInternal, fmt.Errorf("failed to fetch report journal entries: %w", err))
+	}
+	for _, entry := range entries {
+		if entry.Author.String == handle {
+			return true, nil
+		}
+	}
+	return false, nil
+}
+
+// reconcileReportLink applies the incident link requested on a report update, following the
+// visit-field convention: a nil desired (report.incident absent) leaves the link untouched; a
+// positive value links the report to that incident; a non-positive value detaches it. It acts
+// only when the target differs from the stored link, so a no-op edit writes no journal entry, and
+// mirrors the change onto both the report's and the incident's timelines (as REST's
+// handleLinkToIncident did). An unknown target incident trips a friendly NotFound.
+func (s Service) reconcileReportLink(
+	ctx context.Context, storedReport imsdb.Report, event imsdb.Event, desired *int32, actorPersonID int32,
+) error {
+	if desired == nil {
+		return nil
+	}
+	previous := storedReport.IncidentNumber
+	reportNumber := storedReport.Number
+
+	var target sql.NullInt32
+	if *desired > 0 {
+		target = sql.NullInt32{Int32: *desired, Valid: true}
+	}
+	if target.Valid == previous.Valid && target.Int32 == previous.Int32 {
+		// No change to the link.
+		return nil
+	}
+
+	var reportEntryText, incidentEntryText string
+	var incidentForJournal sql.NullInt32
+	if target.Valid {
+		reportEntryText = fmt.Sprintf("Attached to incident: %v", target.Int32)
+		incidentForJournal = target
+		incidentEntryText = fmt.Sprintf("Report added: %v", reportNumber)
+	} else {
+		reportEntryText = fmt.Sprintf("Detached from incident: %v", previous.Int32)
+		// Mirror onto the previous incident — valid only if it was actually attached.
+		incidentForJournal = previous
+		incidentEntryText = fmt.Sprintf("Report removed: %v", reportNumber)
+	}
+
+	err := s.ImsDBQ.AttachReportToIncident(ctx, s.ImsDBQ, imsdb.AttachReportToIncidentParams{
+		IncidentNumber: target, Event: event.ID, Number: reportNumber,
+	})
+	if err != nil {
+		if isNoReferencedRow(err) {
+			return connect.NewError(connect.CodeNotFound, errors.New("no such Incident"))
+		}
+		return connect.NewError(connect.CodeInternal, fmt.Errorf("failed to attach report to incident: %w", err))
+	}
+	errConn := s.addGeneratedReportEntry(ctx, s.ImsDBQ, event.ID, reportNumber, actorPersonID, reportEntryText)
+	if errConn != nil {
+		return errConn
+	}
+	if incidentForJournal.Valid {
+		errConn = s.addGeneratedIncidentEntry(ctx, s.ImsDBQ, event.ID, incidentForJournal.Int32, actorPersonID, incidentEntryText)
+		if errConn != nil {
+			return errConn
+		}
+	}
+	s.Es.NotifyReportUpdate(event.ID, reportNumber)
+	s.Es.NotifyIncidentUpdates(event.ID, previous.Int32, target.Int32)
+	return nil
+}
+
+// applyReportJournalEntries writes the non-empty journal entries from a report write body,
+// attaching their @mentions and generating the mention notifications, and returns the set of
+// mentioned people to web-push after commit. Shared by CreateReport and UpdateReport (the REST
+// newReport/editReport ran the identical loop).
+func (s Service) applyReportJournalEntries(
+	ctx context.Context, txn imsdb.DBTX, eventID, reportNumber, authorPersonID int32, entries []imsjson.JournalEntry,
+) ([]int32, error) {
+	var mentionedPersonIDs []int32
+	for _, entry := range entries {
+		if entry.Text == "" {
+			continue
+		}
+		entryID, errHTTP := addJournalEntry(ctx, s.ImsDBQ, txn, eventID, reportNumber, authorPersonID,
+			entry.Text, false, "", "", "", onBehalfOfParam(entry.OnBehalfOfPersonID))
+		if errHTTP != nil {
+			return nil, herrToConnect(errHTTP)
+		}
+		errHTTP = addJournalEntryMentions(ctx, s.ImsDBQ, s.UserStore, txn, entryID, entry.Text, entry.MentionedPersonIDs)
+		if errHTTP != nil {
+			return nil, herrToConnect(errHTTP)
+		}
+		recipients, errHTTP := notification.GenerateReportMentionNotifications(ctx, s.ImsDBQ, txn, eventID, reportNumber, entryID, authorPersonID)
+		if errHTTP != nil {
+			return nil, herrToConnect(errHTTP)
+		}
+		mentionedPersonIDs = append(mentionedPersonIDs, recipients...)
+	}
+	return mentionedPersonIDs, nil
+}
+
+// addGeneratedReportEntry writes a server-generated ("system") journal entry onto a report — the
+// change records the report writes emit (summary changes, link changes, strikes) — mapping the
+// shared helper's herr onto a Connect error. dbtx is the transaction (or the plain *store.DBQ for
+// the non-transactional link reconciliation).
+func (s Service) addGeneratedReportEntry(
+	ctx context.Context, dbtx imsdb.DBTX, eventID, reportNumber, authorPersonID int32, text string,
+) error {
+	_, errHTTP := addJournalEntry(ctx, s.ImsDBQ, dbtx, eventID, reportNumber, authorPersonID, text, true, "", "", "", sql.NullInt32{})
+	if errHTTP != nil {
+		return herrToConnect(errHTTP)
+	}
+	return nil
+}
+
+// addGeneratedIncidentEntry is the incident-side counterpart of addGeneratedReportEntry, used to
+// mirror a report↔incident link change onto the incident's timeline.
+func (s Service) addGeneratedIncidentEntry(
+	ctx context.Context, dbtx imsdb.DBTX, eventID, incidentNumber, authorPersonID int32, text string,
+) error {
+	_, errHTTP := addIncidentJournalEntry(ctx, s.ImsDBQ, dbtx, eventID, incidentNumber, authorPersonID, text, true, "", "", "")
+	if errHTTP != nil {
+		return herrToConnect(errHTTP)
+	}
+	return nil
+}
+
+// isNoReferencedRow reports whether err is the MySQL "cannot add or update a child row: a
+// foreign key constraint fails" error (1452) — a bad incident number tripping the composite
+// (EVENT, INCIDENT_NUMBER) FK on a report link. Callers surface it as a friendly NotFound.
+func isNoReferencedRow(err error) bool {
+	var mysqlErr *mysql.MySQLError
+	const mySQLErNoReferencedRow2 = 1452
+	return errors.As(err, &mysqlErr) && mysqlErr.Number == mySQLErNoReferencedRow2
+}
+
+// reportWriteToJSON converts the plain Report resource a report-write RPC carries onto the
+// imsjson.Report the shared write helpers consume. Only the write-input fields are read: the
+// summary and incident-link presence pointers pass straight through (imsjson already uses the
+// same *string / *int32 shapes), and each journal entry contributes its text plus the write-side
+// person id lists the proto collapsed into resolved PersonRefs (on_behalf_of.person_id and
+// mentions[].person_id). It is the report-side mirror of incidentUpdateToJSON and, like it, a
+// throwaway bridge that collapses when the write path maps proto straight to the store.
+func reportWriteToJSON(r *resourcesv1.Report) imsjson.Report {
+	if r == nil {
+		return imsjson.Report{}
+	}
+	out := imsjson.Report{
+		Summary:  r.Summary,
+		Incident: r.Incident,
+	}
+	for _, je := range r.GetJournalEntries() {
+		entry := imsjson.JournalEntry{
+			Text:               je.GetText(),
+			MentionedPersonIDs: personRefsToIDs(je.GetMentions()),
+		}
+		if ob := je.GetOnBehalfOf(); ob != nil {
+			id := ob.GetPersonId()
+			entry.OnBehalfOfPersonID = &id
+		}
+		out.JournalEntries = append(out.JournalEntries, entry)
+	}
+	return out
+}
+
+// personRefsToIDs extracts the person ids from a write body's PersonRef list (the mentions on a
+// new journal entry), dropping the handle/name the server resolves itself.
+func personRefsToIDs(refs []*commonv1.PersonRef) []int32 {
+	if len(refs) == 0 {
+		return nil
+	}
+	ids := make([]int32, 0, len(refs))
+	for _, r := range refs {
+		ids = append(ids, r.GetPersonId())
+	}
+	return ids
 }
 
 // incidentUpdateToJSON converts the presence-tracked IncidentUpdate write body onto the

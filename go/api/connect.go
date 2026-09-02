@@ -169,6 +169,52 @@ func (s ImsService) ListReports(
 	return connect.NewResponse(resp), nil
 }
 
+// CreateReport is a thin RPC method over the incident.CreateReport domain method (plan 09h/1c,
+// reports). Its REST predecessor (POST .../reports) was deleted in the same slice, so this is the
+// only transport for creating a field report. The domain method authorizes from ctx claims and
+// speaks Connect errors, so this just delegates.
+func (s ImsService) CreateReport(
+	ctx context.Context,
+	req *connect.Request[servicerpcv1.CreateReportRequest],
+) (*connect.Response[servicerpcv1.CreateReportResponse], error) {
+	resp, err := s.Incident.CreateReport(ctx, req.Msg)
+	if err != nil {
+		return nil, err
+	}
+	return connect.NewResponse(resp), nil
+}
+
+// UpdateReport is a thin RPC method over the incident.UpdateReport domain method (plan 09h/1c,
+// reports). Its REST predecessor (POST .../reports/{n}) was deleted in the same slice, so this is
+// the only transport for editing a field report's summary, journal, and incident link. The domain
+// method authorizes from ctx claims and speaks Connect errors, so this just delegates.
+func (s ImsService) UpdateReport(
+	ctx context.Context,
+	req *connect.Request[servicerpcv1.UpdateReportRequest],
+) (*connect.Response[servicerpcv1.UpdateReportResponse], error) {
+	resp, err := s.Incident.UpdateReport(ctx, req.Msg)
+	if err != nil {
+		return nil, err
+	}
+	return connect.NewResponse(resp), nil
+}
+
+// UpdateReportJournalEntry is a thin RPC method over the incident.UpdateReportJournalEntry domain
+// method (plan 09h/1c, reports). Its REST predecessor (POST .../reports/{n}/journal_entries/{id})
+// was deleted in the same slice, so this is the only transport for striking a report's journal
+// entry. The domain method authorizes from ctx claims and speaks Connect errors, so this just
+// delegates.
+func (s ImsService) UpdateReportJournalEntry(
+	ctx context.Context,
+	req *connect.Request[servicerpcv1.UpdateReportJournalEntryRequest],
+) (*connect.Response[servicerpcv1.UpdateReportJournalEntryResponse], error) {
+	resp, err := s.Incident.UpdateReportJournalEntry(ctx, req.Msg)
+	if err != nil {
+		return nil, err
+	}
+	return connect.NewResponse(resp), nil
+}
+
 // GetAuthStatus is the one RPC implemented end-to-end in slice 1b, to prove the
 // interceptor spine through the generated client. It answers the identity subset
 // of the whoami purely from the caller's JWT claims, which the auth interceptor
