@@ -24,7 +24,6 @@ import (
 	"github.com/mikeki/ocf-ims/conf"
 	"github.com/mikeki/ocf-ims/directory"
 	"github.com/mikeki/ocf-ims/internal/actionlog"
-	"github.com/mikeki/ocf-ims/internal/crew"
 	"github.com/mikeki/ocf-ims/internal/debug"
 	"github.com/mikeki/ocf-ims/internal/incident"
 	"github.com/mikeki/ocf-ims/internal/metrics"
@@ -67,12 +66,9 @@ func AddToMux(
 	// REST while the incident-mutation RPCs that must invalidate it on a write live on
 	// Connect, so both must hold the *same* cache or the dashboard would go stale until
 	// the TTL. (Passed in like es for the same reason — one shared instance.)
-
-	// Reference-data caches: each event's area list is read on nearly every incident
-	// form load but changes rarely, so it is memoized here and invalidated by its write
-	// handlers. (The incident-type, outcome, and area caches moved to the Connect side when
-	// those routes were extracted, plan 09h/1c.)
-	crewsCache := server.NewCrewsCache()
+	//
+	// The reference-data caches (incident-type, outcome, area, crew) all moved to the Connect side
+	// (built in AddConnectToMux) as their routes were extracted (plan 09h/1c); none remain here.
 
 	mux.Handle("GET /ims/api/actionlogs",
 		server.Adapt(
@@ -269,49 +265,10 @@ func AddToMux(
 	// Create/Update/Approve/MarkDuplicate) moved to the ImsService RPCs (plan 09h/1c) and their REST
 	// routes were retired; the shared areasCache moved to the Connect side (built in AddConnectToMux).
 
-	mux.Handle("GET /ims/api/events/{eventName}/crews",
-		server.Adapt(
-			crew.GetCrews{ImsDBQ: db, UserStore: userStore, Cache: crewsCache, CacheControlShort: cfg.Core.CacheControlShort},
-			server.RecoverFromPanic(),
-			server.RequireAuthN(jwter),
-			server.LogRequest(false, actionLogger, userStore),
-			server.LimitRequestBytes(cfg.Core.MaxRequestBytes),
-		),
-	)
-
-	mux.Handle("POST /ims/api/events/{eventName}/crews",
-		server.Adapt(
-			crew.EditCrews{ImsDBQ: db, UserStore: userStore, Crews: crewsCache},
-			server.RecoverFromPanic(),
-			server.RequireAuthN(jwter),
-			server.LogRequest(true, actionLogger, userStore),
-			server.LimitRequestBytes(cfg.Core.MaxRequestBytes),
-		),
-	)
-
-	// The crew-leader "My Crew" self-service pair (slice 10c): read the crews you
-	// lead, and add/remove their members. Not admin-gated — authorization is that the
-	// caller leads the crew (checked in the handler), so any authenticated user may
-	// reach these and only ever act on crews they lead.
-	mux.Handle("GET /ims/api/events/{eventName}/crews/mine",
-		server.Adapt(
-			crew.MyCrews{ImsDBQ: db, UserStore: userStore},
-			server.RecoverFromPanic(),
-			server.RequireAuthN(jwter),
-			server.LogRequest(false, actionLogger, userStore),
-			server.LimitRequestBytes(cfg.Core.MaxRequestBytes),
-		),
-	)
-
-	mux.Handle("POST /ims/api/events/{eventName}/crews/mine",
-		server.Adapt(
-			crew.EditMyCrew{ImsDBQ: db, UserStore: userStore, Crews: crewsCache},
-			server.RecoverFromPanic(),
-			server.RequireAuthN(jwter),
-			server.LogRequest(true, actionLogger, userStore),
-			server.LimitRequestBytes(cfg.Core.MaxRequestBytes),
-		),
-	)
+	// The crew read + all writes (the admin POST /crews multiplexer, decomposed into
+	// Create/Update/Delete/SetCrewMembership, and the crew-leader self-service /crews/mine read +
+	// member edit) moved to the ImsService RPCs (plan 09h/1c) and their REST routes were retired; the
+	// shared crewsCache moved to the Connect side (built in AddConnectToMux).
 
 	mux.Handle("GET /ims/api/events/{eventName}/metrics",
 		server.Adapt(
