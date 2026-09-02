@@ -343,18 +343,49 @@ func (a ApiHelper) newReportSuccess(ctx context.Context, reportReq imsjson.Repor
 	return num
 }
 
+// getReport reads a single field report through the generated Connect client. The REST
+// GET .../reports/{n} endpoint was retired when GetReport was extracted (plan 09h/1c); the
+// ReportView response is mapped back to imsjson.Report (reportViewToJSON) and a synthesized
+// *http.Response carries the equivalent HTTP status (connectStatus) so the tests' existing
+// status assertions and Body.Close() calls keep working. resolveEventID uses an admin token
+// so negative-auth callers still resolve the event and let the RPC do the rejecting.
 func (a ApiHelper) getReport(ctx context.Context, eventName string, report int32) (imsjson.Report, *http.Response) {
 	a.t.Helper()
-	path := a.serverURL.JoinPath("/ims/api/events/", eventName, "/reports/", strconv.Itoa(int(report))).String()
-	bod, resp := a.imsGet(ctx, path, &imsjson.Report{})
-	return *bod.(*imsjson.Report), resp
+	eventID := a.resolveEventID(ctx, eventName)
+	client := servicev1connect.NewImsServiceClient(http.DefaultClient, a.serverURL.String())
+	req := connect.NewRequest(&servicerpcv1.GetReportRequest{EventId: eventID, ReportNumber: report})
+	if a.jwt != "" {
+		req.Header().Set("Authorization", "Bearer "+a.jwt)
+	}
+	resp, err := client.GetReport(ctx, req)
+	httpResp := &http.Response{StatusCode: connectStatus(err), Body: http.NoBody}
+	if err != nil {
+		return imsjson.Report{}, httpResp
+	}
+	return reportViewToJSON(resp.Msg.GetReport()), httpResp
 }
 
+// getReports lists an event's field reports through the generated Connect client (the REST
+// GET .../reports endpoint was retired with ListReports). Each ReportView is mapped back to
+// imsjson.Report; see getReport for the synthesized-response and resolveEventID rationale.
 func (a ApiHelper) getReports(ctx context.Context, eventName string) (imsjson.Reports, *http.Response) {
 	a.t.Helper()
-	path := a.serverURL.JoinPath(fmt.Sprint("/ims/api/events/", eventName, "/reports")).String()
-	bod, resp := a.imsGet(ctx, path, &imsjson.Reports{})
-	return *bod.(*imsjson.Reports), resp
+	eventID := a.resolveEventID(ctx, eventName)
+	client := servicev1connect.NewImsServiceClient(http.DefaultClient, a.serverURL.String())
+	req := connect.NewRequest(&servicerpcv1.ListReportsRequest{EventId: eventID})
+	if a.jwt != "" {
+		req.Header().Set("Authorization", "Bearer "+a.jwt)
+	}
+	resp, err := client.ListReports(ctx, req)
+	httpResp := &http.Response{StatusCode: connectStatus(err), Body: http.NoBody}
+	if err != nil {
+		return nil, httpResp
+	}
+	reports := make(imsjson.Reports, 0, len(resp.Msg.GetReports()))
+	for _, rv := range resp.Msg.GetReports() {
+		reports = append(reports, reportViewToJSON(rv))
+	}
+	return reports, httpResp
 }
 
 func (a ApiHelper) updateReport(ctx context.Context, eventName string, report int32, req imsjson.Report) *http.Response {

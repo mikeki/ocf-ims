@@ -118,18 +118,17 @@ func TestEventEndpoints_ForNoEventPerms(t *testing.T) {
 	require.NoError(t, resp.Body.Close())
 
 	eventPath := "/ims/api/events/" + eventName
-	// GET .../incidents (list), POST .../incidents (create), GET .../incidents/{n}, and
-	// POST .../incidents/{n} (edit) were retired from REST (plan 09h/1c) — they are now the
-	// ImsService.ListIncidents / CreateIncident / GetIncident / UpdateIncident RPCs. Their
-	// unauth (401) and forbidden (403) behavior is covered through the Connect client in
-	// TestIncidentAPIAuthorization, so they are no longer enumerated here.
+	// The incident CRUD routes and the report GET routes (list + single) were retired from
+	// REST (plan 09h/1c) — they are now the ImsService.ListIncidents / CreateIncident /
+	// GetIncident / UpdateIncident and ListReports / GetReport RPCs. Their unauth (401) and
+	// forbidden (403) behavior is covered through the Connect client in
+	// TestIncidentAPIAuthorization and TestReportReadAuthorization, so they are no longer
+	// enumerated here.
 	getIncidentAttachment := MethodURL{http.MethodGet, eventPath + "/incidents/1/attachments/1"}
 	postIncidentAttachment := MethodURL{http.MethodPost, eventPath + "/incidents/1/attachments"}
 	postIncidentRE := MethodURL{http.MethodPost, eventPath + "/incidents/1/journal_entries/2"}
 	postIncidentPerson := MethodURL{http.MethodPost, eventPath + "/incidents/1/people/some_name"}
 	deleteIncidentPerson := MethodURL{http.MethodDelete, eventPath + "/incidents/1/people/some_name"}
-	getReports := MethodURL{http.MethodGet, eventPath + "/reports"}
-	getReport := MethodURL{http.MethodGet, eventPath + "/reports/1"}
 	getReportAttachment := MethodURL{http.MethodGet, eventPath + "/reports/1/attachments/1"}
 	createReport := MethodURL{http.MethodPost, eventPath + "/reports"}
 	updateReport := MethodURL{http.MethodPost, eventPath + "/reports/9999999"}
@@ -152,8 +151,6 @@ func TestEventEndpoints_ForNoEventPerms(t *testing.T) {
 		postIncidentRE,
 		postIncidentPerson,
 		deleteIncidentPerson,
-		getReports,
-		getReport,
 		getReportAttachment,
 		createReport,
 		updateReport,
@@ -171,8 +168,6 @@ func TestEventEndpoints_ForNoEventPerms(t *testing.T) {
 		getAreas,
 	}
 	reporter := []MethodURL{
-		getReports,
-		getReport,
 		getReportAttachment,
 		createReport,
 		postReportAttachment,

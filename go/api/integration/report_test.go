@@ -352,6 +352,43 @@ func TestReporterSeesOwnReport(t *testing.T) {
 	require.False(t, containsReport(erinList, num), "another reporter must not see a report they didn't create")
 }
 
+// TestReportReadAuthorization covers the report reads' event-level gate through the Connect
+// client. The retired REST GET routes' generic 401/403 sweep used to live in
+// permissions_test; now that reading reports is Connect-only (plan 09h/1c), that coverage
+// lives here: an unauthenticated caller is rejected (401), and an authenticated user with no
+// report-read permission on the event is forbidden (403). The finer own/crew/all scoping is
+// covered by TestReporterSeesOwnReport and the crew-leader tests. The event-level gate runs
+// before any report lookup, so report #1 need not exist.
+func TestReportReadAuthorization(t *testing.T) {
+	t.Parallel()
+	ctx := t.Context()
+
+	apisAdmin := ApiHelper{t: t, serverURL: shared.serverURL, jwt: jwtForAdmin(ctx, t)}
+	notAuthenticated := ApiHelper{t: t, serverURL: shared.serverURL, jwt: ""}
+	aliceNoPerms := ApiHelper{t: t, serverURL: shared.serverURL, jwt: jwtForAlice(t, ctx)}
+
+	eventName := rand.NonCryptoText()
+	_, resp := apisAdmin.createEvent(ctx, imsjson.Event{Name: &eventName})
+	require.Equal(t, http.StatusNoContent, resp.StatusCode)
+	require.NoError(t, resp.Body.Close())
+
+	// Unauthenticated: both reads are 401.
+	_, resp = notAuthenticated.getReports(ctx, eventName)
+	require.Equal(t, http.StatusUnauthorized, resp.StatusCode)
+	require.NoError(t, resp.Body.Close())
+	_, resp = notAuthenticated.getReport(ctx, eventName, 1)
+	require.Equal(t, http.StatusUnauthorized, resp.StatusCode)
+	require.NoError(t, resp.Body.Close())
+
+	// Authenticated but with no participation row on this event: both reads are 403.
+	_, resp = aliceNoPerms.getReports(ctx, eventName)
+	require.Equal(t, http.StatusForbidden, resp.StatusCode)
+	require.NoError(t, resp.Body.Close())
+	_, resp = aliceNoPerms.getReport(ctx, eventName, 1)
+	require.Equal(t, http.StatusForbidden, resp.StatusCode)
+	require.NoError(t, resp.Body.Close())
+}
+
 func containsReport(reports imsjson.Reports, number int32) bool {
 	for _, r := range reports {
 		if r.Number == number {

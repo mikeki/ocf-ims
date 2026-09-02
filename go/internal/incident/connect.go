@@ -485,6 +485,169 @@ func (s Service) UpdateIncident(
 	return &rpcv1.UpdateIncidentResponse{}, nil
 }
 
+// GetReport is the domain method behind the GetReport RPC (plan 09h/1c, reports). The REST
+// GET /events/{eventName}/reports/{reportNumber} endpoint was RETIRED with this extraction,
+// not shimmed (migration decision, plan 09 §Migration strategy). It ports the REST getReport
+// authorization verbatim: reading reports needs one of EventReadAllReports / EventReadOwnReports
+// / EventReadCrewReports, and a caller without the "all" bit (limitedAccess) may see a report
+// only if they own it (ownsReport — anchored on REPORT.CREATED_BY, journal-authorship as a
+// legacy fallback) or, as a crew leader, it belongs to their crew (crewReportNumberSet, 10c).
+// Unlike a private incident, an out-of-scope report is PermissionDenied (403), not NotFound —
+// the REST handler never hid a report's existence from a report-reader. Like the incident reads
+// it reuses the shared reportToJSON assembly and bridges the result onto the wire proto.
+func (s Service) GetReport(
+	ctx context.Context,
+	req *rpcv1.GetReportRequest,
+) (*rpcv1.GetReportResponse, error) {
+	claims, ok := server.ClaimsFromContext(ctx)
+	if !ok {
+		return nil, connect.NewError(connect.CodeUnauthenticated, errors.New("authentication required"))
+	}
+
+	eventRow, err := s.ImsDBQ.Event(ctx, s.ImsDBQ, req.GetEventId())
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return nil, connect.NewError(connect.CodeNotFound, errors.New("event not found"))
+		}
+		return nil, connect.NewError(connect.CodeInternal, fmt.Errorf("failed to fetch event: %w", err))
+	}
+	event := eventRow.Event
+
+	eventPerms, _, err := authz.EventPermissions(ctx, &event.ID, s.ImsDBQ, *claims)
+	if err != nil {
+		return nil, connect.NewError(connect.CodeInternal, fmt.Errorf("failed to compute permissions: %w", err))
+	}
+	eventPermissions := eventPerms[event.ID]
+	if eventPermissions&(authz.EventReadAllReports|authz.EventReadOwnReports|authz.EventReadCrewReports) == 0 {
+		return nil, connect.NewError(connect.CodePermissionDenied,
+			errors.New("the requestor does not have permission to read Reports on this Event"))
+	}
+	limitedAccess := eventPermissions&authz.EventReadAllReports == 0
+
+	reportNumber := req.GetReportNumber()
+	report, journalEntries, errHTTP := fetchReport(ctx, s.ImsDBQ, event.ID, reportNumber, s.AttachmentsEnabled)
+	if errHTTP != nil {
+		return nil, herrToConnect(errHTTP)
+	}
+	reportRow := imsdb.ReportsRow(report)
+
+	if limitedAccess {
+		callerPersonID := claims.PersonID()
+		ownVisible := eventPermissions&authz.EventReadOwnReports != 0 &&
+			ownsReport(reportRow.Report, journalEntries, callerPersonID, claims.PersonHandle())
+		crewVisible := false
+		if !ownVisible && eventPermissions&authz.EventReadCrewReports != 0 {
+			crewReportNums, errHTTP := crewReportNumberSet(ctx, s.ImsDBQ, event.ID, callerPersonID)
+			if errHTTP != nil {
+				return nil, herrToConnect(errHTTP)
+			}
+			crewVisible = crewReportNums[reportNumber]
+		}
+		if !ownVisible && !crewVisible {
+			return nil, connect.NewError(connect.CodePermissionDenied,
+				errors.New("the requestor does not have permission to access this particular Report"))
+		}
+	}
+
+	mayEditSummary, mayAddEntry := reportEditRights(reportRow.Report, claims.PersonID(), claims.PersonAdmin(), eventPermissions)
+	reportJSON := reportToJSON(reportRow, journalEntries, event, s.AttachmentsEnabled, mayEditSummary, mayAddEntry)
+	return &rpcv1.GetReportResponse{Report: reportViewFromJSON(reportJSON)}, nil
+}
+
+// ListReports is the domain method behind the ListReports RPC (plan 09h/1c, reports). The
+// REST GET /events/{eventName}/reports endpoint was RETIRED with this extraction (migration
+// decision, plan 09 §Migration strategy). It ports the REST getReports authorization and
+// assembly verbatim: the same read-permission gate as GetReport, and for a limitedAccess
+// caller the returned list is scoped to the reports they own plus — for a crew leader — their
+// crew's reports. Like ListIncidents it computes the per-report edit flags and reuses the
+// shared reportToJSON assembly, bridging each result onto the wire proto.
+//
+// exclude_system_entries mirrors the retired REST query param the RPC can't read off the URL
+// (default false = include system journal entries), the same move ListIncidents made.
+func (s Service) ListReports(
+	ctx context.Context,
+	req *rpcv1.ListReportsRequest,
+) (*rpcv1.ListReportsResponse, error) {
+	claims, ok := server.ClaimsFromContext(ctx)
+	if !ok {
+		return nil, connect.NewError(connect.CodeUnauthenticated, errors.New("authentication required"))
+	}
+
+	eventRow, err := s.ImsDBQ.Event(ctx, s.ImsDBQ, req.GetEventId())
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return nil, connect.NewError(connect.CodeNotFound, errors.New("event not found"))
+		}
+		return nil, connect.NewError(connect.CodeInternal, fmt.Errorf("failed to fetch event: %w", err))
+	}
+	event := eventRow.Event
+
+	eventPerms, _, err := authz.EventPermissions(ctx, &event.ID, s.ImsDBQ, *claims)
+	if err != nil {
+		return nil, connect.NewError(connect.CodeInternal, fmt.Errorf("failed to compute permissions: %w", err))
+	}
+	eventPermissions := eventPerms[event.ID]
+	if eventPermissions&(authz.EventReadAllReports|authz.EventReadOwnReports|authz.EventReadCrewReports) == 0 {
+		return nil, connect.NewError(connect.CodePermissionDenied,
+			errors.New("the requestor does not have permission to read Reports on this Event"))
+	}
+	limitedAccess := eventPermissions&authz.EventReadAllReports == 0
+
+	includeSystemEntries := !req.GetExcludeSystemEntries()
+	journalEntryRows, err := s.ImsDBQ.Reports_JournalEntries(ctx, s.ImsDBQ, imsdb.Reports_JournalEntriesParams{
+		Event: event.ID, Generated: includeSystemEntries,
+	})
+	if err != nil {
+		return nil, connect.NewError(connect.CodeInternal, fmt.Errorf("failed to get report journal entries: %w", err))
+	}
+	entriesByReport := make(map[int32][]imsjson.JournalEntry)
+	for _, row := range journalEntryRows {
+		entriesByReport[row.ReportNumber] = append(entriesByReport[row.ReportNumber],
+			journalEntryToJSON(row.JournalEntry, row.Author.String,
+				onBehalfOfJSON(row.JournalEntry.OnBehalfOfPersonID, row.OnBehalfOfHandle, row.OnBehalfOfName),
+				s.AttachmentsEnabled))
+	}
+
+	storedReports, err := s.ImsDBQ.Reports(ctx, s.ImsDBQ, event.ID)
+	if err != nil {
+		return nil, connect.NewError(connect.CodeInternal, fmt.Errorf("failed to fetch reports: %w", err))
+	}
+
+	callerPersonID := claims.PersonID()
+	callerHandle := claims.PersonHandle()
+	callerIsAdmin := claims.PersonAdmin()
+
+	var authorizedReports []imsdb.ReportsRow
+	if limitedAccess {
+		hasOwn := eventPermissions&authz.EventReadOwnReports != 0
+		crewReportNums := map[int32]bool{}
+		if eventPermissions&authz.EventReadCrewReports != 0 {
+			set, errHTTP := crewReportNumberSet(ctx, s.ImsDBQ, event.ID, callerPersonID)
+			if errHTTP != nil {
+				return nil, herrToConnect(errHTTP)
+			}
+			crewReportNums = set
+		}
+		for _, storedReport := range storedReports {
+			entries := entriesByReport[storedReport.Report.Number]
+			ownVisible := hasOwn && ownsReport(storedReport.Report, entries, callerPersonID, callerHandle)
+			if ownVisible || crewReportNums[storedReport.Report.Number] {
+				authorizedReports = append(authorizedReports, storedReport)
+			}
+		}
+	} else {
+		authorizedReports = storedReports
+	}
+
+	reports := make([]*rpcv1.ReportView, 0, len(authorizedReports))
+	for _, report := range authorizedReports {
+		mayEditSummary, mayAddEntry := reportEditRights(report.Report, callerPersonID, callerIsAdmin, eventPermissions)
+		reportJSON := reportToJSON(report, entriesByReport[report.Report.Number], event, s.AttachmentsEnabled, mayEditSummary, mayAddEntry)
+		reports = append(reports, reportViewFromJSON(reportJSON))
+	}
+	return &rpcv1.ListReportsResponse{Reports: reports}, nil
+}
+
 // incidentUpdateToJSON converts the presence-tracked IncidentUpdate write body onto the
 // imsjson.Incident that the shared updateIncident helper consumes. imsjson.Incident's
 // pointer/zero fields already encode exactly the semantics IncidentUpdate was designed
@@ -654,6 +817,39 @@ func incidentJSONToProto(inc imsjson.Incident) *resourcesv1.Incident {
 	}
 	out.JournalEntries = make([]*resourcesv1.JournalEntry, 0, len(inc.JournalEntries))
 	for _, je := range inc.JournalEntries {
+		out.JournalEntries = append(out.JournalEntries, journalEntryToProto(je))
+	}
+	return out
+}
+
+// reportViewFromJSON wraps an assembled imsjson.Report as the ReportView the report read
+// RPCs return: the resource proto (reportJSONToProto) plus the caller-dependent edit flags
+// that json.Report carried inline (may_edit_summary / may_add_journal_entry live on the
+// wrapper, not the resource — 0e).
+func reportViewFromJSON(r imsjson.Report) *rpcv1.ReportView {
+	return &rpcv1.ReportView{
+		Report:             reportJSONToProto(r),
+		MayEditSummary:     r.MayEditSummary,
+		MayAddJournalEntry: r.MayAddJournalEntry,
+	}
+}
+
+// reportJSONToProto maps the assembled imsjson.Report onto the resources/v1.Report proto —
+// the report-side mirror of incidentJSONToProto and, like it, a throwaway bridge from the
+// condemned json layer to the wire that collapses into a direct DB→proto mapping when the
+// report read path is rebuilt. The viewer-dependent edit flags ride on ReportView (see
+// reportViewFromJSON), not the resource, so they are not set here.
+func reportJSONToProto(r imsjson.Report) *resourcesv1.Report {
+	out := &resourcesv1.Report{
+		Event:     r.Event,
+		Number:    r.Number,
+		Created:   timestamppb.New(r.Created),
+		CreatedBy: mentionToPersonRef(r.CreatedBy),
+		Summary:   r.Summary,
+		Incident:  r.Incident,
+	}
+	out.JournalEntries = make([]*resourcesv1.JournalEntry, 0, len(r.JournalEntries))
+	for _, je := range r.JournalEntries {
 		out.JournalEntries = append(out.JournalEntries, journalEntryToProto(je))
 	}
 	return out
