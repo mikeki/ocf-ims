@@ -149,7 +149,7 @@ func mustStartServer(ctx context.Context, unvalidatedCfg *conf.IMSConfig, printC
 	// same reason.
 	metricsCache := server.NewMetricsCache()
 	mux := http.NewServeMux()
-	api.AddToMux(mux, eventSource, metricsCache, imsCfg, imsDBQ, userStore, s3Client, actionLogger, pushSender)
+	api.AddToMux(mux, eventSource, metricsCache, imsCfg, imsDBQ, userStore, s3Client, actionLogger)
 	// The Connect/RPC surface (plan 09 Phase 1) shares the same mux: its handler
 	// is mounted at the ImsService path prefix beside the remaining REST routes,
 	// with the cross-cutting interceptor spine attached once (auth, action log,

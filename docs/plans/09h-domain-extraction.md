@@ -204,12 +204,28 @@ upload/download (binary, outside the contract) stays REST.
 onto master as its base merges). This is a deliberate, scoped exception to the usual
 "target master directly, don't stack" rule.
 
+The **incident sub-resource writes** are now done too: **`AttachPersonToIncident` +
+`DetachPersonFromIncident` + `UpdateIncidentJournalEntry`** (branch `feat/1c-incident-subresources`,
+stacked on `feat/1c-report-writes`), three write RPCs in one PR, all methods on the existing
+`incident.Service`. Each ports its REST handler verbatim: attach/detach run in the deadlock-retrying
+`RunInTx` (attach is a detach-then-reattach replace, fires the added-to-incident notification + push
+only on a genuine new add), and the journal-entry strike has — unlike the report counterpart — **no
+per-author check** (any `EventWriteIncidents` holder may strike any incident entry). The request
+carries `person_id` directly (not in the URL path), so a new `server.PersonByID` factors the id-keyed
+lookup out of `PersonByIDFromPath`. Coverage relocated the same way: a focused
+`TestIncidentSubresourceWriteAuthorization` replaces the pruned `permissions_test` sweep rows (the
+writer-permitted path is already covered by the functional attach/detach/strike tests). **A wiring
+payoff:** this was the REST surface's *last* push-firing route, so `AddToMux` no longer builds a
+`Pusher` at all — the `pushSender` parameter was dropped from `AddToMux` (the Pusher now lives only on
+the Connect surface via `AddConnectToMux`), and the three `api/integration` `AddToMux` call sites were
+updated (`push_test.go` keeps the spy on the Connect mount).
+
 Still outstanding on the incident core: the direct DB→proto read-mapper follow-up (retires
 `incidentToJSON`/`incidentJSONToProto`/`incidentViewToJSON` and the test-side
 `incidentViewToJSON`/`incidentUpdateFromJSON` bridges) — deferrable and best done once the
 report writes have landed so the whole json read layer retires in one sweep.
-Next: the **incident sub-resource writes** (`AttachPersonToIncident`, `DetachPersonFromIncident`,
-`UpdateIncidentJournalEntry`), then **auth & own-profile**, then people/auth → taxonomies →
+Next: **auth & own-profile** (`Login`, `RefreshToken`, `GetAuthStatus`, `ChangeOwnPassword`,
+`UpdateOwnProfile`, `DeleteOwnProfilePicture`), then people/personnel → taxonomies →
 events(EditEvent)/areas/crews → notifications/push → metrics/action log. For each: move handler logic into a
 proto-shaped domain method on its domain `Service` returning Connect errors, add the RPC
 method to `ImsService`, **delete the REST route + handler and move its `api/integration`

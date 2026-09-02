@@ -22,7 +22,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"net/http"
 	"regexp"
 	"slices"
 	"strings"
@@ -32,7 +31,6 @@ import (
 	"github.com/mikeki/ocf-ims/internal/notification"
 	"github.com/mikeki/ocf-ims/internal/server"
 	imsjson "github.com/mikeki/ocf-ims/json"
-	"github.com/mikeki/ocf-ims/lib/authz"
 	"github.com/mikeki/ocf-ims/lib/conv"
 	"github.com/mikeki/ocf-ims/lib/herr"
 	"github.com/mikeki/ocf-ims/store"
@@ -875,203 +873,9 @@ func sliceSubtract[T comparable](a, b []T) []T {
 // incident write path moved onto Connect — its logic now lives in the incident.UpdateIncident
 // domain function (connect.go), which the ImsService.UpdateIncident RPC delegates to. The
 // shared updateIncident helper and isJournalOnly are unchanged and still used from there.
-
-type AttachPersonToIncident struct {
-	ImsDBQ    *store.DBQ
-	UserStore directory.UserStore
-	Es        *server.EventSourcerer
-	Pusher    *server.Pusher
-}
-
-func (action AttachPersonToIncident) ServeHTTP(w http.ResponseWriter, req *http.Request) {
-	errHTTP := action.attachPerson(req)
-	if errHTTP != nil {
-		errHTTP.From("[attachPerson]").WriteResponse(w)
-		return
-	}
-	herr.WriteNoContentResponse(w, "Success")
-}
-
-func (action AttachPersonToIncident) attachPerson(req *http.Request) *herr.HTTPError {
-	event, jwtCtx, eventPermissions, errHTTP := server.GetEventPermissions(req, action.ImsDBQ, action.UserStore)
-	if errHTTP != nil {
-		return errHTTP.From("[server.GetEventPermissions]")
-	}
-	if eventPermissions&authz.EventWriteIncidents == 0 {
-		return herr.Forbidden("The requestor does not have EventWriteIncidents permission for this Event", nil)
-	}
-	ctx := req.Context()
-
-	incidentNumber, err := conv.ParseInt32(req.PathValue("incidentNumber"))
-	if err != nil {
-		return herr.BadRequest("Invalid Incident Number", err).From("[ParseInt32]")
-	}
-
-	person, errHTTP := server.PersonByIDFromPath(ctx, action.ImsDBQ, req)
-	if errHTTP != nil {
-		return errHTTP.From("[server.PersonByIDFromPath]")
-	}
-	personID := person.ID
-
-	body, errHTTP := server.ReadBodyAs[imsjson.IncidentPerson](req)
-	if errHTTP != nil {
-		return errHTTP.From("[server.ReadBodyAs]")
-	}
-
-	// Run the whole change in a retrying transaction: attach is a
-	// detach-then-reattach replace and can deadlock against a concurrent
-	// attach/detach on the same incident, so a transient deadlock / lock-wait
-	// timeout retries the whole transaction (store.RunInTx) instead of 500ing.
-	// Whether this save was a genuine new attach (vs. an involvement edit), set in
-	// the transaction and read after commit to drive the push fan-out (plan 84c).
-	var newlyAttached bool
-	newInvolvement := conv.StringToSql(body.Involvement, 128)
-	runErr := action.ImsDBQ.RunInTx(ctx, func(txn *sql.Tx) error {
-		// Attach is a detach-then-reattach replace, so we can't tell a new add from
-		// an involvement edit afterwards. Read the person's current row up front: its
-		// presence distinguishes a genuine new add (which alone fires an
-		// "added_to_incident" notification, plan 82) from an edit, and its old
-		// involvement/grant let the journal record what actually changed.
-		var oldInvolvement sql.NullString
-		var oldGranted, alreadyAttached bool
-		existingPeople, txErr := action.ImsDBQ.Incident_People(ctx, txn, imsdb.Incident_PeopleParams{
-			Event:          event.ID,
-			IncidentNumber: incidentNumber,
-		})
-		if txErr != nil {
-			return herr.InternalServerError("Failed to fetch incident people", txErr).From("[Incident_People]")
-		}
-		for _, row := range existingPeople {
-			if row.IncidentPerson.PersonID == personID {
-				alreadyAttached = true
-				oldInvolvement = row.IncidentPerson.Involvement
-				oldGranted = row.IncidentPerson.GrantedAccess
-				break
-			}
-		}
-		// Reassigned each attempt (RunInTx may retry on deadlock) so it reflects the
-		// committed run, not a rolled-back one.
-		newlyAttached = !alreadyAttached
-
-		txErr = action.ImsDBQ.DetachPersonFromIncident(ctx, txn, imsdb.DetachPersonFromIncidentParams{
-			Event:          event.ID,
-			IncidentNumber: incidentNumber,
-			PersonID:       personID,
-		})
-		if txErr != nil {
-			return herr.InternalServerError("Failed to detach person from Incident", txErr).From("[DetachPersonFromIncident]")
-		}
-
-		txErr = action.ImsDBQ.AttachPersonToIncident(ctx, txn, imsdb.AttachPersonToIncidentParams{
-			Event:          event.ID,
-			IncidentNumber: incidentNumber,
-			PersonID:       personID,
-			Involvement:    newInvolvement,
-			// 52f: per-incident access grant for an involved reporter (writer-gated here).
-			GrantedAccess: body.GrantedAccess,
-		})
-		if txErr != nil {
-			return herr.InternalServerError("Failed to attach person to Incident", txErr).From("[AttachPersonToIncident]")
-		}
-
-		// Record what actually changed — the add, and/or the involvement and
-		// access-grant edits — as a single system entry. Nothing changed → no entry.
-		if lines := personChangeLog(server.PersonDisplayName(person), alreadyAttached, oldInvolvement, newInvolvement, oldGranted, body.GrantedAccess); len(lines) > 0 {
-			_, errJournal := addIncidentJournalEntry(
-				ctx, action.ImsDBQ, txn, event.ID, incidentNumber,
-				jwtCtx.Claims.PersonID(), strings.Join(lines, "\n"),
-				true, "", "", "",
-			)
-			if errJournal != nil {
-				return errJournal.From("[addIncidentJournalEntry]")
-			}
-		}
-
-		// Notify the person they were added — only on a genuine new attach (plan 82).
-		if !alreadyAttached {
-			errNotify := notification.GenerateAddedToIncidentNotification(ctx, action.ImsDBQ, txn, event.ID, incidentNumber, personID, jwtCtx.Claims.PersonID())
-			if errNotify != nil {
-				return errNotify.From("[notification.GenerateAddedToIncidentNotification]")
-			}
-		}
-		return nil
-	})
-	if runErr != nil {
-		return herr.AsHTTPError(runErr).From("[RunInTx]")
-	}
-	action.Es.NotifyIncidentUpdate(event.ID, incidentNumber)
-	// Web push the added person (plan 84c): after commit, off the request path, and
-	// only on a genuine new attach — same gate as the in-app notification.
-	if newlyAttached {
-		action.Pusher.NotifyAddedToIncident(ctx, event.Name, incidentNumber, personID, jwtCtx.Claims.PersonID())
-	}
-
-	return nil
-}
-
-type DetachPersonFromIncident struct {
-	ImsDBQ    *store.DBQ
-	UserStore directory.UserStore
-	Es        *server.EventSourcerer
-}
-
-func (action DetachPersonFromIncident) ServeHTTP(w http.ResponseWriter, req *http.Request) {
-	errHTTP := action.detachPerson(req)
-	if errHTTP != nil {
-		errHTTP.From("[detachPerson]").WriteResponse(w)
-		return
-	}
-	herr.WriteNoContentResponse(w, "Success")
-}
-
-func (action DetachPersonFromIncident) detachPerson(req *http.Request) *herr.HTTPError {
-	event, jwtCtx, eventPermissions, errHTTP := server.GetEventPermissions(req, action.ImsDBQ, action.UserStore)
-	if errHTTP != nil {
-		return errHTTP.From("[server.GetEventPermissions]")
-	}
-	if eventPermissions&authz.EventWriteIncidents == 0 {
-		return herr.Forbidden("The requestor does not have EventWriteIncidents permission for this Event", nil)
-	}
-	ctx := req.Context()
-
-	incidentNumber, err := conv.ParseInt32(req.PathValue("incidentNumber"))
-	if err != nil {
-		return herr.BadRequest("Invalid Incident Number", err).From("[ParseInt32]")
-	}
-
-	person, errHTTP := server.PersonByIDFromPath(ctx, action.ImsDBQ, req)
-	if errHTTP != nil {
-		return errHTTP.From("[server.PersonByIDFromPath]")
-	}
-	personID := person.ID
-
-	// Run in a retrying transaction so a transient deadlock / lock-wait timeout
-	// against a concurrent attach/detach on the same incident is retried rather
-	// than surfaced as a 500.
-	runErr := action.ImsDBQ.RunInTx(ctx, func(txn *sql.Tx) error {
-		txErr := action.ImsDBQ.DetachPersonFromIncident(ctx, txn, imsdb.DetachPersonFromIncidentParams{
-			Event:          event.ID,
-			IncidentNumber: incidentNumber,
-			PersonID:       personID,
-		})
-		if txErr != nil {
-			return herr.InternalServerError("Failed to detach person from Incident", txErr).From("[DetachPersonFromIncident]")
-		}
-		_, errJournal := addIncidentJournalEntry(
-			ctx, action.ImsDBQ, txn, event.ID, incidentNumber,
-			jwtCtx.Claims.PersonID(), fmt.Sprintf("Removed person: %v", server.PersonDisplayName(person)),
-			true, "", "", "",
-		)
-		if errJournal != nil {
-			return errJournal.From("[addIncidentJournalEntry]")
-		}
-		return nil
-	})
-	if runErr != nil {
-		return herr.AsHTTPError(runErr).From("[RunInTx]")
-	}
-
-	action.Es.NotifyIncidentUpdate(event.ID, incidentNumber)
-
-	return nil
-}
+// AttachPersonToIncident and DetachPersonFromIncident (REST POST/DELETE
+// .../incidents/{incidentNumber}/people/{personId}) were RETIRED in slice 1c when the incident
+// people sub-resource moved onto Connect — their logic now lives in the
+// incident.AttachPersonToIncident / DetachPersonFromIncident domain methods (connect.go), which
+// the matching ImsService RPCs delegate to. The shared personChangeLog and addIncidentJournalEntry
+// helpers are unchanged and still used from there.
