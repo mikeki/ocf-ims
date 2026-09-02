@@ -22,6 +22,7 @@ import (
 	"slices"
 	"testing"
 
+	servicerpcv1 "github.com/mikeki/ocf-ims/gen/ocf/ims/service/rpc/v1"
 	authapi "github.com/mikeki/ocf-ims/internal/auth"
 	personapi "github.com/mikeki/ocf-ims/internal/person"
 
@@ -506,9 +507,36 @@ func TestPersonProfileCard(t *testing.T) {
 	require.Equal(t, http.StatusNotFound, resp.StatusCode)
 	require.NoError(t, resp.Body.Close())
 
-	// A non-numeric person_id is a 400.
-	badPath := shared.serverURL.JoinPath("/ims/api/personnel").String() + "?person_id=notanumber"
-	_, resp = apisAlice.imsGet(ctx, badPath, nil)
-	require.Equal(t, http.StatusBadRequest, resp.StatusCode)
+	// (The REST "non-numeric person_id is a 400" case has no analogue: the contract types
+	// person_id as an int32, so a non-numeric value can't be sent — dropped with the RPC
+	// extraction, like the GetAuthStatus name-validation-400 case.)
+}
+
+// TestListPersonnelAuthorization pins the ListPersonnel RPC's authorization now that GET
+// /ims/api/personnel is retired from REST (the coverage the TestAnyUnauthenticatedUserEndpoints
+// sweep used to give that route): an unauthenticated caller is rejected, any authenticated user
+// may run the default directory listing (GlobalReadPersonnel is the floor), and the admin
+// listing (all=true) additionally requires GlobalAdministratePersonnel — a plain user is
+// forbidden there.
+func TestListPersonnelAuthorization(t *testing.T) {
+	t.Parallel()
+	ctx := t.Context()
+
+	notAuthenticated := ApiHelper{t: t, serverURL: shared.serverURL, jwt: ""}
+	aliceNoPerms := ApiHelper{t: t, serverURL: shared.serverURL, jwt: jwtForAlice(t, ctx)}
+
+	// Unauthenticated: the directory listing is 401.
+	_, resp := notAuthenticated.listPersonnel(ctx, &servicerpcv1.ListPersonnelRequest{})
+	require.Equal(t, http.StatusUnauthorized, resp.StatusCode)
+	require.NoError(t, resp.Body.Close())
+
+	// Any authenticated user may read the directory listing (GlobalReadPersonnel).
+	_, resp = aliceNoPerms.listPersonnel(ctx, &servicerpcv1.ListPersonnelRequest{})
+	require.Equal(t, http.StatusOK, resp.StatusCode)
+	require.NoError(t, resp.Body.Close())
+
+	// But the admin all=true listing requires GlobalAdministratePersonnel: a plain user is 403.
+	_, resp = aliceNoPerms.listPersonnel(ctx, &servicerpcv1.ListPersonnelRequest{All: true})
+	require.Equal(t, http.StatusForbidden, resp.StatusCode)
 	require.NoError(t, resp.Body.Close())
 }

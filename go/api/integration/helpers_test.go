@@ -197,48 +197,73 @@ func (a ApiHelper) editPerson(ctx context.Context, personID int64, body personap
 	return a.imsPost(ctx, body, path)
 }
 
+// listPersonnel drives the personnel listing through the generated Connect client
+// (ListPersonnel). The REST GET /ims/api/personnel endpoint was retired when the RPC was
+// extracted (plan 09h/1c). The caller's own JWT is attached (the RPC gates on
+// GlobalReadPersonnel), each returned proto Person is mapped back to imsjson.Person
+// (personProtoToJSON), and a synthesized *http.Response carries the equivalent status
+// (connectStatus) since the retired endpoint always answered 200 for a well-formed request.
+// The four public helpers below build the request for a given mode; event scopes still express
+// a NAME at the call sites, resolved here to the contract's numeric id.
+func (a ApiHelper) listPersonnel(ctx context.Context, req *servicerpcv1.ListPersonnelRequest) ([]imsjson.Person, *http.Response) {
+	a.t.Helper()
+	client := servicev1connect.NewImsServiceClient(http.DefaultClient, a.serverURL.String())
+	rpcReq := connect.NewRequest(req)
+	if a.jwt != "" {
+		rpcReq.Header().Set("Authorization", "Bearer "+a.jwt)
+	}
+	resp, err := client.ListPersonnel(ctx, rpcReq)
+	httpResp := &http.Response{StatusCode: connectStatus(err), Body: http.NoBody}
+	if err != nil {
+		return nil, httpResp
+	}
+	out := make([]imsjson.Person, 0, len(resp.Msg.GetPeople()))
+	for _, p := range resp.Msg.GetPeople() {
+		out = append(out, personProtoToJSON(p))
+	}
+	return out, httpResp
+}
+
 func (a ApiHelper) getAllPersonnel(ctx context.Context) ([]imsjson.Person, *http.Response) {
 	a.t.Helper()
-	return a.getAllPersonnelForEvent(ctx, "")
+	return a.listPersonnel(ctx, &servicerpcv1.ListPersonnelRequest{All: true})
 }
 
 // getAllPersonnelForEvent fetches the admin People listing of EVERY person, scoped
 // to an event so each person carries that event's wristband + participation type. An
-// empty event name fetches the unscoped listing. (With an event the endpoint defaults
-// to the roster, so this passes showAll=true to keep the "all people" semantics; use
+// empty event name fetches the unscoped listing. (With an event the RPC defaults to the
+// roster, so this passes show_all=true to keep the "all people" semantics; use
 // getEventRoster for the roster-only listing.)
 func (a ApiHelper) getAllPersonnelForEvent(ctx context.Context, eventName string) ([]imsjson.Person, *http.Response) {
 	a.t.Helper()
-	path := a.serverURL.JoinPath("/ims/api/personnel").String() + "?all=true"
+	req := &servicerpcv1.ListPersonnelRequest{All: true}
 	if eventName != "" {
-		path += "&event=" + url.QueryEscape(eventName) + "&showAll=true"
+		id := a.resolveEventID(ctx, eventName)
+		req.EventId = &id
+		req.ShowAll = true
 	}
-	bod, resp := a.imsGet(ctx, path, &[]imsjson.Person{})
-	return *bod.(*[]imsjson.Person), resp
+	return a.listPersonnel(ctx, req)
 }
 
 // getEventRoster fetches only the people participating in the event (those with a
 // PERSON__EVENT row), the People page's default event-scoped view (slice 6j).
 func (a ApiHelper) getEventRoster(ctx context.Context, eventName string) ([]imsjson.Person, *http.Response) {
 	a.t.Helper()
-	path := a.serverURL.JoinPath("/ims/api/personnel").String() +
-		"?all=true&event=" + url.QueryEscape(eventName)
-	bod, resp := a.imsGet(ctx, path, &[]imsjson.Person{})
-	return *bod.(*[]imsjson.Person), resp
+	id := a.resolveEventID(ctx, eventName)
+	return a.listPersonnel(ctx, &servicerpcv1.ListPersonnelRequest{All: true, EventId: &id})
 }
 
-// getPersonnelByID fetches one person's profile-card view (GET ?person_id=&event=),
-// scoped to an event so the row carries that event's participation. Backs the person
-// profile card.
+// getPersonnelByID fetches one person's profile-card view (person_id [+ event]), scoped to an
+// event so the row carries that event's participation. Backs the person profile card.
 func (a ApiHelper) getPersonnelByID(ctx context.Context, personID int64, eventName string) ([]imsjson.Person, *http.Response) {
 	a.t.Helper()
-	path := a.serverURL.JoinPath("/ims/api/personnel").String() +
-		"?person_id=" + strconv.FormatInt(personID, 10)
+	pid := int32(personID)
+	req := &servicerpcv1.ListPersonnelRequest{PersonId: &pid}
 	if eventName != "" {
-		path += "&event=" + url.QueryEscape(eventName)
+		id := a.resolveEventID(ctx, eventName)
+		req.EventId = &id
 	}
-	bod, resp := a.imsGet(ctx, path, &[]imsjson.Person{})
-	return *bod.(*[]imsjson.Person), resp
+	return a.listPersonnel(ctx, req)
 }
 
 // setParticipation upserts a person's per-event participation via the dedicated

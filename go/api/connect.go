@@ -332,6 +332,20 @@ func (s ImsService) GetAuthStatus(
 	return connect.NewResponse(resp), nil
 }
 
+// ListPersonnel is a thin RPC method over the person.ListPersonnel domain method (plan 09h/1c). Its
+// REST predecessor (GET /personnel) was deleted in the same slice. The domain method authorizes from
+// ctx claims (GlobalReadPersonnel) and speaks Connect errors, so this just delegates.
+func (s ImsService) ListPersonnel(
+	ctx context.Context,
+	req *connect.Request[servicerpcv1.ListPersonnelRequest],
+) (*connect.Response[servicerpcv1.ListPersonnelResponse], error) {
+	resp, err := s.Person.ListPersonnel(ctx, req.Msg)
+	if err != nil {
+		return nil, err
+	}
+	return connect.NewResponse(resp), nil
+}
+
 // ChangeOwnPassword is a thin RPC method over the person.ChangeOwnPassword domain method (plan
 // 09h/1c). Its REST predecessor (POST /auth/password) was deleted in the same slice, so this is the
 // only transport for a caller changing their own password. The domain method authorizes from ctx

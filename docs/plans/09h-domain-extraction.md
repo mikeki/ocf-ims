@@ -279,9 +279,26 @@ audit log. The REST `POST /auth` + `POST /auth/refresh` routes and their handler
 `TestGetActionLog`'s fixture moved again (login is now an RPC that captures no Referer) → the
 still-REST `createEvent` (POST /events). **The whole auth & session surface is now on Connect.**
 
-Next: **people/personnel** (ListPersonnel, CreatePerson, UpdatePerson, SetPersonPassword,
-SetPersonAdmin, SetPersonParticipation, RemovePersonFromEvent, DeletePersonProfilePicture) → taxonomies →
-events(EditEvent)/areas/crews → notifications/push → metrics/action log. For each: move handler logic into a
+**`ListPersonnel`** is now done (branch `feat/1c-personnel`, stacked on `feat/1c-login-refresh`) — the
+personnel READ, landed as a method on the existing `person.Service` (which already carried the
+self-service RPCs). The personnel slice is split reads-before-writes: this PR is the read; the 7 admin
+writes are the next PR. The REST `GET /personnel` handler was a 4-mode multiplexer (typeahead `?q=`,
+profile-card `?person_id=`, admin/roster `?all=`+`?showAll=`, default directory); its assembly is
+ported verbatim into a ctx-based `listPersonnel` in `personnel.go` that still produces `imsjson.Person`
+(the shared read shape), and `connect.go` bridges the result to the wire (`personToProto`). Two contract
+fill-ins: the 0e `ListPersonnelRequest` had `event_id`/`query`/`all` but the multiplexer also needs
+**`person_id`** (profile-card mode) and **`show_all`**, so both were added (the standing "a list RPC
+grows a field per REST query param it can't read off the URL" move). The event scope is keyed by id, not
+name, so the REST name-validation-400 and the non-numeric-`person_id`-400 cases have no analogue and were
+dropped (matching the GetAuthStatus extraction). The retired route's auth coverage relocated from the
+`TestAnyUnauthenticatedUserEndpoints` sweep into a focused `TestListPersonnelAuthorization` (unauth→401,
+any-authenticated→200 for the directory listing, non-admin `all=true`→403). ListPersonnel is
+`NO_SIDE_EFFECTS`.
+
+Next: **personnel WRITES** (CreatePerson, UpdatePerson, SetPersonPassword, SetPersonAdmin,
+SetPersonParticipation, RemovePersonFromEvent, DeletePersonProfilePicture) as further methods on the same
+`person.Service` → taxonomies → events(EditEvent)/areas/crews → notifications/push → metrics/action log.
+For each: move handler logic into a
 proto-shaped domain method on its domain `Service` returning Connect errors, add the RPC
 method to `ImsService`, **delete the REST route + handler and move its `api/integration`
 cases onto the Connect client** (NOT a shim — the aggressive path, plan 09 §6), then verify.
