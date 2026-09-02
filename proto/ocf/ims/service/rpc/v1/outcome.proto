@@ -65,4 +65,8 @@ message ProposeOutcomeRequest {
   ocf.ims.resources.v1.Outcome outcome = 2;
 }
 
-message ProposeOutcomeResponse {}
+// ProposeOutcomeResponse returns the id of the created (or, on a name collision, the
+// resolved existing) outcome, so the incident form can use it immediately.
+message ProposeOutcomeResponse {
+  int32 outcome_id = 1;
+}
