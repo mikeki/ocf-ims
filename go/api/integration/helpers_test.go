@@ -32,6 +32,7 @@ import (
 	"time"
 
 	"connectrpc.com/connect"
+	resourcesv1 "github.com/mikeki/ocf-ims/gen/ocf/ims/resources/v1"
 	servicerpcv1 "github.com/mikeki/ocf-ims/gen/ocf/ims/service/rpc/v1"
 	"github.com/mikeki/ocf-ims/gen/ocf/ims/service/v1/servicev1connect"
 	incidentapi "github.com/mikeki/ocf-ims/internal/incident"
@@ -1043,21 +1044,22 @@ func (a ApiHelper) detachPersonFromVisit(ctx context.Context, eventName string, 
 	return resp
 }
 
-// getMetrics reads an event's dashboard aggregate through the generated Connect client. The REST
-// GET .../metrics endpoint was retired when GetMetrics was extracted (plan 09h/1c). The event is
-// resolved to its numeric id (resolveEventID) and the Metrics proto is mapped back to the legacy
-// imsjson.Metrics the dashboard tests assert against (metricsProtoToJSON), with a synthesized
-// *http.Response mirroring the retired endpoint's status (200 on success, else connectStatus(err)).
-func (a ApiHelper) getMetrics(ctx context.Context, eventName string) (imsjson.Metrics, *http.Response) {
+// getMetrics reads an event's dashboard aggregate through the generated Connect client
+// (ImsService.GetMetrics; the REST GET .../metrics endpoint was retired with plan 09h/1c). The event
+// is resolved to its numeric id (resolveEventID). It returns the wire proto directly — the read path
+// is DB→proto, so the tests assert against the resources/v1.Metrics message rather than round-tripping
+// through the retired imsjson DTO. The *http.Response mirrors the retired endpoint's status (200 on
+// success, else connectStatus(err)).
+func (a ApiHelper) getMetrics(ctx context.Context, eventName string) (*resourcesv1.Metrics, *http.Response) {
 	a.t.Helper()
 	client := servicev1connect.NewImsServiceClient(http.DefaultClient, a.serverURL.String())
 	rpcReq := connect.NewRequest(&servicerpcv1.GetMetricsRequest{EventId: a.resolveEventID(ctx, eventName)})
 	a.authorizeRPC(rpcReq)
 	resp, err := client.GetMetrics(ctx, rpcReq)
 	if err != nil {
-		return imsjson.Metrics{}, &http.Response{StatusCode: connectStatus(err), Body: http.NoBody}
+		return nil, &http.Response{StatusCode: connectStatus(err), Body: http.NoBody}
 	}
-	return metricsProtoToJSON(resp.Msg.GetMetrics()), &http.Response{StatusCode: http.StatusOK, Body: http.NoBody}
+	return resp.Msg.GetMetrics(), &http.Response{StatusCode: http.StatusOK, Body: http.NoBody}
 }
 
 // getIncidents lists an event's incidents through the generated Connect client. The REST
@@ -1438,13 +1440,15 @@ func (a ApiHelper) imsDoNoReqBody(ctx context.Context, method, path string, resp
 	return resp, get
 }
 
-// getActionLogs reads the admin audit log through the generated Connect client. The REST GET
-// /actionlogs endpoint was retired when ListActionLogs was extracted (plan 09h/1c). The REST
-// endpoint's min/max-time query filters have no analogue in the empty ListActionLogsRequest (the
-// contract exposes no filters yet), so the read returns the whole table and callers filter in Go;
-// each ActionLog proto is mapped back to the legacy imsjson.ActionLog (actionLogProtoToJSON), with a
-// synthesized *http.Response mirroring the retired endpoint's status.
-func (a ApiHelper) getActionLogs(ctx context.Context) (imsjson.ActionLogs, *http.Response) {
+// getActionLogs reads the whole admin audit table through the generated Connect client
+// (ImsService.ListActionLogs; the REST GET /actionlogs endpoint was retired with plan 09h/1c). The
+// REST endpoint's min/max-time query filters have no analogue in the empty ListActionLogsRequest (the
+// contract exposes no filters yet), so the read returns the whole table and callers filter in Go. It
+// returns the wire protos directly — the read path is DB→proto (actionlog.actionLogToProto maps the
+// stored row straight onto the message), so the audit test asserts against resources/v1.ActionLog
+// rather than round-tripping through the retired imsjson DTO. The *http.Response mirrors the retired
+// endpoint's status.
+func (a ApiHelper) getActionLogs(ctx context.Context) ([]*resourcesv1.ActionLog, *http.Response) {
 	a.t.Helper()
 	client := servicev1connect.NewImsServiceClient(http.DefaultClient, a.serverURL.String())
 	rpcReq := connect.NewRequest(&servicerpcv1.ListActionLogsRequest{})
@@ -1453,11 +1457,7 @@ func (a ApiHelper) getActionLogs(ctx context.Context) (imsjson.ActionLogs, *http
 	if err != nil {
 		return nil, &http.Response{StatusCode: connectStatus(err), Body: http.NoBody}
 	}
-	out := make(imsjson.ActionLogs, 0, len(resp.Msg.GetActionLogs()))
-	for _, al := range resp.Msg.GetActionLogs() {
-		out = append(out, actionLogProtoToJSON(al))
-	}
-	return out, &http.Response{StatusCode: http.StatusOK, Body: http.NoBody}
+	return resp.Msg.GetActionLogs(), &http.Response{StatusCode: http.StatusOK, Body: http.NoBody}
 }
 
 func jwtForAlice(t *testing.T, ctx context.Context) string {

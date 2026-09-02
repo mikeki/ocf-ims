@@ -21,7 +21,7 @@ import (
 	"strconv"
 	"testing"
 
-	imsjson "github.com/mikeki/ocf-ims/json"
+	resourcesv1 "github.com/mikeki/ocf-ims/gen/ocf/ims/resources/v1"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -54,13 +54,13 @@ func TestGetActionLog(t *testing.T) {
 	require.Equal(t, http.StatusOK, response.StatusCode)
 	require.NoError(t, response.Body.Close())
 
-	var foundLog imsjson.ActionLog
+	var foundLog *resourcesv1.ActionLog
 	for _, al := range logs {
-		if al.Referrer == referrer {
+		if al.GetReferrer() == referrer {
 			foundLog = al
 		}
 	}
-	assert.NotZero(t, foundLog)
-	assert.Equal(t, uploadPath, foundLog.Path)
-	assert.Equal(t, "POST", foundLog.Method)
+	require.NotNil(t, foundLog)
+	assert.Equal(t, uploadPath, foundLog.GetPath())
+	assert.Equal(t, "POST", foundLog.GetMethod())
 }
