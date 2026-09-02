@@ -320,6 +320,41 @@ func incidentTypeGroupPtrToString(g *resourcesv1.IncidentTypeGroup) *string {
 	return &s
 }
 
+// notificationProtoToJSON maps a resources/v1.Notification from the ListNotifications RPC back to the
+// legacy imsjson.Notification the notification tests assert against — the inverse of the server's
+// notification.notificationToProto. Created round-trips through the proto Timestamp (the tests assert
+// on type/number/actor, not the exact time). Dies with json/ when the read is rebuilt DB→proto.
+func notificationProtoToJSON(p *resourcesv1.Notification) imsjson.Notification {
+	return imsjson.Notification{
+		ID:              p.GetId(),
+		Type:            notificationTypeToString(p.GetType()),
+		Event:           p.GetEvent(),
+		IncidentNumber:  p.IncidentNumber,
+		IncidentSummary: p.GetIncidentSummary(),
+		ReportNumber:    p.ReportNumber,
+		ReportSummary:   p.GetReportSummary(),
+		JournalEntryID:  p.JournalEntryId,
+		Actor:           p.GetActor(),
+		Created:         p.GetCreated().AsTime(),
+		Read:            p.GetRead(),
+	}
+}
+
+// notificationTypeToString is the inverse of the server's notificationTypeToProto: the proto enum back
+// to the stored NOTIFICATION.TYPE string the json shape carries.
+func notificationTypeToString(t resourcesv1.NotificationType) string {
+	switch t {
+	case resourcesv1.NotificationType_NOTIFICATION_TYPE_MENTIONED:
+		return "mentioned"
+	case resourcesv1.NotificationType_NOTIFICATION_TYPE_ADDED_TO_INCIDENT:
+		return "added_to_incident"
+	case resourcesv1.NotificationType_NOTIFICATION_TYPE_UNSPECIFIED:
+		return ""
+	default:
+		return ""
+	}
+}
+
 // crewProtoToJSON maps a resources/v1.Crew from the ListCrews / ListMyCrews RPC back to the legacy
 // imsjson.Crew the crew tests assert against — the inverse of the server's crew.crewsToProto. Each
 // member's PersonRef flattens into the imsjson.CrewMember's person fields. Dies with json/ when the

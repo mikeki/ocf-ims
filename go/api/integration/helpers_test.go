@@ -1482,16 +1482,34 @@ func (a ApiHelper) addCrewLeader(ctx context.Context, eventName, handle string) 
 		personapi.SetParticipationRequest{ParticipationType: "crew_leader"})
 }
 
+// getNotifications reads the caller's notifications + unread count through the ListNotifications RPC
+// (the REST GET /notifications route was retired in 1c).
 func (a ApiHelper) getNotifications(ctx context.Context) (imsjson.NotificationList, *http.Response) {
 	a.t.Helper()
-	path := a.serverURL.JoinPath("/ims/api/notifications").String()
-	bod, resp := a.imsGet(ctx, path, &imsjson.NotificationList{})
-	return *bod.(*imsjson.NotificationList), resp
+	client := servicev1connect.NewImsServiceClient(http.DefaultClient, a.serverURL.String())
+	rpcReq := connect.NewRequest(&servicerpcv1.ListNotificationsRequest{})
+	a.authorizeRPC(rpcReq)
+	resp, err := client.ListNotifications(ctx, rpcReq)
+	if err != nil {
+		return imsjson.NotificationList{}, &http.Response{StatusCode: connectStatus(err), Body: http.NoBody}
+	}
+	list := imsjson.NotificationList{
+		Notifications: make([]imsjson.Notification, 0, len(resp.Msg.GetNotifications())),
+		Unread:        resp.Msg.GetUnread(),
+	}
+	for _, n := range resp.Msg.GetNotifications() {
+		list.Notifications = append(list.Notifications, notificationProtoToJSON(n))
+	}
+	return list, &http.Response{StatusCode: http.StatusOK, Body: http.NoBody}
 }
 
 func (a ApiHelper) markAllNotificationsRead(ctx context.Context) *http.Response {
 	a.t.Helper()
-	return a.imsPost(ctx, struct{}{}, a.serverURL.JoinPath("/ims/api/notifications/read").String())
+	client := servicev1connect.NewImsServiceClient(http.DefaultClient, a.serverURL.String())
+	rpcReq := connect.NewRequest(&servicerpcv1.MarkAllNotificationsReadRequest{})
+	a.authorizeRPC(rpcReq)
+	_, err := client.MarkAllNotificationsRead(ctx, rpcReq)
+	return writeRPCStatus(err)
 }
 
 // notificationsForEvent fetches the caller's notifications and returns only those
@@ -1512,29 +1530,32 @@ func (a ApiHelper) notificationsForEvent(ctx context.Context, eventName string) 
 	return out
 }
 
-// pushSubscribe POSTs a web-push subscription for the caller (plan 84).
+// pushSubscribe registers a web-push subscription for the caller through the SubscribePush RPC (the
+// REST POST /push/subscribe route was retired in 1c). The browser's nested {endpoint, keys} DTO the
+// call sites build flattens to the request's endpoint/p256dh/auth; an empty endpoint or key trips the
+// request's min_len constraints (400), as the retired handler's own checks did.
 func (a ApiHelper) pushSubscribe(ctx context.Context, body pushapi.PushSubscribeRequest) *http.Response {
 	a.t.Helper()
-	return a.imsPost(ctx, body, a.serverURL.JoinPath("/ims/api/push/subscribe").String())
+	client := servicev1connect.NewImsServiceClient(http.DefaultClient, a.serverURL.String())
+	rpcReq := connect.NewRequest(&servicerpcv1.SubscribePushRequest{
+		Endpoint: body.Endpoint,
+		P256Dh:   body.Keys.P256dh,
+		Auth:     body.Keys.Auth,
+	})
+	a.authorizeRPC(rpcReq)
+	_, err := client.SubscribePush(ctx, rpcReq)
+	return writeRPCStatus(err)
 }
 
-// pushUnsubscribe DELETEs the caller's device named by its endpoint. DELETE
-// carries a JSON body, so it can't reuse the no-body imsDelete helper.
+// pushUnsubscribe forgets the caller's device named by its endpoint through the UnsubscribePush RPC
+// (the REST DELETE /push/subscribe route was retired in 1c).
 func (a ApiHelper) pushUnsubscribe(ctx context.Context, body pushapi.PushUnsubscribeRequest) *http.Response {
 	a.t.Helper()
-	reqBody, err := json.Marshal(body)
-	require.NoError(a.t, err)
-	httpReq, err := http.NewRequestWithContext(ctx, http.MethodDelete,
-		a.serverURL.JoinPath("/ims/api/push/subscribe").String(), bytes.NewReader(reqBody))
-	require.NoError(a.t, err)
-	if a.jwt != "" {
-		httpReq.Header.Set("Authorization", "Bearer "+a.jwt)
-	}
-	client := &http.Client{Timeout: 10 * time.Second}
-	// #nosec G704 // SSRF via taint analysis.
-	resp, err := client.Do(httpReq)
-	require.NoError(a.t, err)
-	return resp
+	client := servicev1connect.NewImsServiceClient(http.DefaultClient, a.serverURL.String())
+	rpcReq := connect.NewRequest(&servicerpcv1.UnsubscribePushRequest{Endpoint: body.Endpoint})
+	a.authorizeRPC(rpcReq)
+	_, err := client.UnsubscribePush(ctx, rpcReq)
+	return writeRPCStatus(err)
 }
 
 func jwtForAdmin(ctx context.Context, t *testing.T) string {

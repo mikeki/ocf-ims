@@ -19,18 +19,22 @@ package notification
 import (
 	"context"
 	"database/sql"
-	"fmt"
-	"net/http"
 	"time"
 
-	"github.com/mikeki/ocf-ims/directory"
-	"github.com/mikeki/ocf-ims/internal/server"
 	imsjson "github.com/mikeki/ocf-ims/json"
 	"github.com/mikeki/ocf-ims/lib/conv"
 	"github.com/mikeki/ocf-ims/lib/herr"
 	"github.com/mikeki/ocf-ims/store"
 	"github.com/mikeki/ocf-ims/store/imsdb"
 )
+
+// The GetNotifications and MarkNotificationsRead REST handlers (GET /notifications and POST
+// /notifications/read[/{id}]) were RETIRED in slice 1c and moved onto Connect as methods on
+// notification.Service (connect.go): ListNotifications / MarkAllNotificationsRead /
+// MarkNotificationRead. The REST routes were deleted, not shimmed (aggressive migration, plan 09 §6).
+// What remains here is the notification-*generation* surface (createNotification and the Generate*
+// entry points the incident/report writes call) plus notificationToJSON, which the Connect read
+// reuses.
 
 // nullInt32 wraps a present int32 as a sql.NullInt32.
 func nullInt32(v int32) sql.NullInt32 {
@@ -160,104 +164,4 @@ func notificationToJSON(row imsdb.NotificationsForPersonRow, callerPersonID int3
 		Created:         conv.FloatToTime(row.Created),
 		Read:            row.ReadAt.Valid,
 	}
-}
-
-// GetNotifications returns the current user's recent notifications plus their
-// unread count. It is per-person (the caller's own), so it needs only
-// authentication — no event scoping.
-type GetNotifications struct {
-	ImsDBQ            *store.DBQ
-	UserStore         directory.UserStore
-	CacheControlShort time.Duration
-}
-
-func (action GetNotifications) ServeHTTP(w http.ResponseWriter, req *http.Request) {
-	resp, errHTTP := action.getNotifications(req)
-	if errHTTP != nil {
-		errHTTP.From("[getNotifications]").WriteResponse(w)
-		return
-	}
-	w.Header().Set("Cache-Control", fmt.Sprintf("max-age=%v, private", action.CacheControlShort.Milliseconds()/1000))
-	server.MustWriteJSON(w, req, resp)
-}
-
-func (action GetNotifications) getNotifications(req *http.Request) (imsjson.NotificationList, *herr.HTTPError) {
-	var empty imsjson.NotificationList
-	jwtCtx, errHTTP := server.GetJwtCtx(req)
-	if errHTTP != nil {
-		return empty, errHTTP.From("[server.GetJwtCtx]")
-	}
-	ctx := req.Context()
-	personID := jwtCtx.Claims.PersonID()
-
-	rows, err := action.ImsDBQ.NotificationsForPerson(ctx, action.ImsDBQ, personID)
-	if err != nil {
-		return empty, herr.InternalServerError("Failed to fetch notifications", err).From("[NotificationsForPerson]")
-	}
-	unread, err := action.ImsDBQ.UnreadNotificationCountForPerson(ctx, action.ImsDBQ, personID)
-	if err != nil {
-		return empty, herr.InternalServerError("Failed to count notifications", err).From("[UnreadNotificationCountForPerson]")
-	}
-
-	resp := imsjson.NotificationList{
-		Notifications: make([]imsjson.Notification, 0, len(rows)),
-		Unread:        unread,
-	}
-	for _, row := range rows {
-		resp.Notifications = append(resp.Notifications, notificationToJSON(row, personID, jwtCtx.Claims.PersonAdmin()))
-	}
-	return resp, nil
-}
-
-// MarkNotificationsRead marks the caller's notifications read: all of them, or a
-// single one when {notificationId} is present in the path. Scoped to the caller,
-// so a user can only mark their own.
-type MarkNotificationsRead struct {
-	ImsDBQ    *store.DBQ
-	UserStore directory.UserStore
-}
-
-func (action MarkNotificationsRead) ServeHTTP(w http.ResponseWriter, req *http.Request) {
-	errHTTP := action.markRead(req)
-	if errHTTP != nil {
-		errHTTP.From("[markRead]").WriteResponse(w)
-		return
-	}
-	herr.WriteNoContentResponse(w, "Success")
-}
-
-func (action MarkNotificationsRead) markRead(req *http.Request) *herr.HTTPError {
-	jwtCtx, errHTTP := server.GetJwtCtx(req)
-	if errHTTP != nil {
-		return errHTTP.From("[server.GetJwtCtx]")
-	}
-	ctx := req.Context()
-	personID := jwtCtx.Claims.PersonID()
-	now := sql.NullFloat64{Float64: conv.TimeToFloat(time.Now()), Valid: true}
-
-	// A single notification when addressed by ID; otherwise mark all unread.
-	if idStr := req.PathValue("notificationId"); idStr != "" {
-		id, err := conv.ParseInt32(idStr)
-		if err != nil {
-			return herr.BadRequest("Invalid notification ID", err).From("[ParseInt32]")
-		}
-		err = action.ImsDBQ.MarkNotificationRead(ctx, action.ImsDBQ, imsdb.MarkNotificationReadParams{
-			ReadAt:            now,
-			ID:                id,
-			RecipientPersonID: personID,
-		})
-		if err != nil {
-			return herr.InternalServerError("Failed to mark notification read", err).From("[MarkNotificationRead]")
-		}
-		return nil
-	}
-
-	err := action.ImsDBQ.MarkAllNotificationsRead(ctx, action.ImsDBQ, imsdb.MarkAllNotificationsReadParams{
-		ReadAt:            now,
-		RecipientPersonID: personID,
-	})
-	if err != nil {
-		return herr.InternalServerError("Failed to mark notifications read", err).From("[MarkAllNotificationsRead]")
-	}
-	return nil
 }

@@ -153,7 +153,10 @@ service ImsService {
   rpc ProposeOutcome(rpc.v1.ProposeOutcomeRequest) returns (rpc.v1.ProposeOutcomeResponse);
 
   // --- Notifications ---
-  rpc ListNotifications(rpc.v1.ListNotificationsRequest) returns (rpc.v1.ListNotificationsResponse);
+  // A read (see the GetAuthStatus note): NO_SIDE_EFFECTS so the action-log interceptor skips it.
+  rpc ListNotifications(rpc.v1.ListNotificationsRequest) returns (rpc.v1.ListNotificationsResponse) {
+    option idempotency_level = NO_SIDE_EFFECTS;
+  }
   rpc MarkAllNotificationsRead(rpc.v1.MarkAllNotificationsReadRequest) returns (rpc.v1.MarkAllNotificationsReadResponse);
   rpc MarkNotificationRead(rpc.v1.MarkNotificationReadRequest) returns (rpc.v1.MarkNotificationReadResponse);
 

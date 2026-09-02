@@ -382,8 +382,28 @@ dependency — crews don't feed the dashboard). The single-member mutation RPCs 
 maps to `person_id == 0` and is rejected by the request's `int32.gt = 0` constraint — the same 400 the
 handler gave. Crew auth was already inline in `crew_test.go`; nothing left a permissions sweep.
 
-Next: **notifications/push →
-metrics/action log**. For each: move handler logic into a
+The **notification + web-push** surfaces are now done (branch `feat/1c-notifications-push`, stacked on
+`feat/1c-crews`) — a `notification.Service` (ListNotifications + MarkAllNotificationsRead +
+MarkNotificationRead, retiring GET /notifications and POST /notifications/read[/{id}]) and a
+`push.Service` (SubscribePush + UnsubscribePush, retiring POST/DELETE /push/subscribe). Both are
+per-caller (auth only, no event scoping). Notification *generation* (createNotification and the
+Generate* entry points the incident/report writes call) is a separate internal surface and stays in
+notification.go untouched. Two shape notes: (1) the retired MarkNotificationsRead handler served both
+"mark all" and "mark one" off the path (`{notificationId}` present or not) — the contract already
+split them into two RPCs, so the RPC surface is cleaner than the route was; (2) SubscribePush needs the
+best-effort device label (User-Agent), an HTTP-header value with no place in the proto — the ImsService
+delegate lifts it off `req.Header()` and passes it as a string, exactly as Login derives the client IP.
+ListNotifications marked NO_SIDE_EFFECTS. **The two connect_test.go interceptor probes churned again:**
+MarkAllNotificationsRead was their "still-unimplemented mutation" — now implemented, so
+TestConnectUnimplementedPassesValidation repointed to **ListActionLogs** (the last still-unimplemented,
+constraint-free RPC), while TestConnectActionLogAuditsMutations *keeps* MarkAllNotificationsRead but
+now calls it **unauthenticated** (the audit interceptor records it before the handler returns
+Unauthenticated, so still exactly one side-effect-free audit row). **After the metrics/action-log slice
+nothing is unimplemented**, so TestConnectUnimplementedPassesValidation will then need a test-only
+unregistered method rather than a real RPC.
+
+Next: **metrics/action log** (both reads: GetMetrics, ListActionLogs — the last slice). For each: move
+handler logic into a
 proto-shaped domain method on its domain `Service` returning Connect errors, add the RPC
 method to `ImsService`, **delete the REST route + handler and move its `api/integration`
 cases onto the Connect client** (NOT a shim — the aggressive path, plan 09 §6), then verify.
