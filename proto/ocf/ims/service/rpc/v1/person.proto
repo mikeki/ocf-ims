@@ -34,7 +34,10 @@ message ListPersonnelResponse {
 
 // CreatePersonRequest mirrors api.CreatePersonRequest. password/use_default_password
 // are the two IMS-access paths (use_default honored only when password is empty). The
-// event-scoped fields are optional (a login-less registry entry sets none).
+// event-scoped fields are optional (a login-less registry entry sets none). event_id is
+// the event to enroll on (unset = none), keyed by id like the other event selectors
+// (SetPersonParticipation, RemovePersonFromEvent) — the 0e event_id sweep missed this
+// field and UpdatePerson's; both are now in line.
 message CreatePersonRequest {
   string handle = 1 [(buf.validate.field).string.max_len = 64];
   string name = 2 [(buf.validate.field).string.max_len = 255];
@@ -42,7 +45,7 @@ message CreatePersonRequest {
   string phone = 4 [(buf.validate.field).string.max_len = 32];
   string password = 5;
   bool use_default_password = 6;
-  string event = 7;
+  optional int32 event_id = 7;
   string wristband = 8 [(buf.validate.field).string.max_len = 32];
   ocf.ims.resources.v1.ParticipationType participation_type = 9
       [(buf.validate.field).enum.defined_only = true];
@@ -53,14 +56,16 @@ message CreatePersonResponse {
 }
 
 // UpdatePersonRequest mirrors api.EditPersonRequest: optional identity/contact fields
-// (unset = unchanged) plus the event-scoped participation fields.
+// (unset = unchanged) plus the event-scoped participation fields. event_id names the
+// event whose participation row to upsert (unset = leave participation alone), keyed by
+// id like the other event selectors (see CreatePersonRequest.event_id).
 message UpdatePersonRequest {
   int32 person_id = 1 [(buf.validate.field).int32.gt = 0];
   optional string handle = 2 [(buf.validate.field).string.max_len = 64];
   optional string name = 3 [(buf.validate.field).string.max_len = 255];
   optional string email = 4 [(buf.validate.field).string.max_len = 128];
   optional string phone = 5 [(buf.validate.field).string.max_len = 32];
-  string event = 6;
+  optional int32 event_id = 6;
   string wristband = 7 [(buf.validate.field).string.max_len = 32];
   ocf.ims.resources.v1.ParticipationType participation_type = 8
       [(buf.validate.field).enum.defined_only = true];

@@ -242,6 +242,30 @@ func personProtoToJSON(p *resourcesv1.Person) imsjson.Person {
 	return out
 }
 
+// participationTypeToProtoEnum maps a stored MySQL participation string onto the proto enum for the
+// personnel-write helpers that build requests from the legacy DTOs (empty → UNSPECIFIED, i.e.
+// "default from wristband"). The server-side equivalent is person.participationTypeFromProto.
+func participationTypeToProtoEnum(s string) resourcesv1.ParticipationType {
+	switch s {
+	case "writer":
+		return resourcesv1.ParticipationType_PARTICIPATION_TYPE_WRITER
+	case "crew_leader":
+		return resourcesv1.ParticipationType_PARTICIPATION_TYPE_CREW_LEADER
+	case "reporter":
+		return resourcesv1.ParticipationType_PARTICIPATION_TYPE_REPORTER
+	case "volunteer":
+		return resourcesv1.ParticipationType_PARTICIPATION_TYPE_VOLUNTEER
+	case "public":
+		return resourcesv1.ParticipationType_PARTICIPATION_TYPE_PUBLIC
+	case "not_present":
+		return resourcesv1.ParticipationType_PARTICIPATION_TYPE_NOT_PRESENT
+	case "ejected":
+		return resourcesv1.ParticipationType_PARTICIPATION_TYPE_EJECTED
+	default:
+		return resourcesv1.ParticipationType_PARTICIPATION_TYPE_UNSPECIFIED
+	}
+}
+
 // participationTypeToString is the test-side inverse of person.participationTypeToProto: the
 // proto enum back to the stored MySQL participation string (UNSPECIFIED → "").
 func participationTypeToString(pt resourcesv1.ParticipationType) string {
@@ -375,6 +399,8 @@ func connectStatus(err error) int {
 		return http.StatusNotFound
 	case connect.CodeInvalidArgument:
 		return http.StatusBadRequest
+	case connect.CodeAlreadyExists:
+		return http.StatusConflict
 	case connect.CodeResourceExhausted:
 		return http.StatusTooManyRequests
 	default:

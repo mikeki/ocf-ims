@@ -16,92 +16,15 @@
 
 package person
 
-import (
-	"log/slog"
-	"net/http"
+// The SetPersonAdmin REST handler (POST /personnel/{personId}/admin) was RETIRED in slice 1c when
+// it moved onto Connect as person.Service.SetPersonAdmin (connect_admin.go), which the
+// ImsService.SetPersonAdmin RPC delegates to. The REST route was deleted, not shimmed (aggressive
+// migration, plan 09 §6). Only the caller-is-an-admin gate + last-admin guard moved; both are
+// unchanged.
 
-	"github.com/mikeki/ocf-ims/directory"
-	"github.com/mikeki/ocf-ims/internal/server"
-	"github.com/mikeki/ocf-ims/lib/herr"
-	"github.com/mikeki/ocf-ims/store"
-	"github.com/mikeki/ocf-ims/store/imsdb"
-)
-
-// SetPersonAdmin sets or clears another person's local IS_ADMIN flag. Unlike
-// SetPersonPassword (gated on the delegatable GlobalAdministratePersonnel so a
-// future roles model can let crew leaders reset passwords), this endpoint
-// requires the CALLER to themselves be an administrator. Only admins may create
-// or remove admins: delegating personnel management must never implicitly confer
-// the power to mint admins (a confused-deputy escalation).
-type SetPersonAdmin struct {
-	ImsDBQ    *store.DBQ
-	UserStore directory.UserStore
-}
-
+// SetPersonAdminRequest is kept as the integration-test bridge type (the role imsjson plays
+// elsewhere): the api/integration setPersonAdmin helper still builds it and the helper converts it
+// to the proto request.
 type SetPersonAdminRequest struct {
 	IsAdmin bool `json:"is_admin"`
-}
-
-func (action SetPersonAdmin) ServeHTTP(w http.ResponseWriter, req *http.Request) {
-	errHTTP := action.setPersonAdmin(req)
-	if errHTTP != nil {
-		errHTTP.From("[setPersonAdmin]").WriteResponse(w)
-		return
-	}
-	w.WriteHeader(http.StatusNoContent)
-}
-
-func (action SetPersonAdmin) setPersonAdmin(req *http.Request) *herr.HTTPError {
-	jwtCtx, errHTTP := server.GetJwtCtx(req)
-	if errHTTP != nil {
-		return errHTTP.From("[server.GetJwtCtx]")
-	}
-	// Only an administrator may change administrator status. Gate on the caller
-	// actually being an admin (their own IS_ADMIN flag), not on a delegatable
-	// permission, so that delegating personnel management never implies the power
-	// to mint admins.
-	if !jwtCtx.Claims.PersonAdmin() {
-		return herr.Forbidden("Only administrators may change administrator status", nil)
-	}
-
-	body, errHTTP := server.ReadBodyAs[SetPersonAdminRequest](req)
-	if errHTTP != nil {
-		return errHTTP.From("[server.ReadBodyAs]")
-	}
-
-	// The person is addressed by stable ID in the URL path (registry people may
-	// have no handle since 5e).
-	target, errHTTP := server.PersonByIDFromPath(req.Context(), action.ImsDBQ, req)
-	if errHTTP != nil {
-		return errHTTP
-	}
-
-	// Guard against removing the last flagged administrator, which would leave the
-	// instance with no admin (recoverable only by a direct DB write).
-	// Clearing a non-admin, or one of several admins, is fine.
-	if !body.IsAdmin && target.IsAdmin {
-		adminCount, err := action.ImsDBQ.CountAdmins(req.Context(), action.ImsDBQ)
-		if err != nil {
-			return herr.InternalServerError("Failed to count administrators", err).From("[CountAdmins]")
-		}
-		if adminCount <= 1 {
-			return herr.Conflict("Cannot remove the last administrator", nil)
-		}
-	}
-
-	err := action.ImsDBQ.SetPersonAdmin(req.Context(), action.ImsDBQ, imsdb.SetPersonAdminParams{
-		IsAdmin: body.IsAdmin,
-		ID:      target.ID,
-	})
-	if err != nil {
-		return herr.InternalServerError("Failed to set admin flag", err).From("[SetPersonAdmin]")
-	}
-
-	// Permissions are read from a cached store and baked into access tokens, so
-	// drop the cache to make the change effective on the next token refresh.
-	action.UserStore.InvalidateUsers()
-
-	// #nosec G706 // log injection
-	slog.Info("Admin flag set for person", "person_id", target.ID, "handle", target.Handle.String, "is_admin", body.IsAdmin)
-	return nil
 }
