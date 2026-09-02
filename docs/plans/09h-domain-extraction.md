@@ -118,11 +118,22 @@ resources are extracted together.
 
 ## Resume pointer (for an autonomous continuation)
 
-**All RPC resource slices are extracted** — the metrics/action-log slice (branch
-`feat/1c-metrics-actionlog`) was the last, and every ImsService method is now implemented. What
-remains of 1c is the **non-resource tail**: enable the path-scoped `funlen` rule (only now that every
-handler file is thin), and the direct DB→proto read-mapper follow-up that retires the throwaway
-json↔proto test bridges. See the newest §7 finding for details.
+**All RPC resource slices are extracted, and Phase-1 closeout is in flight.** The metrics/action-log
+slice (`feat/1c-metrics-actionlog`, #228) was the last RPC, and every ImsService method is implemented.
+Three stacked closeout PRs then landed off it (all verified, awaiting bottom-up merge):
+
+- **#229 `feat/1c-read-mappers`** — a *bounded* read-mapper slice: metrics & action-log reads assert on
+  proto, retiring two json bridges. The larger retirement (incident rich reads through shared
+  assemblers, ref-data caches, write-shared `personToProto`, `buildMetrics`→proto) is **deferred** — a
+  multi-slice effort, not a Phase-1 gate item.
+- **#230 `feat/1c-exit-gate-funlen`** — DONE: dropped the `Unimplemented` embedding (compiler is now the
+  exhaustiveness check) and enabled `funlen` path-scoped to the `api/` transport layer (domain layer
+  exempt; the two route-table builders carry a justified `//nolint`).
+- **#231 `feat/1e-sse-privacy`** — DONE: the last M8 surface — cookie-authenticate the SSE poke stream +
+  redact private incidents at publish time (`EventSourcerer` privacy oracle + `update_all` poke).
+
+What's left of Phase 1: the deferred full read-mapper retirement (optional cleanup), and 1f (config →
+struct tags, explicitly optional). See the newest §7 finding for details.
 
 State lives in git + memory, not here. To continue: `git log --oneline -5` on the
 current 1c branch (or master, if a chunk merged), read the newest §7 finding and the
