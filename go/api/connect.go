@@ -25,12 +25,14 @@ import (
 	"github.com/mikeki/ocf-ims/directory"
 	servicerpcv1 "github.com/mikeki/ocf-ims/gen/ocf/ims/service/rpc/v1"
 	"github.com/mikeki/ocf-ims/gen/ocf/ims/service/v1/servicev1connect"
+	"github.com/mikeki/ocf-ims/internal/actionlog"
 	"github.com/mikeki/ocf-ims/internal/area"
 	"github.com/mikeki/ocf-ims/internal/auth"
 	"github.com/mikeki/ocf-ims/internal/crew"
 	"github.com/mikeki/ocf-ims/internal/event"
 	"github.com/mikeki/ocf-ims/internal/incident"
 	"github.com/mikeki/ocf-ims/internal/incidenttype"
+	"github.com/mikeki/ocf-ims/internal/metrics"
 	"github.com/mikeki/ocf-ims/internal/notification"
 	"github.com/mikeki/ocf-ims/internal/outcome"
 	"github.com/mikeki/ocf-ims/internal/person"
@@ -73,6 +75,8 @@ type ImsService struct {
 	Crew         crew.Service
 	Notification notification.Service
 	Push         push.Service
+	Metrics      metrics.Service
+	ActionLog    actionlog.Service
 }
 
 // ListEvents is a thin RPC method over the event.ListEvents domain method (plan
@@ -854,6 +858,35 @@ func (s ImsService) UnsubscribePush(
 	return connect.NewResponse(resp), nil
 }
 
+// GetMetrics is a thin method over metrics.Service (connect.go, plan 09h/1c), retiring REST GET
+// /events/{eventName}/metrics. The domain method authorizes from ctx claims (admin or event writer),
+// serves from the shared per-event MetricsCache, and speaks Connect errors, so this just delegates.
+func (s ImsService) GetMetrics(
+	ctx context.Context,
+	req *connect.Request[servicerpcv1.GetMetricsRequest],
+) (*connect.Response[servicerpcv1.GetMetricsResponse], error) {
+	resp, err := s.Metrics.GetMetrics(ctx, req.Msg)
+	if err != nil {
+		return nil, err
+	}
+	return connect.NewResponse(resp), nil
+}
+
+// ListActionLogs is a thin method over actionlog.Service (connect.go, plan 09h/1c), retiring REST GET
+// /actionlogs. The domain method authorizes from ctx claims (GlobalAdministrateDebugging, admin-only)
+// and speaks Connect errors, so this just delegates. This is the last RPC slice — every ImsService
+// method is now implemented.
+func (s ImsService) ListActionLogs(
+	ctx context.Context,
+	req *connect.Request[servicerpcv1.ListActionLogsRequest],
+) (*connect.Response[servicerpcv1.ListActionLogsResponse], error) {
+	resp, err := s.ActionLog.ListActionLogs(ctx, req.Msg)
+	if err != nil {
+		return nil, err
+	}
+	return connect.NewResponse(resp), nil
+}
+
 // AddConnectToMux registers the ImsService Connect handler on the shared mux
 // next to AddToMux (plan 09g). connect handlers are plain http.Handlers mounted
 // at a path prefix, so the RPC surface coexists with the REST/web routes on one
@@ -955,6 +988,11 @@ func AddConnectToMux(
 			},
 			Notification: notification.Service{ImsDBQ: imsDBQ, UserStore: userStore},
 			Push:         push.Service{ImsDBQ: imsDBQ},
+			// The dashboard read shares the same per-event MetricsCache the incident/area/type writes
+			// invalidate — the REST GET .../metrics route was retired with this extraction, so the RPC
+			// is now the sole reader of that cache.
+			Metrics:   metrics.Service{ImsDBQ: imsDBQ, UserStore: userStore, Cache: metricsCache},
+			ActionLog: actionlog.Service{ImsDBQ: imsDBQ, UserStore: userStore},
 		},
 		connect.WithInterceptors(interceptors...),
 	)

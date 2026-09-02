@@ -161,8 +161,14 @@ service ImsService {
   rpc MarkNotificationRead(rpc.v1.MarkNotificationReadRequest) returns (rpc.v1.MarkNotificationReadResponse);
 
   // --- Metrics & audit ---
-  rpc GetMetrics(rpc.v1.GetMetricsRequest) returns (rpc.v1.GetMetricsResponse);
-  rpc ListActionLogs(rpc.v1.ListActionLogsRequest) returns (rpc.v1.ListActionLogsResponse);
+  // Both are reads (see the GetAuthStatus note): NO_SIDE_EFFECTS so the action-log
+  // interceptor skips them, matching their REST predecessors' LogRequest(false).
+  rpc GetMetrics(rpc.v1.GetMetricsRequest) returns (rpc.v1.GetMetricsResponse) {
+    option idempotency_level = NO_SIDE_EFFECTS;
+  }
+  rpc ListActionLogs(rpc.v1.ListActionLogsRequest) returns (rpc.v1.ListActionLogsResponse) {
+    option idempotency_level = NO_SIDE_EFFECTS;
+  }
 
   // --- Web push ---
   rpc SubscribePush(rpc.v1.SubscribePushRequest) returns (rpc.v1.SubscribePushResponse);
