@@ -142,14 +142,21 @@ func mustStartServer(ctx context.Context, unvalidatedCfg *conf.IMSConfig, printC
 	}
 
 	eventSource := server.NewEventSourcerer()
+	// The dashboard-aggregate cache is shared state (a per-event map guarded by a mutex):
+	// the same instance MUST back both the REST surface and the Connect surface so a write
+	// on either invalidates the counts the other serves. It is created here, once, and
+	// threaded into both muxes. The SSE subscriber state (eventSource) is shared for the
+	// same reason.
+	metricsCache := server.NewMetricsCache()
 	mux := http.NewServeMux()
-	api.AddToMux(mux, eventSource, imsCfg, imsDBQ, userStore, s3Client, actionLogger, pushSender)
+	api.AddToMux(mux, eventSource, metricsCache, imsCfg, imsDBQ, userStore, s3Client, actionLogger, pushSender)
 	// The Connect/RPC surface (plan 09 Phase 1) shares the same mux: its handler
 	// is mounted at the ImsService path prefix beside the remaining REST routes,
 	// with the cross-cutting interceptor spine attached once (auth, action log,
 	// protovalidate, …). REST routes are retired one resource at a time as they are
-	// extracted onto Connect (the aggressive migration path, plan 09 §6).
-	api.AddConnectToMux(mux, imsCfg, imsDBQ, actionLogger, userStore)
+	// extracted onto Connect (the aggressive migration path, plan 09 §6). It shares the
+	// same eventSource / metricsCache / push sender so extracted writes fan out identically.
+	api.AddConnectToMux(mux, imsCfg, imsDBQ, actionLogger, userStore, eventSource, metricsCache, pushSender)
 	web.AddToMux(mux, imsCfg)
 
 	s := &http.Server{

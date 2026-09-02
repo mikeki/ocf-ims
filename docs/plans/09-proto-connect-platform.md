@@ -761,6 +761,47 @@ writes.)*
   the plural round-trip asserts on. *Every real query param the REST read honored is a
   field the contract owes the client.*
 
+### 1c — Domain extraction: UpdateIncident (the first write) (2026-09-01)
+
+The first incident **write** moves onto Connect (branch `feat/1c-incident-writes`), retiring
+REST `POST .../incidents/{n}` (`EditIncident`). Findings:
+
+- **A proto `repeated` field cannot carry list presence — the write needs a wrapper.** The
+  incident edit is a PATCH by presence: `IncidentTypeIDs == nil` means "leave the types
+  alone", `&[]int32{}` means "clear them". On the wire an absent and an empty `repeated`
+  field are identical, so a naive `repeated int32` would make every partial edit that omits
+  a list silently clear it. The fix is a dedicated, presence-tracked **`IncidentUpdate`**
+  message: the three reconciled lists become `optional Int32List` / `optional
+  IncidentRefList` (the wrapper's presence is the "touch this list?" bit), scalars are
+  `optional`, and journal entries use a write-shaped `NewJournalEntry` (the read resource's
+  `JournalEntry` has no `mentioned_person_ids`). *The request message is not always the
+  resource — a PATCH write earns its own shape.* `IncidentUpdate` is shared by Create and
+  Update, which run identical field logic (REST `newIncident` literally called
+  `updateIncident`).
+- **Reuse the proven assembler on the write side too — convert at the boundary.** Rather
+  than rewrite the intricate 470-line `updateIncident` to consume proto, the domain function
+  converts `IncidentUpdate`→`imsjson.Incident` (`incidentUpdateToJSON`) and calls
+  `updateIncident` **unchanged**. It is lossless because imsjson's pointer fields already
+  encode exactly the presence `IncidentUpdate` was designed around, and it is the same
+  low-risk philosophy the reads used (`incidentToJSON` reused, bridge at the edge). This
+  **decoupled** the read-mapper retirement from the writes: because the write still speaks
+  json, `incidentToJSON`/`incidentJSONToProto`/`incidentViewToJSON` do **not** die here — the
+  direct DB→proto mapper is now its own later follow-up (correcting the ListIncidents-era
+  "they die with the writes" note).
+- **Mutable cross-surface state must be one instance across REST and Connect.** The write
+  fans out SSE (`EventSourcerer`) and invalidates the dashboard cache (`MetricsCache`) — both
+  now live on the Connect surface while their readers (SSE endpoint, `GetMetrics`) are still
+  REST. They are created once in `serve.go` and threaded into **both** `AddToMux` and
+  `AddConnectToMux`; the stateless `Pusher` is rebuilt per-mux from the shared send backend.
+  *When a resource straddles both surfaces mid-migration, shared mutable state is a wiring
+  constraint, not an implementation detail.*
+- **Excluding a subsystem from the contract drops its incidents-side coupling.** The contract
+  excludes visits (09e), so `IncidentUpdate` carries no visits — the incident write can no
+  longer attach a visit. The incident↔visit link still lives on the visit resource
+  (`updateVisit`, still REST), so `visit_test.go` was rerouted to set it from the visit side.
+  The incident *read* had already dropped visits when `GetIncident` was extracted, so this
+  only finishes what the contract started.
+
 ## 8. Open questions
 
 1. **Does the Go binary keep serving static assets in production**, or does Caddy?

@@ -130,17 +130,36 @@ move (`api/integration/{main,helpers,event,proto_convert}_test.go`); see the §7
 findings.
 
 The incident **reads** are done: **`GetIncident`** (branch `feat/1c-incident-getincident`,
-merged #210) and **`GetIncidents`/`ListIncidents`** (branch `feat/1c-incident-listincidents`).
-Both reuse the shared `incidentToJSON`→`incidentJSONToProto` bridge. The direct DB→proto
-mapper that would retire `incidentToJSON`/`incidentJSONToProto` was **deliberately deferred
-to the write PR** (see the §7 "ListIncidents" finding): the *test-side* bridge
-(`incidentViewToJSON`) can't retire while writes are REST anyway, and rewriting the mapper
-by hand risks silent `requireEqualIncident` drift for a small payoff — so it's cleaner to
-do it atomically when the write path moves. Next incident RPCs, still on the aggressive
-path: **`CreateIncident`/`UpdateIncident`** — flips the test read↔write round-trips fully
-onto proto, lets the `getIncident`/`getIncidents` test helpers stop synthesizing an
-`*http.Response`, and is where `incidentToJSON`/`incidentJSONToProto`/`incidentViewToJSON`
-all finally die together in one direct DB→proto rewrite. Then reports → people/auth →
+merged #210) and **`GetIncidents`/`ListIncidents`** (branch `feat/1c-incident-listincidents`,
+merged #211). Both reuse the shared `incidentToJSON`→`incidentJSONToProto` bridge.
+
+The first **write** is done: **`UpdateIncident`** (branch `feat/1c-incident-writes`) —
+retires REST `POST .../incidents/{n}` (`EditIncident`). It introduced the presence-tracked
+**`IncidentUpdate`** proto message (rpc/v1/incident.proto), shared by Create and Update: a
+plain `repeated` field can't distinguish "leave this list unchanged" from "clear it" (absent
+== empty on the wire), which the incident PATCH-by-presence write depends on, so the three
+reconciled lists are wrapped in optional `Int32List`/`IncidentRefList` and journal entries
+use a write-shaped `NewJournalEntry`. Rather than rewrite the intricate 470-line
+`updateIncident` helper to consume proto, the domain function converts `IncidentUpdate`→
+`imsjson.Incident` at the boundary (`incidentUpdateToJSON`) and reuses `updateIncident`
+**unchanged** — the same reuse-the-proven-assembler philosophy as the reads, and lossless
+because imsjson's pointer fields already encode the exact presence semantics. Wiring: the
+mutable dashboard cache (`MetricsCache`) and the SSE subscriber state (`EventSourcerer`) are
+now created once in `serve.go` and threaded into **both** muxes (`AddToMux` +
+`AddConnectToMux`) so a write on either surface invalidates/fans-out the other's state; the
+stateless `Pusher` is rebuilt per-mux from the shared send backend. One consequence of the
+contract excluding visits (09e): the incident write no longer carries visits, so the
+incident↔visit link is set from the visit side (`updateVisit`, still REST) — `visit_test.go`
+was rerouted accordingly.
+
+This **decoupled** the read-mapper retirement from the writes. Because `updateIncident`
+still speaks json, the write PR does **not** kill `incidentToJSON`/`incidentJSONToProto`/
+`incidentViewToJSON` — the direct DB→proto mapper that retires them is now its own **later
+follow-up**, cleanly separable and no longer blocking on the write extraction (this corrects
+the earlier "they die together with the writes" pointer). Next incident RPC, still on the
+aggressive path: **`CreateIncident`** — branches fresh off master, reuses the `IncidentUpdate`
+converter + the shared-mux wiring, deletes REST `POST .../incidents`, and moves the
+`newIncident`/`newIncidentSuccess` test helpers onto the Connect client. Then reports → people/auth →
 taxonomies → events(EditEvent)/areas/crews → metrics/action log. For each: move handler
 logic into a proto-shaped domain
 function returning Connect errors, add the RPC method to `ImsService`, **delete the

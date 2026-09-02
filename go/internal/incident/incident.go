@@ -935,74 +935,10 @@ func sliceSubtract[T comparable](a, b []T) []T {
 	return ret
 }
 
-type EditIncident struct {
-	ImsDBQ    *store.DBQ
-	UserStore directory.UserStore
-	Es        *server.EventSourcerer
-	Pusher    *server.Pusher
-	Metrics   *server.MetricsCache
-}
-
-func (action EditIncident) ServeHTTP(w http.ResponseWriter, req *http.Request) {
-	errHTTP := action.editIncident(req)
-	if errHTTP != nil {
-		errHTTP.From("[editIncident]").WriteResponse(w)
-		return
-	}
-	herr.WriteNoContentResponse(w, "Success")
-}
-
-func (action EditIncident) editIncident(req *http.Request) *herr.HTTPError {
-	event, jwtCtx, eventPermissions, errHTTP := server.GetEventPermissions(req, action.ImsDBQ, action.UserStore)
-	if errHTTP != nil {
-		return errHTTP.From("[server.GetEventPermissions]")
-	}
-	ctx := req.Context()
-
-	incidentNumber, err := conv.ParseInt32(req.PathValue("incidentNumber"))
-	if err != nil {
-		return herr.BadRequest("Invalid Incident Number", err).From("[ParseInt32]")
-	}
-	newIncident, errHTTP := server.ReadBodyAs[imsjson.Incident](req)
-	if errHTTP != nil {
-		return errHTTP.From("[server.ReadBodyAs]")
-	}
-
-	// 52f: full edit needs EventWriteIncidents. A reporter granted per-incident access
-	// may *only* append journal entries — so without the write bit, require a grant
-	// AND a journal-only payload (no field changes). updateIncident already ignores
-	// zero/nil fields, so isJournalOnly is the guard that keeps them from editing.
-	if eventPermissions&authz.EventWriteIncidents == 0 {
-		hasGrant, err := action.ImsDBQ.IncidentPersonHasGrant(ctx, action.ImsDBQ, imsdb.IncidentPersonHasGrantParams{
-			Event: event.ID, IncidentNumber: incidentNumber, PersonID: jwtCtx.Claims.PersonID(),
-		})
-		if err != nil {
-			return herr.InternalServerError("Failed to check incident grant", err).From("[IncidentPersonHasGrant]")
-		}
-		if !hasGrant {
-			return herr.Forbidden("The requestor does not have EventWriteIncidents permission for this Event", nil)
-		}
-		if !isJournalOnly(newIncident) {
-			return herr.Forbidden("A granted reporter may only add journal entries to this incident", nil)
-		}
-	}
-
-	newIncident.Event = event.Name
-	newIncident.EventID = event.ID
-	newIncident.Number = incidentNumber
-
-	authorPersonID := jwtCtx.Claims.PersonID()
-
-	errHTTP = updateIncident(ctx, action.ImsDBQ, action.UserStore, action.Es, action.Pusher, newIncident, authorPersonID, jwtCtx.Claims.PersonAdmin())
-	if errHTTP != nil {
-		return errHTTP.From("[updateIncident]")
-	}
-
-	// State / priority / outcome / area edits all feed the dashboard aggregate.
-	action.Metrics.InvalidateEvent(event.Name)
-
-	return nil
-}
+// EditIncident (REST POST .../incidents/{incidentNumber}) was RETIRED in slice 1c when the
+// incident write path moved onto Connect — its logic now lives in the incident.UpdateIncident
+// domain function (connect.go), which the ImsService.UpdateIncident RPC delegates to. The
+// shared updateIncident helper and isJournalOnly are unchanged and still used from there.
 
 type AttachPersonToIncident struct {
 	ImsDBQ    *store.DBQ

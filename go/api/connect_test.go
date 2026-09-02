@@ -79,8 +79,10 @@ func newTestConnectClientWithLogger(t *testing.T, logger server.ActionLogger) (s
 	cfg := conf.DefaultIMS()
 	// imsDBQ is nil: the RPCs these tests exercise (GetAuthStatus, Login,
 	// unauthenticated ListEvents) all answer before any DB access. Anything that
-	// queries the DB is covered by the api/integration suite instead.
-	mux := api.AddConnectToMux(http.NewServeMux(), cfg, nil, logger, nil)
+	// queries the DB is covered by the api/integration suite instead. es / metricsCache /
+	// pushSender are nil for the same reason — only the incident-mutation RPCs touch them,
+	// and those are exercised in api/integration, not here.
+	mux := api.AddConnectToMux(http.NewServeMux(), cfg, nil, logger, nil, nil, nil, nil)
 
 	srv := httptest.NewServer(mux)
 	t.Cleanup(srv.Close)

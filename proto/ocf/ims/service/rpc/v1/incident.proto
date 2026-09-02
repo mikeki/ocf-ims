@@ -5,6 +5,8 @@ syntax = "proto3";
 package ocf.ims.service.rpc.v1;
 
 import "buf/validate/validate.proto";
+import "google/protobuf/timestamp.proto";
+import "ocf/ims/common/v1/incident_ref.proto";
 import "ocf/ims/resources/v1/incident.proto";
 import "ocf/ims/resources/v1/journal_entry.proto";
 
@@ -45,11 +47,64 @@ message GetIncidentResponse {
   IncidentView incident = 1;
 }
 
-// CreateIncidentRequest carries the whole resource (Phase-0 rule). Server-assigned
-// fields on the incident (number, created, last_modified) are ignored on create.
+// Int32List / IncidentRefList wrap a repeated field so an update can distinguish
+// "leave this list unchanged" (the optional wrapper is absent) from "set the list to
+// exactly these, clearing it when empty" (the wrapper is present). Plain `repeated`
+// can't express that difference — an absent and an empty repeated field are identical
+// on the wire — and the incident write relies on it (a partial edit that touches only
+// the types must not clobber the reports/links it omits).
+message Int32List {
+  repeated int32 values = 1;
+}
+
+message IncidentRefList {
+  // Only event_id + incident_number are read on write; the display fields are ignored.
+  repeated ocf.ims.common.v1.IncidentRef refs = 1;
+}
+
+// NewJournalEntry is a journal entry to append: its author-typed text and the person
+// ids @mentioned in it. The resource JournalEntry models the read echo (server-assigned
+// id/author/created, resolved mentions); this is the minimal write shape.
+message NewJournalEntry {
+  string text = 1;
+  repeated int32 mentioned_person_ids = 2;
+}
+
+// IncidentUpdate is the write body shared by CreateIncident and UpdateIncident — the
+// two run identical field-application logic (REST NewIncident created the row then
+// delegated to the edit path), so they share one message rather than the raw Incident
+// resource. Every field is presence-tracked: an absent scalar/list leaves that field
+// unchanged, a present one sets it (a present-but-empty Int32List/IncidentRefList
+// clears the list). This is what lets a partial edit — "set only the types" — not
+// clobber the reports and links it omits. On create the fields are applied over a fresh
+// incident, so an absent field takes the create default (state OPEN, priority NORMAL,
+// empty lists). Two deviations from the 0e "writes carry the resource" default, both
+// forced by the write path: (1) the resource's plain `repeated` can't carry list
+// presence; (2) the resource JournalEntry has no write-side mentioned_person_ids.
+message IncidentUpdate {
+  // UNSPECIFIED leaves the field unchanged (there is no "clear" for these — an
+  // incident always has a state and a priority).
+  ocf.ims.resources.v1.IncidentState state = 1 [(buf.validate.field).enum.defined_only = true];
+  optional bool private = 2;
+  // outcome_id: absent leaves it unchanged, 0 clears it, a positive id sets it.
+  optional int32 outcome_id = 3;
+  // started: absent leaves it unchanged.
+  google.protobuf.Timestamp started = 4;
+  ocf.ims.resources.v1.IncidentPriority priority = 5 [(buf.validate.field).enum.defined_only = true];
+  optional string summary = 6 [(buf.validate.field).string.max_len = 1024];
+  // location: absent touches nothing; a present location updates only its set fields
+  // (each is itself optional, and an empty string clears that piece).
+  ocf.ims.resources.v1.IncidentLocation location = 7;
+  optional Int32List incident_type_ids = 8;
+  optional Int32List reports = 9;
+  optional IncidentRefList linked_incidents = 10;
+  repeated NewJournalEntry journal_entries = 11;
+}
+
+// CreateIncidentRequest applies an IncidentUpdate to a fresh incident in the event.
 message CreateIncidentRequest {
   int32 event_id = 1 [(buf.validate.field).int32.gt = 0];
-  ocf.ims.resources.v1.Incident incident = 2;
+  IncidentUpdate incident = 2;
 }
 
 // CreateIncidentResponse returns the server-assigned per-event incident number.
@@ -60,7 +115,7 @@ message CreateIncidentResponse {
 message UpdateIncidentRequest {
   int32 event_id = 1 [(buf.validate.field).int32.gt = 0];
   int32 incident_number = 2 [(buf.validate.field).int32.gt = 0];
-  ocf.ims.resources.v1.Incident incident = 3;
+  IncidentUpdate update = 3;
 }
 
 message UpdateIncidentResponse {}

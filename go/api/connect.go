@@ -29,6 +29,7 @@ import (
 	"github.com/mikeki/ocf-ims/internal/incident"
 	"github.com/mikeki/ocf-ims/internal/server"
 	"github.com/mikeki/ocf-ims/lib/authz"
+	pushlib "github.com/mikeki/ocf-ims/lib/push"
 	"github.com/mikeki/ocf-ims/store"
 )
 
@@ -52,6 +53,13 @@ type ImsService struct {
 	// AttachmentsEnabled mirrors the REST handlers' flag (cfg.AttachmentsStore.Type
 	// != none): it gates whether a read surfaces journal-entry attachment metadata.
 	AttachmentsEnabled bool
+	// Es, Pusher, and Metrics back the incident-mutation RPCs (plan 09h/1c). Es and
+	// Metrics are the SAME instances the REST surface uses (SSE subscribers and the
+	// dashboard cache are shared state); Pusher is stateless, rebuilt from the same
+	// send backend. All three are threaded in via AddConnectToMux.
+	Es      *server.EventSourcerer
+	Pusher  *server.Pusher
+	Metrics *server.MetricsCache
 }
 
 // ListEvents is a thin RPC method over the event.ListEvents domain function (plan
@@ -102,6 +110,22 @@ func (s ImsService) GetIncident(
 	return connect.NewResponse(resp), nil
 }
 
+// UpdateIncident is a thin RPC method over the incident.UpdateIncident domain function
+// (plan 09h/1c). Its REST predecessor (POST .../incidents/{n}) was deleted in the same
+// slice. The domain function authorizes from ctx claims and speaks Connect errors, so
+// this just delegates; it carries the shared EventSourcerer / Pusher / MetricsCache so
+// the write fans out SSE + push and invalidates the dashboard exactly as REST did.
+func (s ImsService) UpdateIncident(
+	ctx context.Context,
+	req *connect.Request[servicerpcv1.UpdateIncidentRequest],
+) (*connect.Response[servicerpcv1.UpdateIncidentResponse], error) {
+	resp, err := incident.UpdateIncident(ctx, s.ImsDBQ, s.UserStore, s.Es, s.Pusher, s.Metrics, req.Msg)
+	if err != nil {
+		return nil, err
+	}
+	return connect.NewResponse(resp), nil
+}
+
 // GetAuthStatus is the one RPC implemented end-to-end in slice 1b, to prove the
 // interceptor spine through the generated client. It answers the identity subset
 // of the whoami purely from the caller's JWT claims, which the auth interceptor
@@ -141,6 +165,9 @@ func AddConnectToMux(
 	imsDBQ *store.DBQ,
 	actionLogger server.ActionLogger,
 	userStore directory.UserStore,
+	es *server.EventSourcerer,
+	metricsCache *server.MetricsCache,
+	pushSender pushlib.Sender,
 ) *http.ServeMux {
 	if mux == nil {
 		mux = http.NewServeMux()
@@ -148,8 +175,22 @@ func AddConnectToMux(
 	jwter := authz.JWTer{SecretKey: cfg.Core.JWTSecret}
 	interceptors := server.Interceptors(jwter, actionLogger, userStore, server.NewValidateInterceptor())
 	attachmentsEnabled := cfg.AttachmentsStore.Type != conf.AttachmentsStoreNone
+	// Pusher is stateless (store + send backend), so a Connect-side instance built from
+	// the same sender fans out identically to the REST one; a nil sender is the no-op
+	// backend (push unconfigured), matching AddToMux.
+	if pushSender == nil {
+		pushSender = pushlib.NoopSender{}
+	}
+	pusher := server.NewPusher(imsDBQ, pushSender)
 	path, handler := servicev1connect.NewImsServiceHandler(
-		ImsService{ImsDBQ: imsDBQ, UserStore: userStore, AttachmentsEnabled: attachmentsEnabled},
+		ImsService{
+			ImsDBQ:             imsDBQ,
+			UserStore:          userStore,
+			AttachmentsEnabled: attachmentsEnabled,
+			Es:                 es,
+			Pusher:             pusher,
+			Metrics:            metricsCache,
+		},
 		connect.WithInterceptors(interceptors...),
 	)
 	mux.Handle(path, handler)

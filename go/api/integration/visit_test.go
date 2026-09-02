@@ -294,14 +294,17 @@ func TestCreateAndUpdateVisit(t *testing.T) {
 	}
 	requireEqualVisit(t, expected, retrievedVisitAfterUpdate)
 
-	// make an incident, then attach to it
+	// make an incident, then attach the visit to it. The link is set from the visit side
+	// (updateVisit): the incident write moved onto Connect (plan 09h/1c) and its
+	// IncidentUpdate carries no visits — the visits subsystem is excluded from the contract
+	// (09e), so the incident↔visit link lives only on the visit resource, which stays REST.
 	incidentNumber := apisAdmin.newIncidentSuccess(ctx, imsjson.Incident{
 		Event: eventName,
 	})
-	resp = apisAdmin.updateIncident(ctx, eventName, num, imsjson.Incident{
-		Event:  eventName,
-		Number: incidentNumber,
-		Visits: &[]int32{num},
+	resp = apisAdmin.updateVisit(ctx, eventName, num, imsjson.Visit{
+		Event:    eventName,
+		Number:   num,
+		Incident: &incidentNumber,
 	})
 	require.Equal(t, http.StatusNoContent, resp.StatusCode)
 	require.NoError(t, resp.Body.Close())
@@ -312,11 +315,12 @@ func TestCreateAndUpdateVisit(t *testing.T) {
 	require.NoError(t, resp.Body.Close())
 	require.Equal(t, incidentNumber, *visitAfterAttach.Incident)
 
-	// detach
-	resp = apisAdmin.updateIncident(ctx, eventName, num, imsjson.Incident{
-		Event:  eventName,
-		Number: incidentNumber,
-		Visits: &[]int32{},
+	// detach (Incident = 0 clears the link)
+	noIncident := int32(0)
+	resp = apisAdmin.updateVisit(ctx, eventName, num, imsjson.Visit{
+		Event:    eventName,
+		Number:   num,
+		Incident: &noIncident,
 	})
 	require.Equal(t, http.StatusNoContent, resp.StatusCode)
 	require.NoError(t, resp.Body.Close())

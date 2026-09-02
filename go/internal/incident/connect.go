@@ -319,6 +319,181 @@ func ListIncidents(
 	return &rpcv1.ListIncidentsResponse{Incidents: views}, nil
 }
 
+// UpdateIncident is the domain function behind the UpdateIncident RPC (plan 09h/1c).
+// The REST POST /events/{eventName}/incidents/{incidentNumber} endpoint was RETIRED with
+// this extraction, not shimmed (migration decision, plan 09 §Migration strategy) — editing
+// an incident is Connect-only now. It ports the REST editIncident authorization verbatim:
+// a full edit needs EventWriteIncidents, while a reporter with only a 52f per-incident
+// grant may submit a journal-only payload (isJournalOnly). The heavy field-reconciliation
+// is the shared updateIncident helper (unchanged); this converts the presence-tracked
+// IncidentUpdate onto the imsjson.Incident it consumes, then invalidates the dashboard
+// aggregate exactly as REST did.
+//
+// A 52f denial is PermissionDenied (403), not NotFound: the caller reached the incident by
+// its number, so — unlike the single read — existence is not the thing being protected.
+func UpdateIncident(
+	ctx context.Context,
+	imsDBQ *store.DBQ,
+	userStore directory.UserStore,
+	es *server.EventSourcerer,
+	pusher *server.Pusher,
+	metrics *server.MetricsCache,
+	req *rpcv1.UpdateIncidentRequest,
+) (*rpcv1.UpdateIncidentResponse, error) {
+	claims, ok := server.ClaimsFromContext(ctx)
+	if !ok {
+		return nil, connect.NewError(connect.CodeUnauthenticated, errors.New("authentication required"))
+	}
+
+	eventRow, err := imsDBQ.Event(ctx, imsDBQ, req.GetEventId())
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return nil, connect.NewError(connect.CodeNotFound, errors.New("event not found"))
+		}
+		return nil, connect.NewError(connect.CodeInternal, fmt.Errorf("failed to fetch event: %w", err))
+	}
+	event := eventRow.Event
+
+	eventPerms, _, err := authz.EventPermissions(ctx, &event.ID, imsDBQ, *claims)
+	if err != nil {
+		return nil, connect.NewError(connect.CodeInternal, fmt.Errorf("failed to compute permissions: %w", err))
+	}
+	eventPermissions := eventPerms[event.ID]
+
+	incidentNumber := req.GetIncidentNumber()
+	newIncident := incidentUpdateToJSON(req.GetUpdate())
+	newIncident.Event = event.Name
+	newIncident.EventID = event.ID
+	newIncident.Number = incidentNumber
+
+	// 52f: a full edit needs EventWriteIncidents. A reporter granted per-incident access
+	// may *only* append journal entries — so without the write bit, require a grant AND a
+	// journal-only payload (updateIncident already ignores zero/nil fields, so isJournalOnly
+	// is the guard that stops them editing anything else).
+	if eventPermissions&authz.EventWriteIncidents == 0 {
+		hasGrant, err := imsDBQ.IncidentPersonHasGrant(ctx, imsDBQ, imsdb.IncidentPersonHasGrantParams{
+			Event: event.ID, IncidentNumber: incidentNumber, PersonID: claims.PersonID(),
+		})
+		if err != nil {
+			return nil, connect.NewError(connect.CodeInternal, fmt.Errorf("failed to check incident grant: %w", err))
+		}
+		if !hasGrant {
+			return nil, connect.NewError(connect.CodePermissionDenied,
+				errors.New("the requestor does not have EventWriteIncidents permission for this Event"))
+		}
+		if !isJournalOnly(newIncident) {
+			return nil, connect.NewError(connect.CodePermissionDenied,
+				errors.New("a granted reporter may only add journal entries to this incident"))
+		}
+	}
+
+	errHTTP := updateIncident(ctx, imsDBQ, userStore, es, pusher, newIncident, claims.PersonID(), claims.PersonAdmin())
+	if errHTTP != nil {
+		return nil, herrToConnect(errHTTP)
+	}
+
+	// State / priority / outcome / area edits all feed the dashboard aggregate.
+	metrics.InvalidateEvent(event.Name)
+
+	return &rpcv1.UpdateIncidentResponse{}, nil
+}
+
+// incidentUpdateToJSON converts the presence-tracked IncidentUpdate write body onto the
+// imsjson.Incident that the shared updateIncident helper consumes. imsjson.Incident's
+// pointer/zero fields already encode exactly the semantics IncidentUpdate was designed
+// around, so the mapping is lossless: an absent proto scalar/list leaves the imsjson field
+// nil/zero ("leave unchanged"), while a present-but-empty Int32List/IncidentRefList becomes
+// a non-nil empty slice ("clear the list"). It is the write-side mirror of
+// incidentJSONToProto and, like it, exists only while updateIncident still speaks json — it
+// collapses when the write path maps proto straight to the store (plan 09 §Migration
+// strategy). The event/number keys come from the request's path keys, set by the caller.
+func incidentUpdateToJSON(u *rpcv1.IncidentUpdate) imsjson.Incident {
+	if u == nil {
+		return imsjson.Incident{}
+	}
+	out := imsjson.Incident{
+		State:     incidentStateFromProto(u.GetState()),
+		Private:   u.Private,
+		OutcomeID: u.OutcomeId,
+		Priority:  incidentPriorityFromProto(u.GetPriority()),
+		Summary:   u.Summary,
+	}
+	if started := u.GetStarted(); started != nil {
+		out.Started = started.AsTime()
+	}
+	if loc := u.GetLocation(); loc != nil {
+		out.Location = imsjson.Location{
+			AreaSlug:    loc.AreaSlug,
+			Description: loc.Description,
+			Booth:       loc.Booth,
+		}
+	}
+	if lst := u.GetIncidentTypeIds(); lst != nil {
+		out.IncidentTypeIDs = int32ListToSlicePtr(lst)
+	}
+	if lst := u.GetReports(); lst != nil {
+		out.Reports = int32ListToSlicePtr(lst)
+	}
+	if lst := u.GetLinkedIncidents(); lst != nil {
+		links := make([]imsjson.LinkedIncident, 0, len(lst.GetRefs()))
+		for _, r := range lst.GetRefs() {
+			// Only the event/number keys are read on write (the display fields are ignored,
+			// per the IncidentRefList doc); updateIncident reconciles against the stored set.
+			links = append(links, imsjson.LinkedIncident{
+				EventID: r.GetEventId(),
+				Number:  r.GetIncidentNumber(),
+			})
+		}
+		out.LinkedIncidents = &links
+	}
+	for _, je := range u.GetJournalEntries() {
+		out.JournalEntries = append(out.JournalEntries, imsjson.JournalEntry{
+			Text:               je.GetText(),
+			MentionedPersonIDs: je.GetMentionedPersonIds(),
+		})
+	}
+	return out
+}
+
+// int32ListToSlicePtr converts a present Int32List wrapper into the *[]int32 imsjson uses
+// for a reconciled list — a non-nil pointer means "set exactly these" (an empty list
+// clears). The caller invokes it only when the wrapper itself is present; a nil wrapper
+// ("leave unchanged") stays a nil *[]int32 and is handled at the call site.
+func int32ListToSlicePtr(lst *rpcv1.Int32List) *[]int32 {
+	v := lst.GetValues()
+	if v == nil {
+		v = []int32{}
+	}
+	return &v
+}
+
+// incidentStateFromProto / incidentPriorityFromProto are the write-side inverses of
+// incidentStateToProto / incidentPriorityToProto: UNSPECIFIED maps to the json "no change"
+// sentinel ("" / 0) that updateIncident treats as leave-unchanged.
+func incidentStateFromProto(s resourcesv1.IncidentState) string {
+	switch s {
+	case resourcesv1.IncidentState_INCIDENT_STATE_OPEN:
+		return string(imsdb.IncidentStateOpen)
+	case resourcesv1.IncidentState_INCIDENT_STATE_CLOSED:
+		return string(imsdb.IncidentStateClosed)
+	default:
+		return ""
+	}
+}
+
+func incidentPriorityFromProto(p resourcesv1.IncidentPriority) int8 {
+	switch p {
+	case resourcesv1.IncidentPriority_INCIDENT_PRIORITY_HIGH:
+		return imsjson.IncidentPriorityHigh
+	case resourcesv1.IncidentPriority_INCIDENT_PRIORITY_NORMAL:
+		return imsjson.IncidentPriorityNormal
+	case resourcesv1.IncidentPriority_INCIDENT_PRIORITY_LOW:
+		return imsjson.IncidentPriorityLow
+	default:
+		return 0
+	}
+}
+
 // herrToConnect maps an herr.HTTPError from the reused REST-era helpers
 // (fetchIncident, PermissionsByEvent) onto the equivalent Connect error code, so the
 // extracted domain function speaks Connect codes end to end. Only the client-facing
