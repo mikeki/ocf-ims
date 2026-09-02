@@ -219,7 +219,7 @@ func TestPushFanoutDelivery(t *testing.T) {
 	// (plan 09h/1c), and the REST surface no longer holds a Pusher at all — so the spy
 	// rides on the Connect surface, whose Pusher is built from that sender.
 	spy := &capturingSender{}
-	mux := api.AddToMux(nil, shared.es, shared.metricsCache, shared.cfg, shared.imsDBQ, shared.userStore, nil, shared.actionLogger)
+	mux := api.AddToMux(nil, shared.es, shared.cfg, shared.imsDBQ, shared.userStore, nil, shared.actionLogger)
 	api.AddConnectToMux(mux, shared.cfg, shared.imsDBQ, shared.actionLogger, shared.userStore, shared.es, shared.metricsCache, spy, nil)
 	srv := httptest.NewServer(mux)
 	defer srv.Close()

@@ -448,6 +448,78 @@ func outcomeMsgFromJSON(req imsjson.Outcome) *resourcesv1.Outcome {
 	}
 }
 
+// metricsProtoToJSON maps a resources/v1.Metrics from the GetMetrics RPC back to the legacy
+// imsjson.Metrics the dashboard tests assert against — the inverse of the server's
+// metrics.metricsToProto. The bucket/day/ref lists flatten back to their json shapes; the optional
+// avg-time pointer carries straight across (both sides *float64); the contract's generated_at
+// Timestamp becomes json's Unix-millis (the tests assert on the aggregates, not the exact time). Dies
+// with json/ when the read is rebuilt DB→proto.
+func metricsProtoToJSON(p *resourcesv1.Metrics) imsjson.Metrics {
+	return imsjson.Metrics{
+		Event:                 p.GetEvent(),
+		EventID:               p.GetEventId(),
+		Total:                 p.GetTotal(),
+		Open:                  p.GetOpen(),
+		Closed:                p.GetClosed(),
+		ByState:               metricCountsFromProto(p.GetByState()),
+		ByPriority:            metricCountsFromProto(p.GetByPriority()),
+		ByCategory:            metricCountsFromProto(p.GetByCategory()),
+		ByType:                metricCountsFromProto(p.GetByType()),
+		ByRole:                metricCountsFromProto(p.GetByRole()),
+		ByArea:                metricCountsFromProto(p.GetByArea()),
+		ByDay:                 metricDaysFromProto(p.GetByDay()),
+		OpenFollowUps:         metricRefsFromProto(p.GetOpenFollowUps()),
+		AvgTimeToCloseSeconds: p.AvgTimeToCloseSeconds,
+		ClosedCount:           p.GetClosedCount(),
+		GeneratedAtMS:         p.GetGeneratedAt().AsTime().UnixMilli(),
+	}
+}
+
+func metricCountsFromProto(cs []*resourcesv1.MetricCount) []imsjson.MetricCount {
+	out := make([]imsjson.MetricCount, 0, len(cs))
+	for _, c := range cs {
+		out = append(out, imsjson.MetricCount{Key: c.GetKey(), Label: c.GetLabel(), Count: c.GetCount()})
+	}
+	return out
+}
+
+func metricDaysFromProto(ds []*resourcesv1.MetricDay) []imsjson.MetricDay {
+	out := make([]imsjson.MetricDay, 0, len(ds))
+	for _, d := range ds {
+		out = append(out, imsjson.MetricDay{Date: d.GetDate(), Count: d.GetCount()})
+	}
+	return out
+}
+
+func metricRefsFromProto(rs []*resourcesv1.MetricIncidentRef) []imsjson.MetricIncidentRef {
+	out := make([]imsjson.MetricIncidentRef, 0, len(rs))
+	for _, r := range rs {
+		out = append(out, imsjson.MetricIncidentRef{Number: r.GetIncidentNumber(), Summary: r.GetSummary()})
+	}
+	return out
+}
+
+// actionLogProtoToJSON maps a resources/v1.ActionLog from the ListActionLogs RPC back to the legacy
+// imsjson.ActionLog the audit test asserts against — the inverse of the server's
+// actionlog.actionLogToProto. The contract's person_* actor maps back onto json's user_* fields; the
+// dropped POSITION_* columns stay zero (they are always empty). Dies with json/ when the read is
+// rebuilt DB→proto.
+func actionLogProtoToJSON(p *resourcesv1.ActionLog) imsjson.ActionLog {
+	return imsjson.ActionLog{
+		ID:            p.GetId(),
+		CreatedAt:     p.GetCreatedAt().AsTime(),
+		ActionType:    p.GetActionType(),
+		Method:        p.GetMethod(),
+		Path:          p.GetPath(),
+		Referrer:      p.GetReferrer(),
+		UserID:        int64(p.GetPersonId()),
+		UserName:      p.GetPersonName(),
+		ClientAddress: p.GetClientIpAddress(),
+		HttpStatus:    int16(p.GetHttpStatus()),
+		Duration:      p.GetDuration(),
+	}
+}
+
 // participationTypeToProtoEnum maps a stored MySQL participation string onto the proto enum for the
 // personnel-write helpers that build requests from the legacy DTOs (empty → UNSPECIFIED, i.e.
 // "default from wristband"). The server-side equivalent is person.participationTypeFromProto.

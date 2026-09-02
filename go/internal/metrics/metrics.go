@@ -17,139 +17,18 @@
 package metrics
 
 import (
-	"context"
-	"net/http"
 	"sort"
 	"time"
 
-	"github.com/mikeki/ocf-ims/directory"
-	"github.com/mikeki/ocf-ims/internal/server"
 	imsjson "github.com/mikeki/ocf-ims/json"
-	"github.com/mikeki/ocf-ims/lib/authz"
 	"github.com/mikeki/ocf-ims/lib/conv"
-	"github.com/mikeki/ocf-ims/lib/herr"
-	"github.com/mikeki/ocf-ims/store"
 	"github.com/mikeki/ocf-ims/store/imsdb"
-	"golang.org/x/sync/errgroup"
 )
 
-// GetMetrics serves the per-event dashboard aggregate (Phase 7). It is read-only
-// and open to admins and per-event writers (plan 52d): writers get
-// EventWriteIncidents from their PERSON__EVENT tier and admins get it via the
-// admin bypass, so a single write-bit check gates both. This is the single
-// permission seam described in docs/plans/70-dashboards.md (D3): when roles grow
-// further, only this check changes and the page does not move.
-type GetMetrics struct {
-	ImsDBQ    *store.DBQ
-	UserStore directory.UserStore
-	Cache     *server.MetricsCache
-}
-
-func (action GetMetrics) ServeHTTP(w http.ResponseWriter, req *http.Request) {
-	resp, errHTTP := action.getMetrics(req)
-	if errHTTP != nil {
-		errHTTP.From("[getMetrics]").WriteResponse(w)
-		return
-	}
-	server.MustWriteJSON(w, req, resp)
-}
-
-func (action GetMetrics) getMetrics(req *http.Request) (imsjson.Metrics, *herr.HTTPError) {
-	var resp imsjson.Metrics
-
-	// The dashboard opens to admins and per-event writers (plan 52d). Resolving the
-	// event here (rather than gating before it, as the admin-only version did) is
-	// fine: event names aren't secret — every authenticated user sees them in the
-	// nav — and writers get EventWriteIncidents from their tier while admins get it
-	// via the bypass, so the one write-bit check covers both.
-	event, _, eventPermissions, errHTTP := server.GetEventPermissions(req, action.ImsDBQ, action.UserStore)
-	if errHTTP != nil {
-		return resp, errHTTP.From("[server.GetEventPermissions]")
-	}
-	if eventPermissions&authz.EventWriteIncidents == 0 {
-		return resp, herr.Forbidden("The dashboard is restricted to administrators and event writers", nil)
-	}
-
-	// The heavy work (event lookup + GROUP BY aggregation) goes through the
-	// per-event cache, so repeated dashboard loads within the TTL serve a cached
-	// payload without touching the database.
-	cached, err := action.Cache.Get(req.Context(), event.Name,
-		func(ctx context.Context) (imsjson.Metrics, error) {
-			return action.computeMetrics(ctx, event.Name)
-		})
-	if err != nil {
-		return resp, herr.AsHTTPError(err)
-	}
-	return *cached, nil
-}
-
-// computeMetrics resolves the event and runs the aggregate queries. It is the
-// cache's refresher, so it runs at most once per TTL per event.
-func (action GetMetrics) computeMetrics(ctx context.Context, eventName string) (imsjson.Metrics, error) {
-	var resp imsjson.Metrics
-
-	event, errHTTP := server.GetEventCtx(ctx, eventName, action.ImsDBQ)
-	if errHTTP != nil {
-		return resp, errHTTP.From("[server.GetEvent]")
-	}
-
-	var (
-		incidents  []imsdb.MetricsIncidentsRow
-		byCategory []imsdb.MetricsIncidentCountByCategoryRow
-		byType     []imsdb.MetricsIncidentCountByTypeRow
-		byArea     []imsdb.MetricsIncidentCountByAreaRow
-		byRole     []imsdb.MetricsParticipationCountByEventRow
-	)
-	group, groupCtx := errgroup.WithContext(ctx)
-	group.Go(func() error {
-		var err error
-		incidents, err = action.ImsDBQ.MetricsIncidents(groupCtx, action.ImsDBQ, event.ID)
-		if err != nil {
-			return herr.InternalServerError("Failed to fetch incidents", err).From("[MetricsIncidents]")
-		}
-		return nil
-	})
-	group.Go(func() error {
-		var err error
-		byCategory, err = action.ImsDBQ.MetricsIncidentCountByCategory(groupCtx, action.ImsDBQ, event.ID)
-		if err != nil {
-			return herr.InternalServerError("Failed to fetch category counts", err).From("[MetricsIncidentCountByCategory]")
-		}
-		return nil
-	})
-	group.Go(func() error {
-		var err error
-		byType, err = action.ImsDBQ.MetricsIncidentCountByType(groupCtx, action.ImsDBQ, event.ID)
-		if err != nil {
-			return herr.InternalServerError("Failed to fetch type counts", err).From("[MetricsIncidentCountByType]")
-		}
-		return nil
-	})
-	group.Go(func() error {
-		var err error
-		byArea, err = action.ImsDBQ.MetricsIncidentCountByArea(groupCtx, action.ImsDBQ, event.ID)
-		if err != nil {
-			return herr.InternalServerError("Failed to fetch area counts", err).From("[MetricsIncidentCountByArea]")
-		}
-		return nil
-	})
-	group.Go(func() error {
-		var err error
-		byRole, err = action.ImsDBQ.MetricsParticipationCountByEvent(groupCtx, action.ImsDBQ, event.ID)
-		if err != nil {
-			return herr.InternalServerError("Failed to fetch role counts", err).From("[MetricsParticipationCountByEvent]")
-		}
-		return nil
-	})
-	err := group.Wait()
-	if err != nil {
-		return resp, err
-	}
-
-	resp = buildMetrics(event, incidents, byCategory, byType, byArea, byRole)
-	resp.GeneratedAtMS = time.Now().UnixMilli()
-	return resp, nil
-}
+// The GetMetrics REST handler (GET /events/{eventName}/metrics) was RETIRED in slice 1c and moved
+// onto Connect as metrics.Service.GetMetrics (connect.go). Its REST route was deleted, not shimmed
+// (aggressive migration, plan 09 §6). What remains here is the aggregation core — buildMetrics and
+// its helpers — which the Connect read reuses (computeMetrics, now a Service method, calls it).
 
 // outcomeFollowUpRequired is the OUTCOME.NAME the dashboard treats as "needs
 // follow-up" when listing still-open incidents. It matches the seeded outcome row

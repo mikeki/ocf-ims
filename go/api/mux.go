@@ -23,10 +23,8 @@ import (
 
 	"github.com/mikeki/ocf-ims/conf"
 	"github.com/mikeki/ocf-ims/directory"
-	"github.com/mikeki/ocf-ims/internal/actionlog"
 	"github.com/mikeki/ocf-ims/internal/debug"
 	"github.com/mikeki/ocf-ims/internal/incident"
-	"github.com/mikeki/ocf-ims/internal/metrics"
 	"github.com/mikeki/ocf-ims/internal/person"
 	"github.com/mikeki/ocf-ims/internal/server"
 	"github.com/mikeki/ocf-ims/lib/attachment"
@@ -39,7 +37,6 @@ import (
 func AddToMux(
 	mux *http.ServeMux,
 	es *server.EventSourcerer,
-	metricsCache *server.MetricsCache,
 	cfg *conf.IMSConfig,
 	db *store.DBQ,
 	userStore directory.UserStore,
@@ -59,24 +56,15 @@ func AddToMux(
 	// pushSender). The push *subscription* REST endpoints below only persist rows and
 	// need no Sender.
 
-	// metricsCache is created by the caller and shared with the Connect surface
-	// (AddConnectToMux): the dashboard read handler (metrics.GetMetrics) lives here on
-	// REST while the incident-mutation RPCs that must invalidate it on a write live on
-	// Connect, so both must hold the *same* cache or the dashboard would go stale until
-	// the TTL. (Passed in like es for the same reason — one shared instance.)
+	// The metricsCache is no longer threaded into this REST wiring: the dashboard read
+	// (GET .../metrics → metrics.GetMetrics) and the audit read (GET /actionlogs →
+	// actionlog.GetActionLogs) were the last routes here that needed it / lived beside it, and both
+	// moved onto Connect (ImsService.GetMetrics / ListActionLogs) in the final 1c slice (plan
+	// 09h/1c). The cache is now created in serve.go and passed only to AddConnectToMux, where every
+	// consumer — the dashboard read and the incident/area/type writes that invalidate it — now lives.
 	//
 	// The reference-data caches (incident-type, outcome, area, crew) all moved to the Connect side
 	// (built in AddConnectToMux) as their routes were extracted (plan 09h/1c); none remain here.
-
-	mux.Handle("GET /ims/api/actionlogs",
-		server.Adapt(
-			actionlog.GetActionLogs{ImsDBQ: db, UserStore: userStore},
-			server.RecoverFromPanic(),
-			server.RequireAuthN(jwter),
-			server.LogRequest(true, actionLogger, userStore),
-			server.LimitRequestBytes(cfg.Core.MaxRequestBytes),
-		),
-	)
 
 	// The whole auth & session surface — login (POST /auth), refresh (POST /auth/refresh), and
 	// the whoami / session status (GET /auth) — moved onto Connect (ImsService.Login /
@@ -268,15 +256,9 @@ func AddToMux(
 	// member edit) moved to the ImsService RPCs (plan 09h/1c) and their REST routes were retired; the
 	// shared crewsCache moved to the Connect side (built in AddConnectToMux).
 
-	mux.Handle("GET /ims/api/events/{eventName}/metrics",
-		server.Adapt(
-			metrics.GetMetrics{ImsDBQ: db, UserStore: userStore, Cache: metricsCache},
-			server.RecoverFromPanic(),
-			server.RequireAuthN(jwter),
-			server.LogRequest(false, actionLogger, userStore),
-			server.LimitRequestBytes(cfg.Core.MaxRequestBytes),
-		),
-	)
+	// The dashboard read (GET /events/{eventName}/metrics) moved to the ImsService.GetMetrics RPC
+	// (plan 09h/1c) and its REST route was retired; the shared metricsCache is now threaded only into
+	// AddConnectToMux (see the note at the top of this function).
 
 	// The event read + create/update moved to the ImsService RPCs (plan 09h/1c) and their REST
 	// routes were retired: GET /events → ListEvents, and the POST /events multiplexer (EditEvent)
