@@ -552,17 +552,59 @@ func (a ApiHelper) proposeOutcome(ctx context.Context, eventName string, req ims
 	return &id, &http.Response{StatusCode: http.StatusCreated, Body: http.NoBody}
 }
 
+// editArea dispatches the legacy EditAreas multiplexer DTO onto the decomposed area write RPCs by the
+// same selectors the retired REST handler switched on (empty slug → CreateArea, DuplicateOf →
+// MarkAreaDuplicate, Approved → ApproveArea, else → UpdateArea). The REST POST /areas route was
+// retired in 1c. Create returns the server-derived slug (the retired endpoint's IMS-Area-Slug header);
+// the rest synthesize 204 / connectStatus. The area tests assert on status only (no body), so the
+// synthetic responses carry no body.
 func (a ApiHelper) editArea(ctx context.Context, eventName string, req imsjson.Area) (slug string, resp *http.Response) {
 	a.t.Helper()
-	httpResp := a.imsPost(ctx, req, a.serverURL.JoinPath("/ims/api/events/", eventName, "/areas").String())
-	return httpResp.Header.Get("IMS-Area-Slug"), httpResp
+	client := servicev1connect.NewImsServiceClient(http.DefaultClient, a.serverURL.String())
+	eventID := a.resolveEventID(ctx, eventName)
+	switch {
+	case req.Slug == "":
+		rpcReq := connect.NewRequest(&servicerpcv1.CreateAreaRequest{EventId: eventID, Area: areaMsgFromJSON(req)})
+		a.authorizeRPC(rpcReq)
+		createResp, err := client.CreateArea(ctx, rpcReq)
+		if err != nil {
+			return "", &http.Response{StatusCode: connectStatus(err), Body: http.NoBody}
+		}
+		return createResp.Msg.GetAreaSlug(), &http.Response{StatusCode: http.StatusNoContent, Body: http.NoBody}
+	case req.DuplicateOf != nil:
+		rpcReq := connect.NewRequest(&servicerpcv1.MarkAreaDuplicateRequest{
+			EventId: eventID, AreaSlug: req.Slug, CanonicalSlug: *req.DuplicateOf,
+		})
+		a.authorizeRPC(rpcReq)
+		_, err := client.MarkAreaDuplicate(ctx, rpcReq)
+		return "", writeRPCStatus(err)
+	case req.Approved != nil && *req.Approved:
+		rpcReq := connect.NewRequest(&servicerpcv1.ApproveAreaRequest{EventId: eventID, AreaSlug: req.Slug})
+		a.authorizeRPC(rpcReq)
+		_, err := client.ApproveArea(ctx, rpcReq)
+		return "", writeRPCStatus(err)
+	default:
+		rpcReq := connect.NewRequest(&servicerpcv1.UpdateAreaRequest{EventId: eventID, AreaSlug: req.Slug, Area: areaMsgFromJSON(req)})
+		a.authorizeRPC(rpcReq)
+		_, err := client.UpdateArea(ctx, rpcReq)
+		return "", writeRPCStatus(err)
+	}
 }
 
 func (a ApiHelper) getAreas(ctx context.Context, eventName string) (imsjson.Areas, *http.Response) {
 	a.t.Helper()
-	path := a.serverURL.JoinPath("/ims/api/events/", eventName, "/areas").String()
-	bod, resp := a.imsGet(ctx, path, &imsjson.Areas{})
-	return *bod.(*imsjson.Areas), resp
+	client := servicev1connect.NewImsServiceClient(http.DefaultClient, a.serverURL.String())
+	rpcReq := connect.NewRequest(&servicerpcv1.ListAreasRequest{EventId: a.resolveEventID(ctx, eventName)})
+	a.authorizeRPC(rpcReq)
+	resp, err := client.ListAreas(ctx, rpcReq)
+	if err != nil {
+		return nil, &http.Response{StatusCode: connectStatus(err), Body: http.NoBody}
+	}
+	out := make(imsjson.Areas, 0, len(resp.Msg.GetAreas()))
+	for _, ar := range resp.Msg.GetAreas() {
+		out = append(out, areaProtoToJSON(ar))
+	}
+	return out, &http.Response{StatusCode: http.StatusOK, Body: http.NoBody}
 }
 
 func (a ApiHelper) editCrew(ctx context.Context, eventName string, req imsjson.Crew) (slug string, resp *http.Response) {

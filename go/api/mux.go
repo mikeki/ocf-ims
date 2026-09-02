@@ -24,7 +24,6 @@ import (
 	"github.com/mikeki/ocf-ims/conf"
 	"github.com/mikeki/ocf-ims/directory"
 	"github.com/mikeki/ocf-ims/internal/actionlog"
-	"github.com/mikeki/ocf-ims/internal/area"
 	"github.com/mikeki/ocf-ims/internal/crew"
 	"github.com/mikeki/ocf-ims/internal/debug"
 	"github.com/mikeki/ocf-ims/internal/incident"
@@ -71,9 +70,8 @@ func AddToMux(
 
 	// Reference-data caches: each event's area list is read on nearly every incident
 	// form load but changes rarely, so it is memoized here and invalidated by its write
-	// handlers. (The incident-type and outcome taxonomy caches moved to the Connect side
-	// when those taxonomy routes were extracted, plan 09h/1c.)
-	areasCache := server.NewAreasCache()
+	// handlers. (The incident-type, outcome, and area caches moved to the Connect side when
+	// those routes were extracted, plan 09h/1c.)
 	crewsCache := server.NewCrewsCache()
 
 	mux.Handle("GET /ims/api/actionlogs",
@@ -267,25 +265,9 @@ func AddToMux(
 		),
 	)
 
-	mux.Handle("GET /ims/api/events/{eventName}/areas",
-		server.Adapt(
-			area.GetAreas{ImsDBQ: db, UserStore: userStore, Cache: areasCache, CacheControlShort: cfg.Core.CacheControlShort},
-			server.RecoverFromPanic(),
-			server.RequireAuthN(jwter),
-			server.LogRequest(true, actionLogger, userStore),
-			server.LimitRequestBytes(cfg.Core.MaxRequestBytes),
-		),
-	)
-
-	mux.Handle("POST /ims/api/events/{eventName}/areas",
-		server.Adapt(
-			area.EditAreas{ImsDBQ: db, UserStore: userStore, Metrics: metricsCache, Areas: areasCache},
-			server.RecoverFromPanic(),
-			server.RequireAuthN(jwter),
-			server.LogRequest(true, actionLogger, userStore),
-			server.LimitRequestBytes(cfg.Core.MaxRequestBytes),
-		),
-	)
+	// The area read + all writes (the POST multiplexer, decomposed into
+	// Create/Update/Approve/MarkDuplicate) moved to the ImsService RPCs (plan 09h/1c) and their REST
+	// routes were retired; the shared areasCache moved to the Connect side (built in AddConnectToMux).
 
 	mux.Handle("GET /ims/api/events/{eventName}/crews",
 		server.Adapt(

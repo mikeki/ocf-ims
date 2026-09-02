@@ -1282,6 +1282,39 @@ retiring the REST `POST /events` create/update multiplexer (`EditEvent`). Findin
 - **`POST /events` left the admin-only sweep** → focused `TestEventWriteAuthorization`
   (`GlobalAdministrateEvents`: non-admin 403, unauth 401).
 
+### 1c — Domain extraction: areas (2026-09-02)
+
+The area surface — `ListAreas` + `CreateArea`/`UpdateArea`/`ApproveArea`/`MarkAreaDuplicate` — landed
+as a new `area.Service`, retiring REST `GET`/`POST /events/{eventName}/areas`. Findings:
+
+- **The "thin RPC over a herr core" pattern earns its keep on the intricate write.** Where the
+  taxonomies reimplemented each verb directly in Connect terms, the area writes keep the retired
+  `EditAreas` cores (create / approve / mark-duplicate / update) verbatim as unexported methods on
+  `area.Service` and wrap each RPC around them, mapping `*herr.HTTPError` → Connect via
+  `server.HerrToConnect`. The mark-duplicate core is a `RunInTx` that re-points every incident off the
+  duplicate then deletes it — exactly the kind of logic not worth re-deriving in a rewrite. *Reuse the
+  herr core (personnel-writes pattern) when the handler body is intricate or transactional; reimplement
+  (taxonomy pattern) only when the body is a couple of field assignments.*
+- **Contract gap: a writable column was missing from the resource.** The `Area` resource carried
+  slug/name/parent_slug/approved/proposer but not `sort_order` — a real `AREA` column that the admin
+  list orders by and that a copyAreas parent-before-child ordering test sets deliberately (to force a
+  child to sort ahead of its parent). Added `optional int32 sort_order = 6`. *The "mirrors json.X"
+  resources still need an audit for silently-dropped writable fields; `sort_order` is the fourth field
+  a slice had to add back (after `incident_type_id`, the event `event_id` selectors, and the optional
+  `group`).*
+- **A per-event cache can re-key to the id when its last name-keyed consumer leaves, but a *shared*
+  cache can't.** `AreasCache` (used only by the retired area handlers) moved to `AddConnectToMux` and
+  is now keyed by **event id** — the RPCs carry the id, and read + write both live on `area.Service`,
+  so they agree. `MetricsCache`, though, is shared with the incident writes, which key it by event
+  **name**; so an area write resolves the event name to invalidate metrics (best-effort — a failed
+  lookup just lets the metrics expire on their TTL rather than failing a committed write). *Re-key a
+  cache to whatever the new transport carries only when you own every consumer; a cross-domain shared
+  cache keeps its existing key.*
+- **GET /areas left the per-event route sweep** (`TestEventEndpoints_ForNoEventPerms`, which drives a
+  raw HTTP call and so 404s on the retired route) → focused `TestListAreasAuthorization` covering the
+  unauth / no-perms / reporter ladder for `EventReadAreas`. Area write-auth was already inline in
+  `area_test.go`, so only the read relocated. `ListAreas` is `NO_SIDE_EFFECTS`.
+
 ## 8. Open questions
 
 1. **Does the Go binary keep serving static assets in production**, or does Caddy?
