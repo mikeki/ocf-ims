@@ -30,8 +30,11 @@ message IncidentType {
   // hidden retires a type from the incident-form picker without deleting it.
   optional bool hidden = 4;
   // group is the OCF category (json.IncidentType used a free string; the column is a
-  // closed MySQL enum, so the contract models it as an enum). UNSPECIFIED = ungrouped.
-  IncidentTypeGroup group = 5 [(buf.validate.field).enum.defined_only = true];
+  // closed MySQL enum, so the contract models it as an enum). Optional for the same
+  // reason name/description are: on an UpdateIncidentType an absent group leaves the
+  // stored value alone, while a present UNSPECIFIED clears it (ungrouped). On a read a
+  // present value is the category and an absent one means ungrouped.
+  optional IncidentTypeGroup group = 5 [(buf.validate.field).enum.defined_only = true];
   // approved is false while a type is a writer's pending proposal.
   optional bool approved = 6;
   // proposer is who proposed a still-unapproved type; read-only, unset for
