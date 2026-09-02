@@ -134,48 +134,19 @@ func AddToMux(
 		),
 	)
 
-	// Self-service password change: the caller sets their OWN password (resolved
-	// from the JWT), no admin permission required. Backs the "you're on the shared
-	// default password" post-login prompt. Mutating → logged.
-	mux.Handle("POST /ims/api/auth/password",
-		server.Adapt(
-			person.SetOwnPassword{ImsDBQ: db, UserStore: userStore, DefaultPassword: cfg.Core.DefaultPassword},
-			server.RecoverFromPanic(),
-			server.RequireAuthN(jwter),
-			server.LogRequest(true, actionLogger, userStore),
-			server.LimitRequestBytes(cfg.Core.MaxRequestBytes),
-		),
-	)
+	// The self-service password change (POST /auth/password), identity/contact edit (POST
+	// /auth/profile), and picture removal (DELETE /auth/picture) moved onto Connect
+	// (ImsService.ChangeOwnPassword / UpdateOwnProfile / DeleteOwnProfilePicture, registered via
+	// AddConnectToMux); their REST routes were retired, not shimmed (aggressive migration, plan 09
+	// §6). Only the picture *upload* below (multipart/binary, outside the proto contract) stays
+	// REST. Login / whoami / refresh stay REST here until the auth-session slice.
 
-	// Self-service profile edit: the caller changes their OWN identity/contact fields
-	// (resolved from the JWT), no admin permission required. Participation and the
-	// admin flag are not editable here — those stay admin-only. Mutating → logged.
-	mux.Handle("POST /ims/api/auth/profile",
-		server.Adapt(
-			person.SetOwnProfile{ImsDBQ: db, UserStore: userStore},
-			server.RecoverFromPanic(),
-			server.RequireAuthN(jwter),
-			server.LogRequest(true, actionLogger, userStore),
-			server.LimitRequestBytes(cfg.Core.MaxRequestBytes),
-		),
-	)
-
-	// Self-service profile picture: the caller uploads/removes their OWN picture. Same
-	// admin-free, JWT-resolved model as /auth/profile. Serving stays on the shared
+	// Self-service profile picture UPLOAD: the caller uploads/replaces their OWN picture. Same
+	// admin-free, JWT-resolved model as the retired /auth/profile. Serving stays on the shared
 	// GET /ims/api/personnel/{personId}/picture (any personnel reader). Mutating → logged.
 	mux.Handle("POST /ims/api/auth/picture",
 		server.Adapt(
 			person.SetOwnProfilePicture{ImsDBQ: db, AttachmentsStore: cfg.AttachmentsStore, S3Client: s3Client},
-			server.RecoverFromPanic(),
-			server.RequireAuthN(jwter),
-			server.LogRequest(true, actionLogger, userStore),
-			server.LimitRequestBytes(cfg.Core.MaxRequestBytes),
-		),
-	)
-
-	mux.Handle("DELETE /ims/api/auth/picture",
-		server.Adapt(
-			person.DeleteOwnProfilePicture{ImsDBQ: db, AttachmentsStore: cfg.AttachmentsStore, S3Client: s3Client},
 			server.RecoverFromPanic(),
 			server.RequireAuthN(jwter),
 			server.LogRequest(true, actionLogger, userStore),

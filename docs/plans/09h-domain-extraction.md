@@ -220,12 +220,38 @@ payoff:** this was the REST surface's *last* push-firing route, so `AddToMux` no
 the Connect surface via `AddConnectToMux`), and the three `api/integration` `AddToMux` call sites were
 updated (`push_test.go` keeps the spy on the Connect mount).
 
+The **profile self-service RPCs** are now done: **`ChangeOwnPassword` + `UpdateOwnProfile` +
+`DeleteOwnProfilePicture`** (branch `feat/1c-profile`, stacked on `feat/1c-incident-subresources`) —
+the first methods on a **new `person.Service`** (`ImsDBQ`, `UserStore`, `DefaultPassword`,
+`AttachmentsStore`, `S3Client`), composed onto `ImsService` as a `Person` field built in
+`AddConnectToMux` (which gained an `s3Client` param for the picture delete). Each ports its REST
+handler verbatim: the caller is resolved from the JWT subject (`server.ClaimsFromContext` →
+`PersonByID`), never a request field, so a caller can only ever touch their own account; password
+change keeps the length floor/ceiling + the "refuse the shared default" + "must have an email" rules
+and marks the person off the default; profile edit reuses the shared `applyProfileFields` (same
+identity invariant, dup-entry 409, length caps as admin `EditPerson`); picture delete reuses
+`clearProfilePicture`. The three REST routes (`POST /auth/password`, `POST /auth/profile`, `DELETE
+/auth/picture`) were deleted, not shimmed — **only the multipart picture *upload* (`POST
+/auth/picture`) stays REST** (binary, outside the proto contract, M8). A shared
+`server.HerrToConnect` was added (net-new, so it doesn't churn the earlier stack commits) to map the
+reused `*herr.HTTPError` helpers onto Connect codes; incident keeps its private copy pending a later
+cleanup. Coverage relocated onto the Connect client: `changeOwnPassword` / `updateOwnProfile` /
+`deleteOwnPicture` integration helpers now drive the RPCs and synthesize a 204/`connectStatus(err)`
+`*http.Response`, so `TestSelfProfile` and `default_password_test` are unchanged (their unauth cases
+still assert 401, now via the RPC's Unauthenticated). **protogetter gotcha:** an optional proto field
+passed as a *pointer* (for presence) is only exempt from protogetter inside a **keyed** composite
+literal — positional `{req.Handle, …}` is still flagged, so the four presence pointers are gathered
+in a keyed anonymous struct before `applyProfileFields`.
+
 Still outstanding on the incident core: the direct DB→proto read-mapper follow-up (retires
 `incidentToJSON`/`incidentJSONToProto`/`incidentViewToJSON` and the test-side
 `incidentViewToJSON`/`incidentUpdateFromJSON` bridges) — deferrable and best done once the
 report writes have landed so the whole json read layer retires in one sweep.
-Next: **auth & own-profile** (`Login`, `RefreshToken`, `GetAuthStatus`, `ChangeOwnPassword`,
-`UpdateOwnProfile`, `DeleteOwnProfilePicture`), then people/personnel → taxonomies →
+Next: **auth & session** (`Login`, `RefreshToken`, `GetAuthStatus` — the riskiest slice: Login
+carries the plan-90 `ThrottleLogin` rate-limit/lockout control and sets the HttpOnly refresh cookie,
+RefreshToken reads that cookie, so both need HTTP-header access across the Connect boundary;
+`GetAuthStatus` is partially built in 1b and must be completed — `can_manage_personnel`,
+`event_access`, `push_vapid_public_key`, `using_default_password`), then people/personnel → taxonomies →
 events(EditEvent)/areas/crews → notifications/push → metrics/action log. For each: move handler logic into a
 proto-shaped domain method on its domain `Service` returning Connect errors, add the RPC
 method to `ImsService`, **delete the REST route + handler and move its `api/integration`

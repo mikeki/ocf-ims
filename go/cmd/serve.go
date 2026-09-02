@@ -156,7 +156,7 @@ func mustStartServer(ctx context.Context, unvalidatedCfg *conf.IMSConfig, printC
 	// protovalidate, …). REST routes are retired one resource at a time as they are
 	// extracted onto Connect (the aggressive migration path, plan 09 §6). It shares the
 	// same eventSource / metricsCache / push sender so extracted writes fan out identically.
-	api.AddConnectToMux(mux, imsCfg, imsDBQ, actionLogger, userStore, eventSource, metricsCache, pushSender)
+	api.AddConnectToMux(mux, imsCfg, imsDBQ, actionLogger, userStore, eventSource, metricsCache, pushSender, s3Client)
 	web.AddToMux(mux, imsCfg)
 
 	s := &http.Server{
