@@ -18,12 +18,12 @@ package integration_test
 
 import (
 	"net/http"
+	"strconv"
 	"testing"
 	"time"
 
 	imsjson "github.com/mikeki/ocf-ims/json"
 	"github.com/mikeki/ocf-ims/lib/conv"
-	"github.com/mikeki/ocf-ims/lib/rand"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -36,13 +36,15 @@ func TestGetActionLog(t *testing.T) {
 	apisAdmin := ApiHelper{t: t, serverURL: shared.serverURL, jwt: jwtForAdmin(ctx, t), referrer: referrer}
 
 	// Generate one action-logged request carrying this test's unique Referer to read back.
-	// Creating an event (POST /events) is still a REST route and action-logged
-	// (LogRequest(true)) and — being a raw imsPost — carries the Referer the getActionLogs read
-	// filters on. Login (the former fixture) moved to the Connect Login RPC: the action-log
-	// interceptor records RPCs but captures no Referer (that is a REST-only field), so an RPC
-	// can no longer serve as a Referer-keyed fixture.
-	eventName := rand.NonCryptoText()
-	_, resp := apisAdmin.createEvent(ctx, imsjson.Event{Name: &eventName})
+	// As the API migrates to Connect, the action-log interceptor records RPCs but captures no
+	// Referer (that is a REST-only field), so an RPC can't serve as a Referer-keyed fixture (Login,
+	// then createEvent, each stopped being one as they were extracted). The multipart
+	// profile-picture upload (POST /personnel/{id}/picture) stays REST for the whole migration
+	// (binary, M8), is action-logged (LogRequest(true)), and — as a raw request — carries the Referer
+	// the getActionLogs read filters on, so it is the durable fixture. The admin uploads to its own
+	// record (self-upload is always allowed).
+	uploadPath := "/ims/api/personnel/" + strconv.FormatInt(userAdminPersonID, 10) + "/picture"
+	resp := apisAdmin.uploadProfilePicture(ctx, userAdminPersonID, onePixelPNG)
 	require.NoError(t, resp.Body.Close())
 
 	longAgo := time.Now().Add(-500 * time.Hour).UnixMilli()
@@ -59,7 +61,7 @@ func TestGetActionLog(t *testing.T) {
 		}
 	}
 	assert.NotZero(t, foundLog)
-	assert.Equal(t, "/ims/api/events", foundLog.Path)
+	assert.Equal(t, uploadPath, foundLog.Path)
 	assert.Equal(t, "POST", foundLog.Method)
 
 	// Now test error cases

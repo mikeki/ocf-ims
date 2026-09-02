@@ -93,6 +93,9 @@ func (a ApiHelper) uploadProfilePicture(ctx context.Context, personID int64, fil
 	if a.jwt != "" {
 		httpPost.Header.Set("Authorization", "Bearer "+a.jwt)
 	}
+	if a.referrer != "" {
+		httpPost.Header.Set("Referer", a.referrer)
+	}
 	httpPost.Header.Set("Content-Type", writer.FormDataContentType())
 	client := &http.Client{Timeout: 10 * time.Second}
 	// #nosec G704 // SSRF via taint analysis. We control the URLs.
