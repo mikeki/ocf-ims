@@ -27,6 +27,7 @@ import (
 	"github.com/mikeki/ocf-ims/gen/ocf/ims/service/v1/servicev1connect"
 	"github.com/mikeki/ocf-ims/internal/area"
 	"github.com/mikeki/ocf-ims/internal/auth"
+	"github.com/mikeki/ocf-ims/internal/crew"
 	"github.com/mikeki/ocf-ims/internal/event"
 	"github.com/mikeki/ocf-ims/internal/incident"
 	"github.com/mikeki/ocf-ims/internal/incidenttype"
@@ -67,6 +68,7 @@ type ImsService struct {
 	IncidentType incidenttype.Service
 	Outcome      outcome.Service
 	Area         area.Service
+	Crew         crew.Service
 }
 
 // ListEvents is a thin RPC method over the event.ListEvents domain method (plan
@@ -703,6 +705,88 @@ func (s ImsService) MarkAreaDuplicate(
 	return connect.NewResponse(resp), nil
 }
 
+// The seven crew RPCs below are thin methods over the matching crew.Service domain methods
+// (connect.go, plan 09h/1c). The POST /crews multiplexer was decomposed into
+// Create/Update/Delete/SetCrewMembership, and the crew-leader self-service /crews/mine pair into
+// ListMyCrews / SetMyCrewMembership; they retired their REST routes in the same slice.
+
+func (s ImsService) ListCrews(
+	ctx context.Context,
+	req *connect.Request[servicerpcv1.ListCrewsRequest],
+) (*connect.Response[servicerpcv1.ListCrewsResponse], error) {
+	resp, err := s.Crew.ListCrews(ctx, req.Msg)
+	if err != nil {
+		return nil, err
+	}
+	return connect.NewResponse(resp), nil
+}
+
+func (s ImsService) CreateCrew(
+	ctx context.Context,
+	req *connect.Request[servicerpcv1.CreateCrewRequest],
+) (*connect.Response[servicerpcv1.CreateCrewResponse], error) {
+	resp, err := s.Crew.CreateCrew(ctx, req.Msg)
+	if err != nil {
+		return nil, err
+	}
+	return connect.NewResponse(resp), nil
+}
+
+func (s ImsService) UpdateCrew(
+	ctx context.Context,
+	req *connect.Request[servicerpcv1.UpdateCrewRequest],
+) (*connect.Response[servicerpcv1.UpdateCrewResponse], error) {
+	resp, err := s.Crew.UpdateCrew(ctx, req.Msg)
+	if err != nil {
+		return nil, err
+	}
+	return connect.NewResponse(resp), nil
+}
+
+func (s ImsService) DeleteCrew(
+	ctx context.Context,
+	req *connect.Request[servicerpcv1.DeleteCrewRequest],
+) (*connect.Response[servicerpcv1.DeleteCrewResponse], error) {
+	resp, err := s.Crew.DeleteCrew(ctx, req.Msg)
+	if err != nil {
+		return nil, err
+	}
+	return connect.NewResponse(resp), nil
+}
+
+func (s ImsService) SetCrewMembership(
+	ctx context.Context,
+	req *connect.Request[servicerpcv1.SetCrewMembershipRequest],
+) (*connect.Response[servicerpcv1.SetCrewMembershipResponse], error) {
+	resp, err := s.Crew.SetCrewMembership(ctx, req.Msg)
+	if err != nil {
+		return nil, err
+	}
+	return connect.NewResponse(resp), nil
+}
+
+func (s ImsService) ListMyCrews(
+	ctx context.Context,
+	req *connect.Request[servicerpcv1.ListMyCrewsRequest],
+) (*connect.Response[servicerpcv1.ListMyCrewsResponse], error) {
+	resp, err := s.Crew.ListMyCrews(ctx, req.Msg)
+	if err != nil {
+		return nil, err
+	}
+	return connect.NewResponse(resp), nil
+}
+
+func (s ImsService) SetMyCrewMembership(
+	ctx context.Context,
+	req *connect.Request[servicerpcv1.SetMyCrewMembershipRequest],
+) (*connect.Response[servicerpcv1.SetMyCrewMembershipResponse], error) {
+	resp, err := s.Crew.SetMyCrewMembership(ctx, req.Msg)
+	if err != nil {
+		return nil, err
+	}
+	return connect.NewResponse(resp), nil
+}
+
 // AddConnectToMux registers the ImsService Connect handler on the shared mux
 // next to AddToMux (plan 09g). connect handlers are plain http.Handlers mounted
 // at a path prefix, so the RPC surface coexists with the REST/web routes on one
@@ -748,6 +832,9 @@ func AddConnectToMux(
 	// 09h/1c): its only consumers are now the area RPCs (an area write invalidates it and the shared
 	// metricsCache the dashboard reads).
 	areasCache := server.NewAreasCache()
+	// The per-event crew cache moved here with the crew extraction (plan 09h/1c): its only consumers
+	// are the crew RPCs now (a crew write, admin or crew-leader self-service, invalidates it).
+	crewsCache := server.NewCrewsCache()
 	path, handler := servicev1connect.NewImsServiceHandler(
 		ImsService{
 			Event: event.Service{ImsDBQ: imsDBQ, UserStore: userStore},
@@ -793,6 +880,11 @@ func AddConnectToMux(
 				UserStore: userStore,
 				Metrics:   metricsCache,
 				Areas:     areasCache,
+			},
+			Crew: crew.Service{
+				ImsDBQ:    imsDBQ,
+				UserStore: userStore,
+				Crews:     crewsCache,
 			},
 		},
 		connect.WithInterceptors(interceptors...),

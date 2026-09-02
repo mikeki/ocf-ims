@@ -103,12 +103,18 @@ service ImsService {
   rpc MarkAreaDuplicate(rpc.v1.MarkAreaDuplicateRequest) returns (rpc.v1.MarkAreaDuplicateResponse);
 
   // --- Crews ---
-  rpc ListCrews(rpc.v1.ListCrewsRequest) returns (rpc.v1.ListCrewsResponse);
+  // A read (see the GetAuthStatus note): NO_SIDE_EFFECTS so the action-log interceptor skips it.
+  rpc ListCrews(rpc.v1.ListCrewsRequest) returns (rpc.v1.ListCrewsResponse) {
+    option idempotency_level = NO_SIDE_EFFECTS;
+  }
   rpc CreateCrew(rpc.v1.CreateCrewRequest) returns (rpc.v1.CreateCrewResponse);
   rpc UpdateCrew(rpc.v1.UpdateCrewRequest) returns (rpc.v1.UpdateCrewResponse);
   rpc DeleteCrew(rpc.v1.DeleteCrewRequest) returns (rpc.v1.DeleteCrewResponse);
   rpc SetCrewMembership(rpc.v1.SetCrewMembershipRequest) returns (rpc.v1.SetCrewMembershipResponse);
-  rpc ListMyCrews(rpc.v1.ListMyCrewsRequest) returns (rpc.v1.ListMyCrewsResponse);
+  // A read (see the GetAuthStatus note): NO_SIDE_EFFECTS so the action-log interceptor skips it.
+  rpc ListMyCrews(rpc.v1.ListMyCrewsRequest) returns (rpc.v1.ListMyCrewsResponse) {
+    option idempotency_level = NO_SIDE_EFFECTS;
+  }
   rpc SetMyCrewMembership(rpc.v1.SetMyCrewMembershipRequest) returns (rpc.v1.SetMyCrewMembershipResponse);
 
   // --- Personnel ---

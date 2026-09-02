@@ -1315,6 +1315,39 @@ as a new `area.Service`, retiring REST `GET`/`POST /events/{eventName}/areas`. F
   unauth / no-perms / reporter ladder for `EventReadAreas`. Area write-auth was already inline in
   `area_test.go`, so only the read relocated. `ListAreas` is `NO_SIDE_EFFECTS`.
 
+### 1c — Domain extraction: crews (2026-09-02)
+
+The crew surface — the admin `ListCrews` + `CreateCrew`/`UpdateCrew`/`DeleteCrew`/`SetCrewMembership`,
+plus the crew-leader self-service `ListMyCrews` + `SetMyCrewMembership` — landed as a new
+`crew.Service` (seven RPCs), retiring REST `GET`/`POST /events/{eventName}/crews` and `.../crews/mine`.
+Findings:
+
+- **Two authorization models on one domain Service.** The five admin RPCs share `requireCrewAdmin`
+  (`GlobalAdministrateCrews` — crews are admin-managed, there is no reader/writer roster view), while
+  the two self-service RPCs are gated only by authentication plus a *leadership* check done in the
+  handler (`CrewsLedByPerson`): a slug the caller does not lead is `PermissionDenied` (403), never 404,
+  so the set of crews isn't leaked. Both models coexist as methods on the same Service — the gate is
+  per-RPC, not per-domain.
+- **The herr-core-wrapper pattern again (areas' choice), for the same reason.** `DeleteCrew` is a
+  members-then-crew transaction and the self-service member edit has fiddly rules (never promote, never
+  remove a fellow leader), so the retired `EditCrews`/`EditMyCrew` cores moved onto `crew.Service`
+  verbatim and the RPCs wrap them via `HerrToConnect`.
+- **A field the contract dropped *on purpose* needs no add-back.** Unlike `Area.sort_order`, the `Crew`
+  resource omits `sort_order` deliberately (its proto comment says the server orders crews and there is
+  no client reordering) — and no crew test sets it, so `CreateCrew` defaults it to 0 and `UpdateCrew`
+  leaves it. *A dropped field is only a gap if something writes it; confirm against the tests, don't
+  reflexively add it back.*
+- **A split-out mutation RPC can absorb an old validation for free.** The retired self-service handler
+  rejected a non-member change (create/rename/delete on that path) with a 400. `SetMyCrewMembership`
+  has no fields to express those at all, and its `person_id` carries `int32.gt = 0`; a DTO that isn't a
+  member change simply arrives with `person_id == 0` and protovalidate returns the same 400 — the
+  handler check became a wire constraint.
+- Crew auth was already exercised inline in `crew_test.go` (both models), so nothing left a
+  permissions sweep. `CrewsCache` moved to `AddConnectToMux`, keyed by event id (no metrics
+  dependency). `ListCrews`/`ListMyCrews` are marked `NO_SIDE_EFFECTS` — the REST reads were
+  `LogRequest(false)` (unlogged), so leaving the marker off would have started auditing every roster
+  read; the marker keeps the action log write-only, matching every other list RPC.
+
 ## 8. Open questions
 
 1. **Does the Go binary keep serving static assets in production**, or does Caddy?
