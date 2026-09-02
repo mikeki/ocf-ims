@@ -1423,6 +1423,53 @@ retiring `GET /events/{eventName}/metrics`) and `actionlog.Service` (`ListAction
 (the files it scopes are finally thin), then the direct DB→proto read-mapper follow-up that retires
 the throwaway json↔proto test bridges.
 
+### Phase-1 closeout — exit gate, funlen, read-mapper tail, SSE privacy (2026-09-02)
+
+Three stacked PRs off the metrics/action-log tip (#229 read-mappers → #230 exit-gate+funlen → #231
+SSE), each independently verified (build/vet/gofmt/golangci@v2.12.2=0/full `go test ./...` on real
+MariaDB/buf lint/tidy). They take Phase 1 from "every RPC implemented" to "extraction discipline
+enforced + the last M8 surface fixed."
+
+- **The exit gate is a one-line deletion that turns the compiler into the checklist.** Removing the
+  `UnimplementedImsServiceHandler` embedding from the production `ImsService` compiled cleanly *because*
+  all 60 methods exist — and now a future contract RPC fails the build until it has a method, instead of
+  silently answering `CodeUnimplemented`. The M9 "embedding is a mid-phase scaffold, gated at the exit"
+  note (1b finding) played out exactly: the gate was a grep, and passing it was mechanical once the last
+  method landed. *Confirms the scaffold-then-gate pattern for satisfying a large generated handler
+  interface incrementally.*
+- **"Path-scoped `funlen`" (M10) means the *transport* layer, and it needs a real mechanism, not just
+  enabling the linter.** After extraction the only over-length functions in `api/` are the two
+  declarative route-registration builders (`AddToMux` 345 lines, `AddConnectToMux` 105) — route tables,
+  not business logic — so they carry a justified `//nolint:funlen`; every one of the 60 thin delegates
+  passes. The domain layer (`internal/`, where `updateIncident` is still 471 lines) is deliberately
+  **exempt**, matching the already-disabled `cyclop`/`gocognit`/`gocyclo` — funlen here is a *regression
+  tripwire on the shims*, not a whole-tree complexity budget. golangci v2 has no "enable only on path X",
+  so the scope is expressed as `linters.exclusions.rules` with `path-except: '(^|/)api/[^/]+\.go$'` plus
+  a `_test.go` exclusion. Proven live by removing a waiver (funlen fires on `AddToMux`, stays silent on
+  `updateIncident`). *A layer-scoped lint gate is an exclusion rule, and the honest exceptions are a
+  named `//nolint`, not a limit tuned high enough to pass a route table.*
+- **The full read-mapper retirement is a multi-slice effort, so it was bounded, not forced.** Only the
+  metrics & action-log *reads* moved onto proto assertions (retiring two test bridges); the rich incident
+  reads route through shared assemblers (`journalEntryToJSON` is shared with reports), the ref-data reads
+  come from `imsjson`-typed caches, `personToProto` is write-shared, and each retired bridge cascades into
+  a ~50-site test net. Recognizing that and shipping the safe slice — rather than a sprawling risky one —
+  is the adoption-path lesson: *"retire the throwaway bridges" is not one mechanical pass; the throwaway-
+  ness is per-converter, gated by whether a write still needs it, and the compiler/`unused` linter is the
+  proof.* Not a Phase-1 gate item; the rest is deferred.
+- **The SSE privacy fix is where "documented plain-HTTP exceptions" (finding #6) meets a browser API
+  limit.** The poke stream was an *anonymous* broadcast of every incident's number+timing. The fix is two
+  parts: (1) authenticate it — but the browser `EventSource` API can't set an `Authorization` header, so
+  the endpoint accepts the **refresh-token cookie** the client already sends via `withCredentials` (a
+  new `RequireRefreshCookieAuthN` adapter); (2) redact private incidents at *publish* time via an injected
+  privacy oracle on `EventSourcerer` — a private incident broadcasts a number-less "reload" poke
+  (`update_all`, which the web client already honors) so its number never crosses the wire. The oracle is
+  required (constructor panics on nil) and fails safe (redacts on error). *The stack's silence on server-
+  push (finding #6) hides a real constraint: SSE auth can't use the bearer scheme the rest of the API
+  uses, and per-subscriber content filtering doesn't fit a single-channel broadcast library — the honest
+  Phase-1 answer is cookie-auth + publish-time redaction, with true per-subscriber filtering deferred to
+  a Connect server-streaming rewrite (the M8 candidate) in Phase 3.* The accepted residual — that *some*
+  activity in an event is still observable to an authenticated subscriber — is recorded, not hidden.
+
 ## 8. Open questions
 
 1. **Does the Go binary keep serving static assets in production**, or does Caddy?
