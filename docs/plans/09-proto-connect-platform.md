@@ -1058,6 +1058,49 @@ Kept as the test bridge (the role imsjson plays elsewhere): the `auth.GetAuthRes
 `AccessForEvent` DTO structs, now that their REST handler is gone. Login and RefreshToken (cookie +
 the plan-90 login throttle across the Connect boundary) are the next, riskier, slice.
 
+### 1c — Domain extraction: Login + RefreshToken (the session mutations) (2026-09-02)
+
+The riskiest slice — the two session mutations — landed as further methods on the same
+`auth.Service`, retiring REST `POST /auth`, `POST /auth/refresh`, and the whole REST login-throttle
+machinery. Findings:
+
+- **The HTTP-boundary concerns split cleanly between the delegate and the domain method.** Login has
+  two: it needs the client IP for rate-limit keying, and it must set an HttpOnly refresh cookie.
+  RefreshToken has one: it reads that cookie. Rather than pass the whole `connect.Request` (or
+  `http.Header`) into the domain layer, the `ImsService` delegate does the header work and the domain
+  method stays transport-agnostic: Login **takes a `clientIP string`** and **returns an `*http.Cookie`**
+  (the delegate derives the IP with `server.ClientIP` and does `resp.Header().Set("Set-Cookie", …)`);
+  RefreshToken **takes the token string** (the delegate pulls it from the `Cookie` header via a
+  throwaway `&http.Request{Header: …}.Cookie(name)`). *Reads/writes of HTTP metadata are a delegate
+  job; the domain method speaks primitives.*
+- **A per-route REST middleware doesn't survive as a Connect interceptor — it folds into the one
+  handler.** `ThrottleLogin` was a REST `Adapter` scoped to POST /auth. Connect interceptors are
+  global (they wrap every RPC), so a login-only throttle can't be one; the enforcement moved *inline*
+  into the Login domain method, which is actually cleaner — no body-peek (the email is already a typed
+  field) and no response-status inspection (the verify outcome is known directly). To let the auth
+  domain drive the limiter, its type + the three methods were **exported** (`server.LoginRateLimiter`,
+  `Allow`/`RecordFailure`/`RecordSuccess`), and `clientIPForRateLimit(*http.Request)` was replaced by
+  the header-shaped, transport-neutral `server.ClientIP(http.Header, remoteAddr)`. The REST-only
+  `ThrottleLogin` / `peekIdentification` / `writeTooManyRequests` were deleted.
+- **429 crosses the Connect boundary as `CodeResourceExhausted` + `Retry-After` in the error `Meta()`.**
+  The handler sets `err.Meta().Set("Retry-After", secs)`; connect surfaces it as a response header, and
+  the client reads it back off the `*connect.Error`. The test bridge's `connectStatus` gained a
+  ResourceExhausted→429 case so the ~existing 429 assertions hold.
+- **The read/write audit split has a genuine home for `RefreshToken`.** REST logged login
+  (`LogRequest(true)`) but not refresh (`LogRequest(false)`). Under the contract-driven interceptor,
+  Login stays un-annotated (audited — it mints a session, worth an audit row) and RefreshToken is
+  marked `NO_SIDE_EFFECTS` (skipped — it changes no persistent state, and the every-few-minutes refresh
+  would otherwise flood the log). *An RPC that issues a credential but writes nothing is still a read
+  for audit purposes.*
+- **The action-log fixture chased the retirement again.** `TestGetActionLog` had *just* switched to the
+  REST login when GetAuthStatus retired; now login itself is an RPC (no Referer captured), so the
+  fixture moved to the still-REST `createEvent` (POST /events). This is the second consecutive slice to
+  bump that one test — a standing reminder that a Referer-keyed logged fixture must be a **REST**
+  mutation, and the pool of those shrinks each slice.
+
+The whole auth & session surface (login, refresh, whoami, and the self-service profile RPCs) is now on
+Connect; only the multipart profile-picture upload stays REST.
+
 ## 8. Open questions
 
 1. **Does the Go binary keep serving static assets in production**, or does Caddy?

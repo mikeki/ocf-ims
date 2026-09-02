@@ -268,6 +268,51 @@ func (s ImsService) UpdateIncidentJournalEntry(
 	return connect.NewResponse(resp), nil
 }
 
+// Login is a thin RPC method over the auth.Login domain method (plan 09h/1c). Its REST
+// predecessor (POST /auth) was deleted in the same slice, so this is the only transport for
+// logging in. The delegate does the two HTTP-boundary jobs the domain method stays clear of:
+// it derives the rate-limit client IP from the forwarded headers / peer, and it sets the
+// HttpOnly refresh cookie the domain method returns onto the response headers.
+func (s ImsService) Login(
+	ctx context.Context,
+	req *connect.Request[servicerpcv1.LoginRequest],
+) (*connect.Response[servicerpcv1.LoginResponse], error) {
+	clientIP := server.ClientIP(req.Header(), req.Peer().Addr)
+	msg, cookie, err := s.Auth.Login(ctx, req.Msg, clientIP)
+	if err != nil {
+		return nil, err
+	}
+	resp := connect.NewResponse(msg)
+	resp.Header().Set("Set-Cookie", cookie.String())
+	return resp, nil
+}
+
+// RefreshToken is a thin RPC method over the auth.RefreshToken domain method (plan 09h/1c).
+// Its REST predecessor (POST /auth/refresh) was deleted in the same slice. The refresh token
+// rides in the HttpOnly cookie, so the delegate reads it from the request headers and hands
+// its value to the domain method (which stays HTTP-agnostic).
+func (s ImsService) RefreshToken(
+	ctx context.Context,
+	req *connect.Request[servicerpcv1.RefreshTokenRequest],
+) (*connect.Response[servicerpcv1.RefreshTokenResponse], error) {
+	msg, err := s.Auth.RefreshToken(ctx, req.Msg, refreshTokenFromHeader(req.Header()))
+	if err != nil {
+		return nil, err
+	}
+	return connect.NewResponse(msg), nil
+}
+
+// refreshTokenFromHeader pulls the refresh-token cookie value out of a request's headers,
+// returning "" when it is absent (which the domain method treats as Unauthenticated). It reuses
+// net/http's cookie parser by wrapping the header map in a throwaway request.
+func refreshTokenFromHeader(h http.Header) string {
+	cookie, err := (&http.Request{Header: h}).Cookie(authz.RefreshTokenCookieName)
+	if err != nil {
+		return ""
+	}
+	return cookie.Value
+}
+
 // GetAuthStatus is a thin RPC method over the auth.GetAuthStatus domain method (plan
 // 09h/1c). It began in slice 1b as an in-line stub answering only the identity subset of the
 // whoami (proving the interceptor spine plumbed auth through Connect); it now delegates to the
@@ -363,6 +408,10 @@ func AddConnectToMux(
 		pushSender = pushlib.NoopSender{}
 	}
 	pusher := server.NewPusher(imsDBQ, pushSender)
+	// The login throttle/lockout (plan 90) now lives entirely on the Connect surface: the REST
+	// POST /auth (and its ThrottleLogin middleware) were retired when Login moved here, so this
+	// is the sole instance. Disabled by config in the shared test suite; on in real deployments.
+	loginLimiter := server.NewLoginRateLimiter(server.DefaultLoginRateLimiterConfig(cfg.Core.LoginRateLimitEnabled))
 	path, handler := servicev1connect.NewImsServiceHandler(
 		ImsService{
 			Event: event.Service{ImsDBQ: imsDBQ, UserStore: userStore},
@@ -382,11 +431,15 @@ func AddConnectToMux(
 				S3Client:         s3Client,
 			},
 			Auth: auth.Service{
-				ImsDBQ:             imsDBQ,
-				UserStore:          userStore,
-				AttachmentsEnabled: attachmentsEnabled,
-				PushVAPIDPublicKey: cfg.Push.VAPIDPublicKey,
-				DefaultPassword:    cfg.Core.DefaultPassword,
+				ImsDBQ:               imsDBQ,
+				UserStore:            userStore,
+				AttachmentsEnabled:   attachmentsEnabled,
+				PushVAPIDPublicKey:   cfg.Push.VAPIDPublicKey,
+				DefaultPassword:      cfg.Core.DefaultPassword,
+				JwtSecret:            cfg.Core.JWTSecret,
+				AccessTokenDuration:  cfg.Core.AccessTokenLifetime,
+				RefreshTokenDuration: cfg.Core.RefreshTokenLifetime,
+				LoginLimiter:         loginLimiter,
 			},
 		},
 		connect.WithInterceptors(interceptors...),

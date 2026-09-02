@@ -77,11 +77,12 @@ func newTestConnectClient(t *testing.T) (servicev1connect.ImsServiceClient, auth
 func newTestConnectClientWithLogger(t *testing.T, logger server.ActionLogger) (servicev1connect.ImsServiceClient, authz.JWTer) {
 	t.Helper()
 	cfg := conf.DefaultIMS()
-	// imsDBQ is nil: the RPCs these tests exercise (GetAuthStatus, Login,
-	// unauthenticated ListEvents) all answer before any DB access. Anything that
-	// queries the DB is covered by the api/integration suite instead. es / metricsCache /
-	// pushSender are nil for the same reason — only the incident-mutation RPCs touch them,
-	// and those are exercised in api/integration, not here.
+	// imsDBQ is nil: the RPCs these tests exercise all answer before any DB access —
+	// GetAuthStatus anonymously, ListEvents by rejecting the anonymous caller, the empty-email
+	// Login at the protovalidate layer (never reaching its handler), and CreateEvent by being
+	// unimplemented. Anything that queries the DB is covered by the api/integration suite
+	// instead. es / metricsCache / pushSender are nil for the same reason — only the
+	// incident-mutation RPCs touch them, and those are exercised in api/integration, not here.
 	mux := api.AddConnectToMux(http.NewServeMux(), cfg, nil, logger, nil, nil, nil, nil, nil)
 
 	srv := httptest.NewServer(mux)
@@ -127,9 +128,10 @@ func TestConnectGetAuthStatusAuthenticated(t *testing.T) {
 
 // TestConnectProtovalidateRejects proves the protovalidate interceptor (M5): a
 // Login with an empty email violates the min_len=1 constraint written into the
-// proto and is rejected with CodeInvalidArgument. Login itself is still
-// unimplemented in 1b — the interceptor runs before the handler, so validation is
-// enforced independently of whether the method is wired (the 1a Step-0 finding).
+// proto and is rejected with CodeInvalidArgument. The interceptor runs before the
+// handler, so the request is rejected at the validation layer and never reaches
+// Login's (now implemented) body — validation is enforced independently of the
+// handler (the 1a Step-0 finding).
 func TestConnectProtovalidateRejects(t *testing.T) {
 	t.Parallel()
 	client, _ := newTestConnectClient(t)
@@ -140,17 +142,19 @@ func TestConnectProtovalidateRejects(t *testing.T) {
 	require.Equal(t, connect.CodeInvalidArgument, connect.CodeOf(err))
 }
 
-// TestConnectUnimplementedPassesValidation proves the complement: a Login whose
-// fields satisfy the constraints passes protovalidate and reaches the (still
-// unimplemented) handler, returning CodeUnimplemented — confirming valid requests
-// flow through the whole interceptor chain to the handler, and that the
-// action-log interceptor tolerates a mutating RPC without panicking.
+// TestConnectUnimplementedPassesValidation proves the complement: a request that
+// satisfies the constraints passes protovalidate and reaches the handler. It uses a
+// still-unimplemented RPC (CreateEvent — Login is now wired) whose request carries no
+// tripped constraints, so it flows through the whole interceptor chain to the
+// UnimplementedImsServiceHandler and comes back CodeUnimplemented, confirming valid
+// requests reach the handler and the action-log interceptor tolerates a mutating RPC
+// without panicking.
 func TestConnectUnimplementedPassesValidation(t *testing.T) {
 	t.Parallel()
 	client, _ := newTestConnectClient(t)
 
-	_, err := client.Login(context.Background(),
-		connect.NewRequest(&servicerpcv1.LoginRequest{Email: "a@b.co", Password: "x"}))
+	_, err := client.CreateEvent(context.Background(),
+		connect.NewRequest(&servicerpcv1.CreateEventRequest{}))
 	require.Error(t, err)
 	require.Equal(t, connect.CodeUnimplemented, connect.CodeOf(err))
 }
@@ -171,22 +175,23 @@ func TestConnectActionLogSkipsReads(t *testing.T) {
 	require.Zero(t, spy.count(), "a NO_SIDE_EFFECTS read must not be audited")
 }
 
-// TestConnectActionLogAuditsMutations proves the complement: a mutating RPC
-// (Login carries no NO_SIDE_EFFECTS marker) is audited by default — the footgun
-// the per-route REST LogRequest flag invites (M9) is gone. It is logged even
-// though the handler is still unimplemented, and the row carries the procedure as
-// its path with no body, preserving the metadata-only audit invariant.
+// TestConnectActionLogAuditsMutations proves the complement: a mutating RPC (one
+// carrying no NO_SIDE_EFFECTS marker) is audited by default — the footgun the
+// per-route REST LogRequest flag invites (M9) is gone. It uses a still-unimplemented
+// mutation (CreateEvent — Login is now wired and would hit the DB); it is logged even
+// though the handler is unimplemented, and the row carries the procedure as its path
+// with no body, preserving the metadata-only audit invariant.
 func TestConnectActionLogAuditsMutations(t *testing.T) {
 	t.Parallel()
 	spy := &spyActionLogger{}
 	client, _ := newTestConnectClientWithLogger(t, spy)
 
-	_, _ = client.Login(context.Background(),
-		connect.NewRequest(&servicerpcv1.LoginRequest{Email: "a@b.co", Password: "x"}))
+	_, _ = client.CreateEvent(context.Background(),
+		connect.NewRequest(&servicerpcv1.CreateEventRequest{}))
 	require.Equal(t, 1, spy.count(), "a mutation must be audited by default")
 
 	row := spy.rows[0]
-	require.Equal(t, servicev1connect.ImsServiceLoginProcedure, row.Path.String)
+	require.Equal(t, servicev1connect.ImsServiceCreateEventProcedure, row.Path.String)
 	require.Equal(t, http.MethodPost, row.Method.String)
 	require.False(t, row.UserName.Valid, "anonymous caller: no user recorded")
 }

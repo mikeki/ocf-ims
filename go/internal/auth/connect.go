@@ -22,6 +22,11 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"math"
+	"net/http"
+	"strconv"
+	"strings"
+	"time"
 
 	"connectrpc.com/connect"
 	"github.com/mikeki/ocf-ims/directory"
@@ -31,17 +36,17 @@ import (
 	"github.com/mikeki/ocf-ims/lib/authz"
 	"github.com/mikeki/ocf-ims/store"
 	"github.com/mikeki/ocf-ims/store/imsdb"
+	"google.golang.org/protobuf/types/known/timestamppb"
 )
 
 // Service is the auth & session domain's Connect surface: it holds the dependencies the
 // auth RPCs share so each RPC is a method rather than a free function with a long
 // per-call dependency list. It mirrors event.Service / incident.Service / person.Service
 // (plan 09h/1c). api.ImsService composes one of these (built once in AddConnectToMux) and
-// delegates to it. This slice moves GetAuthStatus (the whoami / session status) onto the
-// Service and completes it (event_access, can_manage_personnel, push_vapid,
-// using_default_password); Login and RefreshToken land as further methods on the same
-// Service in the following slice. AttachmentsEnabled / PushVAPIDPublicKey / DefaultPassword
-// only feed GetAuthStatus's derived flags.
+// delegates to it. It carries GetAuthStatus (the whoami / session status) plus the session
+// mutations Login and RefreshToken. AttachmentsEnabled / PushVAPIDPublicKey / DefaultPassword
+// feed GetAuthStatus's derived flags; JwtSecret / the token durations / LoginLimiter drive
+// Login and RefreshToken.
 type Service struct {
 	ImsDBQ             *store.DBQ
 	UserStore          directory.UserStore
@@ -53,7 +58,30 @@ type Service struct {
 	// to flag a user still signed in with it so the client can prompt a change. Empty ⇒ no
 	// default configured, so the flag is never set.
 	DefaultPassword string
+	// JwtSecret signs and verifies the access and refresh tokens Login and RefreshToken mint.
+	JwtSecret string
+	// AccessTokenDuration / RefreshTokenDuration are the token lifetimes (conf Core). The
+	// refresh token outlives the access token; the refresh cookie's Max-Age is derived from
+	// RefreshTokenDuration.
+	AccessTokenDuration  time.Duration
+	RefreshTokenDuration time.Duration
+	// LoginLimiter throttles failed/excess login attempts (plan 90). Built once in
+	// AddConnectToMux; a nil limiter disables throttling (the Allow / Record calls are skipped).
+	LoginLimiter *server.LoginRateLimiter
 }
+
+const (
+	// maxLoginPasswordLen bounds the password we will hash on login. Anything longer is a
+	// malformed request, not a credential attempt (an unbounded password is an argon2
+	// hash-exhaustion DoS vector — see
+	// https://instatunnel.my/blog/the-1mb-password-crashing-backends-via-hashing-exhaustion).
+	maxLoginPasswordLen = 256
+	// dummyPasswordHash is verified against when no user matches, so a login for a
+	// nonexistent account costs the same argon2 time as a real one (no username-enumeration
+	// timing side channel). It is not a credential — nothing's password is this hash.
+	// #nosec G101 // fixed dummy argon2 hash used only to equalize verify timing
+	dummyPasswordHash = "$argon2id$v=19$m=8192,t=4,p=1$Ke9wio+D+PfBYlVzJ3CTAA$/kNb/yXgSLyFpfmwIfwKwcNnBRRrUqJp8YXPtDKfNTE"
+)
 
 // GetAuthStatus is the domain method behind the GetAuthStatus RPC — the whoami / session
 // status (plan 09h/1c). The REST GET /ims/api/auth endpoint was RETIRED with this
@@ -105,6 +133,146 @@ func (s Service) GetAuthStatus(
 		resp.EventAccess = map[int32]*rpcv1.AccessForEvent{req.GetEventId(): access}
 	}
 	return resp, nil
+}
+
+// Login is the domain method behind the Login RPC — it authenticates an email + password
+// and issues an access token (in the response) plus a refresh token (returned as the
+// HttpOnly cookie the caller sets on the HTTP response). The REST POST /ims/api/auth
+// endpoint was RETIRED with this extraction, not shimmed (migration decision, plan 09 §6).
+// It ports the REST postAuth verbatim, folding in what the REST ThrottleLogin middleware did:
+// the plan-90 rate-limit check runs inline here, before the argon2 verify, keyed on the
+// client IP and the lowercased email. clientIP is supplied by the transport (the delegate
+// derives it from the forwarded headers / peer) so this method stays HTTP-agnostic. The
+// endpoint is unauthenticated: the interceptor spine populates claims when a token is
+// present but never rejects, and Login ignores any caller identity.
+func (s Service) Login(
+	ctx context.Context,
+	req *rpcv1.LoginRequest,
+	clientIP string,
+) (*rpcv1.LoginResponse, *http.Cookie, error) {
+	email := req.GetEmail()
+	ipKey := "ip:" + clientIP
+	idKey := "id:" + strings.ToLower(email)
+
+	// Shed excess/failed attempts before the (expensive, mutex-serialised) argon2 verify
+	// runs — the enforcement the REST ThrottleLogin adapter used to do, now inline.
+	if s.LoginLimiter != nil {
+		for _, key := range []string{ipKey, idKey} {
+			if ok, retryAfter := s.LoginLimiter.Allow(key); !ok {
+				return nil, nil, loginThrottledError(retryAfter)
+			}
+		}
+	}
+
+	people, err := s.UserStore.GetAllUsers(ctx)
+	if err != nil {
+		return nil, nil, connect.NewError(connect.CodeInternal, fmt.Errorf("failed to fetch personnel: %w", err))
+	}
+	// Login matches EMAIL only (feedback round 9): the fair name (handle) is a non-unique
+	// display callsign and is never accepted as a login identifier.
+	var matched *directory.User
+	for _, person := range people {
+		if person.Email != "" && strings.EqualFold(person.Email, email) {
+			matched = person
+			break
+		}
+	}
+
+	// Reject an outrageously long password before hashing. This is a malformed request, not
+	// a failed credential, so — as under the REST throttle, which only counted 401s — it is
+	// NOT recorded against the limiter.
+	if len(req.GetPassword()) > maxLoginPasswordLen {
+		return nil, nil, connect.NewError(connect.CodeInvalidArgument, ErrLongPassword)
+	}
+
+	if matched == nil {
+		// Force a verify against a dummy hash so a nonexistent user costs the same time as a
+		// real one (defeats username-enumeration timing).
+		_, _ = authn.Verify(req.GetPassword(), dummyPasswordHash)
+		s.recordLoginFailure(ipKey, idKey)
+		return nil, nil, badCredentialsError()
+	}
+
+	correct, err := authn.Verify(req.GetPassword(), matched.Password)
+	if err != nil {
+		return nil, nil, connect.NewError(connect.CodeInternal,
+			fmt.Errorf("invalid stored password (get in touch with the tech team): %w", err))
+	}
+	if !correct {
+		s.recordLoginFailure(ipKey, idKey)
+		return nil, nil, badCredentialsError()
+	}
+
+	// #nosec G706 // log injection
+	slog.Info("Successful login for person", "handle", matched.Handle)
+	s.recordLoginSuccess(ipKey, idKey)
+
+	jwter := authz.JWTer{SecretKey: s.JwtSecret}
+	accessExpiry := time.Now().Add(s.AccessTokenDuration)
+	accessToken, err := jwter.CreateAccessToken(
+		matched.Handle, matched.ID, matched.PositionIDs, matched.IsAdmin, matched.OnDutyPositionID, accessExpiry)
+	if err != nil {
+		return nil, nil, connect.NewError(connect.CodeInternal, fmt.Errorf("failed to create access token: %w", err))
+	}
+	// The refresh token outlives the access token so the client can silently renew.
+	refreshToken, err := jwter.CreateRefreshToken(matched.Handle, matched.ID, time.Now().Add(s.RefreshTokenDuration))
+	if err != nil {
+		return nil, nil, connect.NewError(connect.CodeInternal, fmt.Errorf("failed to create refresh token: %w", err))
+	}
+	resp := &rpcv1.LoginResponse{
+		Token:     accessToken,
+		ExpiresAt: timestamppb.New(accessExpiry.Add(authz.SuggestedEarlyAccessTokenRefresh)),
+	}
+	return resp, newRefreshCookie(refreshToken, s.RefreshTokenDuration), nil
+}
+
+// RefreshToken is the domain method behind the RefreshToken RPC — it exchanges a valid
+// refresh token for a fresh access token. The REST POST /ims/api/auth/refresh endpoint was
+// RETIRED with this extraction, not shimmed (migration decision, plan 09 §6). The token
+// rides in the HttpOnly cookie; the transport reads it from the request headers and passes
+// its value in (empty ⇒ no cookie present). This ports the REST refreshAccessToken verbatim.
+// It performs no persistent state change, which is why the contract marks it NO_SIDE_EFFECTS
+// (the action-log interceptor skips it, matching the REST route's LogRequest(false)).
+func (s Service) RefreshToken(
+	ctx context.Context,
+	_ *rpcv1.RefreshTokenRequest,
+	refreshToken string,
+) (*rpcv1.RefreshTokenResponse, error) {
+	if refreshToken == "" {
+		return nil, connect.NewError(connect.CodeUnauthenticated, errors.New("no refresh token cookie found"))
+	}
+	claims, err := authz.JWTer{SecretKey: s.JwtSecret}.AuthenticateRefreshToken(refreshToken)
+	if err != nil {
+		return nil, connect.NewError(connect.CodeUnauthenticated, fmt.Errorf("failed to authenticate refresh token: %w", err))
+	}
+
+	// #nosec G706 // log injection
+	slog.Info("Refreshing access token", "handle", claims.PersonHandle())
+	people, err := s.UserStore.GetAllUsers(ctx)
+	if err != nil {
+		return nil, connect.NewError(connect.CodeInternal, fmt.Errorf("failed to fetch personnel: %w", err))
+	}
+	var matched *directory.User
+	for _, person := range people {
+		if person.Handle == claims.PersonHandle() && person.ID == int64(claims.PersonID()) {
+			matched = person
+			break
+		}
+	}
+	if matched == nil {
+		return nil, connect.NewError(connect.CodeUnauthenticated, errors.New("user not found"))
+	}
+
+	accessExpiry := time.Now().Add(s.AccessTokenDuration)
+	accessToken, err := authz.JWTer{SecretKey: s.JwtSecret}.CreateAccessToken(
+		claims.PersonHandle(), matched.ID, matched.PositionIDs, matched.IsAdmin, matched.OnDutyPositionID, accessExpiry)
+	if err != nil {
+		return nil, connect.NewError(connect.CodeInternal, fmt.Errorf("failed to create access token: %w", err))
+	}
+	return &rpcv1.RefreshTokenResponse{
+		Token:     accessToken,
+		ExpiresAt: timestamppb.New(accessExpiry.Add(authz.SuggestedEarlyAccessTokenRefresh)),
+	}, nil
 }
 
 // usingDefaultPassword reports whether the caller is still signed in with the shared default
@@ -192,4 +360,58 @@ func (s Service) accessForEvent(ctx context.Context, claims authz.IMSClaims, eve
 		ReadIncidentsViaGrant: readIncidentsViaGrant,
 		InviteReporters:       perms&authz.EventInviteReporters != 0,
 	}, nil
+}
+
+// recordLoginFailure counts a failed login against both the per-IP and per-account keys, so a
+// single host hammering many accounts trips the IP key while a distributed guess against one
+// account trips the id key. A nil limiter (throttling disabled) makes this a no-op.
+func (s Service) recordLoginFailure(ipKey, idKey string) {
+	if s.LoginLimiter == nil {
+		return
+	}
+	s.LoginLimiter.RecordFailure(ipKey)
+	s.LoginLimiter.RecordFailure(idKey)
+}
+
+// recordLoginSuccess clears the failure history on both keys, so a successful login resets the
+// counters immediately. A nil limiter (throttling disabled) makes this a no-op.
+func (s Service) recordLoginSuccess(ipKey, idKey string) {
+	if s.LoginLimiter == nil {
+		return
+	}
+	s.LoginLimiter.RecordSuccess(ipKey)
+	s.LoginLimiter.RecordSuccess(idKey)
+}
+
+// badCredentialsError is the single client-facing answer for every failed login (unknown user
+// or wrong password) — deliberately identical so the response never reveals which accounts
+// exist. The message carries "bad credentials"; the internal reason is not disclosed.
+func badCredentialsError() error {
+	return connect.NewError(connect.CodeUnauthenticated, errors.New("failed login attempt (bad credentials)"))
+}
+
+// loginThrottledError builds the ResourceExhausted error a throttled login returns, carrying a
+// Retry-After (whole seconds, minimum 1) in the error metadata so the transport surfaces it as
+// the Retry-After response header — the Connect analogue of the REST 429 + Retry-After.
+func loginThrottledError(retryAfter time.Duration) error {
+	secs := max(int(math.Ceil(retryAfter.Seconds())), 1)
+	err := connect.NewError(connect.CodeResourceExhausted,
+		errors.New("too many failed login attempts, please wait and try again"))
+	err.Meta().Set("Retry-After", strconv.Itoa(secs))
+	return err
+}
+
+// newRefreshCookie builds the HttpOnly, Secure, SameSite=Strict refresh-token cookie. It is
+// read back only on the RefreshToken RPC, so Strict is fine. Max-Age tracks the refresh-token
+// lifetime.
+func newRefreshCookie(token string, ttl time.Duration) *http.Cookie {
+	return &http.Cookie{
+		Name:     authz.RefreshTokenCookieName,
+		Value:    token,
+		Path:     "/",
+		MaxAge:   int(ttl.Milliseconds() / 1000),
+		HttpOnly: true,
+		Secure:   true,
+		SameSite: http.SameSiteStrictMode,
+	}
 }
