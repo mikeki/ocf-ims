@@ -259,9 +259,28 @@ resolves the name→id (a sentinel id for an unknown name exercises the "event m
 branch), re-keying the single entry under the name so the name-keyed assertions hold. `TestGetActionLog`
 switched its logged fixture from GET /auth (now a NO_SIDE_EFFECTS RPC the action-log interceptor
 skips) to the still-REST login.
-Next: **auth & session — Login + RefreshToken** (the riskiest remaining slice: Login carries the
-plan-90 `ThrottleLogin` rate-limit/lockout control and sets the HttpOnly refresh cookie, RefreshToken
-reads that cookie, so both need HTTP-header access across the Connect boundary), then people/personnel → taxonomies →
+
+**`Login` + `RefreshToken`** are now done too (branch `feat/1c-login-refresh`, stacked on
+`feat/1c-getauthstatus`) — the riskiest slice, landed as further methods on the same `auth.Service`.
+Both port the REST handlers verbatim, with the two HTTP-boundary concerns split cleanly between the
+`ImsService` delegate and the domain method: **Login** derives the rate-limit client IP from the
+forwarded headers/peer in the delegate (`server.ClientIP`, the exported header-based successor to the
+deleted `clientIPForRateLimit`) and passes it in; the domain method runs the **plan-90 throttle
+inline** (the REST `ThrottleLogin` middleware retired — `LoginRateLimiter`/`Allow`/`RecordFailure`/
+`RecordSuccess` were exported so the auth domain can call them), keying on the IP + lowercased email,
+and returns the HttpOnly refresh cookie the delegate sets on the response header (`Set-Cookie`). A
+throttled login is `CodeResourceExhausted` with `Retry-After` in the error `Meta()` (the Connect
+analogue of the REST 429; `connectStatus` gained a ResourceExhausted→429 case for the test bridge).
+**RefreshToken** reads the refresh cookie from the request headers in the delegate and hands its value
+to the domain method; it is marked **`NO_SIDE_EFFECTS`** in the contract (no persistent state change),
+matching the REST route's `LogRequest(false)` so the every-few-minutes refresh doesn't flood the
+audit log. The REST `POST /auth` + `POST /auth/refresh` routes and their handlers were deleted; the
+`PostAuthRequest`/`PostAuthResponse`/`RefreshAccessTokenResponse` DTOs are kept as the test bridge.
+`TestGetActionLog`'s fixture moved again (login is now an RPC that captures no Referer) → the
+still-REST `createEvent` (POST /events). **The whole auth & session surface is now on Connect.**
+
+Next: **people/personnel** (ListPersonnel, CreatePerson, UpdatePerson, SetPersonPassword,
+SetPersonAdmin, SetPersonParticipation, RemovePersonFromEvent, DeletePersonProfilePicture) → taxonomies →
 events(EditEvent)/areas/crews → notifications/push → metrics/action log. For each: move handler logic into a
 proto-shaped domain method on its domain `Service` returning Connect errors, add the RPC
 method to `ImsService`, **delete the REST route + handler and move its `api/integration`

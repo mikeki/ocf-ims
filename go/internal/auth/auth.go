@@ -16,21 +16,20 @@
 
 package auth
 
-import (
-	"errors"
-	"fmt"
-	"log/slog"
-	"net/http"
-	"strings"
-	"time"
-
-	"github.com/mikeki/ocf-ims/directory"
-	"github.com/mikeki/ocf-ims/internal/server"
-	"github.com/mikeki/ocf-ims/lib/authn"
-	"github.com/mikeki/ocf-ims/lib/authz"
-	"github.com/mikeki/ocf-ims/lib/herr"
-	"github.com/mikeki/ocf-ims/store"
-)
+// The auth & session HTTP handlers (POST /ims/api/auth login, POST /ims/api/auth/refresh,
+// GET /ims/api/auth whoami) were RETIRED in slice 1c when the surface moved onto Connect as
+// auth.Service.Login / RefreshToken / GetAuthStatus (connect.go), which the ImsService RPC
+// methods delegate to. Their REST routes were deleted, not shimmed (aggressive migration, plan
+// 09 §6). The plan-90 login throttle went with Login (the ThrottleLogin middleware retired; the
+// limiter now drives the Login domain method).
+//
+// What remains here is deliberately kept:
+//   - ErrLongPassword: the sentinel for an over-long password, also referenced by the person
+//     package's password paths.
+//   - The request/response DTO structs (PostAuthRequest / PostAuthResponse /
+//     RefreshAccessTokenResponse / GetAuthResponse / AccessForEvent): the integration suite
+//     still asserts against these shapes, with the test helpers mapping each RPC's proto
+//     response back into them — the same bridging role imsjson types play for other resources.
 
 type authError string
 
@@ -42,136 +41,21 @@ const (
 	ErrLongPassword = authError("rejected very long password")
 )
 
-type PostAuth struct {
-	ImsDBQ               *store.DBQ
-	UserStore            directory.UserStore
-	JwtSecret            string
-	AccessTokenDuration  time.Duration
-	RefreshTokenDuration time.Duration
-}
-
+// PostAuthRequest mirrors the login request body. Identification is matched against
+// PERSON.EMAIL (the contract's LoginRequest.email; the fair name/handle is not a login id).
 type PostAuthRequest struct {
 	Identification string `json:"identification"`
 	// #nosec G117 // Exported secret field
 	Password string `json:"password"`
 }
+
+// PostAuthResponse mirrors the login response body (the contract's LoginResponse).
 type PostAuthResponse struct {
 	Token         string `json:"token"`
 	ExpiresUnixMs int64  `json:"expires_unix_ms"`
 }
 
-func (action PostAuth) ServeHTTP(w http.ResponseWriter, req *http.Request) {
-	resp, cookie, errHTTP := action.postAuth(req)
-	if errHTTP != nil {
-		errHTTP.From("[postAuth]").WriteResponse(w)
-		return
-	}
-	http.SetCookie(w, cookie)
-	server.MustWriteJSON(w, req, resp)
-}
-func (action PostAuth) postAuth(req *http.Request) (PostAuthResponse, *http.Cookie, *herr.HTTPError) {
-	// This endpoint is unauthenticated (doesn't require an Authorization header)
-	// as the point of this is to take a username and password to create a new JWT.
-	var empty PostAuthResponse
-
-	vals, errHTTP := server.ReadBodyAs[PostAuthRequest](req)
-	if errHTTP != nil {
-		return empty, nil, errHTTP.From("[server.ReadBodyAs]")
-	}
-
-	people, err := action.UserStore.GetAllUsers(req.Context())
-	if err != nil {
-		return empty, nil, herr.InternalServerError("Failed to fetch personnel", err).From("[GetPeople]")
-	}
-	// Login matches EMAIL only. The fair name (handle) is a non-unique display
-	// callsign and is never accepted as a login identifier (feedback round 9).
-	var matchedPerson *directory.User
-	for _, person := range people {
-		if person.Email != "" && strings.EqualFold(person.Email, vals.Identification) {
-			matchedPerson = person
-			break
-		}
-	}
-
-	// See https://instatunnel.my/blog/the-1mb-password-crashing-backends-via-hashing-exhaustion
-	if len(vals.Password) > 256 {
-		return empty, nil, herr.BadRequest(
-			"Outrageously long passwords are disallowed",
-			ErrLongPassword,
-		)
-	}
-
-	if matchedPerson == nil {
-		// Run Verify against some dummy hashed password.
-		// We want to avoid timing attacks, where the client could know
-		// the username is invalid because the login attempt is fast, so
-		// we force a password verification even if no one matched.
-		_, _ = authn.Verify(vals.Password, "$argon2id$v=19$m=8192,t=4,p=1$Ke9wio+D+PfBYlVzJ3CTAA$/kNb/yXgSLyFpfmwIfwKwcNnBRRrUqJp8YXPtDKfNTE")
-		return empty, nil, herr.Unauthorized(
-			"Failed login attempt (bad credentials)",
-			fmt.Errorf("login attempt for nonexistent user. Identification: %v", vals.Identification),
-		)
-	}
-
-	correct, err := authn.Verify(vals.Password, matchedPerson.Password)
-	if err != nil {
-		return empty, nil, herr.InternalServerError("Invalid stored password. Get in touch with the tech team.", err).From("[Verify]")
-	}
-	if !correct {
-		return empty, nil, herr.Unauthorized(
-			"Failed login attempt (bad credentials)",
-			fmt.Errorf("bad password for valid user. Identification: %v", vals.Identification),
-		)
-	}
-
-	slog.Info("Successful login for person", "identification", matchedPerson.Handle)
-
-	accessTokenExpiration := time.Now().Add(action.AccessTokenDuration)
-	jwt, err := authz.JWTer{SecretKey: action.JwtSecret}.
-		CreateAccessToken(
-			matchedPerson.Handle,
-			matchedPerson.ID,
-			matchedPerson.PositionIDs,
-			matchedPerson.IsAdmin,
-			matchedPerson.OnDutyPositionID,
-			accessTokenExpiration,
-		)
-	if err != nil {
-		return empty, nil, herr.InternalServerError("Failed to create access token", err).From("[CreateAccessToken]")
-	}
-
-	suggestedRefreshTime := accessTokenExpiration.Add(authz.SuggestedEarlyAccessTokenRefresh).UnixMilli()
-	resp := PostAuthResponse{Token: jwt, ExpiresUnixMs: suggestedRefreshTime}
-
-	// The refresh token should be valid much longer than the access token.
-	refreshTokenExpiration := time.Now().Add(action.RefreshTokenDuration)
-	refreshToken, err := authz.JWTer{SecretKey: action.JwtSecret}.
-		CreateRefreshToken(matchedPerson.Handle, matchedPerson.ID, refreshTokenExpiration)
-	if err != nil {
-		return empty, nil, herr.InternalServerError("Failed to create refresh token", err).From("[CreateRefreshToken]")
-	}
-
-	refreshCookie := &http.Cookie{
-		Name:     authz.RefreshTokenCookieName,
-		Value:    refreshToken,
-		Path:     "/",
-		MaxAge:   int(action.RefreshTokenDuration.Milliseconds() / 1000),
-		HttpOnly: true,
-		Secure:   true,
-		// We only ever read this cookie on POSTs to the refresh endpoint,
-		// so strict is fine.
-		SameSite: http.SameSiteStrictMode,
-	}
-
-	return resp, refreshCookie, nil
-}
-
-// GetAuth (REST GET /ims/api/auth — the whoami / session status) was RETIRED in slice 1c when
-// it moved onto Connect as auth.Service.GetAuthStatus (connect.go), which the ImsService
-// .GetAuthStatus RPC delegates to. Its REST route was deleted, not shimmed (aggressive
-// migration, plan 09 §6). The GetAuthResponse / AccessForEvent shapes below are kept: they are
-// the DTO the integration suite still asserts against (the test helper maps the RPC's proto
-// response back into them), the same bridging role imsjson types play for the other resources.
+// GetAuthResponse is the whoami / session status shape (the contract's GetAuthStatusResponse).
 
 type GetAuthResponse struct {
 	Authenticated bool   `json:"authenticated"`
@@ -219,72 +103,9 @@ type AccessForEvent struct {
 	InviteReporters bool `json:"inviteReporters"`
 }
 
-type RefreshAccessToken struct {
-	ImsDBQ              *store.DBQ
-	UserStore           directory.UserStore
-	JwtSecret           string
-	AccessTokenDuration time.Duration
-}
-
+// RefreshAccessTokenResponse mirrors the refresh response body (the contract's
+// RefreshTokenResponse).
 type RefreshAccessTokenResponse struct {
 	Token         string `json:"token"`
 	ExpiresUnixMs int64  `json:"expires_unix_ms"`
-}
-
-func (action RefreshAccessToken) ServeHTTP(w http.ResponseWriter, req *http.Request) {
-	resp, errHTTP := action.refreshAccessToken(req)
-	if errHTTP != nil {
-		errHTTP.From("[refreshAccessToken]").WriteResponse(w)
-		return
-	}
-	server.MustWriteJSON(w, req, resp)
-}
-func (action RefreshAccessToken) refreshAccessToken(req *http.Request) (RefreshAccessTokenResponse, *herr.HTTPError) {
-	var empty RefreshAccessTokenResponse
-	refreshCookie, err := req.Cookie(authz.RefreshTokenCookieName)
-	if errors.Is(err, http.ErrNoCookie) {
-		return empty, herr.Unauthorized("No refresh token cookie found", err).SetExpectedError().From("[Cookie]")
-	}
-	if err != nil {
-		return empty, herr.Unauthorized("Bad refresh token cookie found", err).From("[Cookie]")
-	}
-	jwt, err := authz.JWTer{SecretKey: action.JwtSecret}.AuthenticateRefreshToken(refreshCookie.Value)
-	if err != nil {
-		return empty, herr.Unauthorized("Failed to authenticate refresh token", err).From("[AuthenticateRefreshToken]")
-	}
-
-	// #nosec G706 // log injection
-	slog.Info("Refreshing access token", "person", jwt.PersonHandle())
-	people, err := action.UserStore.GetAllUsers(req.Context())
-	if err != nil {
-		return empty, herr.InternalServerError("Failed to fetch personnel", err).From("[GetPeople]")
-	}
-	var matchedPerson *directory.User
-	for _, person := range people {
-		if person.Handle == jwt.PersonHandle() && person.ID == int64(jwt.PersonID()) {
-			matchedPerson = person
-			break
-		}
-	}
-	if matchedPerson == nil {
-		return empty, herr.Unauthorized("User not found", nil)
-	}
-	accessTokenExpiration := time.Now().Add(action.AccessTokenDuration)
-	accessToken, err := authz.JWTer{SecretKey: action.JwtSecret}.
-		CreateAccessToken(
-			jwt.PersonHandle(),
-			matchedPerson.ID,
-			matchedPerson.PositionIDs,
-			matchedPerson.IsAdmin,
-			matchedPerson.OnDutyPositionID,
-			accessTokenExpiration,
-		)
-	if err != nil {
-		return empty, herr.InternalServerError("Failed to create access token", err).From("[CreateAccessToken]")
-	}
-	resp := RefreshAccessTokenResponse{
-		Token:         accessToken,
-		ExpiresUnixMs: accessTokenExpiration.Add(authz.SuggestedEarlyAccessTokenRefresh).UnixMilli(),
-	}
-	return resp, nil
 }
