@@ -163,6 +163,41 @@ func journalEntryProtoToJSON(je *resourcesv1.JournalEntry) imsjson.JournalEntry 
 	return out
 }
 
+// reportWriteToProto maps the imsjson.Report the report-write test helpers build at their call
+// sites onto the plain Report resource the CreateReport / UpdateReport RPCs take — the write-side
+// mirror of reportViewToJSON, and the inverse of the server's incident.reportWriteToJSON. The
+// summary/incident presence pointers pass straight through; each journal entry contributes its
+// text plus the write-side person id lists collapsed onto resolved-form PersonRefs
+// (mentions[].person_id, on_behalf_of.person_id), matching the contract's "client sets person_id,
+// server resolves handle/name" rule.
+func reportWriteToProto(r imsjson.Report) *resourcesv1.Report {
+	out := &resourcesv1.Report{
+		Summary:  r.Summary,
+		Incident: r.Incident,
+	}
+	for _, je := range r.JournalEntries {
+		out.JournalEntries = append(out.JournalEntries, journalEntryWriteToProto(je))
+	}
+	return out
+}
+
+// journalEntryWriteToProto maps a write-body imsjson.JournalEntry onto the proto JournalEntry: its
+// text and (for the strike endpoint) the optional stricken flag, plus the on-behalf-of and mention
+// person ids as resolved-form PersonRefs carrying only person_id.
+func journalEntryWriteToProto(je imsjson.JournalEntry) *resourcesv1.JournalEntry {
+	out := &resourcesv1.JournalEntry{
+		Text:     je.Text,
+		Stricken: je.Stricken,
+	}
+	if je.OnBehalfOfPersonID != nil {
+		out.OnBehalfOf = &commonv1.PersonRef{PersonId: *je.OnBehalfOfPersonID}
+	}
+	for _, id := range je.MentionedPersonIDs {
+		out.Mentions = append(out.Mentions, &commonv1.PersonRef{PersonId: id})
+	}
+	return out
+}
+
 func personRefToMention(ref *commonv1.PersonRef) *imsjson.Mention {
 	if ref == nil {
 		return nil

@@ -325,9 +325,31 @@ func (a ApiHelper) editMyCrew(ctx context.Context, eventName string, req imsjson
 	return a.imsPost(ctx, req, a.serverURL.JoinPath("/ims/api/events/", eventName, "/crews/mine").String())
 }
 
+// newReport creates a field report through the generated Connect client. The REST POST
+// .../reports endpoint was retired when CreateReport was extracted (plan 09h/1c). Call sites still
+// express the new report as an imsjson.Report, so it is converted to the plain Report resource
+// (reportWriteToProto) and req.Event is resolved to its numeric id (resolveEventID). The retired
+// endpoint returned 201 Created with the assigned number in an IMS-Report-Number header; the
+// synthesized *http.Response mirrors both on success (else connectStatus(err)), so newReportSuccess
+// and the negative-auth call sites are unchanged.
 func (a ApiHelper) newReport(ctx context.Context, req imsjson.Report) *http.Response {
 	a.t.Helper()
-	return a.imsPost(ctx, req, a.serverURL.JoinPath("/ims/api/events/"+req.Event+"/reports").String())
+	eventID := a.resolveEventID(ctx, req.Event)
+	client := servicev1connect.NewImsServiceClient(http.DefaultClient, a.serverURL.String())
+	rpcReq := connect.NewRequest(&servicerpcv1.CreateReportRequest{
+		EventId: eventID,
+		Report:  reportWriteToProto(req),
+	})
+	if a.jwt != "" {
+		rpcReq.Header().Set("Authorization", "Bearer "+a.jwt)
+	}
+	resp, err := client.CreateReport(ctx, rpcReq)
+	if err != nil {
+		return &http.Response{StatusCode: connectStatus(err), Body: http.NoBody}
+	}
+	httpResp := &http.Response{StatusCode: http.StatusCreated, Header: http.Header{}, Body: http.NoBody}
+	httpResp.Header.Set("IMS-Report-Number", conv.FormatInt(resp.Msg.GetReportNumber()))
+	return httpResp
 }
 
 func (a ApiHelper) newReportSuccess(ctx context.Context, reportReq imsjson.Report) (report int32) {
@@ -388,27 +410,43 @@ func (a ApiHelper) getReports(ctx context.Context, eventName string) (imsjson.Re
 	return reports, httpResp
 }
 
+// updateReport edits a field report through the generated Connect client. The REST POST
+// .../reports/{n} endpoint was retired when UpdateReport was extracted (plan 09h/1c). Call sites
+// still express the edit as an imsjson.Report, converted to the plain Report resource
+// (reportWriteToProto); the retired endpoint returned 204 No Content on success, which the
+// synthesized *http.Response mirrors (else connectStatus(err)).
 func (a ApiHelper) updateReport(ctx context.Context, eventName string, report int32, req imsjson.Report) *http.Response {
 	a.t.Helper()
-	return a.imsPost(ctx, req, a.serverURL.JoinPath("/ims/api/events/", eventName, "/reports/", conv.FormatInt(report)).String())
+	eventID := a.resolveEventID(ctx, eventName)
+	client := servicev1connect.NewImsServiceClient(http.DefaultClient, a.serverURL.String())
+	rpcReq := connect.NewRequest(&servicerpcv1.UpdateReportRequest{
+		EventId:      eventID,
+		ReportNumber: report,
+		Report:       reportWriteToProto(req),
+	})
+	if a.jwt != "" {
+		rpcReq.Header().Set("Authorization", "Bearer "+a.jwt)
+	}
+	_, err := client.UpdateReport(ctx, rpcReq)
+	status := http.StatusNoContent
+	if err != nil {
+		status = connectStatus(err)
+	}
+	return &http.Response{StatusCode: status, Body: http.NoBody}
 }
 
+// attachReportToIncident / detachReportFromIncident drive the same UpdateReport RPC: the REST
+// "?action=attach|detach" form framework was retired with the endpoint, and the incident link is
+// now set through the Report resource's incident field (visit-field convention — a positive value
+// links, a non-positive value detaches).
 func (a ApiHelper) attachReportToIncident(ctx context.Context, eventName string, report int32, incident int32) *http.Response {
 	a.t.Helper()
-	req := imsjson.Report{}
-	params := "?action=attach&incident=" + conv.FormatInt(incident)
-	return a.imsPost(ctx, req,
-		a.serverURL.JoinPath("/ims/api/events/", eventName, "/reports/",
-			conv.FormatInt(report)).String()+params)
+	return a.updateReport(ctx, eventName, report, imsjson.Report{Incident: new(incident)})
 }
 
 func (a ApiHelper) detachReportFromIncident(ctx context.Context, eventName string, report int32) *http.Response {
 	a.t.Helper()
-	req := imsjson.Report{}
-	params := "?action=detach"
-	return a.imsPost(ctx, req,
-		a.serverURL.JoinPath("/ims/api/events/", eventName, "/reports/",
-			conv.FormatInt(report)).String()+params)
+	return a.updateReport(ctx, eventName, report, imsjson.Report{Incident: new(int32(0))})
 }
 
 // newIncident creates an incident through the generated Connect client. The REST
@@ -634,9 +672,30 @@ func (a ApiHelper) updateIncidentJournalEntry(ctx context.Context, eventName str
 	return a.imsPost(ctx, req, a.serverURL.JoinPath("/ims/api/events/", eventName, "/incidents/", conv.FormatInt(incident), "/journal_entries/", conv.FormatInt(req.ID)).String())
 }
 
+// updateReportJournalEntry strikes/unstrikes a report's journal entry through the generated
+// Connect client. The REST POST .../reports/{n}/journal_entries/{id} endpoint was retired when
+// UpdateReportJournalEntry was extracted (plan 09h/1c). The entry id rides its own request field;
+// the body carries only the stricken flag (journalEntryWriteToProto). The retired endpoint returned
+// 204 No Content on success, mirrored by the synthesized *http.Response (else connectStatus(err)).
 func (a ApiHelper) updateReportJournalEntry(ctx context.Context, eventName string, report int32, req imsjson.JournalEntry) *http.Response {
 	a.t.Helper()
-	return a.imsPost(ctx, req, a.serverURL.JoinPath("/ims/api/events/", eventName, "/reports/", conv.FormatInt(report), "/journal_entries/", conv.FormatInt(req.ID)).String())
+	eventID := a.resolveEventID(ctx, eventName)
+	client := servicev1connect.NewImsServiceClient(http.DefaultClient, a.serverURL.String())
+	rpcReq := connect.NewRequest(&servicerpcv1.UpdateReportJournalEntryRequest{
+		EventId:        eventID,
+		ReportNumber:   report,
+		JournalEntryId: req.ID,
+		Entry:          journalEntryWriteToProto(req),
+	})
+	if a.jwt != "" {
+		rpcReq.Header().Set("Authorization", "Bearer "+a.jwt)
+	}
+	_, err := client.UpdateReportJournalEntry(ctx, rpcReq)
+	status := http.StatusNoContent
+	if err != nil {
+		status = connectStatus(err)
+	}
+	return &http.Response{StatusCode: status, Body: http.NoBody}
 }
 
 func (a ApiHelper) editEvent(ctx context.Context, req imsjson.Event) *http.Response {

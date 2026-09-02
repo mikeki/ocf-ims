@@ -55,6 +55,11 @@ message CreateReportResponse {
 message UpdateReportRequest {
   int32 event_id = 1 [(buf.validate.field).int32.gt = 0];
   int32 report_number = 2 [(buf.validate.field).int32.gt = 0];
+  // report carries the edit as presence: summary (unset = leave unchanged), any non-empty
+  // journal_entries to append, and the incident link. The incident link follows the visit
+  // field convention — report.incident unset leaves the link unchanged, a positive value
+  // links to that incident, and a non-positive value detaches — replacing the retired REST
+  // "?action=attach|detach" form param. created / created_by / number are read-only.
   ocf.ims.resources.v1.Report report = 3;
 }
 
