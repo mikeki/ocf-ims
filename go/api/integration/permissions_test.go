@@ -79,10 +79,12 @@ func TestAnyUnauthenticatedUserEndpoints(t *testing.T) {
 	apisNotAuthenticated := ApiHelper{t: t, serverURL: shared.serverURL, jwt: ""}
 
 	anyAuthenticatedUserEndpoints := []MethodURL{
-		{http.MethodGet, "/ims/api/personnel"},
 		{http.MethodGet, "/ims/api/incident_types"},
 		// GET /ims/api/events retired in 1c — it is the ListEvents RPC now, whose
 		// unauthenticated behavior is covered by api.TestConnectListEventsUnauthenticated.
+		// GET /ims/api/personnel retired in 1c — it is the ListPersonnel RPC now; its
+		// unauth (401) and any-authenticated-user (GlobalReadPersonnel) behavior is
+		// covered through the Connect client in TestListPersonnelAuthorization.
 	}
 
 	for _, api := range anyAuthenticatedUserEndpoints {

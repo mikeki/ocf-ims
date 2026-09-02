@@ -109,7 +109,11 @@ service ImsService {
   rpc SetMyCrewMembership(rpc.v1.SetMyCrewMembershipRequest) returns (rpc.v1.SetMyCrewMembershipResponse);
 
   // --- Personnel ---
-  rpc ListPersonnel(rpc.v1.ListPersonnelRequest) returns (rpc.v1.ListPersonnelResponse);
+  // A read (see the GetAuthStatus note): NO_SIDE_EFFECTS so the action-log
+  // interceptor skips it. Landed in 1c.
+  rpc ListPersonnel(rpc.v1.ListPersonnelRequest) returns (rpc.v1.ListPersonnelResponse) {
+    option idempotency_level = NO_SIDE_EFFECTS;
+  }
   rpc CreatePerson(rpc.v1.CreatePersonRequest) returns (rpc.v1.CreatePersonResponse);
   rpc UpdatePerson(rpc.v1.UpdatePersonRequest) returns (rpc.v1.UpdatePersonResponse);
   rpc SetPersonPassword(rpc.v1.SetPersonPasswordRequest) returns (rpc.v1.SetPersonPasswordResponse);

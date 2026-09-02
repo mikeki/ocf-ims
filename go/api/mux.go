@@ -427,15 +427,8 @@ func AddToMux(
 		),
 	)
 
-	mux.Handle("GET /ims/api/personnel",
-		server.Adapt(
-			person.GetPersonnel{ImsDBQ: db, UserStore: userStore, CacheControlShort: cfg.Core.CacheControlShort},
-			server.RecoverFromPanic(),
-			server.RequireAuthN(jwter),
-			server.LogRequest(false, actionLogger, userStore),
-			server.LimitRequestBytes(cfg.Core.MaxRequestBytes),
-		),
-	)
+	// GET /ims/api/personnel moved to the ImsService.ListPersonnel RPC (plan 09h/1c) and its
+	// REST route was retired. The personnel writes below stay REST until their own extraction.
 
 	mux.Handle("POST /ims/api/personnel",
 		server.Adapt(
