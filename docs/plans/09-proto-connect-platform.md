@@ -1252,6 +1252,36 @@ migration to `AddConnectToMux`, the `ProposeOutcomeResponse` `{}` → `int32 out
   `TestOutcomeWriteAuthorization` were added anyway, to hold every retired taxonomy resource to the
   same focused-auth bar.
 
+### 1c — Domain extraction: event create/update (2026-09-02)
+
+`CreateEvent` + `UpdateEvent` joined the existing `event.Service` (already the home of `ListEvents`),
+retiring the REST `POST /events` create/update multiplexer (`EditEvent`). Findings:
+
+- **A create that is really "create then configure" decomposes without a shared core, but with a
+  shared edit helper.** The retired `EditEvent` created on `id==0`, *fell through* to one update path
+  that applied `is_group`/`parent_group`, and then seeded the new event's area set. So "create" was
+  create + partial-update + area-seed. `CreateEvent` reproduces exactly that (create → apply the
+  present fields via `applyEventEdits` → `PopulateNewEventAreas` when the event is not a group);
+  `UpdateEvent` is the bare edit. Both share `applyEventEdits`, which folds the present optional fields
+  onto the stored row with the same validations the handler had (name pattern; parent can't be self,
+  must be a group, `<= 0` clears it; a group can't have a parent). *When a REST create secretly ran the
+  update path, the split create must run it too — the shared piece is the field-folding helper, not a
+  create/update core.*
+- **No contract gap this time.** `CreateEventResponse` already had `event_id` (the response the 0e
+  contract designed to replace REST's `IMS-Event-ID` header), and event **access** grants were already
+  Connect RPCs (`SetPersonParticipation`), so the only REST surface retired was the one multiplexer.
+- **The action-log test fixtures churn as the last REST mutation of each kind is extracted.** Two
+  `connect_test.go` tests probe the interceptor chain with a "still-unimplemented mutation"
+  (`CreateEvent` → repointed to `MarkAllNotificationsRead`). More significantly, `TestGetActionLog`
+  needs a fixture that is *still REST, action-logged, and carries a Referer* — because the Connect
+  action-log interceptor records everything **except** the Referer (a REST-only header). That fixture
+  has now walked from `Login` → `createEvent` → (here) the multipart **profile-picture upload**, which
+  is the durable choice: the binary upload endpoints (M8) stay REST for the whole migration, so this
+  fixture stops churning. *The Referer is the one action-log field the RPC transport can't reproduce;
+  a test that filters on it must ride a route that stays REST.*
+- **`POST /events` left the admin-only sweep** → focused `TestEventWriteAuthorization`
+  (`GlobalAdministrateEvents`: non-admin 403, unauth 401).
+
 ## 8. Open questions
 
 1. **Does the Go binary keep serving static assets in production**, or does Caddy?

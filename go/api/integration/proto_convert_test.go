@@ -320,6 +320,18 @@ func incidentTypeGroupPtrToString(g *resourcesv1.IncidentTypeGroup) *string {
 	return &s
 }
 
+// eventMsgFromJSON builds the resources/v1.Event the create/update event helpers send from the
+// legacy imsjson.Event the call sites still construct. All fields carry straight across (the JSON
+// struct already uses pointers for the optional fields); id is not part of the write body (it is the
+// UpdateEvent request key, and CreateEvent assigns it).
+func eventMsgFromJSON(req imsjson.Event) *resourcesv1.Event {
+	return &resourcesv1.Event{
+		Name:        req.Name,
+		IsGroup:     req.IsGroup,
+		ParentGroup: req.ParentGroup,
+	}
+}
+
 // outcomeProtoToJSON maps a resources/v1.Outcome from the ListOutcomes RPC back to the legacy
 // imsjson.Outcome the outcome tests assert against — the inverse of the server's
 // outcome.outcomeToProto. The optional scalar pointers carry straight across; the proposer PersonRef

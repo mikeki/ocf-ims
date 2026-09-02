@@ -43,7 +43,10 @@ func TestAdminOnlyEndpoints(t *testing.T) {
 
 	adminOnly := []MethodURL{
 		{http.MethodGet, "/ims/api/actionlogs"},
-		{http.MethodPost, "/ims/api/events"},
+		// NOTE: POST /events is intentionally not listed here. It moved to the ImsService event
+		// RPCs in 1c (the POST multiplexer decomposed into CreateEvent/UpdateEvent); its
+		// admin-gating (403 for a non-admin, 401 for unauth) is covered by
+		// TestEventWriteAuthorization below.
 		// NOTE: POST .../areas is intentionally not listed here. It is no longer
 		// strictly admin-only — creating an area is allowed for event writers,
 		// while editing an existing area stays admin-only. Its authorization is
@@ -71,6 +74,31 @@ func TestAdminOnlyEndpoints(t *testing.T) {
 		code = apiCall(t, api, apisNotAuthenticated)
 		require.True(t, unauthorized(code), "%v %v wanted 401 status code, got %v", api.Method, api.Path, code)
 	}
+}
+
+// TestEventWriteAuthorization pins the event write RPCs' admin-gating now that POST /ims/api/events
+// is retired from REST (it was an entry in the admin-only route sweep): CreateEvent/UpdateEvent
+// require GlobalAdministrateEvents, so a non-admin is forbidden and an unauthenticated caller is
+// unauthorized. editEvent with id==0 drives CreateEvent (the happy path is covered by event_test.go);
+// the rejection happens before any event is created.
+func TestEventWriteAuthorization(t *testing.T) {
+	t.Parallel()
+	ctx := t.Context()
+
+	apisNonAdmin := ApiHelper{t: t, serverURL: shared.serverURL, jwt: jwtForAlice(t, ctx)}
+	apisNotAuthenticated := ApiHelper{t: t, serverURL: shared.serverURL, jwt: ""}
+
+	name := rand.NonCryptoText()
+
+	// A non-admin lacks GlobalAdministrateEvents: 403.
+	resp := apisNonAdmin.editEvent(ctx, imsjson.Event{Name: &name})
+	require.Equal(t, http.StatusForbidden, resp.StatusCode)
+	require.NoError(t, resp.Body.Close())
+
+	// Unauthenticated: 401.
+	resp = apisNotAuthenticated.editEvent(ctx, imsjson.Event{Name: &name})
+	require.Equal(t, http.StatusUnauthorized, resp.StatusCode)
+	require.NoError(t, resp.Body.Close())
 }
 
 // TestIncidentTypeWriteAuthorization pins the incident-type write RPCs' admin-gating now that POST

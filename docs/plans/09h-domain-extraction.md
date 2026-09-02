@@ -336,7 +336,23 @@ are NO_SIDE_EFFECTS. Outcomes were never in the permissions sweeps (their auth l
 `outcome_test.go`), so nothing was pruned; focused `TestListOutcomesAuthorization` +
 `TestOutcomeWriteAuthorization` were still added to match the taxonomy coverage bar.
 
-Next: **events(EditEvent)/areas/crews → notifications/push →
+The **event create/update** is now done (branch `feat/1c-events`, stacked on `feat/1c-outcomes`) —
+`CreateEvent` + `UpdateEvent` added to the existing `event.Service` (which already held `ListEvents`),
+retiring the REST `POST /events` multiplexer (`EditEvent`). The retired handler created on `id==0`
+then fell through to a single update path that also applied `is_group`/`parent_group` and seeded the
+new event's areas; the decomposition keeps that behavior in `CreateEvent` (create → apply edits via
+the shared `applyEventEdits` → `PopulateNewEventAreas` when not a group) and leaves `UpdateEvent` as
+the pure edit. `CreateEventResponse` already carried `event_id` (the REST `IMS-Event-ID` header), so no
+contract gap. Event **access** grants (`addWriter`/`addReporter`) were already on Connect via
+`SetPersonParticipation`, so nothing there moved. Two test-fixture reroutes worth noting: (1) the
+action-log audit tests in `connect_test.go` used `CreateEvent` as their "still-unimplemented mutation"
+probe — repointed to `MarkAllNotificationsRead` (a later slice, constraint-free request); (2)
+`TestGetActionLog` needed a still-REST, action-logged, **Referer-carrying** fixture (the Connect
+interceptor records no Referer), and `createEvent` was the last such — repointed to the multipart
+**profile-picture upload**, which stays REST for the whole migration (binary, M8), so this fixture is
+now durable. `POST /events` left the admin-only sweep → focused `TestEventWriteAuthorization`.
+
+Next: **areas/crews → notifications/push →
 metrics/action log**. For each: move handler logic into a
 proto-shaped domain method on its domain `Service` returning Connect errors, add the RPC
 method to `ImsService`, **delete the REST route + handler and move its `api/integration`
