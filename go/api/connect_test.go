@@ -144,17 +144,17 @@ func TestConnectProtovalidateRejects(t *testing.T) {
 
 // TestConnectUnimplementedPassesValidation proves the complement: a request that
 // satisfies the constraints passes protovalidate and reaches the handler. It uses a
-// still-unimplemented RPC (MarkAllNotificationsRead — CreateEvent is now wired) whose
+// still-unimplemented RPC (ListActionLogs — MarkAllNotificationsRead is now wired) whose
 // request carries no tripped constraints, so it flows through the whole interceptor
 // chain to the UnimplementedImsServiceHandler and comes back CodeUnimplemented,
-// confirming valid requests reach the handler and the action-log interceptor tolerates
-// a mutating RPC without panicking.
+// confirming valid requests reach the handler. (Only the metrics/action-log reads remain
+// unimplemented; when they land this probe needs a test-only unregistered method instead.)
 func TestConnectUnimplementedPassesValidation(t *testing.T) {
 	t.Parallel()
 	client, _ := newTestConnectClient(t)
 
-	_, err := client.MarkAllNotificationsRead(context.Background(),
-		connect.NewRequest(&servicerpcv1.MarkAllNotificationsReadRequest{}))
+	_, err := client.ListActionLogs(context.Background(),
+		connect.NewRequest(&servicerpcv1.ListActionLogsRequest{}))
 	require.Error(t, err)
 	require.Equal(t, connect.CodeUnimplemented, connect.CodeOf(err))
 }
@@ -177,10 +177,11 @@ func TestConnectActionLogSkipsReads(t *testing.T) {
 
 // TestConnectActionLogAuditsMutations proves the complement: a mutating RPC (one
 // carrying no NO_SIDE_EFFECTS marker) is audited by default — the footgun the
-// per-route REST LogRequest flag invites (M9) is gone. It uses a still-unimplemented
-// mutation (MarkAllNotificationsRead — CreateEvent is now wired and would hit the DB);
-// it is logged even though the handler is unimplemented, and the row carries the
-// procedure as its path with no body, preserving the metadata-only audit invariant.
+// per-route REST LogRequest flag invites (M9) is gone. It uses MarkAllNotificationsRead,
+// a real registered mutation, called *without auth*: the audit interceptor records the
+// request before the handler runs, and the handler then returns Unauthenticated before
+// touching the DB — so the row is written with no side effect, carries the procedure as
+// its path with no body, and no user (anonymous), preserving the metadata-only invariant.
 func TestConnectActionLogAuditsMutations(t *testing.T) {
 	t.Parallel()
 	spy := &spyActionLogger{}

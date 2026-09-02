@@ -1348,6 +1348,40 @@ Findings:
   `LogRequest(false)` (unlogged), so leaving the marker off would have started auditing every roster
   read; the marker keeps the action log write-only, matching every other list RPC.
 
+### 1c — Domain extraction: notifications & web push (2026-09-02)
+
+Two small per-caller domains landed together: `notification.Service` (`ListNotifications` +
+`MarkAllNotificationsRead` + `MarkNotificationRead`) and `push.Service` (`SubscribePush` +
+`UnsubscribePush`), retiring REST `GET /notifications`, `POST /notifications/read[/{id}]`, and
+`POST`/`DELETE /push/subscribe`. Findings:
+
+- **A domain that is half internal-API stays half REST-free.** The notification package has two
+  surfaces: the *generation* helpers (`createNotification`, the `Generate*` entry points the incident
+  and report writes call inside their transactions) and the *reader* handlers. Only the readers were
+  ever HTTP; they became the RPCs, and the generation surface — never a route — is untouched. Not
+  every function in a `handler` package is a handler.
+- **A path-multiplexed handler splits by the contract, not the code.** The one REST
+  `MarkNotificationsRead` handler served both "mark all" and "mark one" by whether `{notificationId}`
+  was in the path. The 0e contract had already split that into two RPCs (`MarkAllNotificationsRead` /
+  `MarkNotificationRead`), so the extraction is two thin methods — the RPC surface is cleaner than the
+  route, and the "which mode?" branch disappears.
+- **An HTTP-header input with no proto home is lifted in the delegate.** `SubscribePush` stores a
+  best-effort device label from the `User-Agent` header. That is a transport detail, not a contract
+  field, so the `ImsService.SubscribePush` delegate reads `req.Header().Get("User-Agent")` and passes
+  it to the domain method as a plain string — the same delegate-does-the-HTTP-boundary pattern Login
+  used for the client IP and the refresh cookie. The domain method stays HTTP-free.
+- **The interceptor probes churn toward extinction.** `connect_test.go`'s two interceptor tests use a
+  *still-unimplemented* RPC as their probe. Implementing `MarkAllNotificationsRead` forced a move:
+  `TestConnectUnimplementedPassesValidation` (which asserts `CodeUnimplemented`) repointed to
+  `ListActionLogs`, the last still-unimplemented constraint-free RPC. `TestConnectActionLogAuditsMutations`
+  instead *kept* `MarkAllNotificationsRead` but now calls it **unauthenticated** — the audit
+  interceptor writes its one row before the handler returns `Unauthenticated`, so the mutation is still
+  audited with no DB side effect. *After the metrics/action-log slice every RPC is implemented, and the
+  Unimplemented probe will have to call a test-only unregistered method rather than a real one.*
+- Neither domain was in a permissions sweep (their auth is inline in `notification_test.go` /
+  `push_test.go`), so nothing relocated. `ListNotifications` is `NO_SIDE_EFFECTS`; the empty-endpoint /
+  empty-key 400s the push handler returned are now the request's `min_len` constraints.
+
 ## 8. Open questions
 
 1. **Does the Go binary keep serving static assets in production**, or does Caddy?
