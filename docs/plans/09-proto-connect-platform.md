@@ -985,6 +985,45 @@ With this, the entire incident + field-report surface (reads + writes + sub-reso
 only the incident/report *attachment* upload/download (binary/multipart, outside the proto contract)
 and the visits subsystem (excluded from the contract, 09e) stay REST.
 
+### 1c — Domain extraction: profile self-service (own password / profile / picture) (2026-09-02)
+
+Three self-service write RPCs in one PR (`person.ChangeOwnPassword`, `person.UpdateOwnProfile`,
+`person.DeleteOwnProfilePicture`), the first methods on a **new `person.Service`**, stacked on the
+incident sub-resource writes. These are the caller acting on *their own* account (keyed off the JWT
+subject), kept distinct from the later admin personnel RPCs (one person managing *others*), which land
+as further methods on the same `Service`. Findings:
+
+- **The Service-struct pattern pays off again on a brand-new domain package.** `person.Service` holds
+  `ImsDBQ`, `UserStore`, `DefaultPassword`, `AttachmentsStore`, `S3Client`; `ImsService` composes it as
+  a `Person` field built once in `AddConnectToMux`, each RPC a one-line delegate — the same shape as
+  `event.Service` / `incident.Service`. Adding the domain forced only: the new file, the field, the
+  delegates, and an `s3Client` param on `AddConnectToMux` (the picture delete needs it). *A new domain
+  is a new `Service` + one field; nothing about the wiring is bespoke.*
+- **Reuse the intricate shared helpers at the proto boundary, don't re-port them.** Password change
+  reuses `argon2id.CreateHash` + `SetPersonPassword(PasswordChanged: true)` + `InvalidateUsers`;
+  profile edit reuses `applyProfileFields` (so the identity invariant, dup-entry 409, and length caps
+  are *identical* to admin `EditPerson`); picture delete reuses `clearProfilePicture`. The RPC methods
+  are thin authz-from-ctx + convert + call. A shared **`server.HerrToConnect`** maps the reused
+  `*herr.HTTPError` onto Connect codes; it was added net-new (no churn to earlier stack commits), and
+  incident keeps its private `herrToConnect` copy pending a later dedup.
+- **Delete the JSON routes, keep the binary one.** `POST /auth/password`, `POST /auth/profile`, and
+  `DELETE /auth/picture` were deleted (not shimmed). The picture **upload** (`POST /auth/picture`) is
+  multipart/binary — outside the proto contract (M8) — so it stays REST, the lone survivor under
+  `/auth/*` besides login/refresh/whoami (which the next slice takes).
+- **protogetter only exempts a pointer-valued optional proto field inside a *keyed* composite
+  literal.** `UpdateOwnProfile` must pass `*string` presence pointers (nil = leave unchanged) to
+  `applyProfileFields`; `applyProfileFields(…, req.Handle, …)` and even a *positional* struct literal
+  `{req.Handle, …}` are both flagged by protogetter (it can't prove the target type is a pointer), but
+  a **keyed** literal `{handle: req.Handle, …}` is exempt — matching how `incidentUpdateToJSON` writes
+  `Summary: u.Summary`. So the four pointers are gathered in a keyed anonymous struct first. *When you
+  need a proto optional's pointer past protogetter, put it in a keyed composite literal.*
+- **Coverage moves onto the Connect client with the helpers.** `changeOwnPassword` / `updateOwnProfile`
+  / `deleteOwnPicture` integration helpers now drive the RPCs and synthesize a
+  204/`connectStatus(err)` `*http.Response`, so `TestSelfProfile` and `default_password_test` are
+  untouched at their call sites and their unauthenticated cases still assert 401 (now via the RPC's
+  Unauthenticated). No `permissions_test` sweep rows referenced these routes, so nothing there needed
+  pruning.
+
 ## 8. Open questions
 
 1. **Does the Go binary keep serving static assets in production**, or does Caddy?

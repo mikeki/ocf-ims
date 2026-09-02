@@ -17,8 +17,6 @@
 package person
 
 import (
-	"database/sql"
-	"errors"
 	"fmt"
 	"log/slog"
 	"net/http"
@@ -140,90 +138,8 @@ func (action SetPersonPassword) setPersonPassword(req *http.Request) *herr.HTTPE
 	return nil
 }
 
-// SetOwnPassword lets an authenticated user change THEIR OWN password. Unlike
-// SetPersonPassword it needs no admin permission (you may always change your own
-// credential) and resolves the target from the caller's JWT rather than a path ID.
-// It backs the post-login "you're on the shared default password, set your own"
-// prompt, and is the general self-service change primitive.
-//
-// The current password is intentionally NOT required: the caller is already
-// authenticated (server.RequireAuthN gates the route), and for the default-password case
-// re-typing the shared secret would add friction with no real security gain.
-type SetOwnPassword struct {
-	ImsDBQ    *store.DBQ
-	UserStore directory.UserStore
-	// defaultPassword is the shared default (conf DefaultPassword). Used to refuse a
-	// "change" that just re-sets the same default, so the change-prompt is actually
-	// satisfied. Empty ⇒ no default configured, so nothing to refuse.
-	DefaultPassword string
-}
-
-type SetOwnPasswordRequest struct {
-	// #nosec G117 // Exported secret field
-	Password string `json:"password"`
-}
-
-func (action SetOwnPassword) ServeHTTP(w http.ResponseWriter, req *http.Request) {
-	errHTTP := action.setOwnPassword(req)
-	if errHTTP != nil {
-		errHTTP.From("[setOwnPassword]").WriteResponse(w)
-		return
-	}
-	w.WriteHeader(http.StatusNoContent)
-}
-
-func (action SetOwnPassword) setOwnPassword(req *http.Request) *herr.HTTPError {
-	jwtCtx, errHTTP := server.GetJwtCtx(req)
-	if errHTTP != nil {
-		return errHTTP.From("[server.GetJwtCtx]")
-	}
-	personID := jwtCtx.Claims.PersonID()
-
-	body, errHTTP := server.ReadBodyAs[SetOwnPasswordRequest](req)
-	if errHTTP != nil {
-		return errHTTP.From("[server.ReadBodyAs]")
-	}
-	if len(body.Password) < minPasswordLength {
-		return herr.BadRequest(fmt.Sprintf("Password must be at least %d characters", minPasswordLength), nil)
-	}
-	// See the note in postAuth: very long passwords are a hashing-exhaustion vector.
-	if len(body.Password) > 256 {
-		return herr.BadRequest("Outrageously long passwords are disallowed", auth.ErrLongPassword)
-	}
-	// The whole point is to get OFF the shared default, so refuse to "change" to it.
-	if action.DefaultPassword != "" && body.Password == action.DefaultPassword {
-		return herr.BadRequest("Please choose a password other than the shared default", nil)
-	}
-
-	person, err := action.ImsDBQ.PersonByID(req.Context(), action.ImsDBQ, personID)
-	if errors.Is(err, sql.ErrNoRows) {
-		return herr.NotFound("Unknown person", nil)
-	}
-	if err != nil {
-		return herr.InternalServerError("Failed to load person", err).From("[PersonByID]")
-	}
-	// Login matches EMAIL only, so a password is useless without one. An access-holder
-	// always has an email (they logged in), but guard anyway.
-	if person.Email.String == "" {
-		return herr.BadRequest("Your account has no email on file; ask an admin to add one", nil)
-	}
-
-	hashed := argon2id.CreateHash(body.Password, argon2id.DefaultParams)
-	// They just set a non-default password (the default was refused above), so mark
-	// them off the default — GET /auth won't prompt or re-verify them.
-	err = action.ImsDBQ.SetPersonPassword(req.Context(), action.ImsDBQ, imsdb.SetPersonPasswordParams{
-		Password:        conv.StringToSql(&hashed, 255),
-		PasswordChanged: true,
-		ID:              person.ID,
-	})
-	if err != nil {
-		return herr.InternalServerError("Failed to set password", err).From("[SetPersonPassword]")
-	}
-
-	// Drop the cached directory so the new password is effective immediately (and the
-	// old/default one stops working).
-	action.UserStore.InvalidateUsers()
-
-	slog.Info("Password changed by self", "person_id", person.ID)
-	return nil
-}
+// SetOwnPassword (REST POST /ims/api/auth/password — the self-service password change) was
+// RETIRED in slice 1c when it moved onto Connect as person.ChangeOwnPassword (connect.go), which
+// the ImsService.ChangeOwnPassword RPC delegates to. The REST route was deleted, not shimmed
+// (aggressive migration, plan 09 §6). The admin SetPersonPassword handler below stays REST until
+// the personnel slice.
