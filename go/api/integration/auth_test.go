@@ -161,13 +161,20 @@ func TestGetAuthWithEvent(t *testing.T) {
 	require.NoError(t, resp.Body.Close())
 }
 
-func TestGetAuthWithBadEventNames(t *testing.T) {
+// TestGetAuthWithMissingEvent covers requesting event access for an event that doesn't exist.
+// Under the numeric-id contract the caller passes an event id; a non-existent one is deliberately
+// NOT a 404 — GetAuthStatus returns an all-false access entry so the caller can't distinguish "no
+// such event" from "no access" (ported from REST). (The REST endpoint's name-validation 400 for a
+// malformed event NAME has no analogue now that the event is addressed by id, so that case is
+// dropped with the route.)
+func TestGetAuthWithMissingEvent(t *testing.T) {
 	t.Parallel()
 	ctx := t.Context()
 
 	apisAdmin := ApiHelper{t: t, serverURL: shared.serverURL, jwt: jwtForAdmin(ctx, t)}
 
-	// non-existent event case
+	// getAuth resolves an unknown name to a sentinel id that no event has, exercising the
+	// server's "event might exist, but no access" branch.
 	gar, httpResp := apisAdmin.getAuth(ctx, "ThisEventDoesNotExist")
 	assert.Equal(t, http.StatusOK, httpResp.StatusCode)
 	require.NoError(t, httpResp.Body.Close())
@@ -180,12 +187,6 @@ func TestGetAuthWithBadEventNames(t *testing.T) {
 		WriteVisits:    false,
 		AttachFiles:    false,
 	}, gar.EventAccess["ThisEventDoesNotExist"])
-
-	// bad event name (has spaces)
-	gar, httpResp = apisAdmin.getAuth(ctx, "This event name is invalid")
-	assert.Equal(t, http.StatusBadRequest, httpResp.StatusCode)
-	require.NoError(t, httpResp.Body.Close())
-	assert.Empty(t, gar.EventAccess)
 }
 
 func TestPostAuthMakesRefreshCookie(t *testing.T) {
