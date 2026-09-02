@@ -444,23 +444,66 @@ func (a ApiHelper) proposeType(ctx context.Context, eventName string, req imsjso
 	return &id, &http.Response{StatusCode: http.StatusCreated, Body: http.NoBody}
 }
 
+// editOutcome dispatches the legacy EditOutcomes multiplexer DTO onto the decomposed outcome write
+// RPCs by the same selectors the retired REST handler read (id==0 → create, approved → approve,
+// hidden-only → set-hidden, else update). Create returns its new id (the retired endpoint's
+// IMS-Outcome-ID header); the rest synthesize 204 / connectStatus.
 func (a ApiHelper) editOutcome(ctx context.Context, req imsjson.Outcome) (*int32, *http.Response) {
 	a.t.Helper()
-	httpResp := a.imsPost(ctx, req, a.serverURL.JoinPath("/ims/api/outcomes").String())
-	numStr := httpResp.Header.Get("IMS-Outcome-ID")
-	require.NoError(a.t, httpResp.Body.Close())
-	if numStr == "" {
-		return nil, httpResp
+	client := servicev1connect.NewImsServiceClient(http.DefaultClient, a.serverURL.String())
+	switch {
+	case req.ID == 0:
+		rpcReq := connect.NewRequest(&servicerpcv1.CreateOutcomeRequest{Outcome: outcomeMsgFromJSON(req)})
+		a.authorizeRPC(rpcReq)
+		resp, err := client.CreateOutcome(ctx, rpcReq)
+		if err != nil {
+			return nil, &http.Response{StatusCode: connectStatus(err), Body: http.NoBody}
+		}
+		id := resp.Msg.GetOutcomeId()
+		return &id, &http.Response{StatusCode: http.StatusNoContent, Body: http.NoBody}
+	case req.Approved != nil && *req.Approved:
+		rpcReq := connect.NewRequest(&servicerpcv1.ApproveOutcomeRequest{OutcomeId: req.ID})
+		a.authorizeRPC(rpcReq)
+		_, err := client.ApproveOutcome(ctx, rpcReq)
+		return nil, writeRPCStatus(err)
+	case req.Hidden != nil && req.Name == nil:
+		rpcReq := connect.NewRequest(&servicerpcv1.SetOutcomeHiddenRequest{OutcomeId: req.ID, Hidden: *req.Hidden})
+		a.authorizeRPC(rpcReq)
+		_, err := client.SetOutcomeHidden(ctx, rpcReq)
+		return nil, writeRPCStatus(err)
+	default:
+		rpcReq := connect.NewRequest(&servicerpcv1.UpdateOutcomeRequest{OutcomeId: req.ID, Outcome: outcomeMsgFromJSON(req)})
+		a.authorizeRPC(rpcReq)
+		_, err := client.UpdateOutcome(ctx, rpcReq)
+		if err != nil {
+			return nil, writeRPCStatus(err)
+		}
+		// The legacy multiplexer's update branch applied name and hidden together; the
+		// decomposed contract splits hidden into SetOutcomeHidden, so a DTO carrying both
+		// fans out to both RPCs here (UpdateOutcome leaves hidden alone).
+		if req.Hidden != nil {
+			hReq := connect.NewRequest(&servicerpcv1.SetOutcomeHiddenRequest{OutcomeId: req.ID, Hidden: *req.Hidden})
+			a.authorizeRPC(hReq)
+			_, err = client.SetOutcomeHidden(ctx, hReq)
+		}
+		return nil, writeRPCStatus(err)
 	}
-	num, err := conv.ParseInt32(numStr)
-	require.NoError(a.t, err)
-	return &num, httpResp
 }
+
 func (a ApiHelper) getOutcomes(ctx context.Context) (imsjson.Outcomes, *http.Response) {
 	a.t.Helper()
-	path := a.serverURL.JoinPath("/ims/api/outcomes").String()
-	bod, resp := a.imsGet(ctx, path, &imsjson.Outcomes{})
-	return *bod.(*imsjson.Outcomes), resp
+	client := servicev1connect.NewImsServiceClient(http.DefaultClient, a.serverURL.String())
+	rpcReq := connect.NewRequest(&servicerpcv1.ListOutcomesRequest{})
+	a.authorizeRPC(rpcReq)
+	resp, err := client.ListOutcomes(ctx, rpcReq)
+	if err != nil {
+		return nil, &http.Response{StatusCode: connectStatus(err), Body: http.NoBody}
+	}
+	out := make(imsjson.Outcomes, 0, len(resp.Msg.GetOutcomes()))
+	for _, o := range resp.Msg.GetOutcomes() {
+		out = append(out, outcomeProtoToJSON(o))
+	}
+	return out, &http.Response{StatusCode: http.StatusOK, Body: http.NoBody}
 }
 
 // outcomeIDByName resolves a seeded outcome's ID from its display name, so tests
@@ -478,17 +521,24 @@ func (a ApiHelper) outcomeIDByName(ctx context.Context, name string) int32 {
 	require.Failf(a.t, "outcome not found", "no outcome named %q", name)
 	return 0
 }
+
+// proposeOutcome drives the writer's outcome proposal through the generated Connect client
+// (ProposeOutcome). The REST POST /events/{eventName}/outcomes route was retired; the event name
+// resolves to its id, and the returned id (new or resolved-duplicate) is handed back.
 func (a ApiHelper) proposeOutcome(ctx context.Context, eventName string, req imsjson.Outcome) (*int32, *http.Response) {
 	a.t.Helper()
-	httpResp := a.imsPost(ctx, req, a.serverURL.JoinPath("/ims/api/events/", eventName, "/outcomes").String())
-	numStr := httpResp.Header.Get("IMS-Outcome-ID")
-	require.NoError(a.t, httpResp.Body.Close())
-	if numStr == "" {
-		return nil, httpResp
+	client := servicev1connect.NewImsServiceClient(http.DefaultClient, a.serverURL.String())
+	rpcReq := connect.NewRequest(&servicerpcv1.ProposeOutcomeRequest{
+		EventId: a.resolveEventID(ctx, eventName),
+		Outcome: outcomeMsgFromJSON(req),
+	})
+	a.authorizeRPC(rpcReq)
+	resp, err := client.ProposeOutcome(ctx, rpcReq)
+	if err != nil {
+		return nil, &http.Response{StatusCode: connectStatus(err), Body: http.NoBody}
 	}
-	num, err := conv.ParseInt32(numStr)
-	require.NoError(a.t, err)
-	return &num, httpResp
+	id := resp.Msg.GetOutcomeId()
+	return &id, &http.Response{StatusCode: http.StatusCreated, Body: http.NoBody}
 }
 
 func (a ApiHelper) editArea(ctx context.Context, eventName string, req imsjson.Area) (slug string, resp *http.Response) {

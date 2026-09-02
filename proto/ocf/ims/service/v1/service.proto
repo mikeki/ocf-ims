@@ -133,7 +133,10 @@ service ImsService {
   rpc ApproveIncidentType(rpc.v1.ApproveIncidentTypeRequest) returns (rpc.v1.ApproveIncidentTypeResponse);
   rpc SetIncidentTypeHidden(rpc.v1.SetIncidentTypeHiddenRequest) returns (rpc.v1.SetIncidentTypeHiddenResponse);
   rpc ProposeIncidentType(rpc.v1.ProposeIncidentTypeRequest) returns (rpc.v1.ProposeIncidentTypeResponse);
-  rpc ListOutcomes(rpc.v1.ListOutcomesRequest) returns (rpc.v1.ListOutcomesResponse);
+  // A read (see the GetAuthStatus note): NO_SIDE_EFFECTS so the action-log interceptor skips it.
+  rpc ListOutcomes(rpc.v1.ListOutcomesRequest) returns (rpc.v1.ListOutcomesResponse) {
+    option idempotency_level = NO_SIDE_EFFECTS;
+  }
   rpc CreateOutcome(rpc.v1.CreateOutcomeRequest) returns (rpc.v1.CreateOutcomeResponse);
   rpc UpdateOutcome(rpc.v1.UpdateOutcomeRequest) returns (rpc.v1.UpdateOutcomeResponse);
   rpc ApproveOutcome(rpc.v1.ApproveOutcomeRequest) returns (rpc.v1.ApproveOutcomeResponse);

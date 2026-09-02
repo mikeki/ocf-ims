@@ -322,9 +322,22 @@ update-presence (leave/clear/set), consistent with its optional siblings. The cl
 the "unknown group → 400" test (no analogue). Reads are NO_SIDE_EFFECTS; auth coverage relocated into
 focused `TestListIncidentTypesAuthorization` + `TestIncidentTypeWriteAuthorization`.
 
-Next: **outcomes** (the parallel taxonomy — ListOutcomes + Create/Update/Approve/SetOutcomeHidden +
-ProposeOutcome, near-identical to incident types) → events(EditEvent)/areas/crews → notifications/push →
-metrics/action log. For each: move handler logic into a
+The **outcome taxonomy** is now done too (branch `feat/1c-outcomes`, stacked on `feat/1c-taxonomies`) —
+a new `outcome.Service` with six RPCs, retiring REST GET/POST /outcomes and POST
+/events/{eventName}/outcomes. It mirrors incident types but is simpler: outcomes carry no group and no
+description, so there is **no metrics dependency** (a write invalidates only the `OutcomesCache`, never
+`metricsCache`) and no group-enum bridging. The POST multiplexer decomposed the same way
+(Create/Update/Approve/SetOutcomeHidden); the `editOutcome` test helper dispatches the legacy DTO onto
+the right RPC, and — because the retired update branch applied name+hidden together while
+UpdateOutcome deliberately leaves hidden alone — a DTO carrying both fans out to UpdateOutcome +
+SetOutcomeHidden in the helper. `OutcomesCache` moved from AddToMux into AddConnectToMux (last REST
+consumer gone). `ProposeOutcomeResponse` gained `outcome_id` (same gap as ProposeIncidentType); reads
+are NO_SIDE_EFFECTS. Outcomes were never in the permissions sweeps (their auth lived in
+`outcome_test.go`), so nothing was pruned; focused `TestListOutcomesAuthorization` +
+`TestOutcomeWriteAuthorization` were still added to match the taxonomy coverage bar.
+
+Next: **events(EditEvent)/areas/crews → notifications/push →
+metrics/action log**. For each: move handler logic into a
 proto-shaped domain method on its domain `Service` returning Connect errors, add the RPC
 method to `ImsService`, **delete the REST route + handler and move its `api/integration`
 cases onto the Connect client** (NOT a shim — the aggressive path, plan 09 §6), then verify.

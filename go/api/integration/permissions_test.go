@@ -126,6 +126,56 @@ func TestListIncidentTypesAuthorization(t *testing.T) {
 	require.NoError(t, resp.Body.Close())
 }
 
+// TestOutcomeWriteAuthorization pins the outcome write RPCs' admin-gating now that POST
+// /ims/api/outcomes is retired from REST (the POST multiplexer decomposed into
+// Create/Update/Approve/SetHidden): the admin writes require GlobalAdministrateOutcomes, so a
+// non-admin is forbidden and an unauthenticated caller is unauthorized. CreateOutcome stands in for
+// the four admin writes (they share requireAdmin); the happy path is covered by outcome_test.go.
+func TestOutcomeWriteAuthorization(t *testing.T) {
+	t.Parallel()
+	ctx := t.Context()
+
+	apisNonAdmin := ApiHelper{t: t, serverURL: shared.serverURL, jwt: jwtForAlice(t, ctx)}
+	apisNotAuthenticated := ApiHelper{t: t, serverURL: shared.serverURL, jwt: ""}
+
+	name := rand.NonCryptoText()
+
+	// A non-admin lacks GlobalAdministrateOutcomes: 403.
+	_, resp := apisNonAdmin.editOutcome(ctx, imsjson.Outcome{Name: &name})
+	require.Equal(t, http.StatusForbidden, resp.StatusCode)
+	require.NoError(t, resp.Body.Close())
+
+	// Unauthenticated: 401.
+	_, resp = apisNotAuthenticated.editOutcome(ctx, imsjson.Outcome{Name: &name})
+	require.Equal(t, http.StatusUnauthorized, resp.StatusCode)
+	require.NoError(t, resp.Body.Close())
+}
+
+// TestListOutcomesAuthorization pins the ListOutcomes RPC's authorization now that GET
+// /ims/api/outcomes is retired from REST: an unauthenticated caller is rejected, and any
+// authenticated user may read the taxonomy (GlobalReadOutcomes is granted to every signed-in user).
+func TestListOutcomesAuthorization(t *testing.T) {
+	t.Parallel()
+	ctx := t.Context()
+
+	apisAdmin := ApiHelper{t: t, serverURL: shared.serverURL, jwt: jwtForAdmin(ctx, t)}
+	apisNonAdmin := ApiHelper{t: t, serverURL: shared.serverURL, jwt: jwtForAlice(t, ctx)}
+	apisNotAuthenticated := ApiHelper{t: t, serverURL: shared.serverURL, jwt: ""}
+
+	// Unauthenticated: 401.
+	_, resp := apisNotAuthenticated.getOutcomes(ctx)
+	require.Equal(t, http.StatusUnauthorized, resp.StatusCode)
+	require.NoError(t, resp.Body.Close())
+
+	// Any authenticated user (admin or not) may read the taxonomy.
+	_, resp = apisAdmin.getOutcomes(ctx)
+	require.Equal(t, http.StatusOK, resp.StatusCode)
+	require.NoError(t, resp.Body.Close())
+	_, resp = apisNonAdmin.getOutcomes(ctx)
+	require.Equal(t, http.StatusOK, resp.StatusCode)
+	require.NoError(t, resp.Body.Close())
+}
+
 func TestEventEndpoints_ForNoEventPerms(t *testing.T) {
 	t.Parallel()
 	ctx := t.Context()
