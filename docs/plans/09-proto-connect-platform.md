@@ -1024,6 +1024,40 @@ as further methods on the same `Service`. Findings:
   Unauthenticated). No `permissions_test` sweep rows referenced these routes, so nothing there needed
   pruning.
 
+### 1c — Domain extraction: GetAuthStatus completion (whoami / session status) (2026-09-02)
+
+The whoami RPC, stubbed in 1b to answer only the identity subset (proving the interceptor spine),
+is completed and moved onto a **new `auth.Service`** (`ImsService.Auth`), stacked on the profile
+slice. The stub had left the viewer-derived remainder zero-valued on purpose; the domain method now
+computes it — `can_manage_personnel` (the `GlobalAdministratePersonnel` global),
+`push_vapid_public_key`, `using_default_password` (the cheap once-per-user argon2 check + best-effort
+`MarkPasswordChanged`), and per-event `event_access` — all ported verbatim from REST `getAuth`.
+Findings:
+
+- **A read RPC's completion is still a Service method + a one-line delegate.** The 1b stub was an
+  in-line `func (ImsService) GetAuthStatus`; it became `auth.Service.GetAuthStatus` with
+  `ImsService` delegating, so the auth domain now has the same shape as the others and Login /
+  RefreshToken can land as further methods on the same `Service` next.
+- **The event key changes from name to id — a deliberate contract shift, not a verbatim port.** REST
+  `getAuth` took the event as a NAME query param and keyed `event_access` by that name; the contract
+  keys it by numeric event id (`map<int32, AccessForEvent>`). So the REST endpoint's name-validation
+  400 (an event name with spaces) has **no analogue** and its test case was dropped with the route,
+  and the non-existent-event behavior (all-false entry, deliberately not a 404, so a caller can't
+  distinguish "no such event" from "no access") is preserved against a numeric id. The integration
+  helper bridges the impedance: it resolves the caller's name to an id (a sentinel id for an unknown
+  name still exercises the not-found branch) and re-keys the single returned entry under the name, so
+  the many name-keyed `getAuth` assertions are unchanged.
+- **Retiring GET /auth cost an action-log fixture.** `TestGetActionLog` used the (REST-logged) GET
+  /auth as the row it read back; GetAuthStatus is `NO_SIDE_EFFECTS`, which the action-log interceptor
+  skips (correctly — it's a read), and RPCs don't capture the `Referer` the test filters on anyway.
+  The fixture switched to the still-REST login (POST /auth), which remains action-logged and carries
+  the Referer. *When you retire a REST read that a **different** test leaned on as a logged fixture,
+  that test needs a new logged fixture — a read RPC won't be one.*
+
+Kept as the test bridge (the role imsjson plays elsewhere): the `auth.GetAuthResponse` /
+`AccessForEvent` DTO structs, now that their REST handler is gone. Login and RefreshToken (cookie +
+the plan-90 login throttle across the Connect boundary) are the next, riskier, slice.
+
 ## 8. Open questions
 
 1. **Does the Go binary keep serving static assets in production**, or does Caddy?

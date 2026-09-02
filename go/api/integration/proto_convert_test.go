@@ -23,6 +23,7 @@ import (
 	commonv1 "github.com/mikeki/ocf-ims/gen/ocf/ims/common/v1"
 	resourcesv1 "github.com/mikeki/ocf-ims/gen/ocf/ims/resources/v1"
 	servicerpcv1 "github.com/mikeki/ocf-ims/gen/ocf/ims/service/rpc/v1"
+	authapi "github.com/mikeki/ocf-ims/internal/auth"
 	imsjson "github.com/mikeki/ocf-ims/json"
 	"google.golang.org/protobuf/types/known/timestamppb"
 )
@@ -319,5 +320,42 @@ func connectStatus(err error) int {
 		return http.StatusBadRequest
 	default:
 		return http.StatusInternalServerError
+	}
+}
+
+// getAuthResponseFromProto maps the GetAuthStatus RPC's proto response back to the legacy
+// authapi.GetAuthResponse the auth tests assert against. The proto keys event_access by numeric
+// event id; the tests are name-keyed, so the single requested entry is re-keyed under eventName
+// (getAuth resolves the name to the id it sends, so there is at most one entry). This test-only
+// bridge plays the role imsjson does for the other resources and dies with the REST DTO.
+func getAuthResponseFromProto(p *servicerpcv1.GetAuthStatusResponse, eventName string) authapi.GetAuthResponse {
+	out := authapi.GetAuthResponse{
+		Authenticated:        p.GetAuthenticated(),
+		User:                 p.GetUser(),
+		PersonID:             int64(p.GetPersonId()),
+		Admin:                p.GetAdmin(),
+		CanManagePersonnel:   p.GetCanManagePersonnel(),
+		PushVAPIDPublicKey:   p.GetPushVapidPublicKey(),
+		UsingDefaultPassword: p.GetUsingDefaultPassword(),
+	}
+	// At most one entry (getAuth requests a single event); re-key it under the caller's name.
+	for _, a := range p.GetEventAccess() {
+		out.EventAccess = map[string]authapi.AccessForEvent{eventName: accessForEventFromProto(a)}
+	}
+	return out
+}
+
+func accessForEventFromProto(a *servicerpcv1.AccessForEvent) authapi.AccessForEvent {
+	return authapi.AccessForEvent{
+		EventID:               a.GetEventId(),
+		ReadIncidents:         a.GetReadIncidents(),
+		WriteIncidents:        a.GetWriteIncidents(),
+		WriteReports:          a.GetWriteReports(),
+		ReadVisits:            a.GetReadVisits(),
+		WriteVisits:           a.GetWriteVisits(),
+		AttachFiles:           a.GetAttachFiles(),
+		ReadAreas:             a.GetReadAreas(),
+		ReadIncidentsViaGrant: a.GetReadIncidentsViaGrant(),
+		InviteReporters:       a.GetInviteReporters(),
 	}
 }

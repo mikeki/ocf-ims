@@ -111,16 +111,10 @@ func AddToMux(
 		),
 	)
 
-	mux.Handle("GET /ims/api/auth",
-		server.Adapt(
-			auth.GetAuth{ImsDBQ: db, UserStore: userStore, JwtSecret: cfg.Core.JWTSecret, AttachmentsEnabled: attachmentsEnabled, PushVAPIDPublicKey: cfg.Push.VAPIDPublicKey, DefaultPassword: cfg.Core.DefaultPassword},
-			server.RecoverFromPanic(),
-			// This endpoint does not require authentication or authorization, by design
-			server.OptionalAuthN(jwter),
-			server.LogRequest(true, actionLogger, userStore),
-			server.LimitRequestBytes(cfg.Core.MaxRequestBytes),
-		),
-	)
+	// The whoami / session status (GET /auth) moved onto Connect (ImsService.GetAuthStatus,
+	// registered via AddConnectToMux); its REST route was retired, not shimmed (aggressive
+	// migration, plan 09 §6). Login (POST /auth) and refresh (POST /auth/refresh) stay REST here
+	// until the auth-session slice.
 
 	mux.Handle("POST /ims/api/auth/refresh",
 		server.Adapt(
