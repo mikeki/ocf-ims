@@ -11,13 +11,21 @@ option go_package = "github.com/mikeki/ocf-ims/gen/ocf/ims/service/rpc/v1;servic
 
 // Request/response envelopes for the personnel RPCs (declared in ../../v1/service.proto).
 
-// ListPersonnelRequest mirrors GET /personnel's query params, which select the mode:
-// all=true is the admin listing (email/phone/has_password populated); query is the
-// event-scoped typeahead; event_id scopes the roster. All optional.
+// ListPersonnelRequest mirrors GET /personnel's query params, which select the mode
+// (highest-precedence first): query is the event-scoped typeahead; person_id fetches a
+// single person for the profile card; all=true is the admin listing (email/phone/
+// has_password populated), where show_all expands an event-scoped roster to every
+// person; the default (none set) is the login directory. event_id scopes the per-event
+// wristband/participation/crew columns. All optional.
 message ListPersonnelRequest {
   optional int32 event_id = 1;
   optional string query = 2;
   bool all = 3;
+  // person_id selects the single-person profile-card lookup (a one-element result).
+  optional int32 person_id = 4;
+  // show_all expands the all=true admin listing past the event roster to every person
+  // (only meaningful with all=true and an event scoped).
+  bool show_all = 5;
 }
 
 message ListPersonnelResponse {

@@ -1101,6 +1101,41 @@ machinery. Findings:
 The whole auth & session surface (login, refresh, whoami, and the self-service profile RPCs) is now on
 Connect; only the multipart profile-picture upload stays REST.
 
+### 1c — Domain extraction: ListPersonnel (the personnel read) (2026-09-02)
+
+The personnel resource splits reads-before-writes like the report and auth slices did: `ListPersonnel`
+(the read) landed first, as a method on the existing `person.Service` (already home to the self-service
+RPCs), retiring REST `GET /personnel`; the seven admin writes are the next slice. Findings:
+
+- **A query-multiplexed READ ports the same way a body-multiplexed write does — the modes stay in one
+  RPC, but the missing selectors are filled into the request.** The REST `GET /personnel` handler
+  dispatched four modes off query params: a `?q=` typeahead, a `?person_id=` profile-card lookup, a
+  `?all=`/`?showAll=` admin-or-roster listing, and the default login directory. The 0e
+  `ListPersonnelRequest` had only `event_id`/`query`/`all`; the extraction added **`person_id`** and
+  **`show_all`** so the one RPC still expresses every mode — the same "a list RPC grows a field per REST
+  query param the RPC can't read off the URL" move as ListEvents' `include_groups` and
+  ListIncidents/ListReports' `exclude_system_entries`. (This differs from the *write*-side multiplex
+  family — SaveArea → Create/Update/Approve — which was decomposed into separate RPCs: a write with
+  distinct verbs earns distinct RPCs, but a read whose modes are just different *filters/projections* of
+  the same list stays one RPC with optional selectors.)
+- **The condemned json assembler stays; only its transport dependency is inverted.** The handler's
+  intricate mode logic (per-mode contact-field gating, the roster-vs-all EventInviteReporters carve-out,
+  the crew annotation) is ported verbatim into a ctx-based `listPersonnel` that still returns
+  `imsjson.Person`; `connect.go` bridges each row to `resources/v1.Person` via `personToProto`. Same
+  philosophy as the incident/report reads — reuse the assembler at the proto boundary; the json layer
+  dies later in the single DB→proto rewrite. A new `participationTypeToProto` maps the stored MySQL
+  participation string onto the proto enum (its inverse lives in the test bridge).
+- **Two REST 400s vanish with the typed contract, consistent with GetAuthStatus.** Keying the event
+  scope by id (not name) drops the name-validation-400; typing `person_id` as an `int32` drops the
+  non-numeric-`person_id`-400. Both were live REST tests with no analogue — removed with a note, exactly
+  as the GetAuthStatus slice removed its name-400 case.
+- **Retiring the read relocated its authorization coverage.** The generic unauth-401 / any-authenticated
+  behavior for `GET /personnel` lived in the `TestAnyUnauthenticatedUserEndpoints` route sweep (now a
+  404 over REST); it moved into a focused `TestListPersonnelAuthorization` through the Connect client
+  (unauth→401, any authenticated user→200 for the directory listing under GlobalReadPersonnel, non-admin
+  `all=true`→403 under GlobalAdministratePersonnel) — the same relocation the report reads made into
+  `TestReportReadAuthorization`.
+
 ## 8. Open questions
 
 1. **Does the Go binary keep serving static assets in production**, or does Caddy?

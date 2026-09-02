@@ -26,8 +26,10 @@ import (
 	"connectrpc.com/connect"
 	"github.com/mikeki/ocf-ims/conf"
 	"github.com/mikeki/ocf-ims/directory"
+	resourcesv1 "github.com/mikeki/ocf-ims/gen/ocf/ims/resources/v1"
 	rpcv1 "github.com/mikeki/ocf-ims/gen/ocf/ims/service/rpc/v1"
 	"github.com/mikeki/ocf-ims/internal/server"
+	imsjson "github.com/mikeki/ocf-ims/json"
 	"github.com/mikeki/ocf-ims/lib/argon2id"
 	"github.com/mikeki/ocf-ims/lib/attachment"
 	"github.com/mikeki/ocf-ims/lib/conv"
@@ -38,16 +40,44 @@ import (
 // Service is the person domain's Connect surface: it holds the dependencies the person RPCs share
 // so each RPC is a method rather than a free function with a long, per-call dependency list. It
 // mirrors incident.Service (plan 09h/1c). api.ImsService composes one of these (built once in
-// AddConnectToMux) and delegates to it. This slice adds the caller's own self-service RPCs
-// (ChangeOwnPassword, UpdateOwnProfile, DeleteOwnProfilePicture); the admin personnel-management
-// RPCs land as further methods on the same Service in a later slice. AttachmentsStore/S3Client are
-// used only by the picture RPC; DefaultPassword only by the password change.
+// AddConnectToMux) and delegates to it. The self-service RPCs (ChangeOwnPassword, UpdateOwnProfile,
+// DeleteOwnProfilePicture) and the personnel read (ListPersonnel) live here; the admin
+// personnel-management writes land as further methods on the same Service in a later slice.
+// AttachmentsStore/S3Client are used only by the picture RPCs; DefaultPassword only by the password
+// change/reset.
 type Service struct {
 	ImsDBQ           *store.DBQ
 	UserStore        directory.UserStore
 	DefaultPassword  string
 	AttachmentsStore conf.AttachmentsStore
 	S3Client         *attachment.S3Client
+}
+
+// ListPersonnel is the domain method behind the ListPersonnel RPC (plan 09h/1c). The REST GET
+// /ims/api/personnel endpoint was RETIRED with this extraction, not shimmed (migration decision,
+// plan 09 §Migration strategy). The mode-multiplexing assembly is ported verbatim in listPersonnel
+// (personnel.go), which returns imsjson.Person values — the shared read-path shape; this method
+// authorizes the caller (any authenticated user; GlobalReadPersonnel is the floor listPersonnel
+// enforces) and bridges the result to the wire. Unlike REST it keys the event scope by id, not
+// name, so the name-validation-400 case has no analogue (matching the GetAuthStatus extraction).
+func (s Service) ListPersonnel(
+	ctx context.Context,
+	req *rpcv1.ListPersonnelRequest,
+) (*rpcv1.ListPersonnelResponse, error) {
+	claims, ok := server.ClaimsFromContext(ctx)
+	if !ok {
+		return nil, connect.NewError(connect.CodeUnauthenticated, errors.New("authentication required"))
+	}
+	people, errHTTP := s.listPersonnel(ctx, *claims,
+		req.GetEventId(), req.GetQuery(), req.GetAll(), req.GetShowAll(), req.GetPersonId())
+	if errHTTP != nil {
+		return nil, server.HerrToConnect(errHTTP)
+	}
+	protoPeople := make([]*resourcesv1.Person, 0, len(people))
+	for i := range people {
+		protoPeople = append(protoPeople, personToProto(people[i]))
+	}
+	return &rpcv1.ListPersonnelResponse{People: protoPeople}, nil
 }
 
 // ChangeOwnPassword is the domain method behind the ChangeOwnPassword RPC (plan 09h/1c). The REST
@@ -180,4 +210,61 @@ func (s Service) resolveSelf(ctx context.Context) (imsdb.PersonByIDRow, error) {
 		return imsdb.PersonByIDRow{}, connect.NewError(connect.CodeInternal, fmt.Errorf("failed to load person: %w", err))
 	}
 	return person, nil
+}
+
+// personToProto maps an assembled imsjson.Person onto the resources/v1.Person proto — the
+// person-side mirror of incidentJSONToProto, a throwaway bridge from the condemned json read layer
+// to the wire that collapses into a direct DB→proto mapping when the personnel read path is rebuilt.
+// json.Person populates its fields selectively per mode (email/phone only on the admin listing,
+// wristband/participation/crews only on event-scoped reads); that gating already happened in
+// listPersonnel, so this just carries whatever is set. The optional string fields go to nil when
+// empty (the resource's "unset" — email/phone/wristband are absent on most modes).
+func personToProto(p imsjson.Person) *resourcesv1.Person {
+	out := &resourcesv1.Person{
+		Handle:            conv.EmptyToNil(p.Handle),
+		Name:              conv.EmptyToNil(p.Name),
+		Email:             conv.EmptyToNil(p.Email),
+		Phone:             conv.EmptyToNil(p.Phone),
+		HasPassword:       p.HasPassword,
+		IsAdmin:           p.IsAdmin,
+		PersonId:          int32(p.PersonID),
+		ProfilePictureUrl: p.ProfilePictureURL,
+		Wristband:         conv.EmptyToNil(p.Wristband),
+		ParticipationType: participationTypeToProto(p.ParticipationType),
+	}
+	if len(p.Crews) > 0 {
+		out.Crews = make([]*resourcesv1.PersonCrew, 0, len(p.Crews))
+		for _, c := range p.Crews {
+			out.Crews = append(out.Crews, &resourcesv1.PersonCrew{
+				CrewName: c.Name,
+				CrewSlug: c.Slug,
+				IsLeader: c.IsLeader,
+			})
+		}
+	}
+	return out
+}
+
+// participationTypeToProto maps the stored PERSON__EVENT participation string (the raw MySQL
+// enum value json.Person carries) onto the proto ParticipationType enum. An empty string —
+// "not populated / not in event scope" — is UNSPECIFIED.
+func participationTypeToProto(s string) resourcesv1.ParticipationType {
+	switch imsdb.PersonEventParticipationType(s) {
+	case imsdb.PersonEventParticipationTypeWriter:
+		return resourcesv1.ParticipationType_PARTICIPATION_TYPE_WRITER
+	case imsdb.PersonEventParticipationTypeCrewLeader:
+		return resourcesv1.ParticipationType_PARTICIPATION_TYPE_CREW_LEADER
+	case imsdb.PersonEventParticipationTypeReporter:
+		return resourcesv1.ParticipationType_PARTICIPATION_TYPE_REPORTER
+	case imsdb.PersonEventParticipationTypeVolunteer:
+		return resourcesv1.ParticipationType_PARTICIPATION_TYPE_VOLUNTEER
+	case imsdb.PersonEventParticipationTypePublic:
+		return resourcesv1.ParticipationType_PARTICIPATION_TYPE_PUBLIC
+	case imsdb.PersonEventParticipationTypeNotPresent:
+		return resourcesv1.ParticipationType_PARTICIPATION_TYPE_NOT_PRESENT
+	case imsdb.PersonEventParticipationTypeEjected:
+		return resourcesv1.ParticipationType_PARTICIPATION_TYPE_EJECTED
+	default:
+		return resourcesv1.ParticipationType_PARTICIPATION_TYPE_UNSPECIFIED
+	}
 }
