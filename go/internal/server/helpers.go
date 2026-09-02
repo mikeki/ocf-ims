@@ -28,12 +28,35 @@ import (
 	"strconv"
 	"strings"
 
+	"connectrpc.com/connect"
 	"github.com/mikeki/ocf-ims/directory"
 	"github.com/mikeki/ocf-ims/lib/authz"
 	"github.com/mikeki/ocf-ims/lib/herr"
 	"github.com/mikeki/ocf-ims/store"
 	"github.com/mikeki/ocf-ims/store/imsdb"
 )
+
+// HerrToConnect maps an herr.HTTPError from the reused REST-era domain helpers onto the
+// equivalent Connect error code, so an extracted domain method speaks Connect codes end to end.
+// Only the client-facing ResponseMessage crosses the boundary; the internal error detail stays
+// server-side. It is the shared form of the mapping each extracted domain (plan 09h/1c) needs —
+// the incident package still carries its own private copy pending a cleanup; new domains use this.
+func HerrToConnect(e *herr.HTTPError) error {
+	code := connect.CodeInternal
+	switch e.Code {
+	case http.StatusBadRequest:
+		code = connect.CodeInvalidArgument
+	case http.StatusUnauthorized:
+		code = connect.CodeUnauthenticated
+	case http.StatusForbidden:
+		code = connect.CodePermissionDenied
+	case http.StatusNotFound:
+		code = connect.CodeNotFound
+	case http.StatusConflict:
+		code = connect.CodeAlreadyExists
+	}
+	return connect.NewError(code, errors.New(e.ResponseMessage))
+}
 
 // PersonByIDFromPath reads the {personId} path value, validates it, and loads the
 // person. Since 5e the web UI addresses people by their stable ID (registry people

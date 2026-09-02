@@ -215,7 +215,7 @@ func setup(ctx context.Context, tempDir string) {
 	// the generated Connect client instead (e.g. TestGetAndEditEvent's ListEvents).
 	// It shares es + metricsCache so an extracted write fans out SSE and invalidates the
 	// dashboard exactly as the REST path did; nil push sender → the no-op backend.
-	api.AddConnectToMux(mux, shared.cfg, shared.imsDBQ, shared.actionLogger, shared.userStore, shared.es, shared.metricsCache, nil)
+	api.AddConnectToMux(mux, shared.cfg, shared.imsDBQ, shared.actionLogger, shared.userStore, shared.es, shared.metricsCache, nil, nil)
 	shared.testServer = httptest.NewServer(mux)
 	shared.serverURL, err = url.Parse(shared.testServer.URL)
 	must(err)
