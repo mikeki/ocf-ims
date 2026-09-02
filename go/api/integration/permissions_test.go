@@ -42,7 +42,9 @@ func TestAdminOnlyEndpoints(t *testing.T) {
 	apisNotAuthenticated := ApiHelper{t: t, serverURL: shared.serverURL, jwt: ""}
 
 	adminOnly := []MethodURL{
-		{http.MethodGet, "/ims/api/actionlogs"},
+		// NOTE: GET /actionlogs is intentionally not listed here. It moved to the
+		// ImsService.ListActionLogs RPC in the final 1c slice; its admin-gating (403 for a non-admin,
+		// 401 for unauth) is covered by TestListActionLogsAuthorization below.
 		// NOTE: POST /events is intentionally not listed here. It moved to the ImsService event
 		// RPCs in 1c (the POST multiplexer decomposed into CreateEvent/UpdateEvent); its
 		// admin-gating (403 for a non-admin, 401 for unauth) is covered by
@@ -242,6 +244,34 @@ func TestListAreasAuthorization(t *testing.T) {
 
 	// The admin (bypass) may always read.
 	_, resp = apisAdmin.getAreas(ctx, eventName)
+	require.Equal(t, http.StatusOK, resp.StatusCode)
+	require.NoError(t, resp.Body.Close())
+}
+
+// TestListActionLogsAuthorization pins the ListActionLogs RPC's admin-gating now that GET
+// /ims/api/actionlogs is retired from REST (it was the head of the admin-only route sweep): the audit
+// read requires GlobalAdministrateDebugging (admin-only), so a non-admin is forbidden and an
+// unauthenticated caller is unauthorized; an admin may read.
+func TestListActionLogsAuthorization(t *testing.T) {
+	t.Parallel()
+	ctx := t.Context()
+
+	apisAdmin := ApiHelper{t: t, serverURL: shared.serverURL, jwt: jwtForAdmin(ctx, t)}
+	apisNonAdmin := ApiHelper{t: t, serverURL: shared.serverURL, jwt: jwtForAlice(t, ctx)}
+	apisNotAuthenticated := ApiHelper{t: t, serverURL: shared.serverURL, jwt: ""}
+
+	// Unauthenticated: 401.
+	_, resp := apisNotAuthenticated.getActionLogs(ctx)
+	require.Equal(t, http.StatusUnauthorized, resp.StatusCode)
+	require.NoError(t, resp.Body.Close())
+
+	// A non-admin lacks GlobalAdministrateDebugging: 403.
+	_, resp = apisNonAdmin.getActionLogs(ctx)
+	require.Equal(t, http.StatusForbidden, resp.StatusCode)
+	require.NoError(t, resp.Body.Close())
+
+	// The admin may read the audit log.
+	_, resp = apisAdmin.getActionLogs(ctx)
 	require.Equal(t, http.StatusOK, resp.StatusCode)
 	require.NoError(t, resp.Body.Close())
 }

@@ -1382,6 +1382,47 @@ Two small per-caller domains landed together: `notification.Service` (`ListNotif
   `push_test.go`), so nothing relocated. `ListNotifications` is `NO_SIDE_EFFECTS`; the empty-endpoint /
   empty-key 400s the push handler returned are now the request's `min_len` constraints.
 
+### 1c — Domain extraction: metrics & action log (2026-09-02)
+
+**The last RPC slice — every ImsService method is now implemented.** `metrics.Service` (`GetMetrics`,
+retiring `GET /events/{eventName}/metrics`) and `actionlog.Service` (`ListActionLogs`, retiring
+`GET /actionlogs`), both reads marked `NO_SIDE_EFFECTS` (their REST predecessors were `LogRequest(false)`).
+
+- **Reuse the aggregation core, re-home only the transport.** `GetMetrics`'s heavy `buildMetrics` (+
+  `priorityKey`/`stateLabel`/`categoryKeyLabel`/`participationLadder`) stayed put in `metrics.go`;
+  only `computeMetrics` (the errgroup of GROUP-BY queries) moved onto the `Service`. The gate is
+  identical to REST — admins + per-event writers via one `EventWriteIncidents` check — but read from
+  ctx claims (`authz.EventPermissions`), not the `*http.Request`.
+- **A shared, name-keyed cache read from an id-keyed request.** Unlike the per-domain ref-data caches
+  (which re-keyed to event id once private to their Service), `MetricsCache` stays keyed by event
+  **name** because the incident/area/type writes invalidate it by name. So `GetMetrics` resolves its
+  `event_id` → event → name for the cache key; a missing id is the id-keyed analogue of the REST
+  name-not-found **404**.
+- **The empty-request contract drops the REST query filters.** `ListActionLogsRequest` is empty (the
+  0e contract exposed no filters), so the read returns the whole table and the one test filters by
+  Referer in Go — and the REST `minTimeUnixMs`/`maxTimeUnixMs` **invalid-time → 400** cases have *no
+  analogue* and were dropped, exactly like the name/non-numeric 400s dropped by the other id-keyed
+  reads. Filters move onto the request message when a real need appears. `TestGetActionLog` keeps its
+  still-REST, action-logged, Referer-carrying profile-picture-upload fixture (unchanged from the
+  events slice).
+- **`metricsCache` left `AddToMux`'s signature.** With both reads gone from REST, nothing in the REST
+  wiring needed the cache; serve.go now passes it to `AddConnectToMux` only (still created once there —
+  process-wide shared state). *A cross-surface cache stops being a REST parameter the moment its last
+  REST consumer is extracted; don't leave a dead dependency threaded through the wiring.*
+- **The Unimplemented probe was reframed, as flagged.** Every RPC is implemented, so no production
+  method returns `CodeUnimplemented` any more. `TestConnectUnimplementedPassesValidation` now stands up
+  a **test-only bare `ImsService` handler** — embeds only `UnimplementedImsServiceHandler`, overrides
+  nothing — behind the *real* interceptor chain (`server.Interceptors(...)`), and asserts a valid empty
+  `ListActionLogsRequest` clears protovalidate and reaches it → `CodeUnimplemented`. This proves
+  "valid request reaches the handler" independently of any production method. `TestConnectActionLog-
+  AuditsMutations` keeps `MarkAllNotificationsRead` (unauthenticated) as its audited mutation.
+- GET /actionlogs left the admin-only route sweep for a focused `TestListActionLogsAuthorization`
+  (`GlobalAdministrateDebugging`); the metrics gate stays covered by `TestMetricsAccess`.
+
+**1c is now feature-complete.** The tail is non-resource work: enable the path-scoped `funlen` rule
+(the files it scopes are finally thin), then the direct DB→proto read-mapper follow-up that retires
+the throwaway json↔proto test bridges.
+
 ## 8. Open questions
 
 1. **Does the Go binary keep serving static assets in production**, or does Caddy?

@@ -118,6 +118,12 @@ resources are extracted together.
 
 ## Resume pointer (for an autonomous continuation)
 
+**All RPC resource slices are extracted** — the metrics/action-log slice (branch
+`feat/1c-metrics-actionlog`) was the last, and every ImsService method is now implemented. What
+remains of 1c is the **non-resource tail**: enable the path-scoped `funlen` rule (only now that every
+handler file is thin), and the direct DB→proto read-mapper follow-up that retires the throwaway
+json↔proto test bridges. See the newest §7 finding for details.
+
 State lives in git + memory, not here. To continue: `git log --oneline -5` on the
 current 1c branch (or master, if a chunk merged), read the newest §7 finding and the
 memory file `maybloom-stack-go-adoption.md`, then take the next resource in the order
@@ -402,11 +408,35 @@ Unauthenticated, so still exactly one side-effect-free audit row). **After the m
 nothing is unimplemented**, so TestConnectUnimplementedPassesValidation will then need a test-only
 unregistered method rather than a real RPC.
 
-Next: **metrics/action log** (both reads: GetMetrics, ListActionLogs — the last slice). For each: move
-handler logic into a
-proto-shaped domain method on its domain `Service` returning Connect errors, add the RPC
-method to `ImsService`, **delete the REST route + handler and move its `api/integration`
-cases onto the Connect client** (NOT a shim — the aggressive path, plan 09 §6), then verify.
-**Defer `funlen`:** the path-scoped rule can only be enabled once the files it scopes are
-actually thin, so it lands near the END of 1c — turning it on now would fail lint on every
-not-yet-extracted handler.
+The **metrics + action-log** surfaces are now done (branch `feat/1c-metrics-actionlog`, stacked on
+`feat/1c-notifications-push`) — **the last RPC slice; every ImsService method is now implemented.** A
+`metrics.Service` (GetMetrics, retiring GET /events/{eventName}/metrics) and an `actionlog.Service`
+(ListActionLogs, retiring GET /actionlogs), both reads marked NO_SIDE_EFFECTS. Notes:
+- **GetMetrics** keeps the retired handler's aggregation core (`buildMetrics` + helpers stay in
+  metrics.go; `computeMetrics` became a `Service` method in connect.go). It authorizes exactly as the
+  REST read did — admins + per-event writers via a single `EventWriteIncidents` check — but from ctx
+  claims (`authz.EventPermissions`), not the request. The request carries `event_id`; the shared
+  `MetricsCache` is keyed by event **name** (the incident writes invalidate it by name), so GetMetrics
+  resolves id→name for the cache key. The id-keyed contract turns the REST name-not-found 404 into an
+  id-not-found 404.
+- **ListActionLogs** is admin-only (`GlobalAdministrateDebugging`). The REST endpoint's
+  min/max-time + userName/path **query filters have no analogue** in the empty `ListActionLogsRequest`
+  (the contract exposes none yet), so the read returns the whole table and callers filter in Go — and
+  the REST invalid-time → 400 cases are **dropped** (no analogue, matching the other id-keyed reads).
+  `TestGetActionLog` keeps its still-REST, Referer-carrying profile-picture-upload fixture.
+- **`metricsCache` dropped out of `AddToMux`'s signature** — with both the dashboard read and the
+  audit read gone from REST, nothing there needed it; serve.go now threads it into AddConnectToMux
+  only (it is still created once in serve.go, process-wide shared state).
+- **The Unimplemented probe was reframed as promised:** every RPC is now implemented, so
+  `TestConnectUnimplementedPassesValidation` stands up a **test-only bare ImsService handler**
+  (embeds only `UnimplementedImsServiceHandler`, overrides nothing) behind the real interceptor
+  chain, and asserts a valid empty `ListActionLogsRequest` clears protovalidate and reaches it →
+  CodeUnimplemented. `TestConnectActionLogAuditsMutations` still uses MarkAllNotificationsRead
+  (unauthenticated) as its audited mutation.
+- Authz coverage relocated as usual: GET /actionlogs left the admin-only route sweep for a focused
+  `TestListActionLogsAuthorization`; the metrics gate stays covered by `TestMetricsAccess`.
+
+Remaining 1c tail (not a resource slice): **`funlen`** path-scoped enablement — the rule can only be
+turned on once the files it scopes are actually thin, so it lands now that every handler is extracted;
+and the **direct DB→proto read-mapper** follow-up that retires the throwaway json↔proto test bridges
+(incidentToJSON/incidentViewToJSON/metricsProtoToJSON/actionLogProtoToJSON/…).

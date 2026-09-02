@@ -1043,11 +1043,21 @@ func (a ApiHelper) detachPersonFromVisit(ctx context.Context, eventName string, 
 	return resp
 }
 
+// getMetrics reads an event's dashboard aggregate through the generated Connect client. The REST
+// GET .../metrics endpoint was retired when GetMetrics was extracted (plan 09h/1c). The event is
+// resolved to its numeric id (resolveEventID) and the Metrics proto is mapped back to the legacy
+// imsjson.Metrics the dashboard tests assert against (metricsProtoToJSON), with a synthesized
+// *http.Response mirroring the retired endpoint's status (200 on success, else connectStatus(err)).
 func (a ApiHelper) getMetrics(ctx context.Context, eventName string) (imsjson.Metrics, *http.Response) {
 	a.t.Helper()
-	path := a.serverURL.JoinPath("/ims/api/events/", eventName, "/metrics").String()
-	bod, resp := a.imsGet(ctx, path, &imsjson.Metrics{})
-	return *bod.(*imsjson.Metrics), resp
+	client := servicev1connect.NewImsServiceClient(http.DefaultClient, a.serverURL.String())
+	rpcReq := connect.NewRequest(&servicerpcv1.GetMetricsRequest{EventId: a.resolveEventID(ctx, eventName)})
+	a.authorizeRPC(rpcReq)
+	resp, err := client.GetMetrics(ctx, rpcReq)
+	if err != nil {
+		return imsjson.Metrics{}, &http.Response{StatusCode: connectStatus(err), Body: http.NoBody}
+	}
+	return metricsProtoToJSON(resp.Msg.GetMetrics()), &http.Response{StatusCode: http.StatusOK, Body: http.NoBody}
 }
 
 // getIncidents lists an event's incidents through the generated Connect client. The REST
@@ -1428,16 +1438,26 @@ func (a ApiHelper) imsDoNoReqBody(ctx context.Context, method, path string, resp
 	return resp, get
 }
 
-func (a ApiHelper) getActionLogs(ctx context.Context, minTime, maxTime string) (imsjson.ActionLogs, *http.Response) {
+// getActionLogs reads the admin audit log through the generated Connect client. The REST GET
+// /actionlogs endpoint was retired when ListActionLogs was extracted (plan 09h/1c). The REST
+// endpoint's min/max-time query filters have no analogue in the empty ListActionLogsRequest (the
+// contract exposes no filters yet), so the read returns the whole table and callers filter in Go;
+// each ActionLog proto is mapped back to the legacy imsjson.ActionLog (actionLogProtoToJSON), with a
+// synthesized *http.Response mirroring the retired endpoint's status.
+func (a ApiHelper) getActionLogs(ctx context.Context) (imsjson.ActionLogs, *http.Response) {
 	a.t.Helper()
-	path := a.serverURL.JoinPath("/ims/api/actionlogs")
-	q := path.Query()
-	q.Set("minTimeUnixMs", minTime)
-	q.Set("maxTimeUnixMs", maxTime)
-	path.RawQuery = q.Encode()
-
-	bod, resp := a.imsGet(ctx, path.String(), &imsjson.ActionLogs{})
-	return *bod.(*imsjson.ActionLogs), resp
+	client := servicev1connect.NewImsServiceClient(http.DefaultClient, a.serverURL.String())
+	rpcReq := connect.NewRequest(&servicerpcv1.ListActionLogsRequest{})
+	a.authorizeRPC(rpcReq)
+	resp, err := client.ListActionLogs(ctx, rpcReq)
+	if err != nil {
+		return nil, &http.Response{StatusCode: connectStatus(err), Body: http.NoBody}
+	}
+	out := make(imsjson.ActionLogs, 0, len(resp.Msg.GetActionLogs()))
+	for _, al := range resp.Msg.GetActionLogs() {
+		out = append(out, actionLogProtoToJSON(al))
+	}
+	return out, &http.Response{StatusCode: http.StatusOK, Body: http.NoBody}
 }
 
 func jwtForAlice(t *testing.T, ctx context.Context) string {
