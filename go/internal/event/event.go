@@ -41,16 +41,25 @@ import (
 	"github.com/mikeki/ocf-ims/store/imsdb"
 )
 
-// ListEvents is the domain function behind the ListEvents RPC (plan 09h/1c). The
+// Service is the event domain's Connect surface: it holds the dependencies the
+// event RPCs share (the IMS store and the user directory) so each RPC is a method
+// rather than a free function with a long, per-call dependency list. api.ImsService
+// composes one of these (built once in AddConnectToMux) and delegates to it. This
+// mirrors the struct-with-fields idiom the REST handlers already use (EditEvent
+// below, NewIncident, …).
+type Service struct {
+	ImsDBQ    *store.DBQ
+	UserStore directory.UserStore
+}
+
+// ListEvents is the domain method behind the ListEvents RPC (plan 09h/1c). The
 // REST GET /events endpoint was RETIRED with this extraction, not kept as a shim
 // (migration decision, plan 09 §Migration strategy) — listing events is
 // Connect-only now. It authorizes the caller from the ctx claims (populated by the
 // auth interceptor), builds the authorized event list, and returns proto messages
 // speaking Connect error codes.
-func ListEvents(
+func (s Service) ListEvents(
 	ctx context.Context,
-	imsDBQ *store.DBQ,
-	userStore directory.UserStore,
 	req *rpcv1.ListEventsRequest,
 ) (*rpcv1.ListEventsResponse, error) {
 	claims, ok := server.ClaimsFromContext(ctx)
@@ -58,7 +67,7 @@ func ListEvents(
 		return nil, connect.NewError(connect.CodeUnauthenticated, errors.New("authentication required"))
 	}
 	// First level of authorization (global). Per-event filtering happens below.
-	_, globalPermissions, err := authz.EventPermissions(ctx, nil, imsDBQ, *claims)
+	_, globalPermissions, err := authz.EventPermissions(ctx, nil, s.ImsDBQ, *claims)
 	if err != nil {
 		return nil, connect.NewError(connect.CodeInternal, fmt.Errorf("failed to compute permissions: %w", err))
 	}
@@ -67,11 +76,11 @@ func ListEvents(
 			errors.New("the requestor does not have GlobalListEvents permission"))
 	}
 
-	allEvents, err := imsDBQ.Events(ctx, imsDBQ)
+	allEvents, err := s.ImsDBQ.Events(ctx, s.ImsDBQ)
 	if err != nil {
 		return nil, connect.NewError(connect.CodeInternal, fmt.Errorf("failed to get events: %w", err))
 	}
-	permsByEvent, errHTTP := server.PermissionsByEvent(ctx, server.JWTContext{Claims: claims}, imsDBQ, userStore)
+	permsByEvent, errHTTP := server.PermissionsByEvent(ctx, server.JWTContext{Claims: claims}, s.ImsDBQ, s.UserStore)
 	if errHTTP != nil {
 		return nil, connect.NewError(connect.CodeInternal, errHTTP)
 	}

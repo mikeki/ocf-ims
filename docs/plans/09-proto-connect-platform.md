@@ -802,6 +802,40 @@ REST `POST .../incidents/{n}` (`EditIncident`). Findings:
   The incident *read* had already dropped visits when `GetIncident` was extracted, so this
   only finishes what the contract started.
 
+### 1c — Domain dependency shape: a per-domain `Service` struct (2026-09-01)
+
+The first four extracted RPCs were free functions taking their dependencies as individual
+params, and the list grew per resource — the write path reached
+`UpdateIncident(ctx, imsDBQ, userStore, es, pusher, metrics, req)`, seven params. The fix
+(prompted by a review question — *"do we need to pass them individually? is there another
+pattern?"*) is the idiom the codebase already uses everywhere: a **struct with fields**.
+Each domain package now exposes a `Service` holding its shared deps
+(`event.Service{ImsDBQ, UserStore}`, `incident.Service{ImsDBQ, UserStore, Es, Pusher,
+Metrics, AttachmentsEnabled}`); the RPCs are **methods** on it, and `api.ImsService`
+**composes** one `Service` per domain (built once in `AddConnectToMux`) with each RPC method
+a one-line delegate. Findings:
+
+- **The bundle already existed — it was just inlined.** `ImsService` was itself a flat bag
+  of exactly these fields, and the REST handlers (`NewIncident{ImsDBQ, UserStore, Es,
+  Pusher, Metrics}`) are the same shape. The free-function signatures were the outlier, not
+  the struct. *When a new layer's signatures fight the codebase's existing idiom, that is
+  usually a signal to match the idiom, not to invent a parameter convention.*
+- **The import direction forces where the bundle lives.** `api` imports `internal/incident`,
+  so the domain package can't take `api.ImsService` (cycle). The `Service` therefore lives
+  in the domain package (its deps are all leaf types — `store`, `directory`,
+  `internal/server`), and `api` composes it. This also keeps the wiring of shared mutable
+  state (`EventSourcerer`, `MetricsCache`) in one place, `AddConnectToMux`.
+- **A read method carrying write deps is an accepted, minor cost.** `GetIncident` sits on the
+  same `Service` as the write fields (`Es`/`Pusher`/`Metrics`) and simply ignores them — the
+  one thing lost versus explicit params is that a read's signature no longer advertises its
+  narrower dependency surface. The codebase already accepts this for its REST handler structs,
+  and the readability win (one-line call sites, no growing arg lists across ~24 resources)
+  clearly outweighs it. *Do this once, early — it standardizes every resource still to come.*
+- **Zero blast radius on the RPC surface.** The only callers were the `ImsService` methods, so
+  the refactor touched three files (`event.go`, `incident/connect.go`, `api/connect.go`) and
+  **no tests** — the generated client, the integration suite, and the wire contract are all
+  unchanged.
+
 ## 8. Open questions
 
 1. **Does the Go binary keep serving static assets in production**, or does Caddy?

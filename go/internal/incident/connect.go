@@ -39,7 +39,24 @@ import (
 	"google.golang.org/protobuf/types/known/timestamppb"
 )
 
-// GetIncident is the domain function behind the GetIncident RPC (plan 09h/1c). The
+// Service is the incident domain's Connect surface: it holds the dependencies the
+// incident RPCs share so each RPC is a method rather than a free function with a long,
+// per-call dependency list (the write path alone threads five). api.ImsService composes
+// one of these (built once in AddConnectToMux) and delegates to it. A read method uses
+// only a subset of the fields (GetIncident ignores Es/Pusher/Metrics); the shape mirrors
+// the struct-with-fields idiom the REST handlers already use (NewIncident, the retired
+// EditIncident, …). AttachmentsEnabled mirrors cfg.AttachmentsStore.Type != none — it
+// gates whether a read surfaces journal-entry attachment metadata.
+type Service struct {
+	ImsDBQ             *store.DBQ
+	UserStore          directory.UserStore
+	Es                 *server.EventSourcerer
+	Pusher             *server.Pusher
+	Metrics            *server.MetricsCache
+	AttachmentsEnabled bool
+}
+
+// GetIncident is the domain method behind the GetIncident RPC (plan 09h/1c). The
 // REST GET /events/{eventName}/incidents/{incidentNumber} endpoint was RETIRED with
 // this extraction, not kept as a shim (migration decision, plan 09 §Migration
 // strategy) — reading a single incident is Connect-only now. It ports the REST
@@ -51,11 +68,8 @@ import (
 // The request keys the event by its numeric id (not the REST path's event name), so
 // this resolves the event row up front; a missing event is NotFound before any
 // permission check, matching the REST GetEvent behavior.
-func GetIncident(
+func (s Service) GetIncident(
 	ctx context.Context,
-	imsDBQ *store.DBQ,
-	userStore directory.UserStore,
-	attachmentsEnabled bool,
 	req *rpcv1.GetIncidentRequest,
 ) (*rpcv1.GetIncidentResponse, error) {
 	claims, ok := server.ClaimsFromContext(ctx)
@@ -63,7 +77,7 @@ func GetIncident(
 		return nil, connect.NewError(connect.CodeUnauthenticated, errors.New("authentication required"))
 	}
 
-	eventRow, err := imsDBQ.Event(ctx, imsDBQ, req.GetEventId())
+	eventRow, err := s.ImsDBQ.Event(ctx, s.ImsDBQ, req.GetEventId())
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return nil, connect.NewError(connect.CodeNotFound, errors.New("event not found"))
@@ -72,7 +86,7 @@ func GetIncident(
 	}
 	event := eventRow.Event
 
-	eventPerms, _, err := authz.EventPermissions(ctx, &event.ID, imsDBQ, *claims)
+	eventPerms, _, err := authz.EventPermissions(ctx, &event.ID, s.ImsDBQ, *claims)
 	if err != nil {
 		return nil, connect.NewError(connect.CodeInternal, fmt.Errorf("failed to compute permissions: %w", err))
 	}
@@ -89,7 +103,7 @@ func GetIncident(
 	// may add journal entries (viewer_may_add_journal below).
 	hasGrant := false
 	if !hasEventRead {
-		hasGrant, err = imsDBQ.IncidentPersonHasGrant(ctx, imsDBQ, imsdb.IncidentPersonHasGrantParams{
+		hasGrant, err = s.ImsDBQ.IncidentPersonHasGrant(ctx, s.ImsDBQ, imsdb.IncidentPersonHasGrantParams{
 			Event: event.ID, IncidentNumber: incidentNumber, PersonID: viewerPersonID,
 		})
 		if err != nil {
@@ -101,7 +115,7 @@ func GetIncident(
 		}
 	}
 
-	storedRow, journalEntries, errHTTP := fetchIncident(ctx, imsDBQ, event.ID, incidentNumber, attachmentsEnabled)
+	storedRow, journalEntries, errHTTP := fetchIncident(ctx, s.ImsDBQ, event.ID, incidentNumber, s.AttachmentsEnabled)
 	if errHTTP != nil {
 		return nil, herrToConnect(errHTTP)
 	}
@@ -112,7 +126,7 @@ func GetIncident(
 	// NotFound so the incident's very existence stays hidden.
 	if storedRow.Incident.Private && !hasGrant && !viewerIsAdmin &&
 		!(storedRow.Incident.CreatedBy.Valid && storedRow.Incident.CreatedBy.Int32 == viewerPersonID) {
-		hasGrant, err = imsDBQ.IncidentPersonHasGrant(ctx, imsDBQ, imsdb.IncidentPersonHasGrantParams{
+		hasGrant, err = s.ImsDBQ.IncidentPersonHasGrant(ctx, s.ImsDBQ, imsdb.IncidentPersonHasGrantParams{
 			Event: event.ID, IncidentNumber: incidentNumber, PersonID: viewerPersonID,
 		})
 		if err != nil {
@@ -123,12 +137,12 @@ func GetIncident(
 		}
 	}
 
-	permsByEvent, errHTTP := server.PermissionsByEvent(ctx, server.JWTContext{Claims: claims}, imsDBQ, userStore)
+	permsByEvent, errHTTP := server.PermissionsByEvent(ctx, server.JWTContext{Claims: claims}, s.ImsDBQ, s.UserStore)
 	if errHTTP != nil {
 		return nil, herrToConnect(errHTTP)
 	}
 
-	peopleRows, err := imsDBQ.Incident_People(ctx, imsDBQ, imsdb.Incident_PeopleParams{
+	peopleRows, err := s.ImsDBQ.Incident_People(ctx, s.ImsDBQ, imsdb.Incident_PeopleParams{
 		Event:          event.ID,
 		IncidentNumber: incidentNumber,
 	})
@@ -140,7 +154,7 @@ func GetIncident(
 		people[i] = imsjson.IncidentPerson{PersonID: int64(row.IncidentPerson.PersonID), Handle: row.Handle.String, Name: row.Name.String, Involvement: conv.SqlToString(row.IncidentPerson.Involvement), GrantedAccess: row.IncidentPerson.GrantedAccess, HasEventAccess: row.HasEventAccess.Bool}
 	}
 
-	linkedIncidents, err := imsDBQ.Incident_LinkedIncidents(ctx, imsDBQ, imsdb.Incident_LinkedIncidentsParams{
+	linkedIncidents, err := s.ImsDBQ.Incident_LinkedIncidents(ctx, s.ImsDBQ, imsdb.Incident_LinkedIncidentsParams{
 		Event1:          event.ID,
 		IncidentNumber1: incidentNumber,
 	})
@@ -164,7 +178,7 @@ func GetIncident(
 	// (plural) and the attachment reads, then bridge the result onto the wire proto.
 	// When the rest of the incident surface moves onto Connect this json hop collapses
 	// into a direct DB→proto mapping (plan 09 §Migration strategy).
-	incJSON, errHTTP := incidentToJSON(storedRow, people, journalEntries, linkedIncidents, event, attachmentsEnabled)
+	incJSON, errHTTP := incidentToJSON(storedRow, people, journalEntries, linkedIncidents, event, s.AttachmentsEnabled)
 	if errHTTP != nil {
 		return nil, herrToConnect(errHTTP)
 	}
@@ -180,7 +194,7 @@ func GetIncident(
 	}, nil
 }
 
-// ListIncidents is the domain function behind the ListIncidents RPC (plan 09h/1c). The
+// ListIncidents is the domain method behind the ListIncidents RPC (plan 09h/1c). The
 // REST GET /events/{eventName}/incidents endpoint was RETIRED with this extraction, not
 // shimmed (migration decision, plan 09 §Migration strategy) — listing incidents is
 // Connect-only now. It ports the REST getIncidents authorization and assembly verbatim:
@@ -194,10 +208,8 @@ func GetIncident(
 // writer/admin may add to any, an involved reporter only to the ones granted). The REST
 // list never surfaced that flag, but the IncidentView contract carries it, and the
 // grant set is already in hand — so it costs nothing to fill in accurately.
-func ListIncidents(
+func (s Service) ListIncidents(
 	ctx context.Context,
-	imsDBQ *store.DBQ,
-	attachmentsEnabled bool,
 	req *rpcv1.ListIncidentsRequest,
 ) (*rpcv1.ListIncidentsResponse, error) {
 	claims, ok := server.ClaimsFromContext(ctx)
@@ -205,7 +217,7 @@ func ListIncidents(
 		return nil, connect.NewError(connect.CodeUnauthenticated, errors.New("authentication required"))
 	}
 
-	eventRow, err := imsDBQ.Event(ctx, imsDBQ, req.GetEventId())
+	eventRow, err := s.ImsDBQ.Event(ctx, s.ImsDBQ, req.GetEventId())
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return nil, connect.NewError(connect.CodeNotFound, errors.New("event not found"))
@@ -214,7 +226,7 @@ func ListIncidents(
 	}
 	event := eventRow.Event
 
-	eventPerms, _, err := authz.EventPermissions(ctx, &event.ID, imsDBQ, *claims)
+	eventPerms, _, err := authz.EventPermissions(ctx, &event.ID, s.ImsDBQ, *claims)
 	if err != nil {
 		return nil, connect.NewError(connect.CodeInternal, fmt.Errorf("failed to compute permissions: %w", err))
 	}
@@ -230,7 +242,7 @@ func ListIncidents(
 	// forbidden — volunteer/public access isn't loosened.
 	grantedSet := map[int32]bool{}
 	if !viewerIsAdmin {
-		grantedNums, err := imsDBQ.GrantedIncidentNumbersForPerson(ctx, imsDBQ,
+		grantedNums, err := s.ImsDBQ.GrantedIncidentNumbersForPerson(ctx, s.ImsDBQ,
 			imsdb.GrantedIncidentNumbersForPersonParams{Event: event.ID, PersonID: viewerPersonID})
 		if err != nil {
 			return nil, connect.NewError(connect.CodeInternal, fmt.Errorf("failed to fetch granted incidents: %w", err))
@@ -252,7 +264,7 @@ func ListIncidents(
 
 	entriesByIncident := make(map[int32][]imsjson.JournalEntry)
 	group.Go(func() error {
-		journalEntries, err := imsDBQ.Incidents_JournalEntries(groupCtx, imsDBQ,
+		journalEntries, err := s.ImsDBQ.Incidents_JournalEntries(groupCtx, s.ImsDBQ,
 			imsdb.Incidents_JournalEntriesParams{Event: event.ID, Generated: includeSystemEntries})
 		if err != nil {
 			return connect.NewError(connect.CodeInternal, fmt.Errorf("failed to fetch incident journal entries: %w", err))
@@ -260,14 +272,14 @@ func ListIncidents(
 		for _, row := range journalEntries {
 			// Incidents don't set "on behalf of" (6m is reports-only for now).
 			entriesByIncident[row.IncidentNumber] = append(entriesByIncident[row.IncidentNumber],
-				journalEntryToJSON(row.JournalEntry, row.Author.String, nil, attachmentsEnabled))
+				journalEntryToJSON(row.JournalEntry, row.Author.String, nil, s.AttachmentsEnabled))
 		}
 		return nil
 	})
 
 	peopleByIncident := make(map[int32][]imsjson.IncidentPerson)
 	group.Go(func() error {
-		peopleRows, err := imsDBQ.Incidents_People(groupCtx, imsDBQ, event.ID)
+		peopleRows, err := s.ImsDBQ.Incidents_People(groupCtx, s.ImsDBQ, event.ID)
 		if err != nil {
 			return connect.NewError(connect.CodeInternal, fmt.Errorf("failed to fetch people: %w", err))
 		}
@@ -281,7 +293,7 @@ func ListIncidents(
 	var incidentsRows []imsdb.IncidentsRow
 	group.Go(func() error {
 		var err error
-		incidentsRows, err = imsDBQ.Incidents(groupCtx, imsDBQ, event.ID)
+		incidentsRows, err = s.ImsDBQ.Incidents(groupCtx, s.ImsDBQ, event.ID)
 		if err != nil {
 			return connect.NewError(connect.CodeInternal, fmt.Errorf("failed to fetch incidents: %w", err))
 		}
@@ -306,7 +318,7 @@ func ListIncidents(
 		incidentRow := imsdb.IncidentRow(r)
 		// The list read doesn't look up linked incidents.
 		var emptyLinkedIncidents []imsdb.Incident_LinkedIncidentsRow
-		incJSON, errHTTP := incidentToJSON(incidentRow, peopleByIncident[r.Incident.Number], entriesByIncident[r.Incident.Number], emptyLinkedIncidents, event, attachmentsEnabled)
+		incJSON, errHTTP := incidentToJSON(incidentRow, peopleByIncident[r.Incident.Number], entriesByIncident[r.Incident.Number], emptyLinkedIncidents, event, s.AttachmentsEnabled)
 		if errHTTP != nil {
 			return nil, herrToConnect(errHTTP)
 		}
@@ -319,7 +331,7 @@ func ListIncidents(
 	return &rpcv1.ListIncidentsResponse{Incidents: views}, nil
 }
 
-// UpdateIncident is the domain function behind the UpdateIncident RPC (plan 09h/1c).
+// UpdateIncident is the domain method behind the UpdateIncident RPC (plan 09h/1c).
 // The REST POST /events/{eventName}/incidents/{incidentNumber} endpoint was RETIRED with
 // this extraction, not shimmed (migration decision, plan 09 §Migration strategy) — editing
 // an incident is Connect-only now. It ports the REST editIncident authorization verbatim:
@@ -331,13 +343,8 @@ func ListIncidents(
 //
 // A 52f denial is PermissionDenied (403), not NotFound: the caller reached the incident by
 // its number, so — unlike the single read — existence is not the thing being protected.
-func UpdateIncident(
+func (s Service) UpdateIncident(
 	ctx context.Context,
-	imsDBQ *store.DBQ,
-	userStore directory.UserStore,
-	es *server.EventSourcerer,
-	pusher *server.Pusher,
-	metrics *server.MetricsCache,
 	req *rpcv1.UpdateIncidentRequest,
 ) (*rpcv1.UpdateIncidentResponse, error) {
 	claims, ok := server.ClaimsFromContext(ctx)
@@ -345,7 +352,7 @@ func UpdateIncident(
 		return nil, connect.NewError(connect.CodeUnauthenticated, errors.New("authentication required"))
 	}
 
-	eventRow, err := imsDBQ.Event(ctx, imsDBQ, req.GetEventId())
+	eventRow, err := s.ImsDBQ.Event(ctx, s.ImsDBQ, req.GetEventId())
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return nil, connect.NewError(connect.CodeNotFound, errors.New("event not found"))
@@ -354,7 +361,7 @@ func UpdateIncident(
 	}
 	event := eventRow.Event
 
-	eventPerms, _, err := authz.EventPermissions(ctx, &event.ID, imsDBQ, *claims)
+	eventPerms, _, err := authz.EventPermissions(ctx, &event.ID, s.ImsDBQ, *claims)
 	if err != nil {
 		return nil, connect.NewError(connect.CodeInternal, fmt.Errorf("failed to compute permissions: %w", err))
 	}
@@ -371,7 +378,7 @@ func UpdateIncident(
 	// journal-only payload (updateIncident already ignores zero/nil fields, so isJournalOnly
 	// is the guard that stops them editing anything else).
 	if eventPermissions&authz.EventWriteIncidents == 0 {
-		hasGrant, err := imsDBQ.IncidentPersonHasGrant(ctx, imsDBQ, imsdb.IncidentPersonHasGrantParams{
+		hasGrant, err := s.ImsDBQ.IncidentPersonHasGrant(ctx, s.ImsDBQ, imsdb.IncidentPersonHasGrantParams{
 			Event: event.ID, IncidentNumber: incidentNumber, PersonID: claims.PersonID(),
 		})
 		if err != nil {
@@ -387,13 +394,13 @@ func UpdateIncident(
 		}
 	}
 
-	errHTTP := updateIncident(ctx, imsDBQ, userStore, es, pusher, newIncident, claims.PersonID(), claims.PersonAdmin())
+	errHTTP := updateIncident(ctx, s.ImsDBQ, s.UserStore, s.Es, s.Pusher, newIncident, claims.PersonID(), claims.PersonAdmin())
 	if errHTTP != nil {
 		return nil, herrToConnect(errHTTP)
 	}
 
 	// State / priority / outcome / area edits all feed the dashboard aggregate.
-	metrics.InvalidateEvent(event.Name)
+	s.Metrics.InvalidateEvent(event.Name)
 
 	return &rpcv1.UpdateIncidentResponse{}, nil
 }
