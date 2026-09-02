@@ -64,4 +64,8 @@ message ProposeIncidentTypeRequest {
   ocf.ims.resources.v1.IncidentType incident_type = 2;
 }
 
-message ProposeIncidentTypeResponse {}
+// ProposeIncidentTypeResponse returns the id of the created (or, on a name collision,
+// the resolved existing) type, so the incident form can attach it immediately.
+message ProposeIncidentTypeResponse {
+  int32 incident_type_id = 1;
+}
