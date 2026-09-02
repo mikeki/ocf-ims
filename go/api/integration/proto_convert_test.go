@@ -320,6 +320,30 @@ func incidentTypeGroupPtrToString(g *resourcesv1.IncidentTypeGroup) *string {
 	return &s
 }
 
+// outcomeProtoToJSON maps a resources/v1.Outcome from the ListOutcomes RPC back to the legacy
+// imsjson.Outcome the outcome tests assert against — the inverse of the server's
+// outcome.outcomeToProto. The optional scalar pointers carry straight across; the proposer PersonRef
+// becomes a *Mention (reusing personRefToMention). Dies with json/ when the read is rebuilt DB→proto.
+func outcomeProtoToJSON(p *resourcesv1.Outcome) imsjson.Outcome {
+	return imsjson.Outcome{
+		ID:       p.GetId(),
+		Name:     p.Name,
+		Hidden:   p.Hidden,
+		Approved: p.Approved,
+		Proposer: personRefToMention(p.GetProposer()),
+	}
+}
+
+// outcomeMsgFromJSON builds the resources/v1.Outcome the create/update/propose helpers send from the
+// legacy imsjson.Outcome the call sites still construct. Only the writable fields (name/hidden) are
+// carried; id/approved/proposer are not part of the write body (approve is its own RPC).
+func outcomeMsgFromJSON(req imsjson.Outcome) *resourcesv1.Outcome {
+	return &resourcesv1.Outcome{
+		Name:   req.Name,
+		Hidden: req.Hidden,
+	}
+}
+
 // participationTypeToProtoEnum maps a stored MySQL participation string onto the proto enum for the
 // personnel-write helpers that build requests from the legacy DTOs (empty → UNSPECIFIED, i.e.
 // "default from wristband"). The server-side equivalent is person.participationTypeFromProto.
