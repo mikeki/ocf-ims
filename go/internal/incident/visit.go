@@ -555,7 +555,7 @@ func updateVisit(ctx context.Context, imsDBQ *store.DBQ, es *server.EventSourcer
 	}
 
 	es.NotifyVisitUpdate(storedVisit.Event, storedVisit.Number)
-	es.NotifyIncidentUpdates(storedVisit.Event, storedVisit.IncidentNumber.Int32, update.IncidentNumber.Int32)
+	es.NotifyIncidentUpdates(ctx, storedVisit.Event, storedVisit.IncidentNumber.Int32, update.IncidentNumber.Int32)
 
 	return nil
 }
