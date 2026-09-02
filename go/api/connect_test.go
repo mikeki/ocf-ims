@@ -144,17 +144,17 @@ func TestConnectProtovalidateRejects(t *testing.T) {
 
 // TestConnectUnimplementedPassesValidation proves the complement: a request that
 // satisfies the constraints passes protovalidate and reaches the handler. It uses a
-// still-unimplemented RPC (CreateEvent — Login is now wired) whose request carries no
-// tripped constraints, so it flows through the whole interceptor chain to the
-// UnimplementedImsServiceHandler and comes back CodeUnimplemented, confirming valid
-// requests reach the handler and the action-log interceptor tolerates a mutating RPC
-// without panicking.
+// still-unimplemented RPC (MarkAllNotificationsRead — CreateEvent is now wired) whose
+// request carries no tripped constraints, so it flows through the whole interceptor
+// chain to the UnimplementedImsServiceHandler and comes back CodeUnimplemented,
+// confirming valid requests reach the handler and the action-log interceptor tolerates
+// a mutating RPC without panicking.
 func TestConnectUnimplementedPassesValidation(t *testing.T) {
 	t.Parallel()
 	client, _ := newTestConnectClient(t)
 
-	_, err := client.CreateEvent(context.Background(),
-		connect.NewRequest(&servicerpcv1.CreateEventRequest{}))
+	_, err := client.MarkAllNotificationsRead(context.Background(),
+		connect.NewRequest(&servicerpcv1.MarkAllNotificationsReadRequest{}))
 	require.Error(t, err)
 	require.Equal(t, connect.CodeUnimplemented, connect.CodeOf(err))
 }
@@ -178,20 +178,20 @@ func TestConnectActionLogSkipsReads(t *testing.T) {
 // TestConnectActionLogAuditsMutations proves the complement: a mutating RPC (one
 // carrying no NO_SIDE_EFFECTS marker) is audited by default — the footgun the
 // per-route REST LogRequest flag invites (M9) is gone. It uses a still-unimplemented
-// mutation (CreateEvent — Login is now wired and would hit the DB); it is logged even
-// though the handler is unimplemented, and the row carries the procedure as its path
-// with no body, preserving the metadata-only audit invariant.
+// mutation (MarkAllNotificationsRead — CreateEvent is now wired and would hit the DB);
+// it is logged even though the handler is unimplemented, and the row carries the
+// procedure as its path with no body, preserving the metadata-only audit invariant.
 func TestConnectActionLogAuditsMutations(t *testing.T) {
 	t.Parallel()
 	spy := &spyActionLogger{}
 	client, _ := newTestConnectClientWithLogger(t, spy)
 
-	_, _ = client.CreateEvent(context.Background(),
-		connect.NewRequest(&servicerpcv1.CreateEventRequest{}))
+	_, _ = client.MarkAllNotificationsRead(context.Background(),
+		connect.NewRequest(&servicerpcv1.MarkAllNotificationsReadRequest{}))
 	require.Equal(t, 1, spy.count(), "a mutation must be audited by default")
 
 	row := spy.rows[0]
-	require.Equal(t, servicev1connect.ImsServiceCreateEventProcedure, row.Path.String)
+	require.Equal(t, servicev1connect.ImsServiceMarkAllNotificationsReadProcedure, row.Path.String)
 	require.Equal(t, http.MethodPost, row.Method.String)
 	require.False(t, row.UserName.Valid, "anonymous caller: no user recorded")
 }
