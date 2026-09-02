@@ -318,6 +318,8 @@ func connectStatus(err error) int {
 		return http.StatusNotFound
 	case connect.CodeInvalidArgument:
 		return http.StatusBadRequest
+	case connect.CodeResourceExhausted:
+		return http.StatusTooManyRequests
 	default:
 		return http.StatusInternalServerError
 	}

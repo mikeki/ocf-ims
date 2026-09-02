@@ -21,9 +21,9 @@ import (
 	"testing"
 	"time"
 
-	authapi "github.com/mikeki/ocf-ims/internal/auth"
 	imsjson "github.com/mikeki/ocf-ims/json"
 	"github.com/mikeki/ocf-ims/lib/conv"
+	"github.com/mikeki/ocf-ims/lib/rand"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -36,15 +36,14 @@ func TestGetActionLog(t *testing.T) {
 	apisAdmin := ApiHelper{t: t, serverURL: shared.serverURL, jwt: jwtForAdmin(ctx, t), referrer: referrer}
 
 	// Generate one action-logged request carrying this test's unique Referer to read back.
-	// A login (POST /auth) is still REST and action-logged (LogRequest(true)) and — being a
-	// raw imsPost — carries the Referer the getActionLogs read filters on. The former fixture,
-	// GET /auth, is now the GetAuthStatus RPC: a NO_SIDE_EFFECTS read the action-log interceptor
-	// deliberately skips, so it can no longer serve as a logged fixture.
-	statusCode, _, _ := apisAdmin.postAuth(ctx, authapi.PostAuthRequest{
-		Identification: userAdminEmail,
-		Password:       userAdminPassword,
-	})
-	require.Equal(t, http.StatusOK, statusCode)
+	// Creating an event (POST /events) is still a REST route and action-logged
+	// (LogRequest(true)) and — being a raw imsPost — carries the Referer the getActionLogs read
+	// filters on. Login (the former fixture) moved to the Connect Login RPC: the action-log
+	// interceptor records RPCs but captures no Referer (that is a REST-only field), so an RPC
+	// can no longer serve as a Referer-keyed fixture.
+	eventName := rand.NonCryptoText()
+	_, resp := apisAdmin.createEvent(ctx, imsjson.Event{Name: &eventName})
+	require.NoError(t, resp.Body.Close())
 
 	longAgo := time.Now().Add(-500 * time.Hour).UnixMilli()
 	longFromNow := time.Now().Add(500 * time.Hour).UnixMilli()
@@ -60,7 +59,7 @@ func TestGetActionLog(t *testing.T) {
 		}
 	}
 	assert.NotZero(t, foundLog)
-	assert.Equal(t, "/ims/api/auth", foundLog.Path)
+	assert.Equal(t, "/ims/api/events", foundLog.Path)
 	assert.Equal(t, "POST", foundLog.Method)
 
 	// Now test error cases

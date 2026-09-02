@@ -25,7 +25,6 @@ import (
 	"github.com/mikeki/ocf-ims/directory"
 	"github.com/mikeki/ocf-ims/internal/actionlog"
 	"github.com/mikeki/ocf-ims/internal/area"
-	"github.com/mikeki/ocf-ims/internal/auth"
 	"github.com/mikeki/ocf-ims/internal/crew"
 	"github.com/mikeki/ocf-ims/internal/debug"
 	"github.com/mikeki/ocf-ims/internal/event"
@@ -81,10 +80,6 @@ func AddToMux(
 	crewsCache := server.NewCrewsCache()
 	outcomesCache := server.NewOutcomesCache()
 
-	// Failed-login throttle/lockout for POST /ims/api/auth (plan 90, findings H1 +
-	// M4). Enabled in real deployments; the shared test suite disables it via config.
-	loginLimiter := server.NewLoginRateLimiter(server.DefaultLoginRateLimiterConfig(cfg.Core.LoginRateLimitEnabled))
-
 	mux.Handle("GET /ims/api/actionlogs",
 		server.Adapt(
 			actionlog.GetActionLogs{ImsDBQ: db, UserStore: userStore},
@@ -95,45 +90,16 @@ func AddToMux(
 		),
 	)
 
-	mux.Handle("POST /ims/api/auth",
-		server.Adapt(
-			auth.PostAuth{ImsDBQ: db, UserStore: userStore, JwtSecret: cfg.Core.JWTSecret, AccessTokenDuration: cfg.Core.AccessTokenLifetime, RefreshTokenDuration: cfg.Core.RefreshTokenLifetime},
-			server.RecoverFromPanic(),
-			server.LogRequest(true, actionLogger, userStore),
-			server.LimitRequestBytes(cfg.Core.MaxRequestBytes),
-			// server.ThrottleLogin sits inside server.LimitRequestBytes so the body it peeks at
-			// for per-account keying is already size-capped. It sheds excess/failed
-			// attempts with 429 before the argon2 verify runs.
-			server.ThrottleLogin(loginLimiter),
-			// This endpoint does not require authentication, nor
-			// does it even consider the request's Authorization header,
-			// because the point of this is to make a new JWT.
-		),
-	)
-
-	// The whoami / session status (GET /auth) moved onto Connect (ImsService.GetAuthStatus,
-	// registered via AddConnectToMux); its REST route was retired, not shimmed (aggressive
-	// migration, plan 09 §6). Login (POST /auth) and refresh (POST /auth/refresh) stay REST here
-	// until the auth-session slice.
-
-	mux.Handle("POST /ims/api/auth/refresh",
-		server.Adapt(
-			auth.RefreshAccessToken{ImsDBQ: db, UserStore: userStore, JwtSecret: cfg.Core.JWTSecret, AccessTokenDuration: cfg.Core.AccessTokenLifetime},
-			server.RecoverFromPanic(),
-			server.LogRequest(false, actionLogger, userStore),
-			server.LimitRequestBytes(cfg.Core.MaxRequestBytes),
-			// This endpoint does not require authentication, nor
-			// does it even consider the request's Authorization header,
-			// because the point of this is to make a new access token.
-		),
-	)
-
+	// The whole auth & session surface — login (POST /auth), refresh (POST /auth/refresh), and
+	// the whoami / session status (GET /auth) — moved onto Connect (ImsService.Login /
+	// RefreshToken / GetAuthStatus, registered via AddConnectToMux). Their REST routes were
+	// retired, not shimmed (aggressive migration, plan 09 §6). The plan-90 login throttle went
+	// with Login: the ThrottleLogin middleware and its limiter now live on the Connect surface.
+	//
 	// The self-service password change (POST /auth/password), identity/contact edit (POST
-	// /auth/profile), and picture removal (DELETE /auth/picture) moved onto Connect
-	// (ImsService.ChangeOwnPassword / UpdateOwnProfile / DeleteOwnProfilePicture, registered via
-	// AddConnectToMux); their REST routes were retired, not shimmed (aggressive migration, plan 09
-	// §6). Only the picture *upload* below (multipart/binary, outside the proto contract) stays
-	// REST. Login / whoami / refresh stay REST here until the auth-session slice.
+	// /auth/profile), and picture removal (DELETE /auth/picture) likewise moved onto Connect
+	// (ImsService.ChangeOwnPassword / UpdateOwnProfile / DeleteOwnProfilePicture). Only the
+	// picture *upload* below (multipart/binary, outside the proto contract) stays REST.
 
 	// Self-service profile picture UPLOAD: the caller uploads/replaces their OWN picture. Same
 	// admin-free, JWT-resolved model as the retired /auth/profile. Serving stays on the shared

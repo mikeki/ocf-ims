@@ -17,10 +17,8 @@
 package server
 
 import (
-	"io"
 	"net/http"
 	"net/http/httptest"
-	"strings"
 	"testing"
 	"time"
 
@@ -34,7 +32,7 @@ type fakeClock struct{ t time.Time }
 func (c *fakeClock) now() time.Time          { return c.t }
 func (c *fakeClock) advance(d time.Duration) { c.t = c.t.Add(d) }
 
-func testLimiter(clk *fakeClock) *loginRateLimiter {
+func testLimiter(clk *fakeClock) *LoginRateLimiter {
 	return NewLoginRateLimiter(loginRateLimiterConfig{
 		enabled:       true,
 		maxFailures:   5,
@@ -54,18 +52,18 @@ func TestLimiter_AllowsUntilBackoffThreshold(t *testing.T) {
 
 	// First (backoffThresh) failures carry no delay.
 	for i := range 3 {
-		ok, _ := l.allow("id:alice")
+		ok, _ := l.Allow("id:alice")
 		require.True(t, ok, "attempt %d should be allowed", i)
-		l.recordFailure("id:alice")
+		l.RecordFailure("id:alice")
 	}
 	// The 4th attempt is now delayed by the backoff (base = 1s).
-	ok, wait := l.allow("id:alice")
+	ok, wait := l.Allow("id:alice")
 	assert.False(t, ok)
 	assert.Equal(t, 1*time.Second, wait)
 
 	// Waiting out the backoff lets it through again.
 	clk.advance(1 * time.Second)
-	ok, _ = l.allow("id:alice")
+	ok, _ = l.Allow("id:alice")
 	assert.True(t, ok)
 }
 
@@ -82,9 +80,9 @@ func TestLimiter_BackoffIsExponentialAndCapped(t *testing.T) {
 	for i, w := range wantSecs {
 		// drive the failure count up to (3 + i)
 		for l.attempts["id:x"] == nil || l.attempts["id:x"].failures < 3+i {
-			l.recordFailure("id:x")
+			l.RecordFailure("id:x")
 		}
-		_, wait := l.allow("id:x")
+		_, wait := l.Allow("id:x")
 		assert.Equalf(t, time.Duration(w)*time.Second, wait, "failure count %d", 3+i)
 	}
 }
@@ -95,21 +93,21 @@ func TestLimiter_LocksOutAtCeiling(t *testing.T) {
 	l := testLimiter(clk)
 
 	for range 5 {
-		l.recordFailure("ip:1.2.3.4")
+		l.RecordFailure("ip:1.2.3.4")
 		clk.advance(1 * time.Second) // step past each backoff so we reach the ceiling
 	}
-	ok, wait := l.allow("ip:1.2.3.4")
+	ok, wait := l.Allow("ip:1.2.3.4")
 	assert.False(t, ok)
 	assert.InDelta(t, (15 * time.Minute).Seconds(), wait.Seconds(), 5)
 
 	// Still locked just before expiry.
 	clk.advance(14 * time.Minute)
-	ok, _ = l.allow("ip:1.2.3.4")
+	ok, _ = l.Allow("ip:1.2.3.4")
 	assert.False(t, ok)
 
 	// After the lockout elapses, the key is fresh again.
 	clk.advance(2 * time.Minute)
-	ok, _ = l.allow("ip:1.2.3.4")
+	ok, _ = l.Allow("ip:1.2.3.4")
 	assert.True(t, ok)
 }
 
@@ -119,14 +117,14 @@ func TestLimiter_SuccessResets(t *testing.T) {
 	l := testLimiter(clk)
 
 	for range 3 {
-		l.recordFailure("id:bob")
+		l.RecordFailure("id:bob")
 	}
 	// backoff now in effect
-	ok, _ := l.allow("id:bob")
+	ok, _ := l.Allow("id:bob")
 	require.False(t, ok)
 
-	l.recordSuccess("id:bob")
-	ok, _ = l.allow("id:bob")
+	l.RecordSuccess("id:bob")
+	ok, _ = l.Allow("id:bob")
 	assert.True(t, ok, "a successful login clears the failure history")
 }
 
@@ -137,17 +135,17 @@ func TestLimiter_PerKeyIsolation(t *testing.T) {
 
 	// Lock out alice entirely.
 	for range 5 {
-		l.recordFailure("id:alice")
+		l.RecordFailure("id:alice")
 		clk.advance(time.Second)
 	}
-	ok, _ := l.allow("id:alice")
+	ok, _ := l.Allow("id:alice")
 	require.False(t, ok)
 
 	// A different account is unaffected.
-	ok, _ = l.allow("id:carol")
+	ok, _ = l.Allow("id:carol")
 	assert.True(t, ok)
 	// As is a different IP.
-	ok, _ = l.allow("ip:9.9.9.9")
+	ok, _ = l.Allow("ip:9.9.9.9")
 	assert.True(t, ok)
 }
 
@@ -157,14 +155,14 @@ func TestLimiter_IdleResetForgetsHistory(t *testing.T) {
 	l := testLimiter(clk)
 
 	for range 3 {
-		l.recordFailure("id:dave")
+		l.RecordFailure("id:dave")
 	}
-	ok, _ := l.allow("id:dave")
+	ok, _ := l.Allow("id:dave")
 	require.False(t, ok) // in backoff
 
 	// Long idle gap past the reset window wipes the history.
 	clk.advance(16 * time.Minute)
-	ok, _ = l.allow("id:dave")
+	ok, _ = l.Allow("id:dave")
 	assert.True(t, ok)
 }
 
@@ -173,9 +171,9 @@ func TestLimiter_DisabledIsNoop(t *testing.T) {
 	clk := &fakeClock{t: time.Unix(1_700_000_000, 0)}
 	l := NewLoginRateLimiter(loginRateLimiterConfig{enabled: false, now: clk.now})
 	for range 100 {
-		l.recordFailure("id:x")
+		l.RecordFailure("id:x")
 	}
-	ok, wait := l.allow("id:x")
+	ok, wait := l.Allow("id:x")
 	assert.True(t, ok)
 	assert.Zero(t, wait)
 }
@@ -208,20 +206,7 @@ func TestClientIPForRateLimit(t *testing.T) {
 			if tc.xff != "" {
 				r.Header.Set("X-Forwarded-For", tc.xff)
 			}
-			assert.Equal(t, tc.want, clientIPForRateLimit(r))
+			assert.Equal(t, tc.want, ClientIP(r.Header, r.RemoteAddr))
 		})
 	}
-}
-
-func TestPeekIdentificationRestoresBody(t *testing.T) {
-	t.Parallel()
-	body := `{"identification":"Alice","password":"hunter2"}`
-	r := httptest.NewRequest(http.MethodPost, "/ims/api/auth", strings.NewReader(body))
-	id := peekIdentification(r)
-	assert.Equal(t, "Alice", id)
-
-	// The downstream handler must still see the full, untouched body.
-	got, err := io.ReadAll(r.Body)
-	require.NoError(t, err)
-	assert.Equal(t, body, string(got))
 }
