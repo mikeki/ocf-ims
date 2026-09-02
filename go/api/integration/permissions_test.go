@@ -118,19 +118,18 @@ func TestEventEndpoints_ForNoEventPerms(t *testing.T) {
 	require.NoError(t, resp.Body.Close())
 
 	eventPath := "/ims/api/events/" + eventName
-	// The incident CRUD routes and the report reads + writes (list, single, create, update,
-	// strike-a-journal-entry) were retired from REST (plan 09h/1c) — they are now the
-	// ImsService.ListIncidents / CreateIncident / GetIncident / UpdateIncident and the ListReports
-	// / GetReport / CreateReport / UpdateReport / UpdateReportJournalEntry RPCs. Their unauth (401)
-	// and forbidden (403) behavior is covered through the Connect client in
-	// TestIncidentAPIAuthorization, TestReportReadAuthorization and TestReportWriteAuthorization,
-	// so they are no longer enumerated here. Only the report-attachment upload/download (still
-	// REST) remains below.
+	// The incident CRUD routes, the incident sub-resource writes (attach/detach a person,
+	// strike a journal entry), and the report reads + writes (list, single, create, update,
+	// strike-a-journal-entry) were all retired from REST (plan 09h/1c) — they are now the
+	// ImsService.ListIncidents / CreateIncident / GetIncident / UpdateIncident /
+	// AttachPersonToIncident / DetachPersonFromIncident / UpdateIncidentJournalEntry and the
+	// ListReports / GetReport / CreateReport / UpdateReport / UpdateReportJournalEntry RPCs. Their
+	// unauth (401) and forbidden (403) behavior is covered through the Connect client in
+	// TestIncidentAPIAuthorization, TestIncidentSubresourceWriteAuthorization,
+	// TestReportReadAuthorization and TestReportWriteAuthorization, so they are no longer
+	// enumerated here. Only the report-attachment upload/download (still REST) remains below.
 	getIncidentAttachment := MethodURL{http.MethodGet, eventPath + "/incidents/1/attachments/1"}
 	postIncidentAttachment := MethodURL{http.MethodPost, eventPath + "/incidents/1/attachments"}
-	postIncidentRE := MethodURL{http.MethodPost, eventPath + "/incidents/1/journal_entries/2"}
-	postIncidentPerson := MethodURL{http.MethodPost, eventPath + "/incidents/1/people/some_name"}
-	deleteIncidentPerson := MethodURL{http.MethodDelete, eventPath + "/incidents/1/people/some_name"}
 	getReportAttachment := MethodURL{http.MethodGet, eventPath + "/reports/1/attachments/1"}
 	postReportAttachment := MethodURL{http.MethodPost, eventPath + "/reports/9999999/attachments"}
 	getVisits := MethodURL{http.MethodGet, eventPath + "/visits"}
@@ -147,9 +146,6 @@ func TestEventEndpoints_ForNoEventPerms(t *testing.T) {
 	allPerms := []MethodURL{
 		getIncidentAttachment,
 		postIncidentAttachment,
-		postIncidentRE,
-		postIncidentPerson,
-		deleteIncidentPerson,
 		getReportAttachment,
 		postReportAttachment,
 		getVisits,

@@ -123,6 +123,49 @@ func TestIncidentAPIAuthorization(t *testing.T) {
 	require.NoError(t, resp.Body.Close())
 }
 
+// TestIncidentSubresourceWriteAuthorization covers the coarse write gate the retired REST incident
+// sub-resource routes (attach/detach a person, strike a journal entry) used to exercise in the
+// permissions sweep: unauthenticated callers are 401 and callers with no participation row on the
+// event are 403, for all three writes. The writer-permitted path is covered by the functional tests
+// (TestCreateAndGetIncident attaches people; TestCreateAndUpdateIncident detaches; the journalentry
+// tests strike). All three require EventWriteIncidents — there is no journal-only grant path here.
+func TestIncidentSubresourceWriteAuthorization(t *testing.T) {
+	t.Parallel()
+	ctx := t.Context()
+
+	apisAdmin := ApiHelper{t: t, serverURL: shared.serverURL, jwt: jwtForAdmin(ctx, t)}
+	notAuthenticated := ApiHelper{t: t, serverURL: shared.serverURL, jwt: ""}
+	aliceNoPerms := ApiHelper{t: t, serverURL: shared.serverURL, jwt: jwtForAlice(t, ctx)}
+
+	eventName := rand.NonCryptoText()
+	_, resp := apisAdmin.createEvent(ctx, imsjson.Event{Name: &eventName})
+	require.Equal(t, http.StatusNoContent, resp.StatusCode)
+	require.NoError(t, resp.Body.Close())
+
+	// Unauthenticated: all three writes are 401 (the gate precedes the person lookup, so the
+	// person id need not exist).
+	resp = notAuthenticated.attachPersonToIncident(ctx, eventName, 1, userAlicePersonID)
+	require.Equal(t, http.StatusUnauthorized, resp.StatusCode)
+	require.NoError(t, resp.Body.Close())
+	resp = notAuthenticated.detachPersonFromIncident(ctx, eventName, 1, userAlicePersonID)
+	require.Equal(t, http.StatusUnauthorized, resp.StatusCode)
+	require.NoError(t, resp.Body.Close())
+	resp = notAuthenticated.updateIncidentJournalEntry(ctx, eventName, 1, imsjson.JournalEntry{ID: 1, Stricken: new(true)})
+	require.Equal(t, http.StatusUnauthorized, resp.StatusCode)
+	require.NoError(t, resp.Body.Close())
+
+	// Authenticated but with no participation row on this event: all three writes are 403.
+	resp = aliceNoPerms.attachPersonToIncident(ctx, eventName, 1, userAlicePersonID)
+	require.Equal(t, http.StatusForbidden, resp.StatusCode)
+	require.NoError(t, resp.Body.Close())
+	resp = aliceNoPerms.detachPersonFromIncident(ctx, eventName, 1, userAlicePersonID)
+	require.Equal(t, http.StatusForbidden, resp.StatusCode)
+	require.NoError(t, resp.Body.Close())
+	resp = aliceNoPerms.updateIncidentJournalEntry(ctx, eventName, 1, imsjson.JournalEntry{ID: 1, Stricken: new(true)})
+	require.Equal(t, http.StatusForbidden, resp.StatusCode)
+	require.NoError(t, resp.Body.Close())
+}
+
 func TestCreateAndGetIncident(t *testing.T) {
 	t.Parallel()
 	ctx := t.Context()

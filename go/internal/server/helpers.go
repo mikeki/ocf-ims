@@ -46,7 +46,14 @@ func PersonByIDFromPath(ctx context.Context, imsDBQ *store.DBQ, req *http.Reques
 	if err != nil || id <= 0 {
 		return imsdb.PersonByIDRow{}, herr.BadRequest("Invalid person ID: "+raw, nil)
 	}
-	person, err := imsDBQ.PersonByID(ctx, imsDBQ, int32(id))
+	return PersonByID(ctx, imsDBQ, int32(id))
+}
+
+// PersonByID looks up a person by their registry id, mapping a missing row to a NotFound. It is
+// the id-keyed core of PersonByIDFromPath, shared with the Connect handlers whose request carries
+// person_id directly rather than in the URL path.
+func PersonByID(ctx context.Context, imsDBQ *store.DBQ, id int32) (imsdb.PersonByIDRow, *herr.HTTPError) {
+	person, err := imsDBQ.PersonByID(ctx, imsDBQ, id)
 	if errors.Is(err, sql.ErrNoRows) {
 		return imsdb.PersonByIDRow{}, herr.NotFound("Unknown person", nil)
 	}

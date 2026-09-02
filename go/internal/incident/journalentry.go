@@ -32,90 +32,12 @@ import (
 	"github.com/mikeki/ocf-ims/store/imsdb"
 )
 
-// EditReportJournalEntry (the strike/unstrike endpoint for a report's journal entries) was
-// extracted onto Connect (plan 09h/1c) as incident.UpdateReportJournalEntry in connect.go;
-// its REST POST route was retired, not shimmed (aggressive migration, plan 09 §6). The
-// incident and visit journal-entry strike handlers below stay REST for now.
-
-type EditIncidentJournalEntry struct {
-	ImsDBQ      *store.DBQ
-	UserStore   directory.UserStore
-	EventSource *server.EventSourcerer
-}
-
-func (action EditIncidentJournalEntry) ServeHTTP(w http.ResponseWriter, req *http.Request) {
-	errHTTP := action.editIncidentJournalEntry(req)
-	if errHTTP != nil {
-		errHTTP.From("[editIncidentJournalEntry]").WriteResponse(w)
-		return
-	}
-	herr.WriteNoContentResponse(w, "Success")
-}
-
-func (action EditIncidentJournalEntry) editIncidentJournalEntry(req *http.Request) *herr.HTTPError {
-	event, jwtCtx, eventPermissions, errHTTP := server.GetEventPermissions(req, action.ImsDBQ, action.UserStore)
-	if errHTTP != nil {
-		return errHTTP.From("[server.GetEventPermissions]")
-	}
-	if eventPermissions&(authz.EventWriteIncidents) == 0 {
-		return herr.Forbidden("The requestor does not have permission to write Journal Entries on this Event", nil)
-	}
-	ctx := req.Context()
-
-	authorPersonID := jwtCtx.Claims.PersonID()
-
-	incidentNumber, err := conv.ParseInt32(req.PathValue("incidentNumber"))
-	if err != nil {
-		return herr.BadRequest("Failed to parse incidentNumber", err).From("[ParseInt32]")
-	}
-	journalEntryId, err := conv.ParseInt32(req.PathValue("journalEntryId"))
-	if err != nil {
-		return herr.BadRequest("Failed to parse journalEntryId", err).From("[ParseInt32]")
-	}
-
-	re, errHTTP := server.ReadBodyAs[imsjson.JournalEntry](req)
-	if errHTTP != nil {
-		return errHTTP.From("[server.ReadBodyAs]")
-	}
-
-	if re.Stricken == nil {
-		// Nothing to do if no Stricken value is set, since Stricken is the only field this endpoint can modify
-		return nil
-	}
-
-	txn, err := action.ImsDBQ.Begin()
-	if err != nil {
-		return herr.InternalServerError("Error beginning transaction", err).From("[Begin]")
-	}
-	defer server.Rollback(txn)
-
-	err = action.ImsDBQ.SetIncidentJournalEntryStricken(ctx, txn,
-		imsdb.SetIncidentJournalEntryStrickenParams{
-			Stricken:       *re.Stricken,
-			Event:          event.ID,
-			IncidentNumber: incidentNumber,
-			JournalEntry:   journalEntryId,
-		},
-	)
-	if err != nil {
-		return herr.InternalServerError("Error setting incident journal entry", err).From("[SetIncidentJournalEntryStricken]")
-	}
-	struckVerb := "Struck"
-	if !*re.Stricken {
-		struckVerb = "Unstruck"
-	}
-	_, errHTTP = addIncidentJournalEntry(ctx, action.ImsDBQ, txn, event.ID, incidentNumber, authorPersonID, fmt.Sprintf("%v journalEntry %v", struckVerb, journalEntryId), true, "", "", "")
-	if errHTTP != nil {
-		return errHTTP.From("[addIncidentJournalEntry]")
-	}
-	err = txn.Commit()
-	if err != nil {
-		return herr.InternalServerError("Error committing transaction", err).From("[Commit]")
-	}
-
-	defer action.EventSource.NotifyIncidentUpdate(event.ID, incidentNumber)
-	return nil
-}
+// EditReportJournalEntry (the strike/unstrike endpoint for a report's journal entries) and
+// EditIncidentJournalEntry (the same for an incident's) were both extracted onto Connect (plan
+// 09h/1c) as incident.UpdateReportJournalEntry / incident.UpdateIncidentJournalEntry in connect.go;
+// their REST POST routes were retired, not shimmed (aggressive migration, plan 09 §6). The shared
+// addIncidentJournalEntry helper is unchanged and still used from there. The visit journal-entry
+// strike handler below stays REST for now (visits are outside the proto contract, 09e).
 
 type EditVisitJournalEntry struct {
 	ImsDBQ      *store.DBQ
