@@ -380,9 +380,34 @@ func (a ApiHelper) detachReportFromIncident(ctx context.Context, eventName strin
 			conv.FormatInt(report)).String()+params)
 }
 
+// newIncident creates an incident through the generated Connect client. The REST
+// POST .../incidents endpoint was retired when CreateIncident was extracted (plan
+// 09h/1c). Call sites still express the new incident as an imsjson.Incident, so it is
+// converted to the presence-tracked IncidentUpdate (incidentUpdateFromJSON) and the event
+// (req.Event) is resolved to its numeric id (resolveEventID). The retired endpoint
+// returned 201 Created with the assigned number in an IMS-Incident-Number header; the
+// synthesized *http.Response mirrors both on success (else connectStatus(err)), so
+// newIncidentSuccess and the negative-auth call sites are unchanged. Like updateIncident,
+// resolveEventID uses an admin token so the negative-auth tests still resolve the event
+// and let the RPC itself do the rejecting.
 func (a ApiHelper) newIncident(ctx context.Context, req imsjson.Incident) *http.Response {
 	a.t.Helper()
-	return a.imsPost(ctx, req, a.serverURL.JoinPath("/ims/api/events/"+req.Event+"/incidents").String())
+	eventID := a.resolveEventID(ctx, req.Event)
+	client := servicev1connect.NewImsServiceClient(http.DefaultClient, a.serverURL.String())
+	rpcReq := connect.NewRequest(&servicerpcv1.CreateIncidentRequest{
+		EventId:  eventID,
+		Incident: incidentUpdateFromJSON(req),
+	})
+	if a.jwt != "" {
+		rpcReq.Header().Set("Authorization", "Bearer "+a.jwt)
+	}
+	resp, err := client.CreateIncident(ctx, rpcReq)
+	if err != nil {
+		return &http.Response{StatusCode: connectStatus(err), Body: http.NoBody}
+	}
+	httpResp := &http.Response{StatusCode: http.StatusCreated, Header: http.Header{}, Body: http.NoBody}
+	httpResp.Header.Set("IMS-Incident-Number", conv.FormatInt(resp.Msg.GetIncidentNumber()))
+	return httpResp
 }
 
 func (a ApiHelper) newIncidentSuccess(ctx context.Context, incidentReq imsjson.Incident) (incidentNumber int32) {
