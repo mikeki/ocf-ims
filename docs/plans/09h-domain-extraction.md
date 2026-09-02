@@ -295,10 +295,24 @@ dropped (matching the GetAuthStatus extraction). The retired route's auth covera
 any-authenticated→200 for the directory listing, non-admin `all=true`→403). ListPersonnel is
 `NO_SIDE_EFFECTS`.
 
-Next: **personnel WRITES** (CreatePerson, UpdatePerson, SetPersonPassword, SetPersonAdmin,
-SetPersonParticipation, RemovePersonFromEvent, DeletePersonProfilePicture) as further methods on the same
-`person.Service` → taxonomies → events(EditEvent)/areas/crews → notifications/push → metrics/action log.
-For each: move handler logic into a
+The **personnel writes** are now done too (branch `feat/1c-personnel-writes`, stacked on
+`feat/1c-personnel`) — the seven admin management RPCs (CreatePerson, UpdatePerson, SetPersonPassword,
+SetPersonAdmin, SetPersonParticipation, RemovePersonFromEvent, DeletePersonProfilePicture) as further
+methods on the same `person.Service` (no new wiring), each retiring its REST route. The subtle per-write
+authz ported verbatim (SetPersonAdmin gates on the *caller being an admin* + refuses to clear the last
+admin; the plan-53b anti-escalation ceiling on create/participation; the reset requires an email) behind
+herr-returning cores that reuse the kept shared helpers (applyProfileFields/setPersonEvent/
+defaultParticipation/mayAssignParticipation/wristbandConflict/clearProfilePicture), mapped with
+`server.HerrToConnect` (409→CodeAlreadyExists→`connectStatus` gained AlreadyExists→409). The 0e event_id
+sweep had missed `CreatePersonRequest.event`/`UpdatePersonRequest.event` (still name strings while the
+sibling participation RPCs used event_id) — both changed to `optional int32 event_id`. The closed
+`participation_type` enum erased the last string-validation 400 (`validParticipation` deleted); the
+per-field `too long` 400s survive via protovalidate `max_len`. **The whole personnel surface (read + all
+seven writes) is now on Connect**; only the multipart profile-picture upload + serve stay REST.
+
+Next: **taxonomies** (incident types + outcomes — SaveIncidentType/SaveOutcome decompose into
+Create/Update/Approve/SetHidden per the 0e multiplex split; Propose* kept) → events(EditEvent)/areas/crews
+→ notifications/push → metrics/action log. For each: move handler logic into a
 proto-shaped domain method on its domain `Service` returning Connect errors, add the RPC
 method to `ImsService`, **delete the REST route + handler and move its `api/integration`
 cases onto the Connect client** (NOT a shim — the aggressive path, plan 09 §6), then verify.

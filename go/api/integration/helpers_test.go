@@ -147,31 +147,18 @@ func (a ApiHelper) resolveEventIDOrSentinel(ctx context.Context, eventName strin
 	return 1 << 30
 }
 
-func (a ApiHelper) setPersonPassword(ctx context.Context, personID int64, password string) *http.Response {
-	a.t.Helper()
-	path := a.serverURL.JoinPath("/ims/api/personnel", strconv.FormatInt(personID, 10), "password").String()
-	return a.imsPost(ctx, personapi.SetPersonPasswordRequest{Password: password}, path)
-}
-
-func (a ApiHelper) setPersonPasswordDefault(ctx context.Context, personID int64) *http.Response {
-	a.t.Helper()
-	path := a.serverURL.JoinPath("/ims/api/personnel", strconv.FormatInt(personID, 10), "password").String()
-	return a.imsPost(ctx, personapi.SetPersonPasswordRequest{UseDefaultPassword: true}, path)
-}
-
-// changeOwnPassword calls the self-service password change through the generated Connect
-// client (ChangeOwnPassword). The REST POST /ims/api/auth/password endpoint was retired when
-// the RPC was extracted (plan 09h/1c); the caller is resolved from the JWT, never a field. The
-// retired endpoint returned 204 on success, mirrored by the synthesized *http.Response (else
-// connectStatus(err)), so the call sites' status assertions are unchanged.
-func (a ApiHelper) changeOwnPassword(ctx context.Context, password string) *http.Response {
-	a.t.Helper()
-	client := servicev1connect.NewImsServiceClient(http.DefaultClient, a.serverURL.String())
-	rpcReq := connect.NewRequest(&servicerpcv1.ChangeOwnPasswordRequest{Password: password})
+// authorizeRPC attaches the helper's JWT (if any) to a Connect request. Any *connect.Request[T]
+// satisfies the tiny Header() interface, so this works for every RPC without generics.
+func (a ApiHelper) authorizeRPC(req interface{ Header() http.Header }) {
 	if a.jwt != "" {
-		rpcReq.Header().Set("Authorization", "Bearer "+a.jwt)
+		req.Header().Set("Authorization", "Bearer "+a.jwt)
 	}
-	_, err := client.ChangeOwnPassword(ctx, rpcReq)
+}
+
+// writeRPCStatus synthesizes the *http.Response the retired REST write handlers produced — 204 on
+// success, connectStatus(err) otherwise, no body — so the personnel-write call sites keep asserting
+// on a *http.Response unchanged.
+func writeRPCStatus(err error) *http.Response {
 	status := http.StatusNoContent
 	if err != nil {
 		status = connectStatus(err)
@@ -179,22 +166,109 @@ func (a ApiHelper) changeOwnPassword(ctx context.Context, password string) *http
 	return &http.Response{StatusCode: status, Body: http.NoBody}
 }
 
+// setPersonPassword / setPersonPasswordDefault drive the admin password reset through the generated
+// Connect client (SetPersonPassword). The REST POST /personnel/{personId}/password route was retired
+// with the RPC (plan 09h/1c).
+func (a ApiHelper) setPersonPassword(ctx context.Context, personID int64, password string) *http.Response {
+	a.t.Helper()
+	client := servicev1connect.NewImsServiceClient(http.DefaultClient, a.serverURL.String())
+	rpcReq := connect.NewRequest(&servicerpcv1.SetPersonPasswordRequest{PersonId: int32(personID), Password: password})
+	a.authorizeRPC(rpcReq)
+	_, err := client.SetPersonPassword(ctx, rpcReq)
+	return writeRPCStatus(err)
+}
+
+func (a ApiHelper) setPersonPasswordDefault(ctx context.Context, personID int64) *http.Response {
+	a.t.Helper()
+	client := servicev1connect.NewImsServiceClient(http.DefaultClient, a.serverURL.String())
+	rpcReq := connect.NewRequest(&servicerpcv1.SetPersonPasswordRequest{PersonId: int32(personID), UseDefaultPassword: true})
+	a.authorizeRPC(rpcReq)
+	_, err := client.SetPersonPassword(ctx, rpcReq)
+	return writeRPCStatus(err)
+}
+
+// changeOwnPassword calls the self-service password change through the generated Connect
+// client (ChangeOwnPassword). The REST POST /ims/api/auth/password endpoint was retired when
+// the RPC was extracted (plan 09h/1c); the caller is resolved from the JWT, never a field.
+func (a ApiHelper) changeOwnPassword(ctx context.Context, password string) *http.Response {
+	a.t.Helper()
+	client := servicev1connect.NewImsServiceClient(http.DefaultClient, a.serverURL.String())
+	rpcReq := connect.NewRequest(&servicerpcv1.ChangeOwnPasswordRequest{Password: password})
+	a.authorizeRPC(rpcReq)
+	_, err := client.ChangeOwnPassword(ctx, rpcReq)
+	return writeRPCStatus(err)
+}
+
+// setPersonAdmin drives the admin toggle through the generated Connect client (SetPersonAdmin). The
+// REST POST /personnel/{personId}/admin route was retired with the RPC.
 func (a ApiHelper) setPersonAdmin(ctx context.Context, personID int64, isAdmin bool) *http.Response {
 	a.t.Helper()
-	path := a.serverURL.JoinPath("/ims/api/personnel", strconv.FormatInt(personID, 10), "admin").String()
-	return a.imsPost(ctx, personapi.SetPersonAdminRequest{IsAdmin: isAdmin}, path)
+	client := servicev1connect.NewImsServiceClient(http.DefaultClient, a.serverURL.String())
+	rpcReq := connect.NewRequest(&servicerpcv1.SetPersonAdminRequest{PersonId: int32(personID), IsAdmin: isAdmin})
+	a.authorizeRPC(rpcReq)
+	_, err := client.SetPersonAdmin(ctx, rpcReq)
+	return writeRPCStatus(err)
 }
 
+// createPerson drives person creation through the generated Connect client (CreatePerson). The REST
+// POST /personnel route was retired with the RPC. The legacy personapi.CreatePersonRequest DTO the
+// call sites still build is mapped onto the contract's CreatePersonRequest (event NAME → id), and
+// on success the created person is marshaled back into the *http.Response body as JSON so the ~30
+// call sites that decode it are unchanged.
 func (a ApiHelper) createPerson(ctx context.Context, body personapi.CreatePersonRequest) *http.Response {
 	a.t.Helper()
-	path := a.serverURL.JoinPath("/ims/api/personnel").String()
-	return a.imsPost(ctx, body, path)
+	client := servicev1connect.NewImsServiceClient(http.DefaultClient, a.serverURL.String())
+	rpcReq := connect.NewRequest(&servicerpcv1.CreatePersonRequest{
+		Handle:             body.Handle,
+		Name:               body.Name,
+		Email:              body.Email,
+		Phone:              body.Phone,
+		Password:           body.Password,
+		UseDefaultPassword: body.UseDefaultPassword,
+		Wristband:          body.Wristband,
+		ParticipationType:  participationTypeToProtoEnum(body.ParticipationType),
+	})
+	if body.Event != "" {
+		id := a.resolveEventID(ctx, body.Event)
+		rpcReq.Msg.EventId = &id
+	}
+	a.authorizeRPC(rpcReq)
+	resp, err := client.CreatePerson(ctx, rpcReq)
+	if err != nil {
+		return &http.Response{StatusCode: connectStatus(err), Body: http.NoBody}
+	}
+	created := personProtoToJSON(resp.Msg.GetPerson())
+	b, err := json.Marshal(created)
+	require.NoError(a.t, err)
+	return &http.Response{
+		StatusCode: http.StatusCreated,
+		Header:     http.Header{"Content-Type": {"application/json"}},
+		Body:       io.NopCloser(bytes.NewReader(b)),
+	}
 }
 
+// editPerson drives a person edit through the generated Connect client (UpdatePerson). The REST POST
+// /personnel/{personId} route was retired with the RPC. The legacy EditPersonRequest DTO's presence
+// pointers map straight onto the UpdatePersonRequest optional fields; the event NAME becomes an id.
 func (a ApiHelper) editPerson(ctx context.Context, personID int64, body personapi.EditPersonRequest) *http.Response {
 	a.t.Helper()
-	path := a.serverURL.JoinPath("/ims/api/personnel", strconv.FormatInt(personID, 10)).String()
-	return a.imsPost(ctx, body, path)
+	client := servicev1connect.NewImsServiceClient(http.DefaultClient, a.serverURL.String())
+	rpcReq := connect.NewRequest(&servicerpcv1.UpdatePersonRequest{
+		PersonId:          int32(personID),
+		Handle:            body.Handle,
+		Name:              body.Name,
+		Email:             body.Email,
+		Phone:             body.Phone,
+		Wristband:         body.Wristband,
+		ParticipationType: participationTypeToProtoEnum(body.ParticipationType),
+	})
+	if body.Event != "" {
+		id := a.resolveEventID(ctx, body.Event)
+		rpcReq.Msg.EventId = &id
+	}
+	a.authorizeRPC(rpcReq)
+	_, err := client.UpdatePerson(ctx, rpcReq)
+	return writeRPCStatus(err)
 }
 
 // listPersonnel drives the personnel listing through the generated Connect client
@@ -266,22 +340,37 @@ func (a ApiHelper) getPersonnelByID(ctx context.Context, personID int64, eventNa
 	return a.listPersonnel(ctx, req)
 }
 
-// setParticipation upserts a person's per-event participation via the dedicated
-// endpoint (enroll / mark not-present / eject), without touching their profile.
+// setParticipation upserts a person's per-event participation through the generated Connect client
+// (SetPersonParticipation), without touching their profile (enroll / mark not-present / eject). The
+// REST POST /personnel/{personId}/participation route was retired with the RPC; the event NAME is
+// resolved to its id.
 func (a ApiHelper) setParticipation(ctx context.Context, personID int64, eventName string, body personapi.SetParticipationRequest) *http.Response {
 	a.t.Helper()
-	path := a.serverURL.JoinPath("/ims/api/personnel", strconv.FormatInt(personID, 10), "participation").String() +
-		"?event=" + url.QueryEscape(eventName)
-	return a.imsPost(ctx, body, path)
+	client := servicev1connect.NewImsServiceClient(http.DefaultClient, a.serverURL.String())
+	rpcReq := connect.NewRequest(&servicerpcv1.SetPersonParticipationRequest{
+		PersonId:          int32(personID),
+		EventId:           a.resolveEventID(ctx, eventName),
+		Wristband:         body.Wristband,
+		ParticipationType: participationTypeToProtoEnum(body.ParticipationType),
+	})
+	a.authorizeRPC(rpcReq)
+	_, err := client.SetPersonParticipation(ctx, rpcReq)
+	return writeRPCStatus(err)
 }
 
-// removeParticipation deletes a person's per-event participation row entirely.
+// removeParticipation deletes a person's per-event participation row through the generated Connect
+// client (RemovePersonFromEvent). The REST DELETE /personnel/{personId}/participation route was
+// retired with the RPC.
 func (a ApiHelper) removeParticipation(ctx context.Context, personID int64, eventName string) *http.Response {
 	a.t.Helper()
-	path := a.serverURL.JoinPath("/ims/api/personnel", strconv.FormatInt(personID, 10), "participation").String() +
-		"?event=" + url.QueryEscape(eventName)
-	_, resp := a.imsDelete(ctx, path, nil)
-	return resp
+	client := servicev1connect.NewImsServiceClient(http.DefaultClient, a.serverURL.String())
+	rpcReq := connect.NewRequest(&servicerpcv1.RemovePersonFromEventRequest{
+		PersonId: int32(personID),
+		EventId:  a.resolveEventID(ctx, eventName),
+	})
+	a.authorizeRPC(rpcReq)
+	_, err := client.RemovePersonFromEvent(ctx, rpcReq)
+	return writeRPCStatus(err)
 }
 
 func (a ApiHelper) editType(ctx context.Context, req imsjson.IncidentType) (*int32, *http.Response) {

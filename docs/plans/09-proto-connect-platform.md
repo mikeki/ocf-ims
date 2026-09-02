@@ -1136,6 +1136,52 @@ RPCs), retiring REST `GET /personnel`; the seven admin writes are the next slice
   `all=true`→403 under GlobalAdministratePersonnel) — the same relocation the report reads made into
   `TestReportReadAuthorization`.
 
+### 1c — Domain extraction: the personnel writes (2026-09-02)
+
+The seven admin personnel-management writes (create, edit, password reset, admin toggle, set/remove
+participation, delete picture) landed as further methods on the same `person.Service`, retiring their
+REST routes. Only the multipart profile-picture upload + serve stay REST. Findings:
+
+- **The `Service`-method pattern absorbs a whole sub-domain with no new wiring.** Seven RPCs were added
+  as methods on the `person.Service` that already existed (the profile self-service + ListPersonnel
+  slices built it); `ImsService` gained seven one-line delegates and nothing else. This is the pattern's
+  payoff at its clearest — the write deps (DefaultPassword, AttachmentsStore, S3Client) were already on
+  the Service for the self-service picture/password RPCs.
+- **The intricate authorization + shared helpers ported verbatim behind a herr→Connect boundary.** Each
+  write's REST handler had subtle, individually-correct authz: `SetPersonAdmin` gates on the *caller
+  being an admin* (not the delegatable `GlobalAdministratePersonnel`) and refuses to clear the last
+  admin; the create/participation paths carry the plan-53b anti-escalation ceiling (a non-admin inviter
+  may assign only reporter/no-access rungs and may not touch an existing writer/crew-leader); the
+  password reset requires the target to have an email. All of it moved unchanged into herr-returning
+  cores that reuse the kept shared helpers (`applyProfileFields`, `setPersonEvent`,
+  `defaultParticipation`, `mayAssignParticipation`, `wristbandConflict`, `clearProfilePicture`); the RPC
+  wrappers map the result with `server.HerrToConnect`. A `409 Conflict` (last-admin guard, wristband
+  clash, handle/email dup) crosses as `CodeAlreadyExists`, so the `connectStatus` test bridge gained an
+  AlreadyExists→409 case.
+- **The 0e event_id sweep missed two selectors; the writes brought them into line.** `CreatePersonRequest`
+  and `UpdatePersonRequest` still keyed the event scope by `string event` (a name), while the sibling
+  `SetPersonParticipation`/`RemovePersonFromEvent` already used `event_id` — an inconsistency the 0e
+  "every request selector → event_id" rule had missed. Both were changed to `optional int32 event_id`,
+  so all four event-scoped personnel writes now key by id (the ported UI resolves name→id from the
+  events list, exactly as the read RPCs already require).
+- **A closed proto enum erases the last string-validation 400.** REST `validParticipation` rejected an
+  unknown participation-type *string* with a 400; the contract types `participation_type` as a
+  `defined_only` enum, so an unknown value simply can't be sent (an out-of-contract value collapses to
+  UNSPECIFIED = "default from wristband"). `validParticipation` was deleted (the enum ⇄ string mapping is
+  `participationTypeFromProto`/`participationTypeToProto`), and the "bogus string → 400" test was dropped
+  with a note — the third such REST 400 with no analogue this slice-family (after the event-name and
+  non-numeric-`person_id` cases). The per-field `too long` 400s survive unchanged — they're now enforced
+  a layer earlier by protovalidate's `max_len` (still surfacing as InvalidArgument→400).
+- **A created resource must still return through the synthesized `*http.Response` body.** `CreatePerson`
+  returns the new person (its server-assigned `person_id` is the key for the follow-up edits); the test
+  helper marshals the proto response back to JSON into the synth response body (with the
+  `Content-Type: application/json` header the browser client's `fetchNoThrow` gated on), so the ~30 call
+  sites that decode `created.PersonID` are unchanged — the write-side analogue of the read helpers'
+  proto→imsjson mapping.
+
+**The entire personnel surface (read + all seven writes) is now on Connect**; only the multipart
+profile-picture upload + serve stay REST.
+
 ## 8. Open questions
 
 1. **Does the Go binary keep serving static assets in production**, or does Caddy?
