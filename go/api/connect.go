@@ -51,14 +51,14 @@ import (
 // route is DELETED, not shimmed — the aggressive migration path in plan 09 §6, so
 // the RPC becomes the sole transport for that resource.
 //
-// SCAFFOLD (removed at the Phase-1 exit gate): the embedded
-// UnimplementedImsServiceHandler satisfies the 60-method interface while the
-// methods are filled in resource-by-resource across 1c/1d. The gate greps for
-// this embedding, so it cannot be left in the shipped server; until then it is
-// the idiomatic connect-go way to stand up a partial service. See plan 09g.
+// The Phase-1 exit gate is now PASSED: every RPC on the servicev1connect.ImsServiceHandler
+// interface is implemented, so the type no longer embeds UnimplementedImsServiceHandler.
+// That scaffold satisfied the interface while methods were filled in resource-by-resource
+// across 1c/1d; dropping it makes the compiler the exhaustiveness check — a future RPC added
+// to the contract fails to build until it has a method here, instead of silently answering
+// CodeUnimplemented. (The unimplemented-passes-validation probe uses a test-only bare handler;
+// see newBareUnimplementedConnectClient in connect_test.go.)
 type ImsService struct {
-	servicev1connect.UnimplementedImsServiceHandler
-
 	// Each domain package exposes a Service that holds the dependencies its RPCs share;
 	// ImsService composes them (each built once in AddConnectToMux) and every RPC method
 	// delegates to the matching domain Service. A resource is extracted by adding its
@@ -894,6 +894,8 @@ func (s ImsService) ListActionLogs(
 // cross-cutting chain (server.Interceptors) is attached once here and applies to
 // every RPC — request id, auth, slog, action log, protovalidate — so unlike the
 // per-route REST middleware there is no flag to omit (M9).
+//
+//nolint:funlen // declarative handler-registration wiring, not business logic
 func AddConnectToMux(
 	mux *http.ServeMux,
 	cfg *conf.IMSConfig,

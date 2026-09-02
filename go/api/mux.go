@@ -34,6 +34,13 @@ import (
 	actionlogstore "github.com/mikeki/ocf-ims/store/actionlog"
 )
 
+// AddToMux registers every REST/web and static route on the shared mux. It is a
+// declarative route-registration table, not business logic — its length is the
+// number of routes it wires — so funlen is waived here; the rule exists to keep the
+// thin RPC delegate methods from re-accumulating logic (plan 09 M10), which a route
+// table is not.
+//
+//nolint:funlen // declarative route-registration table, not business logic
 func AddToMux(
 	mux *http.ServeMux,
 	es *server.EventSourcerer,
