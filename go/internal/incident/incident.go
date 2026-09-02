@@ -25,7 +25,6 @@ import (
 	"net/http"
 	"regexp"
 	"slices"
-	"strconv"
 	"strings"
 	"time"
 
@@ -315,74 +314,11 @@ func resolveTypedMentionIDs(ctx context.Context, userStore directory.UserStore, 
 	return ids, nil
 }
 
-type NewIncident struct {
-	ImsDBQ    *store.DBQ
-	UserStore directory.UserStore
-	Es        *server.EventSourcerer
-	Pusher    *server.Pusher
-	Metrics   *server.MetricsCache
-}
-
-func (action NewIncident) ServeHTTP(w http.ResponseWriter, req *http.Request) {
-	number, location, errHTTP := action.newIncident(req)
-	if errHTTP != nil {
-		errHTTP.From("[newIncident]").WriteResponse(w)
-		return
-	}
-
-	w.Header().Set("IMS-Incident-Number", strconv.Itoa(int(number)))
-	w.Header().Set("Location", location)
-	herr.WriteCreatedResponse(w, http.StatusText(http.StatusCreated))
-}
-func (action NewIncident) newIncident(req *http.Request) (incidentNumber int32, location string, errHTTP *herr.HTTPError) {
-	event, jwtCtx, eventPermissions, errHTTP := server.GetEventPermissions(req, action.ImsDBQ, action.UserStore)
-	if errHTTP != nil {
-		return 0, "", errHTTP.From("[server.GetEventPermissions]")
-	}
-	if eventPermissions&authz.EventWriteIncidents == 0 {
-		return 0, "", herr.Forbidden("The requestor does not have EventWriteIncidents permission on this Event", nil)
-	}
-	ctx := req.Context()
-	newIncident, errHTTP := server.ReadBodyAs[imsjson.Incident](req)
-	if errHTTP != nil {
-		return 0, "", errHTTP.From("[server.ReadBodyAs]")
-	}
-
-	authorPersonID := jwtCtx.Claims.PersonID()
-
-	// First create the incident, to lock in the incident number reservation
-	newIncidentNumber, err := action.ImsDBQ.NextIncidentNumber(ctx, action.ImsDBQ, event.ID)
-	if err != nil {
-		return 0, "", herr.InternalServerError("Failed to find next Incident number", err).From("[NextIncidentNumber]")
-	}
-	newIncident.EventID = event.ID
-	newIncident.Event = event.Name
-	newIncident.Number = newIncidentNumber
-	now := conv.TimeToFloat(time.Now())
-	createTheIncident := imsdb.CreateIncidentParams{
-		Event:     newIncident.EventID,
-		Number:    newIncidentNumber,
-		Created:   now,
-		Started:   now,
-		Priority:  imsjson.IncidentPriorityNormal,
-		State:     imsdb.IncidentStateOpen,
-		CreatedBy: sql.NullInt32{Int32: authorPersonID, Valid: true},
-	}
-	_, err = action.ImsDBQ.CreateIncident(ctx, action.ImsDBQ, createTheIncident)
-	if err != nil {
-		return 0, "", herr.InternalServerError("Failed to create incident", err).From("[CreateIncident]")
-	}
-
-	errHTTP = updateIncident(ctx, action.ImsDBQ, action.UserStore, action.Es, action.Pusher, newIncident, authorPersonID, jwtCtx.Claims.PersonAdmin())
-	if errHTTP != nil {
-		return 0, "", errHTTP.From("[updateIncident]")
-	}
-
-	// A new incident shifts the dashboard aggregate for this event.
-	action.Metrics.InvalidateEvent(event.Name)
-
-	return newIncident.Number, fmt.Sprintf("/ims/api/events/%v/incidents/%d", event.Name, newIncident.Number), nil
-}
+// The incident create handler (POST .../incidents) was extracted onto Connect (plan
+// 09h/1c): incident.CreateIncident in connect.go reserves the number, inserts the row
+// with the create defaults, and applies the presence-tracked IncidentUpdate over it via
+// the shared updateIncident helper below. The REST POST route was retired, not shimmed
+// (aggressive migration, plan 09 §6).
 
 func unmarshalByteSlice[T any](isByteSlice any) (T, error) {
 	var result T

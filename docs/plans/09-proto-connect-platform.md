@@ -836,6 +836,41 @@ a one-line delegate. Findings:
   **no tests** — the generated client, the integration suite, and the wire contract are all
   unchanged.
 
+### 1c — Domain extraction: CreateIncident (the last incident write) (2026-09-01)
+
+The final incident resource. `incident.CreateIncident` (a method on the existing
+`incident.Service` — the just-established pattern's first payoff, one new method and no new
+wiring) reserves the next per-event number, inserts the row with the create defaults, and
+applies the presence-tracked `IncidentUpdate` over it through the same `updateIncident`
+helper and the same `incidentUpdateToJSON` converter the write path already had. REST `POST
+.../incidents` (`NewIncident`) is deleted. Findings:
+
+- **Create and Update genuinely converged on one message.** `IncidentUpdate` was designed to
+  be shared (0e), and it paid off here with no reshaping: the REST create already *was* "make
+  a bare row, then run the edit path" (`NewIncident` reserved the number, inserted defaults,
+  then called the same `updateIncident`), so the extracted create is that same two-step with
+  the proto converter slotted in front of the shared helper. The only field on the resource
+  the write doesn't carry (visits) was already excluded from the contract. *A write message
+  worth sharing across create/update is one where create is already "update over a default
+  row" — check that before merging them, don't assume it.*
+- **Create needs no journal-only path.** Unlike `UpdateIncident`'s 52f branch, create requires
+  `EventWriteIncidents` outright — a per-incident grant can't exist for an incident that
+  doesn't exist yet — so the authz is strictly simpler, not a copy with an extra case.
+- **The contract dropped the `Location` header cleanly.** REST returned the new number in an
+  `IMS-Incident-Number` header + a `Location`; the RPC returns just `incident_number` and the
+  client composes the path. The test helper re-synthesizes the header on its fake
+  `*http.Response` so `newIncidentSuccess` and its ~30 call sites stay byte-for-byte unchanged.
+- **A bespoke test server had to grow the Connect surface.** `TestPushFanoutDelivery` builds
+  its *own* `httptest` server (to inject a push spy) and previously created incidents over
+  REST; once create went Connect-only its mux had to also mount `AddConnectToMux` **with the
+  same spy sender**, or the create's fan-out would run through a different `Pusher`. *When a
+  write moves to Connect, every hand-rolled test server that drives that write — not just the
+  shared one — needs the Connect handler mounted, sharing the same side-effect backends.*
+
+With this, **all incident writes are on Connect**; only the read-mapper retirement (the direct
+DB→proto mapper that kills `incidentToJSON`/`incidentJSONToProto`/`incidentViewToJSON`) remains
+on the incident core, as its own follow-up.
+
 ## 8. Open questions
 
 1. **Does the Go binary keep serving static assets in production**, or does Caddy?

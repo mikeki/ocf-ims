@@ -138,8 +138,9 @@ The incident **reads** are done: **`GetIncident`** (branch `feat/1c-incident-get
 merged #210) and **`GetIncidents`/`ListIncidents`** (branch `feat/1c-incident-listincidents`,
 merged #211). Both reuse the shared `incidentToJSON`→`incidentJSONToProto` bridge.
 
-The first **write** is done: **`UpdateIncident`** (branch `feat/1c-incident-writes`) —
-retires REST `POST .../incidents/{n}` (`EditIncident`). It introduced the presence-tracked
+The **writes** are done: **`UpdateIncident`** (merged #212, branch `feat/1c-incident-writes`)
+and **`CreateIncident`** (branch `feat/1c-incident-create`). UpdateIncident introduced the
+presence-tracked
 **`IncidentUpdate`** proto message (rpc/v1/incident.proto), shared by Create and Update: a
 plain `repeated` field can't distinguish "leave this list unchanged" from "clear it" (absent
 == empty on the wire), which the incident PATCH-by-presence write depends on, so the three
@@ -161,15 +162,24 @@ This **decoupled** the read-mapper retirement from the writes. Because `updateIn
 still speaks json, the write PR does **not** kill `incidentToJSON`/`incidentJSONToProto`/
 `incidentViewToJSON` — the direct DB→proto mapper that retires them is now its own **later
 follow-up**, cleanly separable and no longer blocking on the write extraction (this corrects
-the earlier "they die together with the writes" pointer). Next incident RPC, still on the
-aggressive path: **`CreateIncident`** — branches fresh off master, reuses the `IncidentUpdate`
-converter + the shared-mux wiring, deletes REST `POST .../incidents`, and moves the
-`newIncident`/`newIncidentSuccess` test helpers onto the Connect client. Then reports → people/auth →
-taxonomies → events(EditEvent)/areas/crews → metrics/action log. For each: move handler
-logic into a proto-shaped domain
-function returning Connect errors, add the RPC method to `ImsService`, **delete the
-REST route + handler and move its `api/integration` cases onto the Connect client**
-(NOT a shim — the aggressive path, plan 09 §6), then verify. **Defer `funlen`:** the
-path-scoped rule can only be enabled once the files it scopes are actually thin, so
-it lands near the END of 1c — turning it on now would fail lint on every
+the earlier "they die together with the writes" pointer). **`CreateIncident`** then landed as
+the first payoff of the per-domain `Service` pattern — one new method on `incident.Service`,
+no new wiring — reusing the `IncidentUpdate` converter and `updateIncident` helper (REST
+create already *was* "make a bare row, then run the edit path"); it deletes REST `POST
+.../incidents` and reroutes the `newIncident`/`newIncidentSuccess` test helpers onto the
+Connect client (synthesizing the `IMS-Incident-Number` header so their call sites are
+unchanged). A gotcha it surfaced: `TestPushFanoutDelivery` runs its own `httptest` server, so
+that server had to mount `AddConnectToMux` with the same push spy once create went
+Connect-only.
+
+**All incident writes are now on Connect.** What remains on the incident core is the direct
+DB→proto read-mapper follow-up (retires `incidentToJSON`/`incidentJSONToProto`/
+`incidentViewToJSON` and the test-side `incidentViewToJSON`/`incidentUpdateFromJSON`
+bridges). Then the rest of the resource order: reports → people/auth → taxonomies →
+events(EditEvent)/areas/crews → metrics/action log. For each: move handler logic into a
+proto-shaped domain method on its domain `Service` returning Connect errors, add the RPC
+method to `ImsService`, **delete the REST route + handler and move its `api/integration`
+cases onto the Connect client** (NOT a shim — the aggressive path, plan 09 §6), then verify.
+**Defer `funlen`:** the path-scoped rule can only be enabled once the files it scopes are
+actually thin, so it lands near the END of 1c — turning it on now would fail lint on every
 not-yet-extracted handler.

@@ -22,6 +22,7 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"time"
 
 	"connectrpc.com/connect"
 	"github.com/mikeki/ocf-ims/directory"
@@ -329,6 +330,85 @@ func (s Service) ListIncidents(
 	}
 
 	return &rpcv1.ListIncidentsResponse{Incidents: views}, nil
+}
+
+// CreateIncident is the domain method behind the CreateIncident RPC (plan 09h/1c). The
+// REST POST /events/{eventName}/incidents endpoint was RETIRED with this extraction, not
+// shimmed (migration decision, plan 09 §Migration strategy) — creating an incident is
+// Connect-only now. It ports the REST newIncident authorization and flow verbatim:
+// creating an incident needs EventWriteIncidents — there is no journal-only path (unlike
+// UpdateIncident), because a 52f grant is per-incident and can't apply to an incident that
+// doesn't exist yet. It reserves the next per-event number, inserts the row with the create
+// defaults (state OPEN, priority NORMAL, creator = caller), then applies the presence-tracked
+// IncidentUpdate over that fresh row through the shared updateIncident helper (unchanged) —
+// so an absent field simply keeps its create default. Finally it invalidates the dashboard
+// aggregate exactly as REST did and returns the server-assigned number.
+//
+// The REST handler also set a Location response header; the contract drops it (the client
+// composes the resource path from the returned number), matching CreateIncidentResponse.
+func (s Service) CreateIncident(
+	ctx context.Context,
+	req *rpcv1.CreateIncidentRequest,
+) (*rpcv1.CreateIncidentResponse, error) {
+	claims, ok := server.ClaimsFromContext(ctx)
+	if !ok {
+		return nil, connect.NewError(connect.CodeUnauthenticated, errors.New("authentication required"))
+	}
+
+	eventRow, err := s.ImsDBQ.Event(ctx, s.ImsDBQ, req.GetEventId())
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return nil, connect.NewError(connect.CodeNotFound, errors.New("event not found"))
+		}
+		return nil, connect.NewError(connect.CodeInternal, fmt.Errorf("failed to fetch event: %w", err))
+	}
+	event := eventRow.Event
+
+	eventPerms, _, err := authz.EventPermissions(ctx, &event.ID, s.ImsDBQ, *claims)
+	if err != nil {
+		return nil, connect.NewError(connect.CodeInternal, fmt.Errorf("failed to compute permissions: %w", err))
+	}
+	if eventPerms[event.ID]&authz.EventWriteIncidents == 0 {
+		return nil, connect.NewError(connect.CodePermissionDenied,
+			errors.New("the requestor does not have EventWriteIncidents permission on this Event"))
+	}
+
+	authorPersonID := claims.PersonID()
+
+	// Reserve the incident number first, locking in the per-event sequence, then insert
+	// the row with the create defaults before applying the caller's fields over it.
+	newIncidentNumber, err := s.ImsDBQ.NextIncidentNumber(ctx, s.ImsDBQ, event.ID)
+	if err != nil {
+		return nil, connect.NewError(connect.CodeInternal, fmt.Errorf("failed to find next incident number: %w", err))
+	}
+	now := conv.TimeToFloat(time.Now())
+	_, err = s.ImsDBQ.CreateIncident(ctx, s.ImsDBQ, imsdb.CreateIncidentParams{
+		Event:     event.ID,
+		Number:    newIncidentNumber,
+		Created:   now,
+		Started:   now,
+		Priority:  imsjson.IncidentPriorityNormal,
+		State:     imsdb.IncidentStateOpen,
+		CreatedBy: sql.NullInt32{Int32: authorPersonID, Valid: true},
+	})
+	if err != nil {
+		return nil, connect.NewError(connect.CodeInternal, fmt.Errorf("failed to create incident: %w", err))
+	}
+
+	newIncident := incidentUpdateToJSON(req.GetIncident())
+	newIncident.Event = event.Name
+	newIncident.EventID = event.ID
+	newIncident.Number = newIncidentNumber
+
+	errHTTP := updateIncident(ctx, s.ImsDBQ, s.UserStore, s.Es, s.Pusher, newIncident, authorPersonID, claims.PersonAdmin())
+	if errHTTP != nil {
+		return nil, herrToConnect(errHTTP)
+	}
+
+	// A new incident shifts the dashboard aggregate for this event.
+	s.Metrics.InvalidateEvent(event.Name)
+
+	return &rpcv1.CreateIncidentResponse{IncidentNumber: newIncidentNumber}, nil
 }
 
 // UpdateIncident is the domain method behind the UpdateIncident RPC (plan 09h/1c).

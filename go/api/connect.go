@@ -106,6 +106,23 @@ func (s ImsService) GetIncident(
 	return connect.NewResponse(resp), nil
 }
 
+// CreateIncident is a thin RPC method over the incident.CreateIncident domain method
+// (plan 09h/1c). Its REST predecessor (POST .../incidents) was deleted in the same slice,
+// so this is the only transport for creating an incident. The domain method authorizes
+// from ctx claims and speaks Connect errors, so this just delegates; it carries the shared
+// EventSourcerer / Pusher / MetricsCache so the create fans out SSE + push and invalidates
+// the dashboard exactly as REST did.
+func (s ImsService) CreateIncident(
+	ctx context.Context,
+	req *connect.Request[servicerpcv1.CreateIncidentRequest],
+) (*connect.Response[servicerpcv1.CreateIncidentResponse], error) {
+	resp, err := s.Incident.CreateIncident(ctx, req.Msg)
+	if err != nil {
+		return nil, err
+	}
+	return connect.NewResponse(resp), nil
+}
+
 // UpdateIncident is a thin RPC method over the incident.UpdateIncident domain method
 // (plan 09h/1c). Its REST predecessor (POST .../incidents/{n}) was deleted in the same
 // slice. The domain method authorizes from ctx claims and speaks Connect errors, so
