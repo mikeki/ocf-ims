@@ -31,7 +31,6 @@ import (
 	"github.com/mikeki/ocf-ims/internal/incident"
 	"github.com/mikeki/ocf-ims/internal/metrics"
 	"github.com/mikeki/ocf-ims/internal/notification"
-	"github.com/mikeki/ocf-ims/internal/outcome"
 	"github.com/mikeki/ocf-ims/internal/person"
 	"github.com/mikeki/ocf-ims/internal/push"
 	"github.com/mikeki/ocf-ims/internal/server"
@@ -73,11 +72,10 @@ func AddToMux(
 
 	// Reference-data caches: each event's area list is read on nearly every incident
 	// form load but changes rarely, so it is memoized here and invalidated by its write
-	// handlers. (The incident-type taxonomy cache moved to the Connect side when the
-	// taxonomy routes were extracted, plan 09h/1c.)
+	// handlers. (The incident-type and outcome taxonomy caches moved to the Connect side
+	// when those taxonomy routes were extracted, plan 09h/1c.)
 	areasCache := server.NewAreasCache()
 	crewsCache := server.NewCrewsCache()
-	outcomesCache := server.NewOutcomesCache()
 
 	mux.Handle("GET /ims/api/actionlogs",
 		server.Adapt(
@@ -365,38 +363,10 @@ func AddToMux(
 	// ImsService RPCs (plan 09h/1c) and their REST routes were retired; the shared
 	// incidentTypesCache moved to the Connect side (built in AddConnectToMux).
 
-	mux.Handle("GET /ims/api/outcomes",
-		server.Adapt(
-			outcome.GetOutcomes{ImsDBQ: db, UserStore: userStore, Cache: outcomesCache, CacheControlShort: cfg.Core.CacheControlShort},
-			server.RecoverFromPanic(),
-			server.RequireAuthN(jwter),
-			server.LogRequest(false, actionLogger, userStore),
-			server.LimitRequestBytes(cfg.Core.MaxRequestBytes),
-		),
-	)
-
-	mux.Handle("POST /ims/api/outcomes",
-		server.Adapt(
-			outcome.EditOutcomes{ImsDBQ: db, UserStore: userStore, Outcomes: outcomesCache},
-			server.RecoverFromPanic(),
-			server.RequireAuthN(jwter),
-			server.LogRequest(true, actionLogger, userStore),
-			server.LimitRequestBytes(cfg.Core.MaxRequestBytes),
-		),
-	)
-
-	// An event writer proposes a new outcome from the incident form; the route is
-	// event-scoped only to authorize the caller as a writer (the outcome is global).
-	// Approval happens back on the global admin endpoint above.
-	mux.Handle("POST /ims/api/events/{eventName}/outcomes",
-		server.Adapt(
-			outcome.ProposeOutcome{ImsDBQ: db, UserStore: userStore, Outcomes: outcomesCache},
-			server.RecoverFromPanic(),
-			server.RequireAuthN(jwter),
-			server.LogRequest(true, actionLogger, userStore),
-			server.LimitRequestBytes(cfg.Core.MaxRequestBytes),
-		),
-	)
+	// The outcome read + all writes (the POST multiplexer, decomposed into
+	// Create/Update/Approve/SetHidden, and the event-scoped writer Propose) moved to the
+	// ImsService RPCs (plan 09h/1c) and their REST routes were retired; the shared
+	// outcomesCache moved to the Connect side (built in AddConnectToMux).
 
 	// The personnel READ (GET /personnel) and all seven personnel WRITES (create, edit,
 	// password reset, admin toggle, set/remove participation, delete picture) moved to the

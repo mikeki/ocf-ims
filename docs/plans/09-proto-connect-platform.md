@@ -1225,6 +1225,33 @@ the 0e write-multiplex decomposition end-to-end and surfaced two contract gaps. 
   `TestListIncidentTypesAuthorization`; `POST /incident_types` left the admin-only sweep → focused
   `TestIncidentTypeWriteAuthorization`. The reads are `NO_SIDE_EFFECTS`.
 
+### 1c — Domain extraction: the outcome taxonomy (2026-09-02)
+
+The parallel taxonomy — outcomes — landed the same day as `outcome.Service` with six RPCs, retiring
+REST `GET`/`POST /outcomes` and `POST /events/{eventName}/outcomes`. It is the near-identical twin of
+incident types, so most findings above carry over verbatim (multiplexer decomposition, cache
+migration to `AddConnectToMux`, the `ProposeOutcomeResponse` `{}` → `int32 outcome_id` gap, reads
+`NO_SIDE_EFFECTS`). The differences worth recording:
+
+- **A simpler resource means fewer moving parts, not a different shape.** Outcomes carry no `group`
+  and no `description`, so there is no partial-update enum-presence gap (contract gap #2 doesn't
+  recur) and **no metrics dependency**: the dashboard aggregates incidents by type/category, never by
+  outcome, so an outcome write invalidates only the `OutcomesCache` — `metricsCache` is never
+  threaded into `outcome.Service`. The extraction is the incident-type one with the group plumbing
+  and the metrics cache removed.
+- **A combined-field DTO fans out to two RPCs in the test helper.** The retired `POST /outcomes`
+  update branch applied name and hidden together; the decomposition makes `UpdateOutcome` leave
+  hidden alone (that is `SetOutcomeHidden`'s job). Rather than change the ~5 call sites, the
+  `editOutcome` helper — when a legacy DTO carries both a name and a hidden flag — issues
+  `UpdateOutcome` *then* `SetOutcomeHidden`. This is the general shape of emulating a retired
+  multiplexer whose one write touched fields the contract split apart: the helper composes, the
+  contract stays clean.
+- **No sweep to relocate when the resource was never swept.** Unlike incident types, the outcome
+  routes were never in `permissions_test.go`'s admin-only / any-authenticated sweeps — their auth was
+  exercised inline in `outcome_test.go`. So nothing was pruned; `TestListOutcomesAuthorization` +
+  `TestOutcomeWriteAuthorization` were added anyway, to hold every retired taxonomy resource to the
+  same focused-auth bar.
+
 ## 8. Open questions
 
 1. **Does the Go binary keep serving static assets in production**, or does Caddy?

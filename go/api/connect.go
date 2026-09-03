@@ -29,6 +29,7 @@ import (
 	"github.com/mikeki/ocf-ims/internal/event"
 	"github.com/mikeki/ocf-ims/internal/incident"
 	"github.com/mikeki/ocf-ims/internal/incidenttype"
+	"github.com/mikeki/ocf-ims/internal/outcome"
 	"github.com/mikeki/ocf-ims/internal/person"
 	"github.com/mikeki/ocf-ims/internal/server"
 	"github.com/mikeki/ocf-ims/lib/attachment"
@@ -63,6 +64,7 @@ type ImsService struct {
 	Person       person.Service
 	Auth         auth.Service
 	IncidentType incidenttype.Service
+	Outcome      outcome.Service
 }
 
 // ListEvents is a thin RPC method over the event.ListEvents domain method (plan
@@ -545,6 +547,76 @@ func (s ImsService) ProposeIncidentType(
 	return connect.NewResponse(resp), nil
 }
 
+// The six outcome RPCs below are thin methods over the matching outcome.Service domain methods
+// (connect.go, plan 09h/1c). The POST /outcomes multiplexer was decomposed into
+// Create/Update/Approve/SetHidden; each retired its REST route in the same slice.
+
+func (s ImsService) ListOutcomes(
+	ctx context.Context,
+	req *connect.Request[servicerpcv1.ListOutcomesRequest],
+) (*connect.Response[servicerpcv1.ListOutcomesResponse], error) {
+	resp, err := s.Outcome.ListOutcomes(ctx, req.Msg)
+	if err != nil {
+		return nil, err
+	}
+	return connect.NewResponse(resp), nil
+}
+
+func (s ImsService) CreateOutcome(
+	ctx context.Context,
+	req *connect.Request[servicerpcv1.CreateOutcomeRequest],
+) (*connect.Response[servicerpcv1.CreateOutcomeResponse], error) {
+	resp, err := s.Outcome.CreateOutcome(ctx, req.Msg)
+	if err != nil {
+		return nil, err
+	}
+	return connect.NewResponse(resp), nil
+}
+
+func (s ImsService) UpdateOutcome(
+	ctx context.Context,
+	req *connect.Request[servicerpcv1.UpdateOutcomeRequest],
+) (*connect.Response[servicerpcv1.UpdateOutcomeResponse], error) {
+	resp, err := s.Outcome.UpdateOutcome(ctx, req.Msg)
+	if err != nil {
+		return nil, err
+	}
+	return connect.NewResponse(resp), nil
+}
+
+func (s ImsService) ApproveOutcome(
+	ctx context.Context,
+	req *connect.Request[servicerpcv1.ApproveOutcomeRequest],
+) (*connect.Response[servicerpcv1.ApproveOutcomeResponse], error) {
+	resp, err := s.Outcome.ApproveOutcome(ctx, req.Msg)
+	if err != nil {
+		return nil, err
+	}
+	return connect.NewResponse(resp), nil
+}
+
+func (s ImsService) SetOutcomeHidden(
+	ctx context.Context,
+	req *connect.Request[servicerpcv1.SetOutcomeHiddenRequest],
+) (*connect.Response[servicerpcv1.SetOutcomeHiddenResponse], error) {
+	resp, err := s.Outcome.SetOutcomeHidden(ctx, req.Msg)
+	if err != nil {
+		return nil, err
+	}
+	return connect.NewResponse(resp), nil
+}
+
+func (s ImsService) ProposeOutcome(
+	ctx context.Context,
+	req *connect.Request[servicerpcv1.ProposeOutcomeRequest],
+) (*connect.Response[servicerpcv1.ProposeOutcomeResponse], error) {
+	resp, err := s.Outcome.ProposeOutcome(ctx, req.Msg)
+	if err != nil {
+		return nil, err
+	}
+	return connect.NewResponse(resp), nil
+}
+
 // AddConnectToMux registers the ImsService Connect handler on the shared mux
 // next to AddToMux (plan 09g). connect handlers are plain http.Handlers mounted
 // at a path prefix, so the RPC surface coexists with the REST/web routes on one
@@ -580,10 +652,12 @@ func AddConnectToMux(
 	// POST /auth (and its ThrottleLogin middleware) were retired when Login moved here, so this
 	// is the sole instance. Disabled by config in the shared test suite; on in real deployments.
 	loginLimiter := server.NewLoginRateLimiter(server.DefaultLoginRateLimiterConfig(cfg.Core.LoginRateLimitEnabled))
-	// The incident-type taxonomy cache lived in AddToMux while its routes were REST; it moved here
-	// with the taxonomy extraction (plan 09h/1c) since every consumer is now a Connect RPC. It is
-	// invalidated by the type writes (shared with metricsCache, which the incident writes also use).
+	// The incident-type and outcome taxonomy caches lived in AddToMux while their routes were REST;
+	// they moved here with the taxonomy extraction (plan 09h/1c) since every consumer is now a
+	// Connect RPC. Each is invalidated by its own writes (the type cache is shared with metricsCache,
+	// which the incident writes also use; outcomes carry no group so they feed no metrics).
 	incidentTypesCache := server.NewIncidentTypesCache()
+	outcomesCache := server.NewOutcomesCache()
 	path, handler := servicev1connect.NewImsServiceHandler(
 		ImsService{
 			Event: event.Service{ImsDBQ: imsDBQ, UserStore: userStore},
@@ -618,6 +692,11 @@ func AddConnectToMux(
 				UserStore: userStore,
 				Metrics:   metricsCache,
 				Types:     incidentTypesCache,
+			},
+			Outcome: outcome.Service{
+				ImsDBQ:    imsDBQ,
+				UserStore: userStore,
+				Outcomes:  outcomesCache,
 			},
 		},
 		connect.WithInterceptors(interceptors...),
