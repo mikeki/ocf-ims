@@ -139,6 +139,36 @@ func (s ImsService) UpdateIncident(
 	return connect.NewResponse(resp), nil
 }
 
+// GetReport is a thin RPC method over the incident.GetReport domain method (plan 09h/1c,
+// reports). Its REST predecessor (GET .../reports/{n}) was deleted in the same slice, so this
+// is the only transport for reading a single field report. The domain method authorizes from
+// ctx claims and speaks Connect errors, so this just delegates.
+func (s ImsService) GetReport(
+	ctx context.Context,
+	req *connect.Request[servicerpcv1.GetReportRequest],
+) (*connect.Response[servicerpcv1.GetReportResponse], error) {
+	resp, err := s.Incident.GetReport(ctx, req.Msg)
+	if err != nil {
+		return nil, err
+	}
+	return connect.NewResponse(resp), nil
+}
+
+// ListReports is a thin RPC method over the incident.ListReports domain method (plan 09h/1c,
+// reports). Its REST predecessor (GET .../reports) was deleted in the same slice, so this is
+// the only transport for listing an event's field reports. The domain method authorizes from
+// ctx claims and speaks Connect errors, so this just delegates.
+func (s ImsService) ListReports(
+	ctx context.Context,
+	req *connect.Request[servicerpcv1.ListReportsRequest],
+) (*connect.Response[servicerpcv1.ListReportsResponse], error) {
+	resp, err := s.Incident.ListReports(ctx, req.Msg)
+	if err != nil {
+		return nil, err
+	}
+	return connect.NewResponse(resp), nil
+}
+
 // GetAuthStatus is the one RPC implemented end-to-end in slice 1b, to prove the
 // interceptor spine through the generated client. It answers the identity subset
 // of the whoami purely from the caller's JWT claims, which the auth interceptor

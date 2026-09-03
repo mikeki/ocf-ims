@@ -116,6 +116,30 @@ func incidentViewToJSON(view *servicerpcv1.IncidentView) imsjson.Incident {
 	return out
 }
 
+// reportViewToJSON maps the report read RPCs' ReportView proto back to the legacy
+// imsjson.Report the report tests assert against — the report-side mirror of
+// incidentViewToJSON. The caller-dependent edit flags live on the wrapper (may_edit_summary
+// / may_add_journal_entry); the resource carries the rest. journal_entries the proto wire
+// drops to nil stay nil, matching reportToJSON (requireEqualReport ignores them anyway).
+// This test-only bridge dies with json/ once the whole report surface moves onto Connect.
+func reportViewToJSON(view *servicerpcv1.ReportView) imsjson.Report {
+	r := view.GetReport()
+	out := imsjson.Report{
+		Event:              r.GetEvent(),
+		Number:             r.GetNumber(),
+		Created:            r.GetCreated().AsTime(),
+		CreatedBy:          personRefToMention(r.GetCreatedBy()),
+		Summary:            r.Summary,
+		Incident:           r.Incident,
+		MayEditSummary:     view.GetMayEditSummary(),
+		MayAddJournalEntry: view.GetMayAddJournalEntry(),
+	}
+	for _, je := range r.GetJournalEntries() {
+		out.JournalEntries = append(out.JournalEntries, journalEntryProtoToJSON(je))
+	}
+	return out
+}
+
 func journalEntryProtoToJSON(je *resourcesv1.JournalEntry) imsjson.JournalEntry {
 	out := imsjson.JournalEntry{
 		ID:          je.GetId(),

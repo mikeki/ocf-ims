@@ -24,6 +24,10 @@ message ReportView {
 
 message ListReportsRequest {
   int32 event_id = 1 [(buf.validate.field).int32.gt = 0];
+  // exclude_system_entries drops the auto-generated ("system") journal entries from
+  // each report's journal_entries, mirroring the retired REST list's query param
+  // (default false = include them). The singular GetReport always includes them.
+  bool exclude_system_entries = 2;
 }
 
 message ListReportsResponse {

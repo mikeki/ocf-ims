@@ -24,7 +24,6 @@ import (
 	"log/slog"
 	"net/http"
 	"strconv"
-	"strings"
 	"time"
 
 	"github.com/go-sql-driver/mysql"
@@ -39,111 +38,13 @@ import (
 	"github.com/mikeki/ocf-ims/store/imsdb"
 )
 
-type GetReports struct {
-	ImsDBQ             *store.DBQ
-	UserStore          directory.UserStore
-	AttachmentsEnabled bool
-}
-
-func (action GetReports) ServeHTTP(w http.ResponseWriter, req *http.Request) {
-	resp, errHTTP := action.getReports(req)
-	if errHTTP != nil {
-		errHTTP.From("[getReports]").WriteResponse(w)
-		return
-	}
-	server.MustWriteJSON(w, req, resp)
-}
-func (action GetReports) getReports(req *http.Request) (imsjson.Reports, *herr.HTTPError) {
-	resp := make(imsjson.Reports, 0)
-	event, jwtCtx, eventPermissions, errHTTP := server.GetEventPermissions(req, action.ImsDBQ, action.UserStore)
-	if errHTTP != nil {
-		return resp, errHTTP.From("[server.GetEventPermissions]")
-	}
-	if eventPermissions&(authz.EventReadAllReports|authz.EventReadOwnReports|authz.EventReadCrewReports) == 0 {
-		return resp, herr.Forbidden("The requestor does not have permission to read Reports on this Event", nil)
-	}
-	// i.e. the user has EventReadOwnReports and/or EventReadCrewReports, but not
-	// EventReadAllReports
-	limitedAccess := eventPermissions&authz.EventReadAllReports == 0
-
-	err := req.ParseForm()
-	if err != nil {
-		return resp, herr.BadRequest("Failed to parse form", err).From("[ParseForm]")
-	}
-
-	includeSystemEntries := !strings.EqualFold(req.Form.Get("exclude_system_entries"), "true")
-
-	journalEntries, err := action.ImsDBQ.Reports_JournalEntries(
-		req.Context(),
-		action.ImsDBQ,
-		imsdb.Reports_JournalEntriesParams{
-			Event:     event.ID,
-			Generated: includeSystemEntries,
-		},
-	)
-	if err != nil {
-		return resp, herr.InternalServerError("Failed to get FR journal entries", err).From("[Reports_JournalEntries]")
-	}
-
-	entriesByReport := make(map[int32][]imsjson.JournalEntry)
-	for _, row := range journalEntries {
-		entriesByReport[row.ReportNumber] = append(entriesByReport[row.ReportNumber],
-			journalEntryToJSON(row.JournalEntry, row.Author.String,
-				onBehalfOfJSON(row.JournalEntry.OnBehalfOfPersonID, row.OnBehalfOfHandle, row.OnBehalfOfName),
-				action.AttachmentsEnabled))
-	}
-
-	storedReports, err := action.ImsDBQ.Reports(req.Context(), action.ImsDBQ, event.ID)
-	if err != nil {
-		return resp, herr.InternalServerError("Failed to fetch Reports", err).From("[Reports]")
-	}
-
-	callerPersonID := jwtCtx.Claims.PersonID()
-	callerHandle := jwtCtx.Claims.PersonHandle()
-	callerIsAdmin := jwtCtx.Claims.PersonAdmin()
-
-	var authorizedReports []imsdb.ReportsRow
-	if limitedAccess {
-		// A limited caller sees the union of their own reports (EventReadOwnReports)
-		// and — for a crew leader — reports created by their crew's members
-		// (EventReadCrewReports, scoped by CrewLeaderReportNumbers).
-		hasOwn := eventPermissions&authz.EventReadOwnReports != 0
-		crewReportNums := map[int32]bool{}
-		if eventPermissions&authz.EventReadCrewReports != 0 {
-			crewReportNums, errHTTP = crewReportNumberSet(req.Context(), action.ImsDBQ, event.ID, callerPersonID)
-			if errHTTP != nil {
-				return resp, errHTTP
-			}
-		}
-		for _, storedReport := range storedReports {
-			entries := entriesByReport[storedReport.Report.Number]
-			ownVisible := hasOwn && ownsReport(storedReport.Report, entries, callerPersonID, callerHandle)
-			if ownVisible || crewReportNums[storedReport.Report.Number] {
-				authorizedReports = append(authorizedReports, storedReport)
-			}
-		}
-	} else {
-		authorizedReports = storedReports
-	}
-
-	resp = make(imsjson.Reports, 0, len(authorizedReports))
-	for _, report := range authorizedReports {
-		mayEditSummary, mayAddEntry := reportEditRights(report.Report, callerPersonID, callerIsAdmin, eventPermissions)
-		resp = append(
-			resp,
-			reportToJSON(
-				report,
-				entriesByReport[report.Report.Number],
-				event,
-				action.AttachmentsEnabled,
-				mayEditSummary,
-				mayAddEntry,
-			),
-		)
-	}
-
-	return resp, nil
-}
+// The field-report reads — GetReport (singular) and GetReports (plural, formerly the
+// GET .../reports list handler here) — were extracted onto Connect (plan 09h/1c): their
+// domain methods, proto authorization, and the json→proto bridge live in connect.go
+// (incident.GetReport, incident.ListReports), and both REST GET routes were retired, not
+// shimmed (aggressive migration, plan 09 §6). The shared helpers below (ownsReport,
+// crewReportNumberSet, reportEditRights, reportToJSON, fetchReport) stay — they are used by
+// those Connect reads and by the still-REST report writes.
 
 // ownsReport reports whether a limited (own-reports-only) caller may see this
 // report. Ownership is anchored on REPORT.CREATED_BY — the deterministic creator
@@ -189,70 +90,6 @@ func crewReportNumberSet(
 		set[n] = true
 	}
 	return set, nil
-}
-
-type GetReport struct {
-	ImsDBQ             *store.DBQ
-	UserStore          directory.UserStore
-	AttachmentsEnabled bool
-}
-
-func (action GetReport) ServeHTTP(w http.ResponseWriter, req *http.Request) {
-	resp, errHTTP := action.getReport(req)
-	if errHTTP != nil {
-		errHTTP.From("[getReport]").WriteResponse(w)
-		return
-	}
-	server.MustWriteJSON(w, req, resp)
-}
-
-func (action GetReport) getReport(req *http.Request) (imsjson.Report, *herr.HTTPError) {
-	var response imsjson.Report
-
-	event, jwtCtx, eventPermissions, errHTTP := server.GetEventPermissions(req, action.ImsDBQ, action.UserStore)
-	if errHTTP != nil {
-		return response, errHTTP.From("[server.GetEventPermissions]")
-	}
-	if eventPermissions&(authz.EventReadAllReports|authz.EventReadOwnReports|authz.EventReadCrewReports) == 0 {
-		return response, herr.Forbidden("The requestor does not have permission to read Reports on this Event", nil)
-	}
-	// i.e. they have EventReadOwnReports and/or EventReadCrewReports, but not
-	// EventReadAllReports
-	limitedAccess := eventPermissions&authz.EventReadAllReports == 0
-
-	ctx := req.Context()
-
-	reportNumber, err := conv.ParseInt32(req.PathValue("reportNumber"))
-	if err != nil {
-		return response, herr.BadRequest("Invalid report number", err).From("[ParseInt32]")
-	}
-
-	report, journalEntries, errHTTP := fetchReport(ctx, action.ImsDBQ, event.ID, reportNumber, action.AttachmentsEnabled)
-	if errHTTP != nil {
-		return response, errHTTP.From("[fetchReport]")
-	}
-
-	reportRow := imsdb.ReportsRow(report)
-	if limitedAccess {
-		callerPersonID := jwtCtx.Claims.PersonID()
-		ownVisible := eventPermissions&authz.EventReadOwnReports != 0 &&
-			ownsReport(reportRow.Report, journalEntries, callerPersonID, jwtCtx.Claims.PersonHandle())
-		crewVisible := false
-		if !ownVisible && eventPermissions&authz.EventReadCrewReports != 0 {
-			crewReportNums, errHTTP := crewReportNumberSet(ctx, action.ImsDBQ, event.ID, callerPersonID)
-			if errHTTP != nil {
-				return response, errHTTP
-			}
-			crewVisible = crewReportNums[reportNumber]
-		}
-		if !ownVisible && !crewVisible {
-			return response, herr.Forbidden("The requestor does not have permission to access this particular Report", nil)
-		}
-	}
-
-	mayEditSummary, mayAddEntry := reportEditRights(
-		reportRow.Report, jwtCtx.Claims.PersonID(), jwtCtx.Claims.PersonAdmin(), eventPermissions)
-	return reportToJSON(reportRow, journalEntries, event, action.AttachmentsEnabled, mayEditSummary, mayAddEntry), nil
 }
 
 func createdByJSON(personID sql.NullInt32, handle, name sql.NullString) *imsjson.Mention {

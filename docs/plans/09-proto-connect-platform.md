@@ -871,6 +871,38 @@ With this, **all incident writes are on Connect**; only the read-mapper retireme
 DB→proto mapper that kills `incidentToJSON`/`incidentJSONToProto`/`incidentViewToJSON`) remains
 on the incident core, as its own follow-up.
 
+### 1c — Domain extraction: report reads (GetReport + ListReports) (2026-09-01)
+
+The first non-incident resource, and the first to land two RPCs (both reads) in one PR — the
+pattern is proven enough now that reads no longer need a PR each. `incident.GetReport` and
+`incident.ListReports` are methods on the *same* `incident.Service` (reports live in the
+incident package by the 1a grouping decision — incident↔report are mutually recursive). Both
+port the REST authz verbatim and reuse the shared `reportToJSON` assembly, bridged onto the
+wire (`reportJSONToProto` + a `reportViewFromJSON` wrapper). Findings:
+
+- **A resource that carries a viewer-relative flag confirms the 0e wrapper split.** `ReportView`
+  wraps the `Report` resource with `may_edit_summary` / `may_add_journal_entry` — flags
+  json.Report carried inline. On the wire they sit on the response envelope, not the resource
+  (they describe *this caller's* rights, not the report), exactly as 0e's rule predicted, and
+  the domain method fills them from the same `reportEditRights` the REST handler used.
+- **Report scoping is a "403, not 404" resource — the opposite of a private incident.** A
+  limited caller (own-/crew-reports only) who can't see a report gets `PermissionDenied`, not
+  `NotFound`: the REST handler never hid a report's existence from a report-reader, so the port
+  keeps 403. The privacy-driven 404 is specific to private incidents; don't over-generalize it.
+- **Retiring a REST *read* still relocates its auth coverage.** The generic 401/403 sweep for
+  the report GET routes lived in `permissions_test`'s `apiCall` enumeration, which hits the raw
+  REST path — now a 404. Rather than leave a gap, the sweep entries were removed and a focused
+  `TestReportReadAuthorization` (unauth→401, no-perms→403, both reads) was added through the
+  Connect client, alongside the existing own/crew scoping tests. *A retired read isn't done
+  until its slice of the permissions sweep has an equivalent Connect-client assertion.*
+- **The `ListRequest`-needs-a-query-param pattern recurs.** Like `ListIncidents`, `ListReports`
+  gained a `bool exclude_system_entries` for the REST query param an RPC can't read off the URL.
+  This is now a recognizable shape: a list RPC that replaces a REST endpoint with query params
+  grows an explicit request field per param.
+
+The report *writes* (create/edit) and the report journal-entry edit stay REST for the next PR;
+`reportToJSON`/`fetchReport`/`reportEditRights` are deliberately kept (shared with those).
+
 ## 8. Open questions
 
 1. **Does the Go binary keep serving static assets in production**, or does Caddy?

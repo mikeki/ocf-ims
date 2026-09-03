@@ -249,15 +249,11 @@ func AddToMux(
 		),
 	)
 
-	mux.Handle("GET /ims/api/events/{eventName}/reports",
-		server.Adapt(
-			incident.GetReports{ImsDBQ: db, UserStore: userStore, AttachmentsEnabled: attachmentsEnabled},
-			server.RecoverFromPanic(),
-			server.RequireAuthN(jwter),
-			server.LogRequest(false, actionLogger, userStore),
-			server.LimitRequestBytes(cfg.Core.MaxRequestBytes),
-		),
-	)
+	// GET .../reports (list) and GET .../reports/{n} (single) were RETIRED when
+	// ListReports and GetReport moved onto Connect (plan 09h/1c, aggressive migration
+	// path — plan 09 §6). Reading field reports is now the ImsService.ListReports /
+	// GetReport RPCs (registered via AddConnectToMux); there is deliberately no REST shim.
+	// The report writes (create/edit) stay REST for now.
 
 	mux.Handle("POST /ims/api/events/{eventName}/reports",
 		server.Adapt(
@@ -265,16 +261,6 @@ func AddToMux(
 			server.RecoverFromPanic(),
 			server.RequireAuthN(jwter),
 			server.LogRequest(true, actionLogger, userStore),
-			server.LimitRequestBytes(cfg.Core.MaxRequestBytes),
-		),
-	)
-
-	mux.Handle("GET /ims/api/events/{eventName}/reports/{reportNumber}",
-		server.Adapt(
-			incident.GetReport{ImsDBQ: db, UserStore: userStore, AttachmentsEnabled: attachmentsEnabled},
-			server.RecoverFromPanic(),
-			server.RequireAuthN(jwter),
-			server.LogRequest(false, actionLogger, userStore),
 			server.LimitRequestBytes(cfg.Core.MaxRequestBytes),
 		),
 	)
