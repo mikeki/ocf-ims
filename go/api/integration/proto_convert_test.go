@@ -210,6 +210,63 @@ func personRefToMention(ref *commonv1.PersonRef) *imsjson.Mention {
 	}
 }
 
+// personProtoToJSON maps a resources/v1.Person from the ListPersonnel RPC back to the legacy
+// imsjson.Person the personnel tests assert against — the exact inverse of the server's
+// person.personToProto. The optional string fields the server dropped to nil when empty come
+// back as "" (the getters), and the profile-picture pointer is preserved as-is; the pair
+// round-trips whatever listPersonnel assembled. Dies with json/ once the personnel read path
+// maps the store straight to proto (plan 09 §Migration strategy).
+func personProtoToJSON(p *resourcesv1.Person) imsjson.Person {
+	out := imsjson.Person{
+		Handle:            p.GetHandle(),
+		Name:              p.GetName(),
+		Email:             p.GetEmail(),
+		Phone:             p.GetPhone(),
+		HasPassword:       p.GetHasPassword(),
+		IsAdmin:           p.GetIsAdmin(),
+		PersonID:          int64(p.GetPersonId()),
+		ProfilePictureURL: p.ProfilePictureUrl,
+		Wristband:         p.GetWristband(),
+		ParticipationType: participationTypeToString(p.GetParticipationType()),
+	}
+	if len(p.GetCrews()) > 0 {
+		out.Crews = make([]imsjson.PersonCrew, 0, len(p.GetCrews()))
+		for _, c := range p.GetCrews() {
+			out.Crews = append(out.Crews, imsjson.PersonCrew{
+				Name:     c.GetCrewName(),
+				Slug:     c.GetCrewSlug(),
+				IsLeader: c.GetIsLeader(),
+			})
+		}
+	}
+	return out
+}
+
+// participationTypeToString is the test-side inverse of person.participationTypeToProto: the
+// proto enum back to the stored MySQL participation string (UNSPECIFIED → "").
+func participationTypeToString(pt resourcesv1.ParticipationType) string {
+	switch pt {
+	case resourcesv1.ParticipationType_PARTICIPATION_TYPE_WRITER:
+		return "writer"
+	case resourcesv1.ParticipationType_PARTICIPATION_TYPE_CREW_LEADER:
+		return "crew_leader"
+	case resourcesv1.ParticipationType_PARTICIPATION_TYPE_REPORTER:
+		return "reporter"
+	case resourcesv1.ParticipationType_PARTICIPATION_TYPE_VOLUNTEER:
+		return "volunteer"
+	case resourcesv1.ParticipationType_PARTICIPATION_TYPE_PUBLIC:
+		return "public"
+	case resourcesv1.ParticipationType_PARTICIPATION_TYPE_NOT_PRESENT:
+		return "not_present"
+	case resourcesv1.ParticipationType_PARTICIPATION_TYPE_EJECTED:
+		return "ejected"
+	case resourcesv1.ParticipationType_PARTICIPATION_TYPE_UNSPECIFIED:
+		return ""
+	default:
+		return ""
+	}
+}
+
 // incidentUpdateFromJSON maps the legacy imsjson.Incident that the incident write helpers
 // still build at their call sites onto the presence-tracked IncidentUpdate the UpdateIncident
 // RPC takes — the write-side mirror of incidentViewToJSON, and the exact inverse of the
