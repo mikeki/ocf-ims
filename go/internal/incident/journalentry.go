@@ -18,7 +18,6 @@ package incident
 
 import (
 	"database/sql"
-	"errors"
 	"fmt"
 	"net/http"
 	"time"
@@ -33,119 +32,10 @@ import (
 	"github.com/mikeki/ocf-ims/store/imsdb"
 )
 
-type EditReportJournalEntry struct {
-	ImsDBQ      *store.DBQ
-	UserStore   directory.UserStore
-	EventSource *server.EventSourcerer
-}
-
-func (action EditReportJournalEntry) ServeHTTP(w http.ResponseWriter, req *http.Request) {
-	errHTTP := action.editJournalEntry(req)
-	if errHTTP != nil {
-		errHTTP.From("[editJournalEntry]").WriteResponse(w)
-		return
-	}
-	herr.WriteNoContentResponse(w, "Success")
-}
-
-func (action EditReportJournalEntry) editJournalEntry(req *http.Request) *herr.HTTPError {
-	event, jwtCtx, eventPermissions, errHTTP := server.GetEventPermissions(req, action.ImsDBQ, action.UserStore)
-	if errHTTP != nil {
-		return errHTTP.From("[server.GetEventPermissions]")
-	}
-	if eventPermissions&(authz.EventWriteAllReports|authz.EventWriteOwnReports) == 0 {
-		return herr.Forbidden("The requestor does not have permission to write Reports on this Event", nil)
-	}
-	ctx := req.Context()
-
-	authorPersonID := jwtCtx.Claims.PersonID()
-
-	reportNumber, err := conv.ParseInt32(req.PathValue("reportNumber"))
-	if err != nil {
-		return herr.BadRequest("Failed to parse reportNumber", err).From("[ParseInt32]")
-	}
-	journalEntryId, err := conv.ParseInt32(req.PathValue("journalEntryId"))
-	if err != nil {
-		return herr.BadRequest("Failed to parse journalEntryId", err).From("[ParseInt32]")
-	}
-
-	re, errHTTP := server.ReadBodyAs[imsjson.JournalEntry](req)
-	if errHTTP != nil {
-		return errHTTP.From("[server.ReadBodyAs]")
-	}
-
-	_, err = action.ImsDBQ.Report(ctx, action.ImsDBQ, imsdb.ReportParams{
-		Event:  event.ID,
-		Number: reportNumber,
-	})
-	if err != nil {
-		return herr.NotFound("There is no Report for the provided ID", err).From("[Report]")
-	}
-
-	if re.Stricken == nil {
-		// Nothing to do if no Stricken value is set, since Stricken is the only field this endpoint can modify
-		return nil
-	}
-
-	// A user with only EventWriteOwnReports (a reporter) may strike/unstrike only
-	// the journal entries they authored themselves — striking someone else's entry
-	// would let them tamper with another person's words in the report's audit trail
-	// (plan 90 finding M1). Writers/admins (EventWriteAllReports) may strike any
-	// entry. A report is a collection of entries owned by their individual authors,
-	// so this is a per-entry check, not per-report.
-	if eventPermissions&authz.EventWriteAllReports == 0 {
-		author, err := action.ImsDBQ.ReportJournalEntryAuthor(ctx, action.ImsDBQ,
-			imsdb.ReportJournalEntryAuthorParams{
-				Event:        event.ID,
-				ReportNumber: reportNumber,
-				JournalEntry: journalEntryId,
-			},
-		)
-		if errors.Is(err, sql.ErrNoRows) {
-			return herr.NotFound("There is no such JournalEntry on this Report", err)
-		}
-		if err != nil {
-			return herr.InternalServerError("Failed to fetch JournalEntry author", err).From("[ReportJournalEntryAuthor]")
-		}
-		if author.String != jwtCtx.Claims.PersonHandle() {
-			return herr.Forbidden("The requestor may only strike their own journal entries", nil)
-		}
-	}
-
-	txn, err := action.ImsDBQ.Begin()
-	if err != nil {
-		return herr.InternalServerError("Error beginning transaction", err).From("[Begin]")
-	}
-	defer server.Rollback(txn)
-
-	err = action.ImsDBQ.SetReportJournalEntryStricken(ctx, txn,
-		imsdb.SetReportJournalEntryStrickenParams{
-			Stricken:     *re.Stricken,
-			Event:        event.ID,
-			ReportNumber: reportNumber,
-			JournalEntry: journalEntryId,
-		},
-	)
-	if err != nil {
-		return herr.InternalServerError("Error setting journal entry", err).From("[SetReportJournalEntryStricken]")
-	}
-	struckVerb := "Struck"
-	if !*re.Stricken {
-		struckVerb = "Unstruck"
-	}
-	_, errHTTP = addJournalEntry(ctx, action.ImsDBQ, txn, event.ID, reportNumber, authorPersonID, fmt.Sprintf("%v journalEntry %v", struckVerb, journalEntryId), true, "", "", "", sql.NullInt32{})
-	if errHTTP != nil {
-		return errHTTP.From("[addJournalEntry]")
-	}
-	err = txn.Commit()
-	if err != nil {
-		return herr.InternalServerError("Error committing transaction", err).From("[Commit]")
-	}
-
-	defer action.EventSource.NotifyReportUpdate(event.ID, reportNumber)
-
-	return nil
-}
+// EditReportJournalEntry (the strike/unstrike endpoint for a report's journal entries) was
+// extracted onto Connect (plan 09h/1c) as incident.UpdateReportJournalEntry in connect.go;
+// its REST POST route was retired, not shimmed (aggressive migration, plan 09 §6). The
+// incident and visit journal-entry strike handlers below stay REST for now.
 
 type EditIncidentJournalEntry struct {
 	ImsDBQ      *store.DBQ
