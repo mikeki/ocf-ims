@@ -415,12 +415,11 @@ func TestEventRosterAddRemove(t *testing.T) {
 	require.NoError(t, resp.Body.Close())
 	require.Len(t, *incident.People, 1, "incident person link must survive participation removal")
 
-	// --- validation + gating ---
-	// Unknown participation type is rejected.
-	resp = apisAdmin.setParticipation(ctx, juliaID, eventName, personapi.SetParticipationRequest{ParticipationType: "bogus"})
-	require.Equal(t, http.StatusBadRequest, resp.StatusCode)
-	require.NoError(t, resp.Body.Close())
-
+	// --- gating ---
+	// (The REST "unknown participation_type string → 400" case has no analogue: the contract
+	// types participation_type as a closed enum, so an undefined value can't be sent — an unknown
+	// value collapses to UNSPECIFIED, i.e. "default from wristband". Dropped with the RPC
+	// extraction, like the event-name and non-numeric-person_id 400s.)
 	// A non-admin can neither set nor remove participation.
 	resp = apisAlice.setParticipation(ctx, juliaID, eventName, personapi.SetParticipationRequest{ParticipationType: "volunteer"})
 	require.Equal(t, http.StatusForbidden, resp.StatusCode)

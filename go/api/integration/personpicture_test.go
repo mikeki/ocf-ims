@@ -30,6 +30,9 @@ import (
 	"testing"
 	"time"
 
+	"connectrpc.com/connect"
+	servicerpcv1 "github.com/mikeki/ocf-ims/gen/ocf/ims/service/rpc/v1"
+	"github.com/mikeki/ocf-ims/gen/ocf/ims/service/v1/servicev1connect"
 	incidentapi "github.com/mikeki/ocf-ims/internal/incident"
 
 	personapi "github.com/mikeki/ocf-ims/internal/person"
@@ -113,19 +116,17 @@ func (a ApiHelper) getProfilePicture(ctx context.Context, personID int64) *http.
 	return resp
 }
 
+// deleteProfilePicture removes a person's picture through the generated Connect client
+// (DeletePersonProfilePicture). The REST DELETE /personnel/{personId}/picture route was retired with
+// the RPC (plan 09h/1c); the upload + serve stay REST (multipart/binary). The retired endpoint
+// answered 204, mirrored by writeRPCStatus.
 func (a ApiHelper) deleteProfilePicture(ctx context.Context, personID int64) *http.Response {
 	a.t.Helper()
-	path := a.serverURL.JoinPath("/ims/api/personnel", strconv.FormatInt(personID, 10), "picture")
-	httpDel, err := http.NewRequestWithContext(ctx, http.MethodDelete, path.String(), nil)
-	require.NoError(a.t, err)
-	if a.jwt != "" {
-		httpDel.Header.Set("Authorization", "Bearer "+a.jwt)
-	}
-	client := &http.Client{Timeout: 10 * time.Second}
-	// #nosec G704 // SSRF via taint analysis. We control the URLs.
-	resp, err := client.Do(httpDel)
-	require.NoError(a.t, err)
-	return resp
+	client := servicev1connect.NewImsServiceClient(http.DefaultClient, a.serverURL.String())
+	rpcReq := connect.NewRequest(&servicerpcv1.DeletePersonProfilePictureRequest{PersonId: int32(personID)})
+	a.authorizeRPC(rpcReq)
+	_, err := client.DeletePersonProfilePicture(ctx, rpcReq)
+	return writeRPCStatus(err)
 }
 
 // TestPersonProfilePicture covers the profile-picture lifecycle: an admin uploads an

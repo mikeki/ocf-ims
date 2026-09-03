@@ -391,6 +391,88 @@ func (s ImsService) DeleteOwnProfilePicture(
 	return connect.NewResponse(resp), nil
 }
 
+// The seven admin personnel-management writes below are thin RPC methods over the matching
+// person.Service domain methods (connect_admin.go, plan 09h/1c). Each retired its REST route in the
+// same slice; the domain method authorizes from ctx claims and speaks Connect errors, so these just
+// delegate.
+
+func (s ImsService) CreatePerson(
+	ctx context.Context,
+	req *connect.Request[servicerpcv1.CreatePersonRequest],
+) (*connect.Response[servicerpcv1.CreatePersonResponse], error) {
+	resp, err := s.Person.CreatePerson(ctx, req.Msg)
+	if err != nil {
+		return nil, err
+	}
+	return connect.NewResponse(resp), nil
+}
+
+func (s ImsService) UpdatePerson(
+	ctx context.Context,
+	req *connect.Request[servicerpcv1.UpdatePersonRequest],
+) (*connect.Response[servicerpcv1.UpdatePersonResponse], error) {
+	resp, err := s.Person.UpdatePerson(ctx, req.Msg)
+	if err != nil {
+		return nil, err
+	}
+	return connect.NewResponse(resp), nil
+}
+
+func (s ImsService) SetPersonPassword(
+	ctx context.Context,
+	req *connect.Request[servicerpcv1.SetPersonPasswordRequest],
+) (*connect.Response[servicerpcv1.SetPersonPasswordResponse], error) {
+	resp, err := s.Person.SetPersonPassword(ctx, req.Msg)
+	if err != nil {
+		return nil, err
+	}
+	return connect.NewResponse(resp), nil
+}
+
+func (s ImsService) SetPersonAdmin(
+	ctx context.Context,
+	req *connect.Request[servicerpcv1.SetPersonAdminRequest],
+) (*connect.Response[servicerpcv1.SetPersonAdminResponse], error) {
+	resp, err := s.Person.SetPersonAdmin(ctx, req.Msg)
+	if err != nil {
+		return nil, err
+	}
+	return connect.NewResponse(resp), nil
+}
+
+func (s ImsService) SetPersonParticipation(
+	ctx context.Context,
+	req *connect.Request[servicerpcv1.SetPersonParticipationRequest],
+) (*connect.Response[servicerpcv1.SetPersonParticipationResponse], error) {
+	resp, err := s.Person.SetPersonParticipation(ctx, req.Msg)
+	if err != nil {
+		return nil, err
+	}
+	return connect.NewResponse(resp), nil
+}
+
+func (s ImsService) RemovePersonFromEvent(
+	ctx context.Context,
+	req *connect.Request[servicerpcv1.RemovePersonFromEventRequest],
+) (*connect.Response[servicerpcv1.RemovePersonFromEventResponse], error) {
+	resp, err := s.Person.RemovePersonFromEvent(ctx, req.Msg)
+	if err != nil {
+		return nil, err
+	}
+	return connect.NewResponse(resp), nil
+}
+
+func (s ImsService) DeletePersonProfilePicture(
+	ctx context.Context,
+	req *connect.Request[servicerpcv1.DeletePersonProfilePictureRequest],
+) (*connect.Response[servicerpcv1.DeletePersonProfilePictureResponse], error) {
+	resp, err := s.Person.DeletePersonProfilePicture(ctx, req.Msg)
+	if err != nil {
+		return nil, err
+	}
+	return connect.NewResponse(resp), nil
+}
+
 // AddConnectToMux registers the ImsService Connect handler on the shared mux
 // next to AddToMux (plan 09g). connect handlers are plain http.Handlers mounted
 // at a path prefix, so the RPC surface coexists with the REST/web routes on one

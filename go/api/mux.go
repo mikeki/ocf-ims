@@ -427,87 +427,13 @@ func AddToMux(
 		),
 	)
 
-	// GET /ims/api/personnel moved to the ImsService.ListPersonnel RPC (plan 09h/1c) and its
-	// REST route was retired. The personnel writes below stay REST until their own extraction.
-
-	mux.Handle("POST /ims/api/personnel",
-		server.Adapt(
-			person.CreatePerson{ImsDBQ: db, UserStore: userStore, DefaultPassword: cfg.Core.DefaultPassword},
-			server.RecoverFromPanic(),
-			server.RequireAuthN(jwter),
-			server.LogRequest(true, actionLogger, userStore),
-			server.LimitRequestBytes(cfg.Core.MaxRequestBytes),
-		),
-	)
-
-	mux.Handle("POST /ims/api/personnel/{personId}",
-		server.Adapt(
-			person.EditPerson{ImsDBQ: db, UserStore: userStore},
-			server.RecoverFromPanic(),
-			server.RequireAuthN(jwter),
-			server.LogRequest(true, actionLogger, userStore),
-			server.LimitRequestBytes(cfg.Core.MaxRequestBytes),
-		),
-	)
-
-	mux.Handle("POST /ims/api/personnel/{personId}/password",
-		server.Adapt(
-			person.SetPersonPassword{ImsDBQ: db, UserStore: userStore, DefaultPassword: cfg.Core.DefaultPassword},
-			server.RecoverFromPanic(),
-			server.RequireAuthN(jwter),
-			server.LogRequest(true, actionLogger, userStore),
-			server.LimitRequestBytes(cfg.Core.MaxRequestBytes),
-		),
-	)
-
-	mux.Handle("POST /ims/api/personnel/{personId}/admin",
-		server.Adapt(
-			person.SetPersonAdmin{ImsDBQ: db, UserStore: userStore},
-			server.RecoverFromPanic(),
-			server.RequireAuthN(jwter),
-			server.LogRequest(true, actionLogger, userStore),
-			server.LimitRequestBytes(cfg.Core.MaxRequestBytes),
-		),
-	)
-
-	mux.Handle("POST /ims/api/personnel/{personId}/participation",
-		server.Adapt(
-			person.SetPersonParticipation{ImsDBQ: db, UserStore: userStore},
-			server.RecoverFromPanic(),
-			server.RequireAuthN(jwter),
-			server.LogRequest(true, actionLogger, userStore),
-			server.LimitRequestBytes(cfg.Core.MaxRequestBytes),
-		),
-	)
-
-	mux.Handle("DELETE /ims/api/personnel/{personId}/participation",
-		server.Adapt(
-			person.RemovePersonEvent{ImsDBQ: db, UserStore: userStore},
-			server.RecoverFromPanic(),
-			server.RequireAuthN(jwter),
-			// Logged: this is the audit trail for who removed/ejected whom from an
-			// event (the eject case keeps the row via the POST above, also logged).
-			server.LogRequest(true, actionLogger, userStore),
-			server.LimitRequestBytes(cfg.Core.MaxRequestBytes),
-		),
-	)
-
-	// Profile picture: upload/remove are admin-only (mirror person.EditPerson), serving is
-	// open to any personnel reader (mirror the profile card). Upload/remove mutate →
-	// logged; the GET is a read → unlogged.
+	// The personnel READ (GET /personnel) and all seven personnel WRITES (create, edit,
+	// password reset, admin toggle, set/remove participation, delete picture) moved to the
+	// ImsService RPCs (plan 09h/1c) and their REST routes were retired. Only the multipart
+	// profile-picture upload + serve stay REST (binary, M8).
 	mux.Handle("POST /ims/api/personnel/{personId}/picture",
 		server.Adapt(
 			person.SetPersonProfilePicture{ImsDBQ: db, UserStore: userStore, AttachmentsStore: cfg.AttachmentsStore, S3Client: s3Client},
-			server.RecoverFromPanic(),
-			server.RequireAuthN(jwter),
-			server.LogRequest(true, actionLogger, userStore),
-			server.LimitRequestBytes(cfg.Core.MaxRequestBytes),
-		),
-	)
-
-	mux.Handle("DELETE /ims/api/personnel/{personId}/picture",
-		server.Adapt(
-			person.DeletePersonProfilePicture{ImsDBQ: db, UserStore: userStore, AttachmentsStore: cfg.AttachmentsStore, S3Client: s3Client},
 			server.RecoverFromPanic(),
 			server.RequireAuthN(jwter),
 			server.LogRequest(true, actionLogger, userStore),
