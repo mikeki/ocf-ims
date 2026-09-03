@@ -25,6 +25,7 @@ import (
 	"github.com/mikeki/ocf-ims/directory"
 	servicerpcv1 "github.com/mikeki/ocf-ims/gen/ocf/ims/service/rpc/v1"
 	"github.com/mikeki/ocf-ims/gen/ocf/ims/service/v1/servicev1connect"
+	"github.com/mikeki/ocf-ims/internal/auth"
 	"github.com/mikeki/ocf-ims/internal/event"
 	"github.com/mikeki/ocf-ims/internal/incident"
 	"github.com/mikeki/ocf-ims/internal/person"
@@ -59,6 +60,7 @@ type ImsService struct {
 	Event    event.Service
 	Incident incident.Service
 	Person   person.Service
+	Auth     auth.Service
 }
 
 // ListEvents is a thin RPC method over the event.ListEvents domain method (plan
@@ -266,30 +268,23 @@ func (s ImsService) UpdateIncidentJournalEntry(
 	return connect.NewResponse(resp), nil
 }
 
-// GetAuthStatus is the one RPC implemented end-to-end in slice 1b, to prove the
-// interceptor spine through the generated client. It answers the identity subset
-// of the whoami purely from the caller's JWT claims, which the auth interceptor
-// (server.NewAuthInterceptor) populated into the context — so a green test here
-// proves auth plumbs through Connect exactly as OptionalAuthN does over REST.
-//
-// The viewer-derived remainder — can_manage_personnel, per-event event_access,
-// push_vapid_public_key, using_default_password — needs the config and a DB
-// round-trip and lands with the rest of the auth domain in slice 1d; it is
-// deliberately left zero-valued here, not forgotten.
-func (ImsService) GetAuthStatus(
+// GetAuthStatus is a thin RPC method over the auth.GetAuthStatus domain method (plan
+// 09h/1c). It began in slice 1b as an in-line stub answering only the identity subset of the
+// whoami (proving the interceptor spine plumbed auth through Connect); it now delegates to the
+// completed domain method, which adds the viewer-derived remainder — can_manage_personnel,
+// per-event event_access, push_vapid_public_key, using_default_password. Its REST predecessor
+// (GET /auth) was deleted in the same slice, so this is the only transport. The domain method
+// tolerates an anonymous caller (returns authenticated:false, not an error), so this just
+// delegates.
+func (s ImsService) GetAuthStatus(
 	ctx context.Context,
-	_ *connect.Request[servicerpcv1.GetAuthStatusRequest],
+	req *connect.Request[servicerpcv1.GetAuthStatusRequest],
 ) (*connect.Response[servicerpcv1.GetAuthStatusResponse], error) {
-	claims, ok := server.ClaimsFromContext(ctx)
-	if !ok {
-		return connect.NewResponse(&servicerpcv1.GetAuthStatusResponse{Authenticated: false}), nil
+	resp, err := s.Auth.GetAuthStatus(ctx, req.Msg)
+	if err != nil {
+		return nil, err
 	}
-	return connect.NewResponse(&servicerpcv1.GetAuthStatusResponse{
-		Authenticated: true,
-		User:          claims.PersonHandle(),
-		PersonId:      claims.PersonID(),
-		Admin:         claims.PersonAdmin(),
-	}), nil
+	return connect.NewResponse(resp), nil
 }
 
 // ChangeOwnPassword is a thin RPC method over the person.ChangeOwnPassword domain method (plan
@@ -385,6 +380,13 @@ func AddConnectToMux(
 				DefaultPassword:  cfg.Core.DefaultPassword,
 				AttachmentsStore: cfg.AttachmentsStore,
 				S3Client:         s3Client,
+			},
+			Auth: auth.Service{
+				ImsDBQ:             imsDBQ,
+				UserStore:          userStore,
+				AttachmentsEnabled: attachmentsEnabled,
+				PushVAPIDPublicKey: cfg.Push.VAPIDPublicKey,
+				DefaultPassword:    cfg.Core.DefaultPassword,
 			},
 		},
 		connect.WithInterceptors(interceptors...),
