@@ -19,11 +19,9 @@ package person
 import (
 	"database/sql"
 	"errors"
-	"log/slog"
 	"net/http"
 
 	"github.com/mikeki/ocf-ims/conf"
-	"github.com/mikeki/ocf-ims/directory"
 	"github.com/mikeki/ocf-ims/internal/server"
 	"github.com/mikeki/ocf-ims/lib/attachment"
 	"github.com/mikeki/ocf-ims/lib/herr"
@@ -57,57 +55,13 @@ func resolveSelf(req *http.Request, imsDBQ *store.DBQ) (imsdb.PersonByIDRow, *he
 	return person, nil
 }
 
-// SetOwnProfileRequest carries the caller's editable identity/contact fields. As with
-// EditPersonRequest, each is a pointer so nil ("field omitted, leave unchanged") is
-// distinct from "" (clear). Participation, the admin flag, and the password are not
-// here — they are not self-editable.
-type SetOwnProfileRequest struct {
-	Handle *string `json:"handle"`
-	Name   *string `json:"name"`
-	Email  *string `json:"email"`
-	Phone  *string `json:"phone"`
-}
-
-// SetOwnProfile lets an authenticated user change THEIR OWN identity/contact fields.
-// Resolved from the JWT, no admin permission required (server.RequireAuthN gates the route).
-type SetOwnProfile struct {
-	ImsDBQ    *store.DBQ
-	UserStore directory.UserStore
-}
-
-func (action SetOwnProfile) ServeHTTP(w http.ResponseWriter, req *http.Request) {
-	errHTTP := action.setOwnProfile(req)
-	if errHTTP != nil {
-		errHTTP.From("[setOwnProfile]").WriteResponse(w)
-		return
-	}
-	w.WriteHeader(http.StatusNoContent)
-}
-
-func (action SetOwnProfile) setOwnProfile(req *http.Request) *herr.HTTPError {
-	person, errHTTP := resolveSelf(req, action.ImsDBQ)
-	if errHTTP != nil {
-		return errHTTP
-	}
-
-	body, errHTTP := server.ReadBodyAs[SetOwnProfileRequest](req)
-	if errHTTP != nil {
-		return errHTTP.From("[server.ReadBodyAs]")
-	}
-
-	// Same validation and write as the admin path (identity invariant, "email required
-	// if you can sign in", length caps, dup-entry conflict) — just no participation.
-	errHTTP = applyProfileFields(req.Context(), action.ImsDBQ, person,
-		body.Handle, body.Name, body.Email, body.Phone)
-	if errHTTP != nil {
-		return errHTTP
-	}
-
-	action.UserStore.InvalidateUsers()
-
-	slog.Info("Profile edited by self", "person_id", person.ID)
-	return nil
-}
+// SetOwnProfile (REST POST /ims/api/auth/profile — the self-service identity/contact edit) and
+// DeleteOwnProfilePicture (REST DELETE /ims/api/auth/picture) were RETIRED in slice 1c when they
+// moved onto Connect as person.UpdateOwnProfile / person.DeleteOwnProfilePicture (connect.go),
+// which the matching ImsService RPCs delegate to. Their REST routes were deleted, not shimmed
+// (aggressive migration, plan 09 §6). The shared resolveSelf, applyProfileFields, and
+// clearProfilePicture helpers are unchanged and still used from there. Only the picture *upload*
+// (SetOwnProfilePicture, multipart) stays REST below.
 
 // SetOwnProfilePicture lets an authenticated user upload/replace THEIR OWN profile
 // picture. Resolved from the JWT; no admin permission required.
@@ -136,27 +90,5 @@ func (action SetOwnProfilePicture) setOwnProfilePicture(req *http.Request) *herr
 		action.ImsDBQ, req, person.ID, person.ProfilePicture.String, person.Handle.String)
 }
 
-// DeleteOwnProfilePicture lets an authenticated user remove THEIR OWN profile picture.
-type DeleteOwnProfilePicture struct {
-	ImsDBQ           *store.DBQ
-	AttachmentsStore conf.AttachmentsStore
-	S3Client         *attachment.S3Client
-}
-
-func (action DeleteOwnProfilePicture) ServeHTTP(w http.ResponseWriter, req *http.Request) {
-	errHTTP := action.deleteOwnProfilePicture(req)
-	if errHTTP != nil {
-		errHTTP.From("[deleteOwnProfilePicture]").WriteResponse(w)
-		return
-	}
-	herr.WriteNoContentResponse(w, "Removed profile picture")
-}
-
-func (action DeleteOwnProfilePicture) deleteOwnProfilePicture(req *http.Request) *herr.HTTPError {
-	person, errHTTP := resolveSelf(req, action.ImsDBQ)
-	if errHTTP != nil {
-		return errHTTP
-	}
-	return clearProfilePicture(req.Context(), action.AttachmentsStore, action.S3Client,
-		action.ImsDBQ, person.ID, person.ProfilePicture.String)
-}
+// DeleteOwnProfilePicture (self-service picture remove) moved onto Connect in slice 1c — see the
+// retirement note at the top of this file.

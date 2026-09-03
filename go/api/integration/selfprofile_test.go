@@ -25,6 +25,9 @@ import (
 	"testing"
 	"time"
 
+	"connectrpc.com/connect"
+	servicerpcv1 "github.com/mikeki/ocf-ims/gen/ocf/ims/service/rpc/v1"
+	"github.com/mikeki/ocf-ims/gen/ocf/ims/service/v1/servicev1connect"
 	incidentapi "github.com/mikeki/ocf-ims/internal/incident"
 
 	authapi "github.com/mikeki/ocf-ims/internal/auth"
@@ -35,10 +38,24 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// setOwnProfile POSTs a self-service profile edit (the caller edits themselves).
-func (a ApiHelper) setOwnProfile(ctx context.Context, body personapi.SetOwnProfileRequest) *http.Response {
+// updateOwnProfile edits the caller's own identity/contact fields through the generated Connect
+// client (UpdateOwnProfile). The REST POST /ims/api/auth/profile endpoint was retired when the RPC
+// was extracted (plan 09h/1c); the caller is resolved from the JWT, never a path/field. Each field
+// is optional (nil = leave unchanged). The retired endpoint returned 204 on success, mirrored by
+// the synthesized *http.Response (else connectStatus(err)), so the call sites' assertions hold.
+func (a ApiHelper) updateOwnProfile(ctx context.Context, req *servicerpcv1.UpdateOwnProfileRequest) *http.Response {
 	a.t.Helper()
-	return a.imsPost(ctx, body, a.serverURL.JoinPath("/ims/api/auth/profile").String())
+	client := servicev1connect.NewImsServiceClient(http.DefaultClient, a.serverURL.String())
+	rpcReq := connect.NewRequest(req)
+	if a.jwt != "" {
+		rpcReq.Header().Set("Authorization", "Bearer "+a.jwt)
+	}
+	_, err := client.UpdateOwnProfile(ctx, rpcReq)
+	status := http.StatusNoContent
+	if err != nil {
+		status = connectStatus(err)
+	}
+	return &http.Response{StatusCode: status, Body: http.NoBody}
 }
 
 // uploadOwnPicture POSTs a multipart image to the self-service picture endpoint.
@@ -67,10 +84,24 @@ func (a ApiHelper) uploadOwnPicture(ctx context.Context, fileBytes []byte) *http
 	return resp
 }
 
+// deleteOwnPicture removes the caller's own profile picture through the generated Connect client
+// (DeleteOwnProfilePicture). The REST DELETE /ims/api/auth/picture endpoint was retired when the
+// RPC was extracted (plan 09h/1c); the picture *upload* (POST /auth/picture) stays multipart REST.
+// The retired endpoint returned 204 on success, mirrored by the synthesized *http.Response (else
+// connectStatus(err)).
 func (a ApiHelper) deleteOwnPicture(ctx context.Context) *http.Response {
 	a.t.Helper()
-	_, resp := a.imsDelete(ctx, a.serverURL.JoinPath("/ims/api/auth/picture").String(), nil)
-	return resp
+	client := servicev1connect.NewImsServiceClient(http.DefaultClient, a.serverURL.String())
+	rpcReq := connect.NewRequest(&servicerpcv1.DeleteOwnProfilePictureRequest{})
+	if a.jwt != "" {
+		rpcReq.Header().Set("Authorization", "Bearer "+a.jwt)
+	}
+	_, err := client.DeleteOwnProfilePicture(ctx, rpcReq)
+	status := http.StatusNoContent
+	if err != nil {
+		status = connectStatus(err)
+	}
+	return &http.Response{StatusCode: status, Body: http.NoBody}
 }
 
 // TestSelfProfile covers the self-service profile endpoints: an authenticated
@@ -106,14 +137,14 @@ func TestSelfProfile(t *testing.T) {
 	self := ApiHelper{t: t, serverURL: shared.serverURL, jwt: token}
 
 	// --- Unauthenticated cannot self-edit. ---
-	resp = noAuth.setOwnProfile(ctx, personapi.SetOwnProfileRequest{})
+	resp = noAuth.updateOwnProfile(ctx, &servicerpcv1.UpdateOwnProfileRequest{})
 	require.Equal(t, http.StatusUnauthorized, resp.StatusCode)
 	require.NoError(t, resp.Body.Close())
 
 	// --- Self-edit succeeds; the change is resolved from the JWT (no path id). ---
 	newName := "Self Edited Name"
 	newPhone := "555-0199"
-	resp = self.setOwnProfile(ctx, personapi.SetOwnProfileRequest{Name: &newName, Phone: &newPhone})
+	resp = self.updateOwnProfile(ctx, &servicerpcv1.UpdateOwnProfileRequest{Name: &newName, Phone: &newPhone})
 	require.Equal(t, http.StatusNoContent, resp.StatusCode)
 	require.NoError(t, resp.Body.Close())
 
