@@ -40,7 +40,6 @@ import (
 	"github.com/mikeki/ocf-ims/lib/attachment"
 	"github.com/mikeki/ocf-ims/lib/authz"
 	"github.com/mikeki/ocf-ims/lib/herr"
-	pushlib "github.com/mikeki/ocf-ims/lib/push"
 	"github.com/mikeki/ocf-ims/store"
 	actionlogstore "github.com/mikeki/ocf-ims/store/actionlog"
 )
@@ -54,7 +53,6 @@ func AddToMux(
 	userStore directory.UserStore,
 	s3Client *attachment.S3Client,
 	actionLogger *actionlogstore.Logger,
-	pushSender pushlib.Sender,
 ) *http.ServeMux {
 	if mux == nil {
 		mux = http.NewServeMux()
@@ -63,13 +61,11 @@ func AddToMux(
 	jwter := authz.JWTer{SecretKey: cfg.Core.JWTSecret}
 	attachmentsEnabled := cfg.AttachmentsStore.Type != conf.AttachmentsStoreNone
 
-	// Web-push fan-out (plan 84c). The caller selects the backend: a real
-	// VAPID-signing sender when push is configured, else a no-op so every fan-out
-	// short-circuits. A nil sender is treated as the no-op backend.
-	if pushSender == nil {
-		pushSender = pushlib.NoopSender{}
-	}
-	pusher := server.NewPusher(db, pushSender)
+	// Web-push fan-out (plan 84c) is no longer wired here: the REST surface's last
+	// push-firing route (AttachPersonToIncident) moved onto Connect in slice 1c, so the
+	// Pusher now lives only on the Connect surface (AddConnectToMux builds it from the
+	// pushSender). The push *subscription* REST endpoints below only persist rows and
+	// need no Sender.
 
 	// metricsCache is created by the caller and shared with the Connect surface
 	// (AddConnectToMux): the dashboard read handler (metrics.GetMetrics) lives here on
@@ -219,35 +215,12 @@ func AddToMux(
 		),
 	)
 
-	mux.Handle("POST /ims/api/events/{eventName}/incidents/{incidentNumber}/people/{personId}",
-		server.Adapt(
-			incident.AttachPersonToIncident{ImsDBQ: db, UserStore: userStore, Es: es, Pusher: pusher},
-			server.RecoverFromPanic(),
-			server.RequireAuthN(jwter),
-			server.LogRequest(true, actionLogger, userStore),
-			server.LimitRequestBytes(cfg.Core.MaxRequestBytes),
-		),
-	)
-
-	mux.Handle("DELETE /ims/api/events/{eventName}/incidents/{incidentNumber}/people/{personId}",
-		server.Adapt(
-			incident.DetachPersonFromIncident{ImsDBQ: db, UserStore: userStore, Es: es},
-			server.RecoverFromPanic(),
-			server.RequireAuthN(jwter),
-			server.LogRequest(true, actionLogger, userStore),
-			server.LimitRequestBytes(cfg.Core.MaxRequestBytes),
-		),
-	)
-
-	mux.Handle("POST /ims/api/events/{eventName}/incidents/{incidentNumber}/journal_entries/{journalEntryId}",
-		server.Adapt(
-			incident.EditIncidentJournalEntry{ImsDBQ: db, UserStore: userStore, EventSource: es},
-			server.RecoverFromPanic(),
-			server.RequireAuthN(jwter),
-			server.LogRequest(true, actionLogger, userStore),
-			server.LimitRequestBytes(cfg.Core.MaxRequestBytes),
-		),
-	)
+	// The incident people sub-resource (POST/DELETE .../incidents/{n}/people/{personId}) and the
+	// incident journal-entry strike (POST .../incidents/{n}/journal_entries/{id}) moved onto Connect
+	// (ImsService.AttachPersonToIncident / DetachPersonFromIncident / UpdateIncidentJournalEntry,
+	// registered via AddConnectToMux); their REST routes were retired, not shimmed (aggressive
+	// migration, plan 09 §6). Only the incident-attachment upload/download (binary/multipart,
+	// outside the proto contract) stays REST above.
 
 	// GET .../reports (list) and GET .../reports/{n} (single) were RETIRED when
 	// ListReports and GetReport moved onto Connect (plan 09h/1c, aggressive migration

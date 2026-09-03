@@ -599,14 +599,36 @@ func (a ApiHelper) updateVisit(ctx context.Context, eventName string, visit int3
 
 func (a ApiHelper) attachPersonToIncident(ctx context.Context, eventName string, incident int32, personID int64) *http.Response {
 	a.t.Helper()
-	return a.imsPost(ctx, imsjson.IncidentPerson{}, a.serverURL.JoinPath("/ims/api/events/", eventName, "/incidents/", strconv.Itoa(int(incident)), "/people/", strconv.FormatInt(personID, 10)).String())
+	return a.attachPersonToIncidentBody(ctx, eventName, incident, personID, imsjson.IncidentPerson{})
 }
 
-// attachPersonToIncidentBody attaches with an explicit IncidentPerson body, so tests
-// can set the involvement / granted_access (52f) the bare attach helper leaves empty.
+// attachPersonToIncidentBody attaches (or edits) a person on an incident through the generated
+// Connect client, with an explicit IncidentPerson body so tests can set the involvement /
+// granted_access (52f) the bare attach helper leaves empty. The REST POST
+// .../incidents/{n}/people/{personId} endpoint was retired when AttachPersonToIncident was
+// extracted (plan 09h/1c); person_id, involvement, and granted_access ride the request fields. The
+// retired endpoint returned 204 No Content on success, mirrored by the synthesized *http.Response
+// (else connectStatus(err)), so the ~call sites' status assertions are unchanged.
 func (a ApiHelper) attachPersonToIncidentBody(ctx context.Context, eventName string, incident int32, personID int64, body imsjson.IncidentPerson) *http.Response {
 	a.t.Helper()
-	return a.imsPost(ctx, body, a.serverURL.JoinPath("/ims/api/events/", eventName, "/incidents/", strconv.Itoa(int(incident)), "/people/", strconv.FormatInt(personID, 10)).String())
+	eventID := a.resolveEventID(ctx, eventName)
+	client := servicev1connect.NewImsServiceClient(http.DefaultClient, a.serverURL.String())
+	rpcReq := connect.NewRequest(&servicerpcv1.AttachPersonToIncidentRequest{
+		EventId:        eventID,
+		IncidentNumber: incident,
+		PersonId:       int32(personID),
+		Involvement:    body.Involvement,
+		GrantedAccess:  body.GrantedAccess,
+	})
+	if a.jwt != "" {
+		rpcReq.Header().Set("Authorization", "Bearer "+a.jwt)
+	}
+	_, err := client.AttachPersonToIncident(ctx, rpcReq)
+	status := http.StatusNoContent
+	if err != nil {
+		status = connectStatus(err)
+	}
+	return &http.Response{StatusCode: status, Body: http.NoBody}
 }
 
 func (a ApiHelper) attachPersonToVisit(ctx context.Context, eventName string, visit int32, personID int64) *http.Response {
@@ -614,10 +636,28 @@ func (a ApiHelper) attachPersonToVisit(ctx context.Context, eventName string, vi
 	return a.imsPost(ctx, imsjson.VisitPerson{}, a.serverURL.JoinPath("/ims/api/events/", eventName, "/visits/", strconv.Itoa(int(visit)), "/people/", strconv.FormatInt(personID, 10)).String())
 }
 
+// detachPersonFromIncident removes a person from an incident through the generated Connect client.
+// The REST DELETE .../incidents/{n}/people/{personId} endpoint was retired when
+// DetachPersonFromIncident was extracted (plan 09h/1c). The retired endpoint returned 204 No Content
+// on success, mirrored by the synthesized *http.Response (else connectStatus(err)).
 func (a ApiHelper) detachPersonFromIncident(ctx context.Context, eventName string, incident int32, personID int64) *http.Response {
 	a.t.Helper()
-	_, resp := a.imsDelete(ctx, a.serverURL.JoinPath("/ims/api/events/", eventName, "/incidents/", strconv.Itoa(int(incident)), "/people/", strconv.FormatInt(personID, 10)).String(), nil)
-	return resp
+	eventID := a.resolveEventID(ctx, eventName)
+	client := servicev1connect.NewImsServiceClient(http.DefaultClient, a.serverURL.String())
+	rpcReq := connect.NewRequest(&servicerpcv1.DetachPersonFromIncidentRequest{
+		EventId:        eventID,
+		IncidentNumber: incident,
+		PersonId:       int32(personID),
+	})
+	if a.jwt != "" {
+		rpcReq.Header().Set("Authorization", "Bearer "+a.jwt)
+	}
+	_, err := client.DetachPersonFromIncident(ctx, rpcReq)
+	status := http.StatusNoContent
+	if err != nil {
+		status = connectStatus(err)
+	}
+	return &http.Response{StatusCode: status, Body: http.NoBody}
 }
 
 func (a ApiHelper) detachPersonFromVisit(ctx context.Context, eventName string, visit int32, personID int64) *http.Response {
@@ -667,9 +707,30 @@ func (a ApiHelper) getVisits(ctx context.Context, eventName string) (imsjson.Vis
 	return *bod.(*imsjson.Visits), resp
 }
 
+// updateIncidentJournalEntry strikes/unstrikes an incident's journal entry through the generated
+// Connect client. The REST POST .../incidents/{n}/journal_entries/{id} endpoint was retired when
+// UpdateIncidentJournalEntry was extracted (plan 09h/1c). The entry id rides its own request field;
+// the body carries only the stricken flag (journalEntryWriteToProto). The retired endpoint returned
+// 204 No Content on success, mirrored by the synthesized *http.Response (else connectStatus(err)).
 func (a ApiHelper) updateIncidentJournalEntry(ctx context.Context, eventName string, incident int32, req imsjson.JournalEntry) *http.Response {
 	a.t.Helper()
-	return a.imsPost(ctx, req, a.serverURL.JoinPath("/ims/api/events/", eventName, "/incidents/", conv.FormatInt(incident), "/journal_entries/", conv.FormatInt(req.ID)).String())
+	eventID := a.resolveEventID(ctx, eventName)
+	client := servicev1connect.NewImsServiceClient(http.DefaultClient, a.serverURL.String())
+	rpcReq := connect.NewRequest(&servicerpcv1.UpdateIncidentJournalEntryRequest{
+		EventId:        eventID,
+		IncidentNumber: incident,
+		JournalEntryId: req.ID,
+		Entry:          journalEntryWriteToProto(req),
+	})
+	if a.jwt != "" {
+		rpcReq.Header().Set("Authorization", "Bearer "+a.jwt)
+	}
+	_, err := client.UpdateIncidentJournalEntry(ctx, rpcReq)
+	status := http.StatusNoContent
+	if err != nil {
+		status = connectStatus(err)
+	}
+	return &http.Response{StatusCode: status, Body: http.NoBody}
 }
 
 // updateReportJournalEntry strikes/unstrikes a report's journal entry through the generated
