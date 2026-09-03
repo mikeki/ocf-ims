@@ -26,6 +26,7 @@ import (
 	"net/http"
 	"net/url"
 	"strconv"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -164,6 +165,16 @@ func writeRPCStatus(err error) *http.Response {
 		status = connectStatus(err)
 	}
 	return &http.Response{StatusCode: status, Body: http.NoBody}
+}
+
+// errBodyResponse synthesizes the failure *http.Response for a write helper whose call site reads the
+// response body (not just the status) — the Connect error text goes into the body so an assertion
+// like require.Contains(body, "names must match the pattern") keeps working over the RPC transport.
+func errBodyResponse(err error) *http.Response {
+	return &http.Response{
+		StatusCode: connectStatus(err),
+		Body:       io.NopCloser(strings.NewReader(err.Error())),
+	}
 }
 
 // setPersonPassword / setPersonPasswordDefault drive the admin password reset through the generated
@@ -1013,22 +1024,52 @@ func (a ApiHelper) updateReportJournalEntry(ctx context.Context, eventName strin
 	return &http.Response{StatusCode: status, Body: http.NoBody}
 }
 
+// editEvent dispatches the legacy EditEvent multiplexer DTO onto the decomposed event write RPCs by
+// the same selector the retired REST handler switched on (id==0 → CreateEvent, else UpdateEvent). The
+// REST POST /events route was retired in 1c. On success a create synthesizes a 204 carrying the new
+// id in the IMS-Event-ID header (as REST did); on failure the synthetic response carries the Connect
+// error text in its body, since a call site (TestEditEvent_errors) asserts on the message.
 func (a ApiHelper) editEvent(ctx context.Context, req imsjson.Event) *http.Response {
 	a.t.Helper()
-	return a.imsPost(ctx, req, a.serverURL.JoinPath("/ims/api/events").String())
+	_, resp := a.doEditEvent(ctx, req)
+	return resp
+}
+
+func (a ApiHelper) doEditEvent(ctx context.Context, req imsjson.Event) (*int32, *http.Response) {
+	a.t.Helper()
+	client := servicev1connect.NewImsServiceClient(http.DefaultClient, a.serverURL.String())
+	if req.ID == 0 {
+		rpcReq := connect.NewRequest(&servicerpcv1.CreateEventRequest{Event: eventMsgFromJSON(req)})
+		a.authorizeRPC(rpcReq)
+		resp, err := client.CreateEvent(ctx, rpcReq)
+		if err != nil {
+			return nil, errBodyResponse(err)
+		}
+		id := resp.Msg.GetEventId()
+		return &id, &http.Response{
+			StatusCode: http.StatusNoContent,
+			Header:     http.Header{"Ims-Event-Id": {strconv.Itoa(int(id))}},
+			Body:       http.NoBody,
+		}
+	}
+	rpcReq := connect.NewRequest(&servicerpcv1.UpdateEventRequest{EventId: req.ID, Event: eventMsgFromJSON(req)})
+	a.authorizeRPC(rpcReq)
+	_, err := client.UpdateEvent(ctx, rpcReq)
+	if err != nil {
+		return nil, errBodyResponse(err)
+	}
+	return nil, &http.Response{StatusCode: http.StatusNoContent, Body: http.NoBody}
 }
 
 func (a ApiHelper) createEvent(ctx context.Context, req imsjson.Event) (eventID int32, resp *http.Response) {
 	a.t.Helper()
-	resp = a.imsPost(ctx, req, a.serverURL.JoinPath("/ims/api/events").String())
-	// Assert success before reading the id header: on a 5xx the header is empty and
-	// ParseInt would otherwise fail with a cryptic "parsing \"\"" message that hides
-	// the real status. Surface the status instead.
+	id, resp := a.doEditEvent(ctx, req)
+	// Assert success before reading the id: on a failure the id is nil and the status
+	// (not a cryptic parse error) is what the caller needs to see.
 	require.Equalf(a.t, http.StatusNoContent, resp.StatusCode,
 		"createEvent expected 204, got %d", resp.StatusCode)
-	eventID, err := conv.ParseInt32(resp.Header.Get("IMS-Event-ID"))
-	require.NoError(a.t, err)
-	return eventID, resp
+	require.NotNil(a.t, id)
+	return *id, resp
 }
 
 // listEvents lists events through the generated Connect client. The REST GET
