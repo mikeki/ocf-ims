@@ -124,7 +124,10 @@ service ImsService {
 
   // --- Taxonomies --- (POST /incident_types and POST /outcomes each multiplex
   // create/update/approve/set-hidden; the writer Propose* is a separate route)
-  rpc ListIncidentTypes(rpc.v1.ListIncidentTypesRequest) returns (rpc.v1.ListIncidentTypesResponse);
+  // A read (see the GetAuthStatus note): NO_SIDE_EFFECTS so the action-log interceptor skips it.
+  rpc ListIncidentTypes(rpc.v1.ListIncidentTypesRequest) returns (rpc.v1.ListIncidentTypesResponse) {
+    option idempotency_level = NO_SIDE_EFFECTS;
+  }
   rpc CreateIncidentType(rpc.v1.CreateIncidentTypeRequest) returns (rpc.v1.CreateIncidentTypeResponse);
   rpc UpdateIncidentType(rpc.v1.UpdateIncidentTypeRequest) returns (rpc.v1.UpdateIncidentTypeResponse);
   rpc ApproveIncidentType(rpc.v1.ApproveIncidentTypeRequest) returns (rpc.v1.ApproveIncidentTypeResponse);

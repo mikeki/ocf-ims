@@ -1182,6 +1182,49 @@ REST routes. Only the multipart profile-picture upload + serve stay REST. Findin
 **The entire personnel surface (read + all seven writes) is now on Connect**; only the multipart
 profile-picture upload + serve stay REST.
 
+### 1c — Domain extraction: the incident-type taxonomy (2026-09-02)
+
+The first taxonomy resource — incident types — landed as a new `incidenttype.Service` with six RPCs,
+retiring REST `GET`/`POST /incident_types` and `POST /events/{eventName}/incident_types`. It confirms
+the 0e write-multiplex decomposition end-to-end and surfaced two contract gaps. Findings:
+
+- **The body-multiplexer decomposition holds up, and the test helper dispatches on the same
+  selectors the handler switched on.** REST `POST /incident_types` dispatched create / update /
+  approve / set-hidden off one `imsjson.IncidentType` body (`id==0` / `Approved` / `Hidden` / else);
+  the contract split them into `CreateIncidentType` / `UpdateIncidentType` / `ApproveIncidentType` /
+  `SetIncidentTypeHidden`. The domain methods each do one verb; the `editType` *test* helper keeps
+  the ~30 call sites unchanged by dispatching the legacy DTO onto the right RPC using the very
+  selectors the old handler read. Splitting hidden out of update meant both `UpdateIncidentType` and
+  `SetIncidentTypeHidden` became read-modify-writes over the shared `UpdateIncidentType` query (each
+  preserving the fields it doesn't own).
+- **A caches-only dependency migrates cleanly to the Connect side when its last REST consumer
+  leaves.** The in-memory `IncidentTypesCache` was created in `AddToMux` and used only by the three
+  taxonomy handlers; with all of them retired it moved into `AddConnectToMux` (built there, threaded
+  into the Service), alongside the already-shared `MetricsCache` a type write invalidates. No
+  serve.go threading was needed because nothing REST still reads it.
+- **Contract gap #1: an empty response that the caller actually needs.** `ProposeIncidentTypeResponse`
+  was `{}`, but REST returned the created (or, on a name collision, resolved-existing) type id in a
+  header so the incident form can attach it immediately — and the tests chain propose→approve on that
+  id. Added `int32 incident_type_id`, matching `CreateIncidentTypeResponse`. *A propose/create RPC
+  whose result is used by the caller must return the key, even when its REST predecessor smuggled it
+  in a header.*
+- **Contract gap #2: an enum field needs presence for a partial update.** The resource's `group` was
+  a plain (non-optional) enum while its siblings `name`/`description`/`hidden`/`approved` were
+  `optional` — so an `UpdateIncidentType` couldn't tell "leave the group alone" from "clear it"
+  (both are UNSPECIFIED on the wire). Made it `optional IncidentTypeGroup` (proto3 supports optional
+  enums; it generates a `*Group` pointer): absent = leave, present-UNSPECIFIED = clear, present-value
+  = set — the same tri-state the pointer fields already had. *Presence is a per-field property; an
+  enum that participates in a partial update needs `optional` just as a string does.*
+- **The closed enum erases another string-validation 400.** REST rejected an unrecognized `group`
+  *string* with a 400; the enum is `defined_only`, so an unknown value can't arrive (it collapses to
+  UNSPECIFIED = ungrouped). The "nonsense group → 400" test was dropped with a note — the fourth such
+  REST 400 with no analogue across the recent slices (event-name, non-numeric-`person_id`,
+  participation-type, now group).
+- **Retiring both a read and a write route relocated two separate sweeps.** `GET /incident_types`
+  left the any-authenticated-user sweep (now empty — its last member) → focused
+  `TestListIncidentTypesAuthorization`; `POST /incident_types` left the admin-only sweep → focused
+  `TestIncidentTypeWriteAuthorization`. The reads are `NO_SIDE_EFFECTS`.
+
 ## 8. Open questions
 
 1. **Does the Go binary keep serving static assets in production**, or does Caddy?

@@ -310,9 +310,21 @@ sibling participation RPCs used event_id) — both changed to `optional int32 ev
 per-field `too long` 400s survive via protovalidate `max_len`. **The whole personnel surface (read + all
 seven writes) is now on Connect**; only the multipart profile-picture upload + serve stay REST.
 
-Next: **taxonomies** (incident types + outcomes — SaveIncidentType/SaveOutcome decompose into
-Create/Update/Approve/SetHidden per the 0e multiplex split; Propose* kept) → events(EditEvent)/areas/crews
-→ notifications/push → metrics/action log. For each: move handler logic into a
+The **incident-type taxonomy** is now done (branch `feat/1c-taxonomies`, stacked on
+`feat/1c-personnel-writes`) — a new `incidenttype.Service` with six RPCs, retiring REST GET/POST
+/incident_types and POST /events/{eventName}/incident_types. The POST multiplexer decomposed into
+CreateIncidentType/UpdateIncidentType/ApproveIncidentType/SetIncidentTypeHidden (the `editType` test
+helper dispatches the legacy DTO onto the right RPC by the same selectors the old handler switched on);
+the `IncidentTypesCache` moved from AddToMux into AddConnectToMux (last REST consumer gone). Two
+contract gaps filled: `ProposeIncidentTypeResponse` gained `incident_type_id` (the caller attaches the
+proposed/resolved type), and the resource's `group` became `optional IncidentTypeGroup` for
+update-presence (leave/clear/set), consistent with its optional siblings. The closed group enum dropped
+the "unknown group → 400" test (no analogue). Reads are NO_SIDE_EFFECTS; auth coverage relocated into
+focused `TestListIncidentTypesAuthorization` + `TestIncidentTypeWriteAuthorization`.
+
+Next: **outcomes** (the parallel taxonomy — ListOutcomes + Create/Update/Approve/SetOutcomeHidden +
+ProposeOutcome, near-identical to incident types) → events(EditEvent)/areas/crews → notifications/push →
+metrics/action log. For each: move handler logic into a
 proto-shaped domain method on its domain `Service` returning Connect errors, add the RPC
 method to `ImsService`, **delete the REST route + handler and move its `api/integration`
 cases onto the Connect client** (NOT a shim — the aggressive path, plan 09 §6), then verify.

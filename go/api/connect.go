@@ -28,6 +28,7 @@ import (
 	"github.com/mikeki/ocf-ims/internal/auth"
 	"github.com/mikeki/ocf-ims/internal/event"
 	"github.com/mikeki/ocf-ims/internal/incident"
+	"github.com/mikeki/ocf-ims/internal/incidenttype"
 	"github.com/mikeki/ocf-ims/internal/person"
 	"github.com/mikeki/ocf-ims/internal/server"
 	"github.com/mikeki/ocf-ims/lib/attachment"
@@ -57,10 +58,11 @@ type ImsService struct {
 	// domain Service here and wiring it below — that is where the shared, mutable
 	// cross-surface state (the SSE EventSourcerer, the dashboard MetricsCache) is threaded
 	// in so a Connect write fans out and invalidates exactly as the REST surface does.
-	Event    event.Service
-	Incident incident.Service
-	Person   person.Service
-	Auth     auth.Service
+	Event        event.Service
+	Incident     incident.Service
+	Person       person.Service
+	Auth         auth.Service
+	IncidentType incidenttype.Service
 }
 
 // ListEvents is a thin RPC method over the event.ListEvents domain method (plan
@@ -473,6 +475,76 @@ func (s ImsService) DeletePersonProfilePicture(
 	return connect.NewResponse(resp), nil
 }
 
+// The six incident-type RPCs below are thin methods over the matching incidenttype.Service domain
+// methods (connect.go, plan 09h/1c). The POST /incident_types multiplexer was decomposed into
+// Create/Update/Approve/SetHidden; each retired its REST route in the same slice.
+
+func (s ImsService) ListIncidentTypes(
+	ctx context.Context,
+	req *connect.Request[servicerpcv1.ListIncidentTypesRequest],
+) (*connect.Response[servicerpcv1.ListIncidentTypesResponse], error) {
+	resp, err := s.IncidentType.ListIncidentTypes(ctx, req.Msg)
+	if err != nil {
+		return nil, err
+	}
+	return connect.NewResponse(resp), nil
+}
+
+func (s ImsService) CreateIncidentType(
+	ctx context.Context,
+	req *connect.Request[servicerpcv1.CreateIncidentTypeRequest],
+) (*connect.Response[servicerpcv1.CreateIncidentTypeResponse], error) {
+	resp, err := s.IncidentType.CreateIncidentType(ctx, req.Msg)
+	if err != nil {
+		return nil, err
+	}
+	return connect.NewResponse(resp), nil
+}
+
+func (s ImsService) UpdateIncidentType(
+	ctx context.Context,
+	req *connect.Request[servicerpcv1.UpdateIncidentTypeRequest],
+) (*connect.Response[servicerpcv1.UpdateIncidentTypeResponse], error) {
+	resp, err := s.IncidentType.UpdateIncidentType(ctx, req.Msg)
+	if err != nil {
+		return nil, err
+	}
+	return connect.NewResponse(resp), nil
+}
+
+func (s ImsService) ApproveIncidentType(
+	ctx context.Context,
+	req *connect.Request[servicerpcv1.ApproveIncidentTypeRequest],
+) (*connect.Response[servicerpcv1.ApproveIncidentTypeResponse], error) {
+	resp, err := s.IncidentType.ApproveIncidentType(ctx, req.Msg)
+	if err != nil {
+		return nil, err
+	}
+	return connect.NewResponse(resp), nil
+}
+
+func (s ImsService) SetIncidentTypeHidden(
+	ctx context.Context,
+	req *connect.Request[servicerpcv1.SetIncidentTypeHiddenRequest],
+) (*connect.Response[servicerpcv1.SetIncidentTypeHiddenResponse], error) {
+	resp, err := s.IncidentType.SetIncidentTypeHidden(ctx, req.Msg)
+	if err != nil {
+		return nil, err
+	}
+	return connect.NewResponse(resp), nil
+}
+
+func (s ImsService) ProposeIncidentType(
+	ctx context.Context,
+	req *connect.Request[servicerpcv1.ProposeIncidentTypeRequest],
+) (*connect.Response[servicerpcv1.ProposeIncidentTypeResponse], error) {
+	resp, err := s.IncidentType.ProposeIncidentType(ctx, req.Msg)
+	if err != nil {
+		return nil, err
+	}
+	return connect.NewResponse(resp), nil
+}
+
 // AddConnectToMux registers the ImsService Connect handler on the shared mux
 // next to AddToMux (plan 09g). connect handlers are plain http.Handlers mounted
 // at a path prefix, so the RPC surface coexists with the REST/web routes on one
@@ -508,6 +580,10 @@ func AddConnectToMux(
 	// POST /auth (and its ThrottleLogin middleware) were retired when Login moved here, so this
 	// is the sole instance. Disabled by config in the shared test suite; on in real deployments.
 	loginLimiter := server.NewLoginRateLimiter(server.DefaultLoginRateLimiterConfig(cfg.Core.LoginRateLimitEnabled))
+	// The incident-type taxonomy cache lived in AddToMux while its routes were REST; it moved here
+	// with the taxonomy extraction (plan 09h/1c) since every consumer is now a Connect RPC. It is
+	// invalidated by the type writes (shared with metricsCache, which the incident writes also use).
+	incidentTypesCache := server.NewIncidentTypesCache()
 	path, handler := servicev1connect.NewImsServiceHandler(
 		ImsService{
 			Event: event.Service{ImsDBQ: imsDBQ, UserStore: userStore},
@@ -536,6 +612,12 @@ func AddConnectToMux(
 				AccessTokenDuration:  cfg.Core.AccessTokenLifetime,
 				RefreshTokenDuration: cfg.Core.RefreshTokenLifetime,
 				LoginLimiter:         loginLimiter,
+			},
+			IncidentType: incidenttype.Service{
+				ImsDBQ:    imsDBQ,
+				UserStore: userStore,
+				Metrics:   metricsCache,
+				Types:     incidentTypesCache,
 			},
 		},
 		connect.WithInterceptors(interceptors...),

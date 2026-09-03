@@ -29,7 +29,6 @@ import (
 	"github.com/mikeki/ocf-ims/internal/debug"
 	"github.com/mikeki/ocf-ims/internal/event"
 	"github.com/mikeki/ocf-ims/internal/incident"
-	"github.com/mikeki/ocf-ims/internal/incidenttype"
 	"github.com/mikeki/ocf-ims/internal/metrics"
 	"github.com/mikeki/ocf-ims/internal/notification"
 	"github.com/mikeki/ocf-ims/internal/outcome"
@@ -72,10 +71,10 @@ func AddToMux(
 	// Connect, so both must hold the *same* cache or the dashboard would go stale until
 	// the TTL. (Passed in like es for the same reason — one shared instance.)
 
-	// Reference-data caches: the incident-type taxonomy (global) and each event's
-	// area list are read on nearly every incident form load but change rarely, so
-	// they are memoized here and invalidated by their write handlers.
-	incidentTypesCache := server.NewIncidentTypesCache()
+	// Reference-data caches: each event's area list is read on nearly every incident
+	// form load but changes rarely, so it is memoized here and invalidated by its write
+	// handlers. (The incident-type taxonomy cache moved to the Connect side when the
+	// taxonomy routes were extracted, plan 09h/1c.)
 	areasCache := server.NewAreasCache()
 	crewsCache := server.NewCrewsCache()
 	outcomesCache := server.NewOutcomesCache()
@@ -361,38 +360,10 @@ func AddToMux(
 		),
 	)
 
-	mux.Handle("GET /ims/api/incident_types",
-		server.Adapt(
-			incidenttype.GetIncidentTypes{ImsDBQ: db, UserStore: userStore, Cache: incidentTypesCache, CacheControlShort: cfg.Core.CacheControlShort},
-			server.RecoverFromPanic(),
-			server.RequireAuthN(jwter),
-			server.LogRequest(false, actionLogger, userStore),
-			server.LimitRequestBytes(cfg.Core.MaxRequestBytes),
-		),
-	)
-
-	mux.Handle("POST /ims/api/incident_types",
-		server.Adapt(
-			incidenttype.EditIncidentTypes{ImsDBQ: db, UserStore: userStore, Metrics: metricsCache, Types: incidentTypesCache},
-			server.RecoverFromPanic(),
-			server.RequireAuthN(jwter),
-			server.LogRequest(true, actionLogger, userStore),
-			server.LimitRequestBytes(cfg.Core.MaxRequestBytes),
-		),
-	)
-
-	// An event writer proposes a new incident type from the incident form; the
-	// route is event-scoped only to authorize the caller as a writer (the type is
-	// global). Approval happens back on the global admin endpoint above.
-	mux.Handle("POST /ims/api/events/{eventName}/incident_types",
-		server.Adapt(
-			incidenttype.ProposeIncidentType{ImsDBQ: db, UserStore: userStore, Metrics: metricsCache, Types: incidentTypesCache},
-			server.RecoverFromPanic(),
-			server.RequireAuthN(jwter),
-			server.LogRequest(true, actionLogger, userStore),
-			server.LimitRequestBytes(cfg.Core.MaxRequestBytes),
-		),
-	)
+	// The incident-type read + all writes (the POST multiplexer, decomposed into
+	// Create/Update/Approve/SetHidden, and the event-scoped writer Propose) moved to the
+	// ImsService RPCs (plan 09h/1c) and their REST routes were retired; the shared
+	// incidentTypesCache moved to the Connect side (built in AddConnectToMux).
 
 	mux.Handle("GET /ims/api/outcomes",
 		server.Adapt(
