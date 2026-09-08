@@ -144,9 +144,11 @@ one to master and four stacked on #231, each verified like a slice:
 - **#234 `fix/1c-review-error-handling`** (X3) — `server.InternalError`/`PublicError`: the wire gets the
   public message, the cause stays server-side; the slog interceptor logs failures at Error/Warn with the
   cause; Login/throttle Warn lines restored; 429 mapped.
-- **#235 `fix/1c-review-contract-hardening`** (X4/X5/#220) — every message-typed request field is
+- **#235 `fix/1c-review-contract-hardening`** (X4/X5) — every message-typed request field is
   `required` (nil-deref 500s → InvalidArgument); unknown taxonomy/event ids are NotFound; approves
-  pre-read (MySQL rows-affected counts *changed* rows); `person_id` gt 0.
+  pre-read (MySQL rows-affected counts *changed* rows). (The review's #220 item — `person_id` gt 0 —
+  first rode here, then folded into #220 itself when that selector became `repeated int32 person_ids`,
+  bounded 1..100 positive unique; see the ListPersonnel section below.)
 - **#236 `fix/1c-review-actionlog-bounded`** (#228) — `ListActionLogs` is newest-first, bounded
   (`limit`, default 200 / cap 1000) and windowed (`min_time`/`max_time`).
 - **#237 `fix/1c-review-privacy-sse-followups`** (#231/#216/X6 + nits) — oracle on

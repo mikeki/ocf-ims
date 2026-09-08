@@ -1486,7 +1486,10 @@ enforced + the last M8 surface fixed."
 An independent review of the whole 1c stack (#216→#231) confirmed every extraction was ported line for
 line — no permission regression, no data-path regression — and found its problems one layer up, in how
 the Connect *tier* handles errors and validation. Every item repeated across slices, which is the
-finding: these are transport-migration gaps, not slice bugs. Answered by #233–#237.
+finding: these are transport-migration gaps, not slice bugs. Answered by #233–#237 — except the one
+per-slice item (#220's unbounded `person_id`), which folded back into #220 itself when the selector
+became `repeated int32 person_ids` (see the ListPersonnel findings above: on a list RPC an id selector
+is a filter, so it is plural).
 
 - **An error-model migration needs an explicit public/cause split, because the wire is `err.Error()`.**
   REST's `herr.HTTPError` kept `ResponseMessage` (client) and `InternalErr` (server, logged by
