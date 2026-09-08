@@ -164,6 +164,11 @@ func (s Service) UpdateEvent(
 		return nil, err
 	}
 	existing, err := s.ImsDBQ.Event(ctx, s.ImsDBQ, req.GetEventId())
+	if errors.Is(err, sql.ErrNoRows) {
+		// The retired multiplexer answered 500 here; on the id-keyed contract an unknown
+		// event is a client outcome.
+		return nil, connect.NewError(connect.CodeNotFound, errors.New("event not found"))
+	}
 	if err != nil {
 		return nil, server.InternalError("failed to fetch event", err)
 	}
@@ -212,6 +217,8 @@ func (s Service) applyEventEdits(
 		ParentGroup: existing.ParentGroup,
 	}
 	if ev.Name != nil {
+		// On the create path this re-checks the name CreateEvent already validated before its
+		// insert; the redundancy is deliberate so the update path stays self-contained.
 		if !allowedEventNames.MatchString(ev.GetName()) {
 			return params, connect.NewError(connect.CodeInvalidArgument,
 				fmt.Errorf("event names must match the pattern %s", allowedEventNames.String()))
@@ -229,6 +236,10 @@ func (s Service) applyEventEdits(
 		}
 		if pg > 0 {
 			target, err := s.ImsDBQ.Event(ctx, s.ImsDBQ, pg)
+			if errors.Is(err, sql.ErrNoRows) {
+				return params, connect.NewError(connect.CodeInvalidArgument,
+					errors.New("event parent group does not exist"))
+			}
 			if err != nil {
 				return params, server.InternalError("failed to fetch parent group", err)
 			}

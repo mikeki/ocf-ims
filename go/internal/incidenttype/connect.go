@@ -118,9 +118,9 @@ func (s Service) UpdateIncidentType(
 	if err != nil {
 		return nil, err
 	}
-	row, err := s.ImsDBQ.IncidentType(ctx, s.ImsDBQ, req.GetIncidentTypeId())
+	row, err := s.loadIncidentType(ctx, req.GetIncidentTypeId())
 	if err != nil {
-		return nil, server.InternalError("failed to fetch incident type", err)
+		return nil, err
 	}
 	it := req.GetIncidentType()
 	if it.Name != nil {
@@ -157,6 +157,13 @@ func (s Service) ApproveIncidentType(
 	if err != nil {
 		return nil, err
 	}
+	// Pre-read so an unknown id is NotFound rather than a silently successful no-op UPDATE.
+	// (Rows-affected is not usable for this: MySQL reports *changed* rows by default, so
+	// re-approving an already-approved type would also count zero.)
+	_, err = s.loadIncidentType(ctx, req.GetIncidentTypeId())
+	if err != nil {
+		return nil, err
+	}
 	err = s.ImsDBQ.ApproveIncidentType(ctx, s.ImsDBQ, req.GetIncidentTypeId())
 	if err != nil {
 		return nil, server.InternalError("failed to approve incident type", err)
@@ -176,9 +183,9 @@ func (s Service) SetIncidentTypeHidden(
 	if err != nil {
 		return nil, err
 	}
-	row, err := s.ImsDBQ.IncidentType(ctx, s.ImsDBQ, req.GetIncidentTypeId())
+	row, err := s.loadIncidentType(ctx, req.GetIncidentTypeId())
 	if err != nil {
-		return nil, server.InternalError("failed to fetch incident type", err)
+		return nil, err
 	}
 	err = s.ImsDBQ.UpdateIncidentType(ctx, s.ImsDBQ, imsdb.UpdateIncidentTypeParams{
 		Hidden:      req.GetHidden(),
@@ -342,4 +349,19 @@ func incidentTypeGroupFromProto(g *resourcesv1.IncidentTypeGroup) imsdb.NullInci
 	default:
 		return imsdb.NullIncidentTypeGroup{}
 	}
+}
+
+// loadIncidentType reads the row a read-modify-write (or an approve) addresses by id, mapping a
+// missing id to NotFound. The retired REST multiplexer answered 500 for an unknown id (it never
+// distinguished sql.ErrNoRows); on the id-keyed contract "no such incident type" is a client
+// outcome, matching what the area and crew slices already do.
+func (s Service) loadIncidentType(ctx context.Context, id int32) (imsdb.IncidentTypeRow, error) {
+	row, err := s.ImsDBQ.IncidentType(ctx, s.ImsDBQ, id)
+	if errors.Is(err, sql.ErrNoRows) {
+		return imsdb.IncidentTypeRow{}, connect.NewError(connect.CodeNotFound, errors.New("incident type not found"))
+	}
+	if err != nil {
+		return imsdb.IncidentTypeRow{}, server.InternalError("failed to fetch incident type", err)
+	}
+	return row, nil
 }

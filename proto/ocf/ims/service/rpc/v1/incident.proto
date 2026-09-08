@@ -104,7 +104,7 @@ message IncidentUpdate {
 // CreateIncidentRequest applies an IncidentUpdate to a fresh incident in the event.
 message CreateIncidentRequest {
   int32 event_id = 1 [(buf.validate.field).int32.gt = 0];
-  IncidentUpdate incident = 2;
+  IncidentUpdate incident = 2 [(buf.validate.field).required = true];
 }
 
 // CreateIncidentResponse returns the server-assigned per-event incident number.
@@ -115,7 +115,7 @@ message CreateIncidentResponse {
 message UpdateIncidentRequest {
   int32 event_id = 1 [(buf.validate.field).int32.gt = 0];
   int32 incident_number = 2 [(buf.validate.field).int32.gt = 0];
-  IncidentUpdate update = 3;
+  IncidentUpdate update = 3 [(buf.validate.field).required = true];
 }
 
 message UpdateIncidentResponse {}
@@ -146,7 +146,7 @@ message UpdateIncidentJournalEntryRequest {
   int32 event_id = 1 [(buf.validate.field).int32.gt = 0];
   int32 incident_number = 2 [(buf.validate.field).int32.gt = 0];
   int32 journal_entry_id = 3 [(buf.validate.field).int32.gt = 0];
-  ocf.ims.resources.v1.JournalEntry entry = 4;
+  ocf.ims.resources.v1.JournalEntry entry = 4 [(buf.validate.field).required = true];
 }
 
 message UpdateIncidentJournalEntryResponse {}

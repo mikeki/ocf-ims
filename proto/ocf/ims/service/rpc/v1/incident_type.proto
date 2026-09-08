@@ -25,7 +25,7 @@ message ListIncidentTypesResponse {
 // CreateIncidentTypeRequest is the admin create of a global incident type (approved
 // immediately). A writer's proposal goes through ProposeIncidentType instead.
 message CreateIncidentTypeRequest {
-  ocf.ims.resources.v1.IncidentType incident_type = 1;
+  ocf.ims.resources.v1.IncidentType incident_type = 1 [(buf.validate.field).required = true];
 }
 
 // CreateIncidentTypeResponse returns the server-assigned id.
@@ -36,7 +36,7 @@ message CreateIncidentTypeResponse {
 // UpdateIncidentTypeRequest edits an existing type (name / description / group).
 message UpdateIncidentTypeRequest {
   int32 incident_type_id = 1 [(buf.validate.field).int32.gt = 0];
-  ocf.ims.resources.v1.IncidentType incident_type = 2;
+  ocf.ims.resources.v1.IncidentType incident_type = 2 [(buf.validate.field).required = true];
 }
 
 message UpdateIncidentTypeResponse {}
@@ -61,7 +61,7 @@ message SetIncidentTypeHiddenResponse {}
 // is event-scoped only to authorize the caller as a writer; the type itself is global.
 message ProposeIncidentTypeRequest {
   int32 event_id = 1 [(buf.validate.field).int32.gt = 0];
-  ocf.ims.resources.v1.IncidentType incident_type = 2;
+  ocf.ims.resources.v1.IncidentType incident_type = 2 [(buf.validate.field).required = true];
 }
 
 // ProposeIncidentTypeResponse returns the id of the created (or, on a name collision,
