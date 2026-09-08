@@ -118,22 +118,21 @@ func TestEventEndpoints_ForNoEventPerms(t *testing.T) {
 	require.NoError(t, resp.Body.Close())
 
 	eventPath := "/ims/api/events/" + eventName
-	// The incident CRUD routes and the report GET routes (list + single) were retired from
-	// REST (plan 09h/1c) — they are now the ImsService.ListIncidents / CreateIncident /
-	// GetIncident / UpdateIncident and ListReports / GetReport RPCs. Their unauth (401) and
-	// forbidden (403) behavior is covered through the Connect client in
-	// TestIncidentAPIAuthorization and TestReportReadAuthorization, so they are no longer
-	// enumerated here.
+	// The incident CRUD routes and the report reads + writes (list, single, create, update,
+	// strike-a-journal-entry) were retired from REST (plan 09h/1c) — they are now the
+	// ImsService.ListIncidents / CreateIncident / GetIncident / UpdateIncident and the ListReports
+	// / GetReport / CreateReport / UpdateReport / UpdateReportJournalEntry RPCs. Their unauth (401)
+	// and forbidden (403) behavior is covered through the Connect client in
+	// TestIncidentAPIAuthorization, TestReportReadAuthorization and TestReportWriteAuthorization,
+	// so they are no longer enumerated here. Only the report-attachment upload/download (still
+	// REST) remains below.
 	getIncidentAttachment := MethodURL{http.MethodGet, eventPath + "/incidents/1/attachments/1"}
 	postIncidentAttachment := MethodURL{http.MethodPost, eventPath + "/incidents/1/attachments"}
 	postIncidentRE := MethodURL{http.MethodPost, eventPath + "/incidents/1/journal_entries/2"}
 	postIncidentPerson := MethodURL{http.MethodPost, eventPath + "/incidents/1/people/some_name"}
 	deleteIncidentPerson := MethodURL{http.MethodDelete, eventPath + "/incidents/1/people/some_name"}
 	getReportAttachment := MethodURL{http.MethodGet, eventPath + "/reports/1/attachments/1"}
-	createReport := MethodURL{http.MethodPost, eventPath + "/reports"}
-	updateReport := MethodURL{http.MethodPost, eventPath + "/reports/9999999"}
 	postReportAttachment := MethodURL{http.MethodPost, eventPath + "/reports/9999999/attachments"}
-	postReportRE := MethodURL{http.MethodPost, eventPath + "/reports/9999999/journal_entries/2"}
 	getVisits := MethodURL{http.MethodGet, eventPath + "/visits"}
 	getVisit := MethodURL{http.MethodGet, eventPath + "/visits/1"}
 	getVisitAttachment := MethodURL{http.MethodGet, eventPath + "/visits/1/attachments/1"}
@@ -152,10 +151,7 @@ func TestEventEndpoints_ForNoEventPerms(t *testing.T) {
 		postIncidentPerson,
 		deleteIncidentPerson,
 		getReportAttachment,
-		createReport,
-		updateReport,
 		postReportAttachment,
-		postReportRE,
 		getVisits,
 		getVisit,
 		getVisitAttachment,
@@ -169,9 +165,7 @@ func TestEventEndpoints_ForNoEventPerms(t *testing.T) {
 	}
 	reporter := []MethodURL{
 		getReportAttachment,
-		createReport,
 		postReportAttachment,
-		postReportRE,
 		getAreas,
 	}
 
@@ -199,7 +193,7 @@ func TestEventEndpoints_ForNoEventPerms(t *testing.T) {
 	// now the user can hit some more endpoints
 	for _, api := range allPerms {
 		switch {
-		case api == updateReport || api == postReportRE || api == postReportAttachment:
+		case api == postReportAttachment:
 			// the user won't be able to write to an FR for which they're not an author,
 			// e.g. the one in this dummy call, so we should expect a 403 or 404, but we
 			// can confirm they got the right error message

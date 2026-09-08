@@ -186,14 +186,31 @@ sweep slice — a focused `TestReportReadAuthorization` (unauth→401, no-perms�
 through the Connect client. `ListReports` gained `bool exclude_system_entries` (the recurring
 "list RPC grows a field per REST query param" shape, same as `ListIncidents`).
 
+The **report writes** are now done too: **`CreateReport` + `UpdateReport` +
+`UpdateReportJournalEntry`** (branch `feat/1c-report-writes`, stacked on `feat/1c-report-reads`),
+three write RPCs in one PR, all methods on the existing `incident.Service`. Each ports its REST
+handler's authz verbatim; the proto→imsjson write bridge (`reportWriteToJSON`) mirrors
+`incidentUpdateToJSON`. The one deliberate behavior change: reports take the plain `Report` on
+write (no presence-tracked message), so the incident link — which REST drove through a
+`?action=attach|detach` form param — is now reconciled from `report.incident` following the
+**visit-field convention** (`updateVisit`: present & >0 links, present & ≤0 detaches, absent
+unchanged), retiring the legacy action framework. Coverage relocated the same way as the reads:
+a focused `TestReportWriteAuthorization` replaces the pruned `permissions_test` sweep rows.
+**With this the entire field-report surface is on Connect** — only the report *attachment*
+upload/download (binary, outside the contract) stays REST.
+
+**Stacking (from this PR on):** at the user's request the remaining resources are shipped as a
+**stack** — each branch off the previous, PRs merged bottom-up (GitHub auto-retargets a child
+onto master as its base merges). This is a deliberate, scoped exception to the usual
+"target master directly, don't stack" rule.
+
 Still outstanding on the incident core: the direct DB→proto read-mapper follow-up (retires
 `incidentToJSON`/`incidentJSONToProto`/`incidentViewToJSON` and the test-side
 `incidentViewToJSON`/`incidentUpdateFromJSON` bridges) — deferrable and best done once the
-report reads/writes are also proto-shaped so the whole json read layer retires in one sweep.
-Next: the **report writes** (`CreateReport`/`UpdateReport`, and the report journal-entry edit
-`UpdateReportJournalEntry`) — note the report contract takes the plain `Report` resource on
-write, not a presence-tracked update message like incidents. Then people/auth → taxonomies →
-events(EditEvent)/areas/crews → metrics/action log. For each: move handler logic into a
+report writes have landed so the whole json read layer retires in one sweep.
+Next: the **incident sub-resource writes** (`AttachPersonToIncident`, `DetachPersonFromIncident`,
+`UpdateIncidentJournalEntry`), then **auth & own-profile**, then people/auth → taxonomies →
+events(EditEvent)/areas/crews → notifications/push → metrics/action log. For each: move handler logic into a
 proto-shaped domain method on its domain `Service` returning Connect errors, add the RPC
 method to `ImsService`, **delete the REST route + handler and move its `api/integration`
 cases onto the Connect client** (NOT a shim — the aggressive path, plan 09 §6), then verify.

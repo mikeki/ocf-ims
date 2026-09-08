@@ -129,11 +129,11 @@ func TestCreateAndUpdateReport(t *testing.T) {
 	retrievedNewReport, resp := apisAlice.getReport(ctx, eventName, num)
 	require.NoError(t, resp.Body.Close())
 
-	// Now let's update the FR. First let's try just adding an incident number.
+	// Update the FR by appending journal entries, without touching the incident link (a nil
+	// Incident leaves the link unchanged). The report's summary/link are unchanged afterward.
 	updates := imsjson.Report{
-		Event:    reportReq.Event,
-		Number:   num,
-		Incident: new(int32(12345)),
+		Event:  reportReq.Event,
+		Number: num,
 		JournalEntries: []imsjson.JournalEntry{
 			{
 				Text: "new details!",
@@ -152,6 +152,17 @@ func TestCreateAndUpdateReport(t *testing.T) {
 	require.Equal(t, http.StatusOK, resp.StatusCode)
 	require.NoError(t, resp.Body.Close())
 	requireEqualReport(t, retrievedNewReport, retrievedReportAfterUpdate)
+
+	// Linking the report to a nonexistent incident via UpdateReport is a friendly 404: the
+	// incident field is now honored (visit-field convention), unlike the retired REST edit path
+	// which ignored the body's incident and only linked via a "?action=" form param.
+	resp = apisAlice.updateReport(ctx, eventName, num, imsjson.Report{
+		Event:    reportReq.Event,
+		Number:   num,
+		Incident: new(int32(12345)),
+	})
+	require.Equal(t, http.StatusNotFound, resp.StatusCode)
+	require.NoError(t, resp.Body.Close())
 
 	// now let's set all fields to empty
 	updates = imsjson.Report{
@@ -385,6 +396,47 @@ func TestReportReadAuthorization(t *testing.T) {
 	require.Equal(t, http.StatusForbidden, resp.StatusCode)
 	require.NoError(t, resp.Body.Close())
 	_, resp = aliceNoPerms.getReport(ctx, eventName, 1)
+	require.Equal(t, http.StatusForbidden, resp.StatusCode)
+	require.NoError(t, resp.Body.Close())
+}
+
+// TestReportWriteAuthorization covers the coarse write gate the retired REST report-write routes
+// used to exercise in the permissions sweep: unauthenticated callers are 401 and callers with no
+// participation row on the event are 403, for all three writes (create, update, strike-a-journal-
+// entry). The finer per-report edit rules (creator vs writer vs reporter) live in
+// TestReportEditSummaryAndEntryAuthz and TestCreateAndUpdateReport.
+func TestReportWriteAuthorization(t *testing.T) {
+	t.Parallel()
+	ctx := t.Context()
+
+	apisAdmin := ApiHelper{t: t, serverURL: shared.serverURL, jwt: jwtForAdmin(ctx, t)}
+	notAuthenticated := ApiHelper{t: t, serverURL: shared.serverURL, jwt: ""}
+	aliceNoPerms := ApiHelper{t: t, serverURL: shared.serverURL, jwt: jwtForAlice(t, ctx)}
+
+	eventName := rand.NonCryptoText()
+	_, resp := apisAdmin.createEvent(ctx, imsjson.Event{Name: &eventName})
+	require.Equal(t, http.StatusNoContent, resp.StatusCode)
+	require.NoError(t, resp.Body.Close())
+
+	// Unauthenticated: all three writes are 401.
+	resp = notAuthenticated.newReport(ctx, imsjson.Report{Event: eventName, Summary: new("x")})
+	require.Equal(t, http.StatusUnauthorized, resp.StatusCode)
+	require.NoError(t, resp.Body.Close())
+	resp = notAuthenticated.updateReport(ctx, eventName, 1, imsjson.Report{Summary: new("x")})
+	require.Equal(t, http.StatusUnauthorized, resp.StatusCode)
+	require.NoError(t, resp.Body.Close())
+	resp = notAuthenticated.updateReportJournalEntry(ctx, eventName, 1, imsjson.JournalEntry{ID: 1, Stricken: new(true)})
+	require.Equal(t, http.StatusUnauthorized, resp.StatusCode)
+	require.NoError(t, resp.Body.Close())
+
+	// Authenticated but with no participation row on this event: all three writes are 403.
+	resp = aliceNoPerms.newReport(ctx, imsjson.Report{Event: eventName, Summary: new("x")})
+	require.Equal(t, http.StatusForbidden, resp.StatusCode)
+	require.NoError(t, resp.Body.Close())
+	resp = aliceNoPerms.updateReport(ctx, eventName, 1, imsjson.Report{Summary: new("x")})
+	require.Equal(t, http.StatusForbidden, resp.StatusCode)
+	require.NoError(t, resp.Body.Close())
+	resp = aliceNoPerms.updateReportJournalEntry(ctx, eventName, 1, imsjson.JournalEntry{ID: 1, Stricken: new(true)})
 	require.Equal(t, http.StatusForbidden, resp.StatusCode)
 	require.NoError(t, resp.Body.Close())
 }

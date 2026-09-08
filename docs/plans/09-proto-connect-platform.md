@@ -903,6 +903,47 @@ wire (`reportJSONToProto` + a `reportViewFromJSON` wrapper). Findings:
 The report *writes* (create/edit) and the report journal-entry edit stay REST for the next PR;
 `reportToJSON`/`fetchReport`/`reportEditRights` are deliberately kept (shared with those).
 
+### 1c — Domain extraction: report writes (Create/Update/UpdateReportJournalEntry) (2026-09-01)
+
+Three write RPCs in one PR (`incident.CreateReport`, `incident.UpdateReport`,
+`incident.UpdateReportJournalEntry`), all methods on the existing `incident.Service`. Each ports
+the REST `newReport` / `editReport` / `editReportJournalEntry` authorization verbatim (the
+`EventWriteAllReports | EventWriteOwnReports` gate, the ownership floor of creator-or-previous-
+author, and the stricter creator-only-summary / writer-may-add-entry per-action gates from
+`reportEditRights`). The proto→imsjson write bridge (`reportWriteToJSON`) mirrors
+`incidentUpdateToJSON`, and the shared low-level helpers (`addJournalEntry`, mentions,
+notifications) are reused unchanged. Findings:
+
+- **A "plain resource on write" endpoint has to encode list/link presence in the *resource's*
+  fields, not a side-channel.** Reports take the whole `Report` on write (no presence-tracked
+  update message like incidents), so the incident link — which REST drove through a
+  `?action=attach|detach` form param while *ignoring* the body's incident — is now reconciled
+  from `report.incident` following the **visit-field convention already in the codebase**
+  (`updateVisit`: present & >0 links, present & ≤0 detaches, absent leaves unchanged), and only
+  when it actually changes so a no-op edit writes no spurious journal entry. This is the one
+  deliberate behavior change of the slice; it retires the legacy "action framework" the REST
+  code's own TODO called out, and it turned a REST-quirk test (body-incident-ignored, asserted
+  via a *nonexistent* incident number) into a real "linking to a nonexistent incident is a 404"
+  test. *When you port a write whose REST form multiplexed a side-channel, fold the side-channel
+  into a resource field using whatever presence convention the codebase already established for
+  the sibling resource — don't invent a new one.*
+- **The `noinlineerr` linter forbids `if x := f(); x != nil` for error handling — including the
+  `if err = tx.Commit(); err != nil` form.** The write path is full of `addJournalEntry` calls
+  whose only return worth checking is the error; wrapping each in an inline-if trips the linter.
+  The fix that both satisfies it and reads better was to hoist the repeated
+  generated-entry writes into two tiny `Service` helpers (`addGeneratedReportEntry` /
+  `addGeneratedIncidentEntry`) that map the shared `herr` onto a Connect error, so each call site
+  is a plain assignment + `if`. *A write path that emits many change-record journal entries wants
+  a one-line generated-entry helper anyway; the linter just forces the issue.*
+- **A retired write relocates its coarse auth coverage too** (the read-side lesson, again). The
+  create/update/strike routes' unauth-401 / no-perms-403 rows were pruned from the
+  `permissions_test` sweep (raw REST paths now 404) and re-covered by a focused
+  `TestReportWriteAuthorization` through the Connect client; the finer per-report edit rules stay
+  in `TestReportEditSummaryAndEntryAuthz`.
+
+With this, the entire field-report surface (reads + writes) is on Connect; only the report
+*attachment* upload/download (binary/multipart, outside the proto contract) stays REST.
+
 ## 8. Open questions
 
 1. **Does the Go binary keep serving static assets in production**, or does Caddy?
