@@ -140,12 +140,10 @@ type GetPersonProfilePicture struct {
 	S3Client         *attachment.S3Client
 }
 
-type DeletePersonProfilePicture struct {
-	ImsDBQ           *store.DBQ
-	UserStore        directory.UserStore
-	AttachmentsStore conf.AttachmentsStore
-	S3Client         *attachment.S3Client
-}
+// The DeletePersonProfilePicture REST handler (DELETE /personnel/{personId}/picture) was RETIRED in
+// slice 1c and moved onto Connect as person.Service.DeletePersonProfilePicture (connect_admin.go),
+// sharing clearProfilePicture below. The picture upload (SetPersonProfilePicture) and serve
+// (GetPersonProfilePicture) are multipart/binary and stay REST (M8).
 
 func (action SetPersonProfilePicture) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 	errHTTP := action.setPersonProfilePicture(req)
@@ -314,35 +312,6 @@ func (action GetPersonProfilePicture) getPersonProfilePicture(
 	contentType = incident.SafeToPreviewContentType(mtype.String())
 
 	return file, contentType, nil
-}
-
-func (action DeletePersonProfilePicture) ServeHTTP(w http.ResponseWriter, req *http.Request) {
-	errHTTP := action.deletePersonProfilePicture(req)
-	if errHTTP != nil {
-		errHTTP.From("[deletePersonProfilePicture]").WriteResponse(w)
-		return
-	}
-	herr.WriteNoContentResponse(w, "Removed profile picture")
-}
-
-func (action DeletePersonProfilePicture) deletePersonProfilePicture(req *http.Request) *herr.HTTPError {
-	// Same admin-only gate as upload/edit.
-	_, globalPermissions, errHTTP := server.GetGlobalPermissions(req, action.ImsDBQ, action.UserStore)
-	if errHTTP != nil {
-		return errHTTP.From("[server.GetGlobalPermissions]")
-	}
-	if globalPermissions&authz.GlobalAdministratePersonnel == 0 {
-		return herr.Forbidden("The requestor does not have GlobalAdministratePersonnel permission", nil)
-	}
-	ctx := req.Context()
-
-	person, errHTTP := server.PersonByIDFromPath(ctx, action.ImsDBQ, req)
-	if errHTTP != nil {
-		return errHTTP
-	}
-
-	return clearProfilePicture(ctx, action.AttachmentsStore, action.S3Client, action.ImsDBQ,
-		person.ID, person.ProfilePicture.String)
 }
 
 // clearProfilePicture clears a person's profile-picture pointer and deletes the backing
