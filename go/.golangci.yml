@@ -9,7 +9,10 @@ linters:
     - dupl  # meh
     - err113  # meh
     - forcetypeassert  # seems fine to have these in tests
-    - funlen  # meh
+    # funlen is NOT disabled: it is enabled but path-scoped to the api/ transport
+    # layer via linters.exclusions.rules below (plan 09 M10 — keep handlers thin so
+    # business logic can't creep back in). The domain layer (internal/) is left
+    # exempt there, matching the already-disabled cyclop/gocognit/gocyclo.
     - gochecknoglobals  # there are a bunch of globals that could be cleaned up
     - gocognit  # many functions are too complex currently
     - goconst  # not very helpful
@@ -49,3 +52,17 @@ linters:
     gocritic:
       disabled-checks:
         - exitAfterDefer
+  exclusions:
+    rules:
+      # funlen (plan 09 M10) enforces the "no business logic in the transport layer"
+      # gate: it runs ONLY on the api/ package's own source files (the thin RPC
+      # delegate methods). Suppress it everywhere else — the domain layer under
+      # internal/ legitimately holds the extracted logic (and is already exempt from
+      # cyclop/gocognit/gocyclo), and store/lib/cmd/etc. are out of scope.
+      - linters:
+          - funlen
+        path-except: '(^|/)api/[^/]+\.go$'
+      # ...and not on the api/ package's own test files.
+      - linters:
+          - funlen
+        path: '_test\.go$'
