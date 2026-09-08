@@ -20,16 +20,17 @@ import (
 	"net/http"
 	"testing"
 
+	resourcesv1 "github.com/mikeki/ocf-ims/gen/ocf/ims/resources/v1"
 	imsjson "github.com/mikeki/ocf-ims/json"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
 
 // countFor returns the Count of the bucket with the given key, or -1 if absent.
-func countFor(buckets []imsjson.MetricCount, key string) int64 {
+func countFor(buckets []*resourcesv1.MetricCount, key string) int64 {
 	for _, b := range buckets {
-		if b.Key == key {
-			return b.Count
+		if b.GetKey() == key {
+			return b.GetCount()
 		}
 	}
 	return -1
@@ -137,73 +138,73 @@ func TestMetricsAggregation(t *testing.T) {
 	require.Equal(t, http.StatusOK, resp.StatusCode)
 	require.NoError(t, resp.Body.Close())
 
-	assert.Equal(t, eventName, m.Event)
+	assert.Equal(t, eventName, m.GetEvent())
 
 	// Totals.
-	assert.Equal(t, int64(3), m.Total)
-	assert.Equal(t, int64(1), m.Closed)
-	assert.Equal(t, int64(2), m.Open)
-	assert.Equal(t, int64(1), m.ClosedCount)
+	assert.Equal(t, int64(3), m.GetTotal())
+	assert.Equal(t, int64(1), m.GetClosed())
+	assert.Equal(t, int64(2), m.GetOpen())
+	assert.Equal(t, int64(1), m.GetClosedCount())
 	require.NotNil(t, m.AvgTimeToCloseSeconds)
-	assert.GreaterOrEqual(t, *m.AvgTimeToCloseSeconds, 0.0)
+	assert.GreaterOrEqual(t, m.GetAvgTimeToCloseSeconds(), 0.0)
 
 	// By state (zero-filled, both present). B and C are open, A is closed.
-	assert.Len(t, m.ByState, 2)
-	assert.Equal(t, int64(2), countFor(m.ByState, "open"))
-	assert.Equal(t, int64(1), countFor(m.ByState, "closed"))
+	assert.Len(t, m.GetByState(), 2)
+	assert.Equal(t, int64(2), countFor(m.GetByState(), "open"))
+	assert.Equal(t, int64(1), countFor(m.GetByState(), "closed"))
 
 	// By priority (three named buckets).
-	assert.Equal(t, int64(1), countFor(m.ByPriority, "high"))
-	assert.Equal(t, int64(1), countFor(m.ByPriority, "normal"))
-	assert.Equal(t, int64(1), countFor(m.ByPriority, "low"))
+	assert.Equal(t, int64(1), countFor(m.GetByPriority(), "high"))
+	assert.Equal(t, int64(1), countFor(m.GetByPriority(), "normal"))
+	assert.Equal(t, int64(1), countFor(m.GetByPriority(), "low"))
 
 	// By category — the multi-type semantics:
 	//   safety  = 2 (A counted ONCE despite two safety types; plus B)
 	//   conduct = 1 (B)
 	//   operations = 1 (C)
 	// so the categories sum to 4 > 3 total incidents.
-	assert.Equal(t, int64(2), countFor(m.ByCategory, "safety"))
-	assert.Equal(t, int64(1), countFor(m.ByCategory, "conduct"))
-	assert.Equal(t, int64(1), countFor(m.ByCategory, "operations"))
+	assert.Equal(t, int64(2), countFor(m.GetByCategory(), "safety"))
+	assert.Equal(t, int64(1), countFor(m.GetByCategory(), "conduct"))
+	assert.Equal(t, int64(1), countFor(m.GetByCategory(), "operations"))
 	var categorySum int64
-	for _, c := range m.ByCategory {
-		categorySum += c.Count
+	for _, c := range m.GetByCategory() {
+		categorySum += c.GetCount()
 	}
 	assert.Equal(t, int64(4), categorySum)
-	assert.Greater(t, categorySum, m.Total)
+	assert.Greater(t, categorySum, m.GetTotal())
 
 	// By type — distinct incidents per type.
-	assert.Equal(t, int64(2), countFor(m.ByType, "1"))  // Medical: A + B
-	assert.Equal(t, int64(1), countFor(m.ByType, "2"))  // Fire: A
-	assert.Equal(t, int64(1), countFor(m.ByType, "8"))  // Personal Violation: B
-	assert.Equal(t, int64(1), countFor(m.ByType, "14")) // Construction Issue: C
+	assert.Equal(t, int64(2), countFor(m.GetByType(), "1"))  // Medical: A + B
+	assert.Equal(t, int64(1), countFor(m.GetByType(), "2"))  // Fire: A
+	assert.Equal(t, int64(1), countFor(m.GetByType(), "8"))  // Personal Violation: B
+	assert.Equal(t, int64(1), countFor(m.GetByType(), "14")) // Construction Issue: C
 
 	// By area — a clean partition that sums to total; busiest first.
-	assert.Equal(t, int64(2), countFor(m.ByArea, areaSlug)) // A + C
-	assert.Equal(t, int64(1), countFor(m.ByArea, ""))       // Unassigned: B
+	assert.Equal(t, int64(2), countFor(m.GetByArea(), areaSlug)) // A + C
+	assert.Equal(t, int64(1), countFor(m.GetByArea(), ""))       // Unassigned: B
 	var areaSum int64
-	for _, a := range m.ByArea {
-		areaSum += a.Count
+	for _, a := range m.GetByArea() {
+		areaSum += a.GetCount()
 	}
-	assert.Equal(t, m.Total, areaSum)
-	require.NotEmpty(t, m.ByArea)
-	assert.Equal(t, areaSlug, m.ByArea[0].Key) // busiest first
+	assert.Equal(t, m.GetTotal(), areaSum)
+	require.NotEmpty(t, m.GetByArea())
+	assert.Equal(t, areaSlug, m.GetByArea()[0].GetKey()) // busiest first
 
 	// Open follow-ups: only C.
-	require.Len(t, m.OpenFollowUps, 1)
-	assert.Equal(t, "follow up please", m.OpenFollowUps[0].Summary)
+	require.Len(t, m.GetOpenFollowUps(), 1)
+	assert.Equal(t, "follow up please", m.GetOpenFollowUps()[0].GetSummary())
 
 	// By day: all three created today, one bucket.
-	require.Len(t, m.ByDay, 1)
-	assert.Equal(t, int64(3), m.ByDay[0].Count)
+	require.Len(t, m.GetByDay(), 1)
+	assert.Equal(t, int64(3), m.GetByDay()[0].GetCount())
 
 	// By role: the only person on this event's roster is the admin, granted the
 	// writer rung above. The breakdown is zero-filled in ladder order (all 7 rungs).
-	assert.Len(t, m.ByRole, 7)
-	assert.Equal(t, int64(1), countFor(m.ByRole, "writer"))
-	assert.Equal(t, int64(0), countFor(m.ByRole, "crew_leader"))
-	assert.Equal(t, int64(0), countFor(m.ByRole, "reporter"))
-	assert.Equal(t, "writer", m.ByRole[0].Key) // ladder order: writer first
+	assert.Len(t, m.GetByRole(), 7)
+	assert.Equal(t, int64(1), countFor(m.GetByRole(), "writer"))
+	assert.Equal(t, int64(0), countFor(m.GetByRole(), "crew_leader"))
+	assert.Equal(t, int64(0), countFor(m.GetByRole(), "reporter"))
+	assert.Equal(t, "writer", m.GetByRole()[0].GetKey()) // ladder order: writer first
 }
 
 // TestMetricsCacheInvalidation verifies that a write invalidates the per-event
@@ -224,7 +225,7 @@ func TestMetricsCacheInvalidation(t *testing.T) {
 	m, resp := admin.getMetrics(ctx, eventName)
 	require.Equal(t, http.StatusOK, resp.StatusCode)
 	require.NoError(t, resp.Body.Close())
-	require.Equal(t, int64(0), m.Total)
+	require.Equal(t, int64(0), m.GetTotal())
 
 	// Creating an incident must be reflected on the very next read.
 	num := admin.newIncidentSuccess(ctx, imsjson.Incident{
@@ -235,8 +236,8 @@ func TestMetricsCacheInvalidation(t *testing.T) {
 	m, resp = admin.getMetrics(ctx, eventName)
 	require.Equal(t, http.StatusOK, resp.StatusCode)
 	require.NoError(t, resp.Body.Close())
-	require.Equal(t, int64(1), m.Total, "incident create should invalidate the dashboard cache")
-	assert.Equal(t, int64(1), countFor(m.ByState, "open"))
+	require.Equal(t, int64(1), m.GetTotal(), "incident create should invalidate the dashboard cache")
+	assert.Equal(t, int64(1), countFor(m.GetByState(), "open"))
 
 	// Editing that incident (closing it) must also invalidate immediately.
 	resp = admin.updateIncident(ctx, eventName, num, imsjson.Incident{
@@ -249,5 +250,5 @@ func TestMetricsCacheInvalidation(t *testing.T) {
 	m, resp = admin.getMetrics(ctx, eventName)
 	require.Equal(t, http.StatusOK, resp.StatusCode)
 	require.NoError(t, resp.Body.Close())
-	assert.Equal(t, int64(1), m.Closed, "incident edit should invalidate the dashboard cache")
+	assert.Equal(t, int64(1), m.GetClosed(), "incident edit should invalidate the dashboard cache")
 }
