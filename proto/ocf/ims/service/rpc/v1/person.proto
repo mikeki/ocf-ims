@@ -11,13 +11,32 @@ option go_package = "github.com/mikeki/ocf-ims/gen/ocf/ims/service/rpc/v1;servic
 
 // Request/response envelopes for the personnel RPCs (declared in ../../v1/service.proto).
 
-// ListPersonnelRequest mirrors GET /personnel's query params, which select the mode:
-// all=true is the admin listing (email/phone/has_password populated); query is the
-// event-scoped typeahead; event_id scopes the roster. All optional.
+// ListPersonnelRequest mirrors GET /personnel's query params, which select the mode
+// (highest-precedence first): query is the event-scoped typeahead; person_ids filters the
+// listing to those people (the profile card sends one id; a client resolving an incident's
+// attached people sends several); all=true is the admin listing (email/phone/has_password
+// populated), where show_all expands an event-scoped roster to every person; the default
+// (none set) is the login directory. event_id scopes the per-event wristband/participation/
+// crew columns. All optional.
 message ListPersonnelRequest {
   optional int32 event_id = 1;
   optional string query = 2;
   bool all = 3;
+  // person_ids is the by-id filter: the result is exactly these people, in request order
+  // (identity + picture for any viewer; email/phone only for a personnel admin or on the
+  // caller's own row; per-event participation + crews when event_id is set). It is a list
+  // filter, not a get — an id that matches no person is simply absent from the result, not
+  // an error. Bounded: 1..100 positive, unique ids.
+  repeated int32 person_ids = 4 [(buf.validate.field).repeated = {
+    max_items: 100
+    unique: true
+    items: {
+      int32: {gt: 0}
+    }
+  }];
+  // show_all expands the all=true admin listing past the event roster to every person
+  // (only meaningful with all=true and an event scoped).
+  bool show_all = 5;
 }
 
 message ListPersonnelResponse {

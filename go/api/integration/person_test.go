@@ -22,6 +22,7 @@ import (
 	"slices"
 	"testing"
 
+	servicerpcv1 "github.com/mikeki/ocf-ims/gen/ocf/ims/service/rpc/v1"
 	authapi "github.com/mikeki/ocf-ims/internal/auth"
 	personapi "github.com/mikeki/ocf-ims/internal/person"
 
@@ -429,11 +430,13 @@ func TestEventRosterAddRemove(t *testing.T) {
 	require.NoError(t, resp.Body.Close())
 }
 
-// TestPersonProfileCard exercises the by-id lookup that backs the person profile
-// card (GET /ims/api/personnel?person_id=&event=). It asserts the role-gated shape:
-// identity (fair name + full legal name) and the event's participation go to any
-// authenticated viewer, while email/phone are withheld from a non-admin and included
-// for a personnel admin. It also covers the not-found and invalid-id guards.
+// TestPersonProfileCard exercises the by-id lookup that backs the person profile card
+// (ListPersonnel with person_ids, the successor of GET /ims/api/personnel?person_id=&event=).
+// It asserts the role-gated shape: identity (fair name + full legal name) and the event's
+// participation go to any authenticated viewer, while email/phone are withheld from a
+// non-admin and included for a personnel admin. It also covers the list-filter semantics
+// of person_ids (unknown id → absent, several ids → request order, per-row contact gate)
+// and the protovalidate bounds on the ids.
 func TestPersonProfileCard(t *testing.T) {
 	t.Parallel()
 	ctx := t.Context()
@@ -501,14 +504,67 @@ func TestPersonProfileCard(t *testing.T) {
 	require.Empty(t, people[0].Wristband)
 	require.Equal(t, handle, people[0].Handle)
 
-	// A nonexistent person id is a 404.
-	_, resp = apisAlice.getPersonnelByID(ctx, 999999999, eventName)
-	require.Equal(t, http.StatusNotFound, resp.StatusCode)
+	// An unknown person id is not an error: person_ids is a list filter, so the id is simply
+	// absent from the result — an empty list here. (REST answered 404 for ?person_id=.)
+	people, resp = apisAlice.getPersonnelByID(ctx, nonexistentPersonID, eventName)
+	require.Equal(t, http.StatusOK, resp.StatusCode)
+	require.NoError(t, resp.Body.Close())
+	require.Empty(t, people)
+
+	// Several ids resolve in one call, in request order, with the contact gate applied per
+	// row: Alice (a non-admin) sees her own email but not the subject's, and the unknown id
+	// in the middle is dropped rather than failing the whole call.
+	people, resp = apisAlice.getPersonnelByIDs(ctx, []int64{subjectID, nonexistentPersonID, userAlicePersonID}, eventName)
+	require.Equal(t, http.StatusOK, resp.StatusCode)
+	require.NoError(t, resp.Body.Close())
+	require.Len(t, people, 2)
+	require.Equal(t, subjectID, people[0].PersonID)
+	require.Equal(t, "WB-42", people[0].Wristband)
+	require.Empty(t, people[0].Email, "another person's email stays admin-only on a batch read")
+	require.Equal(t, int64(userAlicePersonID), people[1].PersonID)
+	require.NotEmpty(t, people[1].Email, "a person sees their own email on a batch read too")
+	require.Empty(t, people[1].Wristband, "Alice is not enrolled in this event")
+
+	// protovalidate bounds the filter: ids must be positive and unique. (REST returned 400 for
+	// person_id <= 0; without the constraint a non-positive id would fall through the mode
+	// check into the directory listing and answer 200 in the wrong mode.)
+	_, resp = apisAlice.getPersonnelByIDs(ctx, []int64{0}, "")
+	require.Equal(t, http.StatusBadRequest, resp.StatusCode)
+	require.NoError(t, resp.Body.Close())
+	_, resp = apisAlice.getPersonnelByIDs(ctx, []int64{subjectID, subjectID}, "")
+	require.Equal(t, http.StatusBadRequest, resp.StatusCode)
 	require.NoError(t, resp.Body.Close())
 
-	// A non-numeric person_id is a 400.
-	badPath := shared.serverURL.JoinPath("/ims/api/personnel").String() + "?person_id=notanumber"
-	_, resp = apisAlice.imsGet(ctx, badPath, nil)
-	require.Equal(t, http.StatusBadRequest, resp.StatusCode)
+	// (The REST "non-numeric person_id is a 400" case has no analogue: the contract types
+	// person_ids as int32s, so a non-numeric value can't be sent — dropped with the RPC
+	// extraction, like the GetAuthStatus name-validation-400 case.)
+}
+
+// TestListPersonnelAuthorization pins the ListPersonnel RPC's authorization now that GET
+// /ims/api/personnel is retired from REST (the coverage the TestAnyUnauthenticatedUserEndpoints
+// sweep used to give that route): an unauthenticated caller is rejected, any authenticated user
+// may run the default directory listing (GlobalReadPersonnel is the floor), and the admin
+// listing (all=true) additionally requires GlobalAdministratePersonnel — a plain user is
+// forbidden there.
+func TestListPersonnelAuthorization(t *testing.T) {
+	t.Parallel()
+	ctx := t.Context()
+
+	notAuthenticated := ApiHelper{t: t, serverURL: shared.serverURL, jwt: ""}
+	aliceNoPerms := ApiHelper{t: t, serverURL: shared.serverURL, jwt: jwtForAlice(t, ctx)}
+
+	// Unauthenticated: the directory listing is 401.
+	_, resp := notAuthenticated.listPersonnel(ctx, &servicerpcv1.ListPersonnelRequest{})
+	require.Equal(t, http.StatusUnauthorized, resp.StatusCode)
+	require.NoError(t, resp.Body.Close())
+
+	// Any authenticated user may read the directory listing (GlobalReadPersonnel).
+	_, resp = aliceNoPerms.listPersonnel(ctx, &servicerpcv1.ListPersonnelRequest{})
+	require.Equal(t, http.StatusOK, resp.StatusCode)
+	require.NoError(t, resp.Body.Close())
+
+	// But the admin all=true listing requires GlobalAdministratePersonnel: a plain user is 403.
+	_, resp = aliceNoPerms.listPersonnel(ctx, &servicerpcv1.ListPersonnelRequest{All: true})
+	require.Equal(t, http.StatusForbidden, resp.StatusCode)
 	require.NoError(t, resp.Body.Close())
 }
