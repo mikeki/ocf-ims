@@ -20,7 +20,6 @@ import (
 	"context"
 	"database/sql"
 	"errors"
-	"fmt"
 	"log/slog"
 	"strings"
 
@@ -68,7 +67,7 @@ func (s Service) ListIncidentTypes(
 		return loadIncidentTypesJSON(ctx, s.ImsDBQ)
 	})
 	if err != nil {
-		return nil, connect.NewError(connect.CodeInternal, fmt.Errorf("failed to fetch incident types: %w", err))
+		return nil, server.InternalError("failed to fetch incident types", err)
 	}
 	out := make([]*resourcesv1.IncidentType, 0, len(types))
 	for i := range types {
@@ -101,7 +100,7 @@ func (s Service) CreateIncidentType(
 		ProposedByPersonID: sql.NullInt32{},
 	})
 	if err != nil {
-		return nil, connect.NewError(connect.CodeInternal, fmt.Errorf("failed to create incident type: %w", err))
+		return nil, server.InternalError("failed to create incident type", err)
 	}
 	s.invalidateCaches()
 	slog.Info("Created incident type", "incident_type_id", id, "name", name)
@@ -121,7 +120,7 @@ func (s Service) UpdateIncidentType(
 	}
 	row, err := s.ImsDBQ.IncidentType(ctx, s.ImsDBQ, req.GetIncidentTypeId())
 	if err != nil {
-		return nil, connect.NewError(connect.CodeInternal, fmt.Errorf("failed to fetch incident type: %w", err))
+		return nil, server.InternalError("failed to fetch incident type", err)
 	}
 	it := req.GetIncidentType()
 	if it.Name != nil {
@@ -142,7 +141,7 @@ func (s Service) UpdateIncidentType(
 		Group:       row.IncidentType.Group,
 	})
 	if err != nil {
-		return nil, connect.NewError(connect.CodeInternal, fmt.Errorf("failed to update incident type: %w", err))
+		return nil, server.InternalError("failed to update incident type", err)
 	}
 	s.invalidateCaches()
 	return &rpcv1.UpdateIncidentTypeResponse{}, nil
@@ -160,7 +159,7 @@ func (s Service) ApproveIncidentType(
 	}
 	err = s.ImsDBQ.ApproveIncidentType(ctx, s.ImsDBQ, req.GetIncidentTypeId())
 	if err != nil {
-		return nil, connect.NewError(connect.CodeInternal, fmt.Errorf("failed to approve incident type: %w", err))
+		return nil, server.InternalError("failed to approve incident type", err)
 	}
 	s.invalidateCaches()
 	return &rpcv1.ApproveIncidentTypeResponse{}, nil
@@ -179,7 +178,7 @@ func (s Service) SetIncidentTypeHidden(
 	}
 	row, err := s.ImsDBQ.IncidentType(ctx, s.ImsDBQ, req.GetIncidentTypeId())
 	if err != nil {
-		return nil, connect.NewError(connect.CodeInternal, fmt.Errorf("failed to fetch incident type: %w", err))
+		return nil, server.InternalError("failed to fetch incident type", err)
 	}
 	err = s.ImsDBQ.UpdateIncidentType(ctx, s.ImsDBQ, imsdb.UpdateIncidentTypeParams{
 		Hidden:      req.GetHidden(),
@@ -189,7 +188,7 @@ func (s Service) SetIncidentTypeHidden(
 		Group:       row.IncidentType.Group,
 	})
 	if err != nil {
-		return nil, connect.NewError(connect.CodeInternal, fmt.Errorf("failed to set incident type hidden: %w", err))
+		return nil, server.InternalError("failed to set incident type hidden", err)
 	}
 	s.invalidateCaches()
 	return &rpcv1.SetIncidentTypeHiddenResponse{}, nil
@@ -210,7 +209,7 @@ func (s Service) ProposeIncidentType(
 	eventID := req.GetEventId()
 	perms, _, err := authz.EventPermissions(ctx, &eventID, s.ImsDBQ, *claims)
 	if err != nil {
-		return nil, connect.NewError(connect.CodeInternal, fmt.Errorf("failed to compute permissions: %w", err))
+		return nil, server.InternalError("failed to compute permissions", err)
 	}
 	if perms[eventID]&authz.EventWriteIncidents == 0 {
 		return nil, connect.NewError(connect.CodePermissionDenied,
@@ -239,7 +238,7 @@ func (s Service) ProposeIncidentType(
 				return &rpcv1.ProposeIncidentTypeResponse{IncidentTypeId: existing.IncidentType.ID}, nil
 			}
 		}
-		return nil, connect.NewError(connect.CodeInternal, fmt.Errorf("failed to propose incident type: %w", err))
+		return nil, server.InternalError("failed to propose incident type", err)
 	}
 	s.invalidateCaches()
 	return &rpcv1.ProposeIncidentTypeResponse{IncidentTypeId: conv.MustInt32(id)}, nil
@@ -254,7 +253,7 @@ func (s Service) globalPerms(ctx context.Context) (*authz.IMSClaims, authz.Globa
 	}
 	_, globalPermissions, err := authz.EventPermissions(ctx, nil, s.ImsDBQ, *claims)
 	if err != nil {
-		return nil, 0, connect.NewError(connect.CodeInternal, fmt.Errorf("failed to compute permissions: %w", err))
+		return nil, 0, server.InternalError("failed to compute permissions", err)
 	}
 	return claims, globalPermissions, nil
 }

@@ -38,9 +38,10 @@ import (
 
 // HerrToConnect maps an herr.HTTPError from the reused REST-era domain helpers onto the
 // equivalent Connect error code, so an extracted domain method speaks Connect codes end to end.
-// Only the client-facing ResponseMessage crosses the boundary; the internal error detail stays
-// server-side. It is the shared form of the mapping each extracted domain (plan 09h/1c) needs —
-// the incident package still carries its own private copy pending a cleanup; new domains use this.
+// Only the client-facing ResponseMessage crosses the boundary; the InternalErr rides along as
+// the server-side cause (PublicError) so the slog interceptor can log it — the REST tier logged
+// it from WriteResponse, and without this a failed SQL statement behind a Connect RPC would
+// leave no trace. It is the one shared mapping every extracted domain (plan 09h/1c) uses.
 func HerrToConnect(e *herr.HTTPError) error {
 	code := connect.CodeInternal
 	switch e.Code {
@@ -54,8 +55,10 @@ func HerrToConnect(e *herr.HTTPError) error {
 		code = connect.CodeNotFound
 	case http.StatusConflict:
 		code = connect.CodeAlreadyExists
+	case http.StatusTooManyRequests:
+		code = connect.CodeResourceExhausted
 	}
-	return connect.NewError(code, errors.New(e.ResponseMessage))
+	return PublicError(code, e.ResponseMessage, e.InternalErr)
 }
 
 // PersonByIDFromPath reads the {personId} path value, validates it, and loads the

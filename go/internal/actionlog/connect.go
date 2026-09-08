@@ -19,7 +19,6 @@ package actionlog
 import (
 	"context"
 	"errors"
-	"fmt"
 	"time"
 
 	"connectrpc.com/connect"
@@ -60,7 +59,7 @@ func (s Service) ListActionLogs(
 	}
 	_, globalPermissions, err := authz.EventPermissions(ctx, nil, s.ImsDBQ, *claims)
 	if err != nil {
-		return nil, connect.NewError(connect.CodeInternal, fmt.Errorf("failed to compute permissions: %w", err))
+		return nil, server.InternalError("failed to compute permissions", err)
 	}
 	if globalPermissions&authz.GlobalAdministrateDebugging == 0 {
 		return nil, connect.NewError(connect.CodePermissionDenied,
@@ -73,7 +72,7 @@ func (s Service) ListActionLogs(
 		MaxTime: 1e100,
 	})
 	if err != nil {
-		return nil, connect.NewError(connect.CodeInternal, fmt.Errorf("failed to fetch action logs: %w", err))
+		return nil, server.InternalError("failed to fetch action logs", err)
 	}
 	out := make([]*resourcesv1.ActionLog, 0, len(rows))
 	for _, row := range rows {

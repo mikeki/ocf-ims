@@ -20,7 +20,6 @@ import (
 	"context"
 	"database/sql"
 	"errors"
-	"fmt"
 	"time"
 
 	"connectrpc.com/connect"
@@ -87,7 +86,7 @@ func (s Service) SubscribePush(
 			Endpoint:  endpoint,
 		})
 		if err != nil {
-			return nil, connect.NewError(connect.CodeInternal, fmt.Errorf("failed to update push subscription: %w", err))
+			return nil, server.InternalError("failed to update push subscription", err)
 		}
 	case errors.Is(err, sql.ErrNoRows):
 		err = s.ImsDBQ.InsertPushSubscription(ctx, s.ImsDBQ, imsdb.InsertPushSubscriptionParams{
@@ -106,10 +105,10 @@ func (s Service) SubscribePush(
 			return &rpcv1.SubscribePushResponse{}, nil
 		}
 		if err != nil {
-			return nil, connect.NewError(connect.CodeInternal, fmt.Errorf("failed to store push subscription: %w", err))
+			return nil, server.InternalError("failed to store push subscription", err)
 		}
 	default:
-		return nil, connect.NewError(connect.CodeInternal, fmt.Errorf("failed to look up push subscription: %w", err))
+		return nil, server.InternalError("failed to look up push subscription", err)
 	}
 	return &rpcv1.SubscribePushResponse{}, nil
 }
@@ -130,7 +129,7 @@ func (s Service) UnsubscribePush(
 		PersonID: claims.PersonID(),
 	})
 	if err != nil {
-		return nil, connect.NewError(connect.CodeInternal, fmt.Errorf("failed to remove push subscription: %w", err))
+		return nil, server.InternalError("failed to remove push subscription", err)
 	}
 	return &rpcv1.UnsubscribePushResponse{}, nil
 }

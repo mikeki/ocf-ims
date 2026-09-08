@@ -20,7 +20,6 @@ import (
 	"context"
 	"database/sql"
 	"errors"
-	"fmt"
 	"time"
 
 	"connectrpc.com/connect"
@@ -59,11 +58,11 @@ func (s Service) ListNotifications(
 	personID := claims.PersonID()
 	rows, err := s.ImsDBQ.NotificationsForPerson(ctx, s.ImsDBQ, personID)
 	if err != nil {
-		return nil, connect.NewError(connect.CodeInternal, fmt.Errorf("failed to fetch notifications: %w", err))
+		return nil, server.InternalError("failed to fetch notifications", err)
 	}
 	unread, err := s.ImsDBQ.UnreadNotificationCountForPerson(ctx, s.ImsDBQ, personID)
 	if err != nil {
-		return nil, connect.NewError(connect.CodeInternal, fmt.Errorf("failed to count notifications: %w", err))
+		return nil, server.InternalError("failed to count notifications", err)
 	}
 	out := make([]*resourcesv1.Notification, 0, len(rows))
 	for _, row := range rows {
@@ -87,7 +86,7 @@ func (s Service) MarkAllNotificationsRead(
 		RecipientPersonID: claims.PersonID(),
 	})
 	if err != nil {
-		return nil, connect.NewError(connect.CodeInternal, fmt.Errorf("failed to mark notifications read: %w", err))
+		return nil, server.InternalError("failed to mark notifications read", err)
 	}
 	return &rpcv1.MarkAllNotificationsReadResponse{}, nil
 }
@@ -109,7 +108,7 @@ func (s Service) MarkNotificationRead(
 		RecipientPersonID: claims.PersonID(),
 	})
 	if err != nil {
-		return nil, connect.NewError(connect.CodeInternal, fmt.Errorf("failed to mark notification read: %w", err))
+		return nil, server.InternalError("failed to mark notification read", err)
 	}
 	return &rpcv1.MarkNotificationReadResponse{}, nil
 }

@@ -128,7 +128,7 @@ func (s Service) ChangeOwnPassword(
 		ID:              person.ID,
 	})
 	if err != nil {
-		return nil, connect.NewError(connect.CodeInternal, fmt.Errorf("failed to set password: %w", err))
+		return nil, server.InternalError("failed to set password", err)
 	}
 
 	// Drop the cached directory so the new password is effective immediately (and the old/default
@@ -207,7 +207,7 @@ func (s Service) resolveSelf(ctx context.Context) (imsdb.PersonByIDRow, error) {
 		return imsdb.PersonByIDRow{}, connect.NewError(connect.CodeNotFound, errors.New("unknown person"))
 	}
 	if err != nil {
-		return imsdb.PersonByIDRow{}, connect.NewError(connect.CodeInternal, fmt.Errorf("failed to load person: %w", err))
+		return imsdb.PersonByIDRow{}, server.InternalError("failed to load person", err)
 	}
 	return person, nil
 }

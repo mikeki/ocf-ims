@@ -20,7 +20,6 @@ import (
 	"context"
 	"database/sql"
 	"errors"
-	"fmt"
 	"slices"
 	"strconv"
 	"strings"
@@ -69,7 +68,7 @@ func (s Service) ListCrews(
 		return loadCrewsJSON(ctx, s.ImsDBQ, eventID)
 	})
 	if err != nil {
-		return nil, connect.NewError(connect.CodeInternal, fmt.Errorf("failed to fetch crews: %w", err))
+		return nil, server.InternalError("failed to fetch crews", err)
 	}
 	return &rpcv1.ListCrewsResponse{Crews: crewsToProto(crews)}, nil
 }
@@ -171,7 +170,7 @@ func (s Service) ListMyCrews(
 	}
 	crews, loadErr := loadLedCrewsJSON(ctx, s.ImsDBQ, req.GetEventId(), claims.PersonID())
 	if loadErr != nil {
-		return nil, connect.NewError(connect.CodeInternal, fmt.Errorf("failed to fetch crews: %w", loadErr))
+		return nil, server.InternalError("failed to fetch crews", loadErr)
 	}
 	return &rpcv1.ListMyCrewsResponse{Crews: crewsToProto(crews)}, nil
 }
@@ -198,7 +197,7 @@ func (s Service) SetMyCrewMembership(
 		PersonID: claims.PersonID(),
 	})
 	if ledErr != nil {
-		return nil, connect.NewError(connect.CodeInternal, fmt.Errorf("failed to check crew leadership: %w", ledErr))
+		return nil, server.InternalError("failed to check crew leadership", ledErr)
 	}
 	if !slices.Contains(ledSlugs, slug) {
 		return nil, connect.NewError(connect.CodePermissionDenied, errors.New("you do not lead this crew"))
@@ -234,7 +233,7 @@ func (s Service) requireCrewAdmin(ctx context.Context, eventID int32) error {
 	}
 	_, globalPermissions, err := authz.EventPermissions(ctx, &eventID, s.ImsDBQ, *claims)
 	if err != nil {
-		return connect.NewError(connect.CodeInternal, fmt.Errorf("failed to compute permissions: %w", err))
+		return server.InternalError("failed to compute permissions", err)
 	}
 	if globalPermissions&authz.GlobalAdministrateCrews == 0 {
 		return connect.NewError(connect.CodePermissionDenied,

@@ -160,9 +160,13 @@ func NewAuthInterceptor(jwter authz.JWTer) connect.UnaryInterceptorFunc {
 	}
 }
 
-// NewSlogInterceptor emits one debug line per RPC — procedure, duration, code and
-// caller — mirroring the tail of the REST LogRequest adapter. This is the
-// developer-facing trace, distinct from the audit action log below.
+// NewSlogInterceptor emits one log line per RPC — procedure, duration, code, caller and
+// request id — mirroring the REST LogRequest adapter's trace line at Debug for a success,
+// and standing in for what herr.HTTPError.WriteResponse did on the REST tier for a
+// failure: an error is logged at Error when it is the server's fault (rpcErrorLevel) and
+// at Warn otherwise, together with the server-side cause (ErrorCause) that never reaches
+// the client. This is the developer-facing trace, distinct from the audit action log
+// below.
 func NewSlogInterceptor() connect.UnaryInterceptorFunc {
 	return func(next connect.UnaryFunc) connect.UnaryFunc {
 		return func(ctx context.Context, req connect.AnyRequest) (connect.AnyResponse, error) {
@@ -172,15 +176,41 @@ func NewSlogInterceptor() connect.UnaryInterceptorFunc {
 			if claims, ok := ClaimsFromContext(ctx); ok {
 				user = claims.PersonHandle()
 			}
-			slog.Debug("Served RPC: "+req.Spec().Procedure,
+			procedure := req.Spec().Procedure
+			attrs := []any{
 				"duration", fmt.Sprintf("%.3fms", float64(time.Since(start).Microseconds())/1000.0),
-				"procedure", req.Spec().Procedure,
+				"procedure", procedure,
 				"user", user,
 				"code", connect.CodeOf(err).String(),
-			)
+			}
+			if id, ok := RequestIDFromContext(ctx); ok {
+				attrs = append(attrs, "request_id", id)
+			}
+			if err == nil {
+				slog.Debug("Served RPC: "+procedure, attrs...)
+				return resp, nil
+			}
+			attrs = append(attrs, "err", err)
+			cause := ErrorCause(err)
+			if cause != nil {
+				attrs = append(attrs, "cause", cause)
+			}
+			slog.Log(ctx, rpcErrorLevel(connect.CodeOf(err)), "RPC failed: "+procedure, attrs...)
 			return resp, err
 		}
 	}
+}
+
+// rpcErrorLevel splits failed-RPC log severity the way herr.HTTPError.WriteResponse
+// split HTTP statuses: a server fault (the 5xx analogues — Internal, Unknown, DataLoss,
+// Unavailable) is Error; a client-attributable outcome (bad input, not found, denied,
+// unauthenticated, throttled, conflict…) is notable at Warn but is not our fault.
+func rpcErrorLevel(code connect.Code) slog.Level {
+	if code == connect.CodeInternal || code == connect.CodeUnknown ||
+		code == connect.CodeDataLoss || code == connect.CodeUnavailable {
+		return slog.LevelError
+	}
+	return slog.LevelWarn
 }
 
 // NewActionLogInterceptor records a metadata-only audit row for every mutating

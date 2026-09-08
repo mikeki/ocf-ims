@@ -20,7 +20,6 @@ import (
 	"context"
 	"database/sql"
 	"errors"
-	"fmt"
 	"time"
 
 	"connectrpc.com/connect"
@@ -64,7 +63,7 @@ func (s Service) GetMetrics(
 	}
 	perms, _, err := authz.EventPermissions(ctx, &eventID, s.ImsDBQ, *claims)
 	if err != nil {
-		return nil, connect.NewError(connect.CodeInternal, fmt.Errorf("failed to compute permissions: %w", err))
+		return nil, server.InternalError("failed to compute permissions", err)
 	}
 	if perms[eventID]&authz.EventWriteIncidents == 0 {
 		return nil, connect.NewError(connect.CodePermissionDenied,
@@ -78,7 +77,7 @@ func (s Service) GetMetrics(
 		return nil, connect.NewError(connect.CodeNotFound, errors.New("no such event"))
 	}
 	if err != nil {
-		return nil, connect.NewError(connect.CodeInternal, fmt.Errorf("failed to look up event: %w", err))
+		return nil, server.InternalError("failed to look up event", err)
 	}
 	eventName := ev.Event.Name
 

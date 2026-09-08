@@ -20,7 +20,6 @@ import (
 	"context"
 	"database/sql"
 	"errors"
-	"fmt"
 	"log/slog"
 	"math"
 	"net/http"
@@ -108,7 +107,7 @@ func (s Service) GetAuthStatus(
 	// authoritative endpoint checks (and with any future non-admin grants).
 	_, globalPermissions, err := authz.EventPermissions(ctx, nil, s.ImsDBQ, *claims)
 	if err != nil {
-		return nil, connect.NewError(connect.CodeInternal, fmt.Errorf("failed to fetch permissions: %w", err))
+		return nil, server.InternalError("failed to fetch permissions", err)
 	}
 	resp := &rpcv1.GetAuthStatusResponse{
 		Authenticated:      true,
@@ -159,6 +158,10 @@ func (s Service) Login(
 	if s.LoginLimiter != nil {
 		for _, key := range []string{ipKey, idKey} {
 			if ok, retryAfter := s.LoginLimiter.Allow(key); !ok {
+				// The plan-90 observability line the REST ThrottleLogin adapter emitted.
+				// #nosec G706 // log injection — structured attrs, values are quoted by the handler
+				slog.Warn("Login attempt throttled",
+					"key", key, "client_ip", clientIP, "retry_after_seconds", int(retryAfter.Seconds()))
 				return nil, nil, loginThrottledError(retryAfter)
 			}
 		}
@@ -166,7 +169,7 @@ func (s Service) Login(
 
 	people, err := s.UserStore.GetAllUsers(ctx)
 	if err != nil {
-		return nil, nil, connect.NewError(connect.CodeInternal, fmt.Errorf("failed to fetch personnel: %w", err))
+		return nil, nil, server.InternalError("failed to fetch personnel", err)
 	}
 	// Login matches EMAIL only (feedback round 9): the fair name (handle) is a non-unique
 	// display callsign and is never accepted as a login identifier.
@@ -190,16 +193,23 @@ func (s Service) Login(
 		// real one (defeats username-enumeration timing).
 		_, _ = authn.Verify(req.GetPassword(), dummyPasswordHash)
 		s.recordLoginFailure(ipKey, idKey)
+		// Server-side only (the client gets the uniform badCredentialsError): the same
+		// Warn the retired REST postAuth logged, so failed logins stay visible (plan 90).
+		// #nosec G706 // log injection — structured attrs, values are quoted by the handler
+		slog.Warn("Failed login attempt (bad credentials)",
+			"reason", "unknown user", "email", email, "client_ip", clientIP)
 		return nil, nil, badCredentialsError()
 	}
 
 	correct, err := authn.Verify(req.GetPassword(), matched.Password)
 	if err != nil {
-		return nil, nil, connect.NewError(connect.CodeInternal,
-			fmt.Errorf("invalid stored password (get in touch with the tech team): %w", err))
+		return nil, nil, server.InternalError("invalid stored password (get in touch with the tech team)", err)
 	}
 	if !correct {
 		s.recordLoginFailure(ipKey, idKey)
+		// #nosec G706 // log injection — structured attrs, values are quoted by the handler
+		slog.Warn("Failed login attempt (bad credentials)",
+			"reason", "bad password", "email", email, "client_ip", clientIP)
 		return nil, nil, badCredentialsError()
 	}
 
@@ -212,12 +222,12 @@ func (s Service) Login(
 	accessToken, err := jwter.CreateAccessToken(
 		matched.Handle, matched.ID, matched.PositionIDs, matched.IsAdmin, matched.OnDutyPositionID, accessExpiry)
 	if err != nil {
-		return nil, nil, connect.NewError(connect.CodeInternal, fmt.Errorf("failed to create access token: %w", err))
+		return nil, nil, server.InternalError("failed to create access token", err)
 	}
 	// The refresh token outlives the access token so the client can silently renew.
 	refreshToken, err := jwter.CreateRefreshToken(matched.Handle, matched.ID, time.Now().Add(s.RefreshTokenDuration))
 	if err != nil {
-		return nil, nil, connect.NewError(connect.CodeInternal, fmt.Errorf("failed to create refresh token: %w", err))
+		return nil, nil, server.InternalError("failed to create refresh token", err)
 	}
 	resp := &rpcv1.LoginResponse{
 		Token:     accessToken,
@@ -243,14 +253,14 @@ func (s Service) RefreshToken(
 	}
 	claims, err := authz.JWTer{SecretKey: s.JwtSecret}.AuthenticateRefreshToken(refreshToken)
 	if err != nil {
-		return nil, connect.NewError(connect.CodeUnauthenticated, fmt.Errorf("failed to authenticate refresh token: %w", err))
+		return nil, server.PublicError(connect.CodeUnauthenticated, "failed to authenticate refresh token", err)
 	}
 
 	// #nosec G706 // log injection
 	slog.Info("Refreshing access token", "handle", claims.PersonHandle())
 	people, err := s.UserStore.GetAllUsers(ctx)
 	if err != nil {
-		return nil, connect.NewError(connect.CodeInternal, fmt.Errorf("failed to fetch personnel: %w", err))
+		return nil, server.InternalError("failed to fetch personnel", err)
 	}
 	var matched *directory.User
 	for _, person := range people {
@@ -267,7 +277,7 @@ func (s Service) RefreshToken(
 	accessToken, err := authz.JWTer{SecretKey: s.JwtSecret}.CreateAccessToken(
 		claims.PersonHandle(), matched.ID, matched.PositionIDs, matched.IsAdmin, matched.OnDutyPositionID, accessExpiry)
 	if err != nil {
-		return nil, connect.NewError(connect.CodeInternal, fmt.Errorf("failed to create access token: %w", err))
+		return nil, server.InternalError("failed to create access token", err)
 	}
 	return &rpcv1.RefreshTokenResponse{
 		Token:     accessToken,
@@ -288,7 +298,7 @@ func (s Service) usingDefaultPassword(ctx context.Context, claims authz.IMSClaim
 	}
 	people, err := s.UserStore.GetAllUsers(ctx)
 	if err != nil {
-		return false, connect.NewError(connect.CodeInternal, fmt.Errorf("failed to fetch personnel: %w", err))
+		return false, server.InternalError("failed to fetch personnel", err)
 	}
 	person, ok := people[int64(claims.PersonID())]
 	if !ok || person.PasswordChanged || person.Password == "" {
@@ -326,13 +336,13 @@ func (s Service) accessForEvent(ctx context.Context, claims authz.IMSClaims, eve
 			// exactly: an all-false entry with no event id (0), not the requested id echoed back.
 			return &rpcv1.AccessForEvent{}, nil
 		}
-		return nil, connect.NewError(connect.CodeInternal, fmt.Errorf("failed to fetch event: %w", err))
+		return nil, server.InternalError("failed to fetch event", err)
 	}
 	event := eventRow.Event
 
 	eventPerms, _, err := authz.EventPermissions(ctx, &event.ID, s.ImsDBQ, claims)
 	if err != nil {
-		return nil, connect.NewError(connect.CodeInternal, fmt.Errorf("failed to fetch event permissions: %w", err))
+		return nil, server.InternalError("failed to fetch event permissions", err)
 	}
 	perms := eventPerms[event.ID]
 
@@ -344,7 +354,7 @@ func (s Service) accessForEvent(ctx context.Context, claims authz.IMSClaims, eve
 		readIncidentsViaGrant, err = s.ImsDBQ.PersonHasAnyGrantInEvent(ctx, s.ImsDBQ,
 			imsdb.PersonHasAnyGrantInEventParams{Event: event.ID, PersonID: claims.PersonID()})
 		if err != nil {
-			return nil, connect.NewError(connect.CodeInternal, fmt.Errorf("failed to check incident grants: %w", err))
+			return nil, server.InternalError("failed to check incident grants", err)
 		}
 	}
 

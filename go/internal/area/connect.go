@@ -20,7 +20,6 @@ import (
 	"context"
 	"database/sql"
 	"errors"
-	"fmt"
 	"slices"
 	"strconv"
 	"strings"
@@ -72,7 +71,7 @@ func (s Service) ListAreas(
 		return loadAreasJSON(ctx, s.ImsDBQ, eventID)
 	})
 	if err != nil {
-		return nil, connect.NewError(connect.CodeInternal, fmt.Errorf("failed to fetch areas: %w", err))
+		return nil, server.InternalError("failed to fetch areas", err)
 	}
 	out := make([]*resourcesv1.Area, 0, len(areas))
 	for i := range areas {
@@ -178,7 +177,7 @@ func (s Service) authorize(
 	}
 	perms, globalPermissions, err := authz.EventPermissions(ctx, &eventID, s.ImsDBQ, *claims)
 	if err != nil {
-		return nil, 0, 0, connect.NewError(connect.CodeInternal, fmt.Errorf("failed to compute permissions: %w", err))
+		return nil, 0, 0, server.InternalError("failed to compute permissions", err)
 	}
 	return claims, perms[eventID], globalPermissions, nil
 }
