@@ -1449,18 +1449,26 @@ func (a ApiHelper) imsDoNoReqBody(ctx context.Context, method, path string, resp
 	return resp, get
 }
 
-// getActionLogs reads the whole admin audit table through the generated Connect client
-// (ImsService.ListActionLogs; the REST GET /actionlogs endpoint was retired with plan 09h/1c). The
-// REST endpoint's min/max-time query filters have no analogue in the empty ListActionLogsRequest (the
-// contract exposes no filters yet), so the read returns the whole table and callers filter in Go. It
-// returns the wire protos directly — the read path is DB→proto (actionlog.actionLogToProto maps the
-// stored row straight onto the message), so the audit test asserts against resources/v1.ActionLog
-// rather than round-tripping through the retired imsjson DTO. The *http.Response mirrors the retired
-// endpoint's status.
+// getActionLogs reads the newest page of the admin audit log — an empty ListActionLogsRequest: the
+// server-default limit, no time window — through the generated Connect client
+// (ImsService.ListActionLogs; the REST GET /actionlogs endpoint was retired with plan 09h/1c).
+// listActionLogs is the filtered form. It returns the wire protos directly — the read path is
+// DB→proto (actionlog.actionLogToProto maps the stored row straight onto the message), so the audit
+// test asserts against resources/v1.ActionLog rather than round-tripping through the retired imsjson
+// DTO. The *http.Response mirrors the retired endpoint's status.
 func (a ApiHelper) getActionLogs(ctx context.Context) ([]*resourcesv1.ActionLog, *http.Response) {
 	a.t.Helper()
+	return a.listActionLogs(ctx, &servicerpcv1.ListActionLogsRequest{})
+}
+
+// listActionLogs reads the admin audit log with the request's created-at window and limit (the
+// read is bounded and newest-first — see ListActionLogsRequest).
+func (a ApiHelper) listActionLogs(
+	ctx context.Context, req *servicerpcv1.ListActionLogsRequest,
+) ([]*resourcesv1.ActionLog, *http.Response) {
+	a.t.Helper()
 	client := servicev1connect.NewImsServiceClient(http.DefaultClient, a.serverURL.String())
-	rpcReq := connect.NewRequest(&servicerpcv1.ListActionLogsRequest{})
+	rpcReq := connect.NewRequest(req)
 	a.authorizeRPC(rpcReq)
 	resp, err := client.ListActionLogs(ctx, rpcReq)
 	if err != nil {
