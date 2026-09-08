@@ -70,6 +70,26 @@ func TestIncidentEventData_FailsSafeOnError(t *testing.T) {
 	require.True(t, data.UpdateAllIncidents)
 }
 
+// TestIncidentEventData_SurvivesCancelledRequestContext proves the oracle is consulted on
+// a context detached from the request's cancellation: a poke is published after commit,
+// and a client that has already disconnected must not turn a targeted poke into a
+// fail-safe update_all reload for everyone.
+func TestIncidentEventData_SurvivesCancelledRequestContext(t *testing.T) {
+	t.Parallel()
+	es := NewEventSourcerer(func(ctx context.Context, _, _ int32) (bool, error) {
+		err := ctx.Err()
+		if err != nil {
+			return false, err
+		}
+		return false, nil
+	})
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	data := es.incidentEventData(ctx, 7, 42)
+	require.Equal(t, int32(42), data.IncidentNumber, "a cancelled request ctx must not redact")
+	require.False(t, data.UpdateAllIncidents)
+}
+
 // TestIMSEvent_RedactedRoutesAsIncident proves a redacted poke still routes to the
 // client's "Incident" listener and marshals as `update_all` (which the web client
 // already treats as a full gated reload), carrying no incident_number.

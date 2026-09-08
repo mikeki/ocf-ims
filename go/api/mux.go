@@ -322,7 +322,7 @@ func AddToMux(
 		server.Adapt(
 			es.Server.Handler(server.EventSourceChannel),
 			server.RecoverFromPanic(),
-			server.RequireRefreshCookieAuthN(jwter),
+			server.RequireRefreshCookieAuthN(jwter, userStore),
 			server.LogRequest(false, actionLogger, userStore),
 			server.LimitRequestBytes(cfg.Core.MaxRequestBytes),
 		),

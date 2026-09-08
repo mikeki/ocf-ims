@@ -159,7 +159,9 @@ func (s Service) SetCrewMembership(
 // ListMyCrews is the domain method behind the ListMyCrews RPC, retiring REST GET
 // /events/{eventName}/crews/mine. The crew-leader self-service read: not admin-gated (any
 // authenticated caller), the result is naturally scoped to the crews the caller leads (empty when
-// they lead none). Not cached — the result is per-caller.
+// they lead none). Not cached — the result is per-caller. Deliberate difference from the REST
+// route, which resolved the event name first and 404'd an unknown event: an unknown event_id
+// simply yields an empty list here (the caller leads no crews in it), which is harmless.
 func (s Service) ListMyCrews(
 	ctx context.Context,
 	req *rpcv1.ListMyCrewsRequest,
@@ -332,6 +334,8 @@ func (s Service) adminEditMember(ctx context.Context, eventID int32, slug string
 	if errHTTP != nil {
 		return errHTTP
 	}
+	// Defence in depth: the proto already enforces person_id > 0 at protovalidate, so this only
+	// guards a direct (non-RPC) caller of the herr-core helper.
 	if edit.PersonID == 0 {
 		return herr.BadRequest("A person id is required to change crew membership", nil)
 	}
@@ -368,6 +372,8 @@ func (s Service) adminEditMember(ctx context.Context, eventID int32, slug string
 // the crew-leader self-service path. Leader flags are never touched here — an add never promotes, and
 // a fellow leader may not be removed (that stays an admin act).
 func (s Service) myEditMember(ctx context.Context, eventID int32, slug string, edit imsjson.CrewMemberEdit) *herr.HTTPError {
+	// Defence in depth: the proto already enforces person_id > 0 at protovalidate, so this only
+	// guards a direct (non-RPC) caller of the herr-core helper.
 	if edit.PersonID == 0 {
 		return herr.BadRequest("A person id is required to change crew membership", nil)
 	}

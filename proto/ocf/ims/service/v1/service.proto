@@ -52,6 +52,9 @@ service ImsService {
   // methods so marked. The read RPCs earn the annotation as each lands in 1d;
   // GetAuthStatus carries it now because 1b implements and tests it. An
   // un-annotated read merely over-logs (fails safe) — a mutation is never missed.
+  // Keep the annotation even though the handler's default-password check may record
+  // a best-effort cache flag (MarkPasswordChanged): that is memoisation of a derived
+  // fact, not a domain state change, so the RPC is still a read for audit purposes.
   rpc GetAuthStatus(rpc.v1.GetAuthStatusRequest) returns (rpc.v1.GetAuthStatusResponse) {
     option idempotency_level = NO_SIDE_EFFECTS;
   }

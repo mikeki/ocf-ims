@@ -224,7 +224,7 @@ func RequireAuthN(j authz.JWTer) Adapter {
 // the stream on a valid cookie closes the anonymous broadcast — an unauthenticated
 // party can no longer subscribe and watch incident activity (plan 09 §6 M8). Absent
 // or invalid cookie ⇒ 401.
-func RequireRefreshCookieAuthN(j authz.JWTer) Adapter {
+func RequireRefreshCookieAuthN(j authz.JWTer, users directory.UserStore) Adapter {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			cookie, err := r.Cookie(authz.RefreshTokenCookieName)
@@ -237,6 +237,19 @@ func RequireRefreshCookieAuthN(j authz.JWTer) Adapter {
 				herr.Unauthorized("Invalid refresh token cookie", err).WriteResponse(w)
 				return
 			}
+			// A refresh token outlives a person's access (it is valid for days), so — as the
+			// RefreshToken RPC does — also require that its subject still exists in the
+			// directory: a removed or deactivated user holding a still-valid cookie must not
+			// keep the stream. The directory is the cached user store, so this is cheap.
+			people, err := users.GetAllUsers(r.Context())
+			if err != nil {
+				herr.InternalServerError("Failed to fetch personnel", err).From("[GetAllUsers]").WriteResponse(w)
+				return
+			}
+			if !refreshClaimsMatchUser(people, claims) {
+				herr.Unauthorized("Unknown user", nil).WriteResponse(w)
+				return
+			}
 			jwtCtx := context.WithValue(r.Context(), JWTContextKey, JWTContext{
 				Claims: claims,
 				Error:  err,
@@ -244,6 +257,17 @@ func RequireRefreshCookieAuthN(j authz.JWTer) Adapter {
 			next.ServeHTTP(w, r.WithContext(jwtCtx))
 		})
 	}
+}
+
+// refreshClaimsMatchUser reports whether a refresh token's subject (person id + handle) is a
+// current directory user — the same match the RefreshToken RPC applies before minting.
+func refreshClaimsMatchUser(people map[int64]*directory.User, claims *authz.IMSClaims) bool {
+	for _, person := range people {
+		if person.Handle == claims.PersonHandle() && person.ID == int64(claims.PersonID()) {
+			return true
+		}
+	}
+	return false
 }
 
 func Adapt(handler http.Handler, adapters ...Adapter) http.Handler {
