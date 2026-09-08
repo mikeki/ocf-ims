@@ -206,9 +206,10 @@ func setup(ctx context.Context, tempDir string) {
 	shared.userStore = directory.NewLocalUserStore(shared.imsDBQ, shared.cfg.Directory.InMemoryCacheTTL)
 
 	shared.actionLogger = actionlog.NewLogger(ctx, shared.imsDBQ, shared.cfg.Core.ActionLogEnabled, true)
-	// nil push sender → the no-op backend, so the shared suite does no push work;
-	// the push fan-out is exercised on its own server in push_test.go.
-	mux := api.AddToMux(nil, shared.es, shared.metricsCache, shared.cfg, shared.imsDBQ, shared.userStore, nil, shared.actionLogger, nil)
+	// The shared suite does no push work — the push fan-out is exercised on its own
+	// server in push_test.go, which wires a spy sender onto the Connect surface (the
+	// REST AddToMux no longer holds a Pusher, plan 09h/1c).
+	mux := api.AddToMux(nil, shared.es, shared.metricsCache, shared.cfg, shared.imsDBQ, shared.userStore, nil, shared.actionLogger)
 	// The Connect/RPC surface shares the mux (plan 09h/1c): as resources are
 	// extracted their REST endpoint is retired and the suite exercises them through
 	// the generated Connect client instead (e.g. TestGetAndEditEvent's ListEvents).

@@ -944,6 +944,47 @@ notifications) are reused unchanged. Findings:
 With this, the entire field-report surface (reads + writes) is on Connect; only the report
 *attachment* upload/download (binary/multipart, outside the proto contract) stays REST.
 
+### 1c — Domain extraction: incident sub-resource writes (attach/detach person, strike entry) (2026-09-01)
+
+Three write RPCs in one PR (`incident.AttachPersonToIncident`, `incident.DetachPersonFromIncident`,
+`incident.UpdateIncidentJournalEntry`), all methods on the existing `incident.Service`, stacked on
+the report writes. Each ports its REST handler verbatim behind a shared `incidentWriteContext`
+helper (resolve event → `EventWriteIncidents` gate — there is deliberately **no** journal-only grant
+path here, unlike `UpdateIncident`: a 52f reporter manages no people and strikes no entries).
+Findings:
+
+- **A request that carries an id the REST route took from the URL path wants the path helper
+  refactored, not duplicated.** REST resolved the person from `{personId}` via
+  `server.PersonByIDFromPath(ctx, dbq, *http.Request)`; the RPC has `person_id` in the message. Rather
+  than reparse or duplicate the not-found mapping, the id-keyed core was factored out as
+  `server.PersonByID(ctx, dbq, id)` and `PersonByIDFromPath` now calls it — one lookup, one
+  `NotFound`, shared by both transports. *When you extract an endpoint whose REST handler pulled a key
+  from the path, look for a `…FromPath` helper and split its body at the parse boundary.*
+- **Not every strike endpoint has the same author rule — port the one you're porting.** The report
+  journal-entry strike restricts a reporter (`EventWriteOwnReports`) to *their own* entries; the
+  incident one has **no per-author check** — any `EventWriteIncidents` holder may strike any incident
+  entry. They look like twins but their authz differs; the extraction preserved each exactly rather
+  than unifying them. *Resist "these two handlers are basically the same" — diff their permission
+  checks line by line before sharing code.*
+- **Retiring the last REST consumer of a shared dependency lets you delete the dependency from that
+  surface.** `AttachPersonToIncident` was the REST mux's *only* remaining push-firing route, so once
+  it moved to Connect, `AddToMux` no longer needs a `Pusher` at all — the `pushSender` parameter was
+  dropped from `AddToMux`'s signature (and the `pushlib` import, the noop-sender block, and the local
+  `pusher`), leaving the Pusher to live solely on the Connect surface (`AddConnectToMux` still builds
+  it). The three `api/integration` `AddToMux` call sites were updated; `push_test.go` keeps its spy on
+  the `AddConnectToMux` mount. *An extraction's blast radius sometimes includes a now-dead constructor
+  arg on the surface you're draining — chase the "declared and not used" and prune the whole chain, it
+  keeps the retiring surface honest about what it still does.*
+- **Coarse auth coverage relocates the same way as reads/writes before it.** The attach/detach/strike
+  routes' unauth-401 / no-perms-403 rows were pruned from the `permissions_test` sweep and re-covered
+  by a focused `TestIncidentSubresourceWriteAuthorization` through the Connect client; the
+  writer-*permitted* path was already exercised by the functional attach/detach/strike tests, so it
+  wasn't duplicated.
+
+With this, the entire incident + field-report surface (reads + writes + sub-resources) is on Connect;
+only the incident/report *attachment* upload/download (binary/multipart, outside the proto contract)
+and the visits subsystem (excluded from the contract, 09e) stay REST.
+
 ## 8. Open questions
 
 1. **Does the Go binary keep serving static assets in production**, or does Caddy?

@@ -215,6 +215,54 @@ func (s ImsService) UpdateReportJournalEntry(
 	return connect.NewResponse(resp), nil
 }
 
+// AttachPersonToIncident is a thin RPC method over the incident.AttachPersonToIncident domain
+// method (plan 09h/1c). Its REST predecessor (POST .../incidents/{n}/people/{personId}) was deleted
+// in the same slice, so this is the only transport for attaching a person to an incident (or
+// editing their involvement / access grant). The domain method authorizes from ctx claims and
+// speaks Connect errors, so this just delegates; it carries the shared EventSourcerer / Pusher so
+// the write fans out SSE + push exactly as REST did.
+func (s ImsService) AttachPersonToIncident(
+	ctx context.Context,
+	req *connect.Request[servicerpcv1.AttachPersonToIncidentRequest],
+) (*connect.Response[servicerpcv1.AttachPersonToIncidentResponse], error) {
+	resp, err := s.Incident.AttachPersonToIncident(ctx, req.Msg)
+	if err != nil {
+		return nil, err
+	}
+	return connect.NewResponse(resp), nil
+}
+
+// DetachPersonFromIncident is a thin RPC method over the incident.DetachPersonFromIncident domain
+// method (plan 09h/1c). Its REST predecessor (DELETE .../incidents/{n}/people/{personId}) was
+// deleted in the same slice, so this is the only transport for removing a person from an incident.
+// The domain method authorizes from ctx claims and speaks Connect errors, so this just delegates.
+func (s ImsService) DetachPersonFromIncident(
+	ctx context.Context,
+	req *connect.Request[servicerpcv1.DetachPersonFromIncidentRequest],
+) (*connect.Response[servicerpcv1.DetachPersonFromIncidentResponse], error) {
+	resp, err := s.Incident.DetachPersonFromIncident(ctx, req.Msg)
+	if err != nil {
+		return nil, err
+	}
+	return connect.NewResponse(resp), nil
+}
+
+// UpdateIncidentJournalEntry is a thin RPC method over the incident.UpdateIncidentJournalEntry
+// domain method (plan 09h/1c). Its REST predecessor (POST
+// .../incidents/{n}/journal_entries/{id}) was deleted in the same slice, so this is the only
+// transport for striking an incident's journal entry. The domain method authorizes from ctx claims
+// and speaks Connect errors, so this just delegates.
+func (s ImsService) UpdateIncidentJournalEntry(
+	ctx context.Context,
+	req *connect.Request[servicerpcv1.UpdateIncidentJournalEntryRequest],
+) (*connect.Response[servicerpcv1.UpdateIncidentJournalEntryResponse], error) {
+	resp, err := s.Incident.UpdateIncidentJournalEntry(ctx, req.Msg)
+	if err != nil {
+		return nil, err
+	}
+	return connect.NewResponse(resp), nil
+}
+
 // GetAuthStatus is the one RPC implemented end-to-end in slice 1b, to prove the
 // interceptor spine through the generated client. It answers the identity subset
 // of the whoami purely from the caller's JWT claims, which the auth interceptor

@@ -22,6 +22,7 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"strings"
 	"time"
 
 	"connectrpc.com/connect"
@@ -485,6 +486,247 @@ func (s Service) UpdateIncident(
 	s.Metrics.InvalidateEvent(event.Name)
 
 	return &rpcv1.UpdateIncidentResponse{}, nil
+}
+
+// AttachPersonToIncident is the domain method behind the AttachPersonToIncident RPC (plan 09h/1c).
+// The REST POST /events/{eventName}/incidents/{incidentNumber}/people/{personId} endpoint was
+// RETIRED with this extraction, not shimmed (migration decision, plan 09 §Migration strategy). It
+// ports the REST attachPerson flow verbatim: attaching (or editing the involvement/grant of) a
+// person on an incident needs EventWriteIncidents — there is no journal-only grant path, since a
+// 52f-granted reporter may only append journal entries, not manage people. The person is resolved
+// by the request's person_id (the REST path's {personId}). The write is a detach-then-reattach
+// replace run in a retrying transaction (deadlock-resilient), records what actually changed as one
+// system journal entry, and — only on a genuine new attach — fires the added-to-incident
+// notification (plan 82) and web push (plan 84c).
+func (s Service) AttachPersonToIncident(
+	ctx context.Context,
+	req *rpcv1.AttachPersonToIncidentRequest,
+) (*rpcv1.AttachPersonToIncidentResponse, error) {
+	claims, ok := server.ClaimsFromContext(ctx)
+	if !ok {
+		return nil, connect.NewError(connect.CodeUnauthenticated, errors.New("authentication required"))
+	}
+
+	event, errConn := s.incidentWriteContext(ctx, req.GetEventId(), *claims)
+	if errConn != nil {
+		return nil, errConn
+	}
+
+	incidentNumber := req.GetIncidentNumber()
+	person, errHTTP := server.PersonByID(ctx, s.ImsDBQ, req.GetPersonId())
+	if errHTTP != nil {
+		return nil, herrToConnect(errHTTP)
+	}
+	personID := person.ID
+	actorPersonID := claims.PersonID()
+	newInvolvement := conv.StringToSql(req.Involvement, 128)
+	grantedAccess := req.GetGrantedAccess()
+
+	// Run the whole change in a retrying transaction: attach is a detach-then-reattach replace
+	// and can deadlock against a concurrent attach/detach on the same incident, so a transient
+	// deadlock / lock-wait timeout retries the whole transaction (store.RunInTx) instead of
+	// erroring. newlyAttached distinguishes a genuine new add (which alone fires the notification
+	// and push) from an involvement edit; it is set inside the txn and read after commit.
+	var newlyAttached bool
+	runErr := s.ImsDBQ.RunInTx(ctx, func(txn *sql.Tx) error {
+		// Attach is a detach-then-reattach replace, so we can't tell a new add from an
+		// involvement edit afterwards. Read the person's current row up front: its presence
+		// distinguishes a genuine new add (which alone fires "added_to_incident", plan 82) from
+		// an edit, and its old involvement/grant let the journal record what actually changed.
+		var oldInvolvement sql.NullString
+		var oldGranted, alreadyAttached bool
+		existingPeople, txErr := s.ImsDBQ.Incident_People(ctx, txn, imsdb.Incident_PeopleParams{
+			Event:          event.ID,
+			IncidentNumber: incidentNumber,
+		})
+		if txErr != nil {
+			return herr.InternalServerError("Failed to fetch incident people", txErr).From("[Incident_People]")
+		}
+		for _, row := range existingPeople {
+			if row.IncidentPerson.PersonID == personID {
+				alreadyAttached = true
+				oldInvolvement = row.IncidentPerson.Involvement
+				oldGranted = row.IncidentPerson.GrantedAccess
+				break
+			}
+		}
+		// Reassigned each attempt (RunInTx may retry on deadlock) so it reflects the committed
+		// run, not a rolled-back one.
+		newlyAttached = !alreadyAttached
+
+		txErr = s.ImsDBQ.DetachPersonFromIncident(ctx, txn, imsdb.DetachPersonFromIncidentParams{
+			Event:          event.ID,
+			IncidentNumber: incidentNumber,
+			PersonID:       personID,
+		})
+		if txErr != nil {
+			return herr.InternalServerError("Failed to detach person from Incident", txErr).From("[DetachPersonFromIncident]")
+		}
+
+		txErr = s.ImsDBQ.AttachPersonToIncident(ctx, txn, imsdb.AttachPersonToIncidentParams{
+			Event:          event.ID,
+			IncidentNumber: incidentNumber,
+			PersonID:       personID,
+			Involvement:    newInvolvement,
+			// 52f: per-incident access grant for an involved reporter (writer-gated here).
+			GrantedAccess: grantedAccess,
+		})
+		if txErr != nil {
+			return herr.InternalServerError("Failed to attach person to Incident", txErr).From("[AttachPersonToIncident]")
+		}
+
+		// Record what actually changed — the add, and/or the involvement and access-grant edits —
+		// as a single system entry. Nothing changed → no entry.
+		lines := personChangeLog(server.PersonDisplayName(person), alreadyAttached, oldInvolvement, newInvolvement, oldGranted, grantedAccess)
+		if len(lines) > 0 {
+			_, errJournal := addIncidentJournalEntry(
+				ctx, s.ImsDBQ, txn, event.ID, incidentNumber,
+				actorPersonID, strings.Join(lines, "\n"),
+				true, "", "", "",
+			)
+			if errJournal != nil {
+				return errJournal.From("[addIncidentJournalEntry]")
+			}
+		}
+
+		// Notify the person they were added — only on a genuine new attach (plan 82).
+		if !alreadyAttached {
+			errNotify := notification.GenerateAddedToIncidentNotification(ctx, s.ImsDBQ, txn, event.ID, incidentNumber, personID, actorPersonID)
+			if errNotify != nil {
+				return errNotify.From("[notification.GenerateAddedToIncidentNotification]")
+			}
+		}
+		return nil
+	})
+	if runErr != nil {
+		return nil, herrToConnect(herr.AsHTTPError(runErr))
+	}
+	s.Es.NotifyIncidentUpdate(event.ID, incidentNumber)
+	// Web push the added person (plan 84c): after commit, off the request path, and only on a
+	// genuine new attach — same gate as the in-app notification.
+	if newlyAttached {
+		s.Pusher.NotifyAddedToIncident(ctx, event.Name, incidentNumber, personID, actorPersonID)
+	}
+
+	return &rpcv1.AttachPersonToIncidentResponse{}, nil
+}
+
+// DetachPersonFromIncident is the domain method behind the DetachPersonFromIncident RPC (plan
+// 09h/1c). The REST DELETE /events/{eventName}/incidents/{incidentNumber}/people/{personId}
+// endpoint was RETIRED with this extraction (migration decision, plan 09 §Migration strategy). It
+// ports the REST detachPerson flow verbatim: it needs EventWriteIncidents, resolves the person by
+// person_id, and removes the membership plus a "Removed person" system journal entry in a retrying
+// transaction (deadlock-resilient, like attach).
+func (s Service) DetachPersonFromIncident(
+	ctx context.Context,
+	req *rpcv1.DetachPersonFromIncidentRequest,
+) (*rpcv1.DetachPersonFromIncidentResponse, error) {
+	claims, ok := server.ClaimsFromContext(ctx)
+	if !ok {
+		return nil, connect.NewError(connect.CodeUnauthenticated, errors.New("authentication required"))
+	}
+
+	event, errConn := s.incidentWriteContext(ctx, req.GetEventId(), *claims)
+	if errConn != nil {
+		return nil, errConn
+	}
+
+	incidentNumber := req.GetIncidentNumber()
+	person, errHTTP := server.PersonByID(ctx, s.ImsDBQ, req.GetPersonId())
+	if errHTTP != nil {
+		return nil, herrToConnect(errHTTP)
+	}
+	personID := person.ID
+	actorPersonID := claims.PersonID()
+
+	// Run in a retrying transaction so a transient deadlock / lock-wait timeout against a
+	// concurrent attach/detach on the same incident is retried rather than surfaced as an error.
+	runErr := s.ImsDBQ.RunInTx(ctx, func(txn *sql.Tx) error {
+		txErr := s.ImsDBQ.DetachPersonFromIncident(ctx, txn, imsdb.DetachPersonFromIncidentParams{
+			Event:          event.ID,
+			IncidentNumber: incidentNumber,
+			PersonID:       personID,
+		})
+		if txErr != nil {
+			return herr.InternalServerError("Failed to detach person from Incident", txErr).From("[DetachPersonFromIncident]")
+		}
+		_, errJournal := addIncidentJournalEntry(
+			ctx, s.ImsDBQ, txn, event.ID, incidentNumber,
+			actorPersonID, fmt.Sprintf("Removed person: %v", server.PersonDisplayName(person)),
+			true, "", "", "",
+		)
+		if errJournal != nil {
+			return errJournal.From("[addIncidentJournalEntry]")
+		}
+		return nil
+	})
+	if runErr != nil {
+		return nil, herrToConnect(herr.AsHTTPError(runErr))
+	}
+
+	s.Es.NotifyIncidentUpdate(event.ID, incidentNumber)
+	return &rpcv1.DetachPersonFromIncidentResponse{}, nil
+}
+
+// UpdateIncidentJournalEntry is the domain method behind the UpdateIncidentJournalEntry RPC (plan
+// 09h/1c). The REST POST /events/{eventName}/incidents/{incidentNumber}/journal_entries/{id}
+// endpoint was RETIRED with this extraction (migration decision, plan 09 §Migration strategy). It
+// ports the REST editIncidentJournalEntry verbatim: striking is the only field this endpoint can
+// change, and — unlike the report counterpart — there is NO per-author check: any caller with
+// EventWriteIncidents may strike/unstrike any incident journal entry. An entry with no stricken
+// value set is a no-op.
+func (s Service) UpdateIncidentJournalEntry(
+	ctx context.Context,
+	req *rpcv1.UpdateIncidentJournalEntryRequest,
+) (*rpcv1.UpdateIncidentJournalEntryResponse, error) {
+	claims, ok := server.ClaimsFromContext(ctx)
+	if !ok {
+		return nil, connect.NewError(connect.CodeUnauthenticated, errors.New("authentication required"))
+	}
+
+	event, errConn := s.incidentWriteContext(ctx, req.GetEventId(), *claims)
+	if errConn != nil {
+		return nil, errConn
+	}
+
+	incidentNumber := req.GetIncidentNumber()
+	journalEntryID := req.GetJournalEntryId()
+	authorPersonID := claims.PersonID()
+
+	stricken := req.GetEntry().Stricken
+	if stricken == nil {
+		// Stricken is the only field this endpoint can modify; nothing to do.
+		return &rpcv1.UpdateIncidentJournalEntryResponse{}, nil
+	}
+
+	txn, err := s.ImsDBQ.Begin()
+	if err != nil {
+		return nil, connect.NewError(connect.CodeInternal, fmt.Errorf("failed to begin transaction: %w", err))
+	}
+	defer server.Rollback(txn)
+
+	err = s.ImsDBQ.SetIncidentJournalEntryStricken(ctx, txn, imsdb.SetIncidentJournalEntryStrickenParams{
+		Stricken: *stricken, Event: event.ID, IncidentNumber: incidentNumber, JournalEntry: journalEntryID,
+	})
+	if err != nil {
+		return nil, connect.NewError(connect.CodeInternal, fmt.Errorf("failed to set journal entry stricken: %w", err))
+	}
+	struckVerb := "Struck"
+	if !*stricken {
+		struckVerb = "Unstruck"
+	}
+	errConn = s.addGeneratedIncidentEntry(ctx, txn, event.ID, incidentNumber, authorPersonID,
+		fmt.Sprintf("%v journalEntry %v", struckVerb, journalEntryID))
+	if errConn != nil {
+		return nil, errConn
+	}
+	err = txn.Commit()
+	if err != nil {
+		return nil, connect.NewError(connect.CodeInternal, fmt.Errorf("failed to commit transaction: %w", err))
+	}
+
+	defer s.Es.NotifyIncidentUpdate(event.ID, incidentNumber)
+	return &rpcv1.UpdateIncidentJournalEntryResponse{}, nil
 }
 
 // GetReport is the domain method behind the GetReport RPC (plan 09h/1c, reports). The REST
@@ -985,6 +1227,35 @@ func (s Service) reportWriteContext(
 			errors.New("the requestor does not have permission to write Reports on this Event"))
 	}
 	return event, eventPermissions, nil
+}
+
+// incidentWriteContext resolves the event and enforces the EventWriteIncidents gate the incident
+// sub-resource writes share (attach/detach a person, strike a journal entry). A missing event is
+// NotFound; a caller without the write bit is PermissionDenied. Unlike UpdateIncident there is no
+// journal-only grant path here: a 52f-granted reporter manages no people and strikes no entries —
+// those actions have always required the full write bit. It returns only the event (none of the
+// three needs the permission mask past the gate).
+func (s Service) incidentWriteContext(
+	ctx context.Context, eventID int32, claims authz.IMSClaims,
+) (imsdb.Event, error) {
+	eventRow, err := s.ImsDBQ.Event(ctx, s.ImsDBQ, eventID)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return imsdb.Event{}, connect.NewError(connect.CodeNotFound, errors.New("event not found"))
+		}
+		return imsdb.Event{}, connect.NewError(connect.CodeInternal, fmt.Errorf("failed to fetch event: %w", err))
+	}
+	event := eventRow.Event
+
+	eventPerms, _, err := authz.EventPermissions(ctx, &event.ID, s.ImsDBQ, claims)
+	if err != nil {
+		return imsdb.Event{}, connect.NewError(connect.CodeInternal, fmt.Errorf("failed to compute permissions: %w", err))
+	}
+	if eventPerms[event.ID]&authz.EventWriteIncidents == 0 {
+		return imsdb.Event{}, connect.NewError(connect.CodePermissionDenied,
+			errors.New("the requestor does not have EventWriteIncidents permission for this Event"))
+	}
+	return event, nil
 }
 
 // isPreviousReportAuthor reports whether the caller authored any of the report's journal entries
