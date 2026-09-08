@@ -35,8 +35,18 @@ option go_package = "github.com/mikeki/ocf-ims/gen/ocf/ims/service/v1;servicev1"
 // plain-HTTP exceptions.
 service ImsService {
   // --- Auth & session ---
+  // Login is a mutation for audit purposes (it mints a new session) and is left
+  // un-annotated so the action-log interceptor records it, exactly as the REST
+  // POST /auth carried LogRequest(true).
   rpc Login(rpc.v1.LoginRequest) returns (rpc.v1.LoginResponse);
-  rpc RefreshToken(rpc.v1.RefreshTokenRequest) returns (rpc.v1.RefreshTokenResponse);
+  // RefreshToken performs no persistent state change — it exchanges a valid refresh
+  // cookie for a fresh access token — so it is NO_SIDE_EFFECTS: the action-log
+  // interceptor skips it, matching the REST POST /auth/refresh which carried
+  // LogRequest(false) (the every-few-minutes refresh would otherwise flood the audit
+  // log). See the GetAuthStatus note on the read/write split.
+  rpc RefreshToken(rpc.v1.RefreshTokenRequest) returns (rpc.v1.RefreshTokenResponse) {
+    option idempotency_level = NO_SIDE_EFFECTS;
+  }
   // idempotency_level = NO_SIDE_EFFECTS marks this a read: the action-log
   // interceptor (plan 09g, M9) audits every RPC by default and skips only the
   // methods so marked. The read RPCs earn the annotation as each lands in 1d;

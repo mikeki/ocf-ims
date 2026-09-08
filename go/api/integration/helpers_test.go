@@ -52,49 +52,52 @@ type ApiHelper struct {
 	referrer  string
 }
 
+// postAuth drives login through the generated Connect client (ImsService.Login). The REST POST
+// /ims/api/auth endpoint was retired when the RPC was extracted (plan 09h/1c). The legacy
+// authapi.PostAuthRequest (Identification/Password) is mapped onto the contract's LoginRequest
+// (email/password), and the return shape is preserved so the ~20 call sites are unchanged: on
+// success it yields 200 + the access token; on failure it yields the mapped HTTP status
+// (connectStatus) and the error string as the "body" (so the "bad credentials" assertion still
+// matches). The refresh cookie the RPC sets on its response header is not surfaced here — the
+// cookie round-trip is exercised in TestPostAuthMakesRefreshCookie via the client directly.
 func (a ApiHelper) postAuth(ctx context.Context, req authapi.PostAuthRequest) (statusCode int, body, validJWT string) {
 	a.t.Helper()
-	response := &authapi.PostAuthResponse{}
-	resp := a.imsPost(ctx, req, a.serverURL.JoinPath("/ims/api/auth").String())
-	b, err := io.ReadAll(resp.Body)
-	require.NoError(a.t, resp.Body.Close())
-	require.NoError(a.t, err)
-	if resp.StatusCode != http.StatusOK {
-		return resp.StatusCode, string(b), ""
+	client := servicev1connect.NewImsServiceClient(http.DefaultClient, a.serverURL.String())
+	resp, err := client.Login(ctx, connect.NewRequest(&servicerpcv1.LoginRequest{
+		Email:    req.Identification,
+		Password: req.Password,
+	}))
+	if err != nil {
+		return connectStatus(err), err.Error(), ""
 	}
-	err = json.Unmarshal(b, &response)
-	require.NoError(a.t, err)
-	return resp.StatusCode, string(b), response.Token
+	return http.StatusOK, "", resp.Msg.GetToken()
 }
 
+// refreshAccessToken drives the RefreshToken RPC. The REST POST /ims/api/auth/refresh endpoint
+// was retired when the RPC was extracted (plan 09h/1c). The refresh token rides in the HttpOnly
+// cookie, so the cookie's name=value is placed in the request's Cookie header (the server reads
+// it back the same way it read the REST cookie). The proto Timestamp expiry is mapped back to
+// the legacy epoch-millis field so call sites are unchanged.
 func (a ApiHelper) refreshAccessToken(ctx context.Context, refreshCookie *http.Cookie) (statusCode int, result *authapi.RefreshAccessTokenResponse) {
 	a.t.Helper()
-	response := &authapi.RefreshAccessTokenResponse{}
-	postBody, err := json.Marshal(struct{}{})
-	require.NoError(a.t, err)
-	httpPost, err := http.NewRequestWithContext(ctx, http.MethodPost, a.serverURL.JoinPath("/ims/api/auth/refresh").String(), bytes.NewReader(postBody))
-	require.NoError(a.t, err)
+	client := servicev1connect.NewImsServiceClient(http.DefaultClient, a.serverURL.String())
+	rpcReq := connect.NewRequest(&servicerpcv1.RefreshTokenRequest{})
+	if refreshCookie != nil {
+		// Send just name=value (Cookie-header form), mirroring http.Request.AddCookie. The value
+		// is a JWT (no cookie-octet chars needing escaping), so a plain join is exact.
+		rpcReq.Header().Set("Cookie", refreshCookie.Name+"="+refreshCookie.Value)
+	}
 	if a.jwt != "" {
-		httpPost.Header.Set("Authorization", "Bearer "+a.jwt)
+		rpcReq.Header().Set("Authorization", "Bearer "+a.jwt)
 	}
-	httpPost.AddCookie(refreshCookie)
-	// #nosec G704 // SSRF via taint analysis. We control the URLs.
-	client := &http.Client{
-		Timeout: 10 * time.Second,
+	resp, err := client.RefreshToken(ctx, rpcReq)
+	if err != nil {
+		return connectStatus(err), nil
 	}
-	// #nosec G704 // SSRF via taint analysis.
-	resp, err := client.Do(httpPost)
-	require.NoError(a.t, err)
-
-	b, err := io.ReadAll(resp.Body)
-	require.NoError(a.t, err)
-	require.NoError(a.t, resp.Body.Close())
-	if resp.StatusCode != http.StatusOK {
-		return resp.StatusCode, nil
+	return http.StatusOK, &authapi.RefreshAccessTokenResponse{
+		Token:         resp.Msg.GetToken(),
+		ExpiresUnixMs: resp.Msg.GetExpiresAt().AsTime().UnixMilli(),
 	}
-	err = json.Unmarshal(b, &response)
-	require.NoError(a.t, err)
-	return resp.StatusCode, response
 }
 
 // getAuth drives the whoami / session status through the generated Connect client

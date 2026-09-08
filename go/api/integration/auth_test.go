@@ -17,12 +17,13 @@
 package integration_test
 
 import (
-	"encoding/json"
-	"io"
 	"net/http"
 	"testing"
 	"time"
 
+	"connectrpc.com/connect"
+	servicerpcv1 "github.com/mikeki/ocf-ims/gen/ocf/ims/service/rpc/v1"
+	"github.com/mikeki/ocf-ims/gen/ocf/ims/service/v1/servicev1connect"
 	authapi "github.com/mikeki/ocf-ims/internal/auth"
 
 	imsjson "github.com/mikeki/ocf-ims/json"
@@ -189,35 +190,33 @@ func TestGetAuthWithMissingEvent(t *testing.T) {
 	}, gar.EventAccess["ThisEventDoesNotExist"])
 }
 
+// TestPostAuthMakesRefreshCookie exercises the login → refresh-cookie → refresh round trip over
+// Connect. Login (ImsService.Login) sets the HttpOnly refresh cookie on its RPC response header,
+// which the client reads back to drive RefreshToken. (The REST POST /auth that carried this in a
+// plain HTTP Set-Cookie was retired in slice 1c.)
 func TestPostAuthMakesRefreshCookie(t *testing.T) {
 	t.Parallel()
 	ctx := t.Context()
 
-	apisNotAuthenticated := ApiHelper{t: t, serverURL: shared.serverURL, jwt: ""}
+	client := servicev1connect.NewImsServiceClient(http.DefaultClient, shared.serverURL.String())
 
-	// A user with the correct password can log in and get refresh and access tokens
-	req := authapi.PostAuthRequest{
-		Identification: userAliceEmail,
-		Password:       userAlicePassword,
-	}
-	response := &authapi.PostAuthResponse{}
-	resp := apisNotAuthenticated.imsPost(ctx, req, shared.serverURL.JoinPath("/ims/api/auth").String())
-	b, err := io.ReadAll(resp.Body)
-	require.NoError(t, err)
-	require.NoError(t, resp.Body.Close())
-	require.Equal(t, http.StatusOK, resp.StatusCode)
-	err = json.Unmarshal(b, &response)
+	// A user with the correct password can log in and get access + refresh tokens.
+	loginResp, err := client.Login(ctx, connect.NewRequest(&servicerpcv1.LoginRequest{
+		Email:    userAliceEmail,
+		Password: userAlicePassword,
+	}))
 	require.NoError(t, err)
 
 	// check that the returned access token looks good
 	jwter := authz.JWTer{SecretKey: shared.cfg.Core.JWTSecret}
-	claims, err := jwter.AuthenticateJWT(response.Token)
+	claims, err := jwter.AuthenticateJWT(loginResp.Msg.GetToken())
 	require.NoError(t, err)
 	require.Equal(t, userAliceHandle, claims.PersonHandle())
-	require.Greater(t, response.ExpiresUnixMs, time.Now().UnixMilli())
+	loginExpiryMs := loginResp.Msg.GetExpiresAt().AsTime().UnixMilli()
+	require.Greater(t, loginExpiryMs, time.Now().UnixMilli())
 
-	// check that the refresh token was shipped over by cookie
-	cookie, err := http.ParseSetCookie(resp.Header.Get("Set-Cookie"))
+	// check that the refresh token was shipped over by cookie (Set-Cookie on the RPC response)
+	cookie, err := http.ParseSetCookie(loginResp.Header().Get("Set-Cookie"))
 	require.NoError(t, err)
 	require.True(t, cookie.HttpOnly)
 	require.True(t, cookie.Secure)
@@ -227,6 +226,7 @@ func TestPostAuthMakesRefreshCookie(t *testing.T) {
 	require.Equal(t, userAliceHandle, claims.PersonHandle())
 
 	// now use the refresh token to get a fresh access token
+	apisNotAuthenticated := ApiHelper{t: t, serverURL: shared.serverURL}
 	code, refreshResp := apisNotAuthenticated.refreshAccessToken(ctx, cookie)
 	require.Equal(t, http.StatusOK, code)
 	// and confirm the new access token's validity
@@ -234,5 +234,5 @@ func TestPostAuthMakesRefreshCookie(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, userAliceHandle, claims.PersonHandle())
 	// this new token should expire no earlier than the old one
-	require.GreaterOrEqual(t, refreshResp.ExpiresUnixMs, response.ExpiresUnixMs)
+	require.GreaterOrEqual(t, refreshResp.ExpiresUnixMs, loginExpiryMs)
 }
