@@ -49,7 +49,10 @@ func TestAdminOnlyEndpoints(t *testing.T) {
 		// while editing an existing area stays admin-only. Its authorization is
 		// covered by area_test.go (TestAreaMutationRequiresAdmin and
 		// TestAreaCreateAllowedForEventWriter).
-		{http.MethodPost, "/ims/api/incident_types"},
+		// NOTE: POST .../incident_types is intentionally not listed here. It moved to the
+		// ImsService taxonomy RPCs in 1c (the POST multiplexer decomposed into
+		// Create/Update/Approve/SetHidden); its admin-gating (403 for a non-admin, 401 for
+		// unauth) is covered by TestIncidentTypeWriteAuthorization below.
 		{http.MethodGet, "/ims/api/debug/buildinfo"},
 		{http.MethodGet, "/ims/api/debug/runtimemetrics"},
 		{http.MethodPost, "/ims/api/debug/gc"},
@@ -70,7 +73,38 @@ func TestAdminOnlyEndpoints(t *testing.T) {
 	}
 }
 
-func TestAnyUnauthenticatedUserEndpoints(t *testing.T) {
+// TestIncidentTypeWriteAuthorization pins the incident-type write RPCs' admin-gating now that POST
+// /ims/api/incident_types is retired from REST (it was an entry in the admin-only route sweep): the
+// admin writes require GlobalAdministrateIncidentTypes, so a non-admin is forbidden and an
+// unauthenticated caller is unauthorized. CreateIncidentType stands in for the four admin writes
+// (they share requireAdmin); the happy path is covered by the itype functional tests.
+func TestIncidentTypeWriteAuthorization(t *testing.T) {
+	t.Parallel()
+	ctx := t.Context()
+
+	apisNonAdmin := ApiHelper{t: t, serverURL: shared.serverURL, jwt: jwtForAlice(t, ctx)}
+	apisNotAuthenticated := ApiHelper{t: t, serverURL: shared.serverURL, jwt: ""}
+
+	name := rand.NonCryptoText()
+
+	// A non-admin lacks GlobalAdministrateIncidentTypes: 403.
+	_, resp := apisNonAdmin.editType(ctx, imsjson.IncidentType{Name: &name})
+	require.Equal(t, http.StatusForbidden, resp.StatusCode)
+	require.NoError(t, resp.Body.Close())
+
+	// Unauthenticated: 401.
+	_, resp = apisNotAuthenticated.editType(ctx, imsjson.IncidentType{Name: &name})
+	require.Equal(t, http.StatusUnauthorized, resp.StatusCode)
+	require.NoError(t, resp.Body.Close())
+}
+
+// TestListIncidentTypesAuthorization pins the ListIncidentTypes RPC's authorization now that GET
+// /ims/api/incident_types is retired from REST (it was the last entry in the old
+// any-authenticated-user route sweep, alongside GET /events and GET /personnel, both already
+// relocated to their own RPC auth tests): an unauthenticated caller is rejected, and any
+// authenticated user may read the taxonomy (GlobalReadIncidentTypes is granted to every signed-in
+// user).
+func TestListIncidentTypesAuthorization(t *testing.T) {
 	t.Parallel()
 	ctx := t.Context()
 
@@ -78,28 +112,18 @@ func TestAnyUnauthenticatedUserEndpoints(t *testing.T) {
 	apisNonAdmin := ApiHelper{t: t, serverURL: shared.serverURL, jwt: jwtForAlice(t, ctx)}
 	apisNotAuthenticated := ApiHelper{t: t, serverURL: shared.serverURL, jwt: ""}
 
-	anyAuthenticatedUserEndpoints := []MethodURL{
-		{http.MethodGet, "/ims/api/incident_types"},
-		// GET /ims/api/events retired in 1c — it is the ListEvents RPC now, whose
-		// unauthenticated behavior is covered by api.TestConnectListEventsUnauthenticated.
-		// GET /ims/api/personnel retired in 1c — it is the ListPersonnel RPC now; its
-		// unauth (401) and any-authenticated-user (GlobalReadPersonnel) behavior is
-		// covered through the Connect client in TestListPersonnelAuthorization.
-	}
+	// Unauthenticated: 401.
+	_, resp := apisNotAuthenticated.getTypes(ctx)
+	require.Equal(t, http.StatusUnauthorized, resp.StatusCode)
+	require.NoError(t, resp.Body.Close())
 
-	for _, api := range anyAuthenticatedUserEndpoints {
-		// admin is allowed in
-		code := apiCall(t, api, apisAdmin)
-		require.True(t, permitted(code), "%v %v wanted non-401/403 status code, got %v", api.Method, api.Path, code)
-
-		// nonadmin is allowed in
-		code = apiCall(t, api, apisNonAdmin)
-		require.True(t, permitted(code), "%v %v wanted non-401/403 status code, got %v", api.Method, api.Path, code)
-
-		// unauthenticated is unauthorized
-		code = apiCall(t, api, apisNotAuthenticated)
-		require.True(t, unauthorized(code), "%v %v wanted 401 status code, got %v", api.Method, api.Path, code)
-	}
+	// Any authenticated user (admin or not) may read the taxonomy.
+	_, resp = apisAdmin.getTypes(ctx)
+	require.Equal(t, http.StatusOK, resp.StatusCode)
+	require.NoError(t, resp.Body.Close())
+	_, resp = apisNonAdmin.getTypes(ctx)
+	require.Equal(t, http.StatusOK, resp.StatusCode)
+	require.NoError(t, resp.Body.Close())
 }
 
 func TestEventEndpoints_ForNoEventPerms(t *testing.T) {
