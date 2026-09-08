@@ -20,10 +20,8 @@ import (
 	"net/http"
 	"strconv"
 	"testing"
-	"time"
 
 	imsjson "github.com/mikeki/ocf-ims/json"
-	"github.com/mikeki/ocf-ims/lib/conv"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -47,9 +45,11 @@ func TestGetActionLog(t *testing.T) {
 	resp := apisAdmin.uploadProfilePicture(ctx, userAdminPersonID, onePixelPNG)
 	require.NoError(t, resp.Body.Close())
 
-	longAgo := time.Now().Add(-500 * time.Hour).UnixMilli()
-	longFromNow := time.Now().Add(500 * time.Hour).UnixMilli()
-	logs, response := apisAdmin.getActionLogs(ctx, conv.FormatInt(longAgo), conv.FormatInt(longFromNow))
+	// ListActionLogs takes no time/name/path filters (the empty request), so the read returns the
+	// whole table and the fixture is found by its unique Referer in Go. The REST endpoint's
+	// invalid-time → 400 cases have no analogue in the id-keyed/empty contract (like the other
+	// extracted reads), so they are dropped rather than ported.
+	logs, response := apisAdmin.getActionLogs(ctx)
 	require.NotNil(t, response)
 	require.Equal(t, http.StatusOK, response.StatusCode)
 	require.NoError(t, response.Body.Close())
@@ -63,14 +63,4 @@ func TestGetActionLog(t *testing.T) {
 	assert.NotZero(t, foundLog)
 	assert.Equal(t, uploadPath, foundLog.Path)
 	assert.Equal(t, "POST", foundLog.Method)
-
-	// Now test error cases
-	_, response = apisAdmin.getActionLogs(ctx, "not a valid time", "")
-	require.NotNil(t, response)
-	require.Equal(t, http.StatusBadRequest, response.StatusCode)
-	require.NoError(t, response.Body.Close())
-	_, response = apisAdmin.getActionLogs(ctx, "", "not a valid time")
-	require.NotNil(t, response)
-	require.Equal(t, http.StatusBadRequest, response.StatusCode)
-	require.NoError(t, response.Body.Close())
 }

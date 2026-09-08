@@ -79,10 +79,12 @@ func newTestConnectClientWithLogger(t *testing.T, logger server.ActionLogger) (s
 	cfg := conf.DefaultIMS()
 	// imsDBQ is nil: the RPCs these tests exercise all answer before any DB access —
 	// GetAuthStatus anonymously, ListEvents by rejecting the anonymous caller, the empty-email
-	// Login at the protovalidate layer (never reaching its handler), and CreateEvent by being
-	// unimplemented. Anything that queries the DB is covered by the api/integration suite
-	// instead. es / metricsCache / pushSender are nil for the same reason — only the
-	// incident-mutation RPCs touch them, and those are exercised in api/integration, not here.
+	// Login at the protovalidate layer (never reaching its handler), and MarkAllNotificationsRead by
+	// rejecting the anonymous caller before it touches the DB. Anything that queries the DB is
+	// covered by the api/integration suite instead. es / metricsCache / pushSender are nil for the
+	// same reason — only the incident-mutation RPCs touch them, and those are exercised in
+	// api/integration, not here. (Every RPC is now implemented, so the "valid request reaches the
+	// handler" probe uses a separate bare handler — see newBareUnimplementedConnectClient.)
 	mux := api.AddConnectToMux(http.NewServeMux(), cfg, nil, logger, nil, nil, nil, nil, nil)
 
 	srv := httptest.NewServer(mux)
@@ -90,6 +92,31 @@ func newTestConnectClientWithLogger(t *testing.T, logger server.ActionLogger) (s
 
 	client := servicev1connect.NewImsServiceClient(srv.Client(), srv.URL)
 	return client, authz.JWTer{SecretKey: cfg.Core.JWTSecret}
+}
+
+// newBareUnimplementedConnectClient stands up a *bare* ImsService handler — one that embeds only the
+// generated UnimplementedImsServiceHandler and overrides nothing — behind the same interceptor chain
+// AddConnectToMux attaches (auth, action log, protovalidate, …). Every real RPC on the production
+// ImsService is now implemented (the metrics/action-log slice was the last), so no production method
+// returns CodeUnimplemented any more; this test-only bare handler is how TestConnectUnimplemented-
+// PassesValidation still proves that a *valid* request clears protovalidate and reaches the handler
+// (which, being unimplemented here, answers CodeUnimplemented). The logger is disabled with a nil DBQ,
+// as in the shared client.
+func newBareUnimplementedConnectClient(t *testing.T) servicev1connect.ImsServiceClient {
+	t.Helper()
+	cfg := conf.DefaultIMS()
+	jwter := authz.JWTer{SecretKey: cfg.Core.JWTSecret}
+	logger := actionlog.NewLogger(context.Background(), nil, false, false)
+	interceptors := server.Interceptors(jwter, logger, nil, server.NewValidateInterceptor())
+	path, handler := servicev1connect.NewImsServiceHandler(
+		servicev1connect.UnimplementedImsServiceHandler{},
+		connect.WithInterceptors(interceptors...),
+	)
+	mux := http.NewServeMux()
+	mux.Handle(path, handler)
+	srv := httptest.NewServer(mux)
+	t.Cleanup(srv.Close)
+	return servicev1connect.NewImsServiceClient(srv.Client(), srv.URL)
 }
 
 // TestConnectGetAuthStatusAnonymous proves the transport and the auth interceptor:
@@ -143,15 +170,15 @@ func TestConnectProtovalidateRejects(t *testing.T) {
 }
 
 // TestConnectUnimplementedPassesValidation proves the complement: a request that
-// satisfies the constraints passes protovalidate and reaches the handler. It uses a
-// still-unimplemented RPC (ListActionLogs — MarkAllNotificationsRead is now wired) whose
-// request carries no tripped constraints, so it flows through the whole interceptor
-// chain to the UnimplementedImsServiceHandler and comes back CodeUnimplemented,
-// confirming valid requests reach the handler. (Only the metrics/action-log reads remain
-// unimplemented; when they land this probe needs a test-only unregistered method instead.)
+// satisfies the constraints passes protovalidate and reaches the handler. Every RPC on the
+// production ImsService is now implemented (the metrics/action-log slice was the last), so this uses
+// a test-only *bare* ImsService handler (newBareUnimplementedConnectClient) that overrides nothing:
+// a request carrying no tripped constraints (empty ListActionLogsRequest) flows through the whole
+// interceptor chain to the embedded UnimplementedImsServiceHandler and comes back CodeUnimplemented,
+// confirming valid requests reach the handler independently of any production method's behaviour.
 func TestConnectUnimplementedPassesValidation(t *testing.T) {
 	t.Parallel()
-	client, _ := newTestConnectClient(t)
+	client := newBareUnimplementedConnectClient(t)
 
 	_, err := client.ListActionLogs(context.Background(),
 		connect.NewRequest(&servicerpcv1.ListActionLogsRequest{}))
