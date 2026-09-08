@@ -27,9 +27,7 @@ import (
 	"github.com/mikeki/ocf-ims/internal/debug"
 	"github.com/mikeki/ocf-ims/internal/incident"
 	"github.com/mikeki/ocf-ims/internal/metrics"
-	"github.com/mikeki/ocf-ims/internal/notification"
 	"github.com/mikeki/ocf-ims/internal/person"
-	"github.com/mikeki/ocf-ims/internal/push"
 	"github.com/mikeki/ocf-ims/internal/server"
 	"github.com/mikeki/ocf-ims/lib/attachment"
 	"github.com/mikeki/ocf-ims/lib/authz"
@@ -321,59 +319,10 @@ func AddToMux(
 		),
 	)
 
-	// Notifications (plan 82): per-person (the caller's own), so only
-	// authentication is required — no event scoping.
-	mux.Handle("GET /ims/api/notifications",
-		server.Adapt(
-			notification.GetNotifications{ImsDBQ: db, UserStore: userStore, CacheControlShort: cfg.Core.CacheControlShort},
-			server.RecoverFromPanic(),
-			server.RequireAuthN(jwter),
-			server.LogRequest(false, actionLogger, userStore),
-			server.LimitRequestBytes(cfg.Core.MaxRequestBytes),
-		),
-	)
-
-	mux.Handle("POST /ims/api/notifications/read",
-		server.Adapt(
-			notification.MarkNotificationsRead{ImsDBQ: db, UserStore: userStore},
-			server.RecoverFromPanic(),
-			server.RequireAuthN(jwter),
-			server.LogRequest(true, actionLogger, userStore),
-			server.LimitRequestBytes(cfg.Core.MaxRequestBytes),
-		),
-	)
-
-	mux.Handle("POST /ims/api/notifications/{notificationId}/read",
-		server.Adapt(
-			notification.MarkNotificationsRead{ImsDBQ: db, UserStore: userStore},
-			server.RecoverFromPanic(),
-			server.RequireAuthN(jwter),
-			server.LogRequest(true, actionLogger, userStore),
-			server.LimitRequestBytes(cfg.Core.MaxRequestBytes),
-		),
-	)
-
-	// Web push subscriptions (plan 84): per-person, per-device, so only
-	// authentication is required — no event scoping. Mutating, so server.LogRequest(true).
-	mux.Handle("POST /ims/api/push/subscribe",
-		server.Adapt(
-			push.PostPushSubscribe{ImsDBQ: db},
-			server.RecoverFromPanic(),
-			server.RequireAuthN(jwter),
-			server.LogRequest(true, actionLogger, userStore),
-			server.LimitRequestBytes(cfg.Core.MaxRequestBytes),
-		),
-	)
-
-	mux.Handle("DELETE /ims/api/push/subscribe",
-		server.Adapt(
-			push.DeletePushSubscribe{ImsDBQ: db},
-			server.RecoverFromPanic(),
-			server.RequireAuthN(jwter),
-			server.LogRequest(true, actionLogger, userStore),
-			server.LimitRequestBytes(cfg.Core.MaxRequestBytes),
-		),
-	)
+	// Notifications (plan 82, per-person) and web-push subscriptions (plan 84, per-device) moved to
+	// the ImsService RPCs (plan 09h/1c) and their REST routes were retired: GET /notifications →
+	// ListNotifications, POST /notifications/read[/{id}] → MarkAllNotificationsRead /
+	// MarkNotificationRead, and POST/DELETE /push/subscribe → SubscribePush / UnsubscribePush.
 
 	mux.Handle("GET /ims/api/eventsource",
 		server.Adapt(

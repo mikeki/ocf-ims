@@ -31,8 +31,10 @@ import (
 	"github.com/mikeki/ocf-ims/internal/event"
 	"github.com/mikeki/ocf-ims/internal/incident"
 	"github.com/mikeki/ocf-ims/internal/incidenttype"
+	"github.com/mikeki/ocf-ims/internal/notification"
 	"github.com/mikeki/ocf-ims/internal/outcome"
 	"github.com/mikeki/ocf-ims/internal/person"
+	"github.com/mikeki/ocf-ims/internal/push"
 	"github.com/mikeki/ocf-ims/internal/server"
 	"github.com/mikeki/ocf-ims/lib/attachment"
 	"github.com/mikeki/ocf-ims/lib/authz"
@@ -69,6 +71,8 @@ type ImsService struct {
 	Outcome      outcome.Service
 	Area         area.Service
 	Crew         crew.Service
+	Notification notification.Service
+	Push         push.Service
 }
 
 // ListEvents is a thin RPC method over the event.ListEvents domain method (plan
@@ -787,6 +791,69 @@ func (s ImsService) SetMyCrewMembership(
 	return connect.NewResponse(resp), nil
 }
 
+// The three notification RPCs below are thin methods over notification.Service (connect.go, plan
+// 09h/1c), retiring REST GET /notifications and POST /notifications/read[/{id}].
+
+func (s ImsService) ListNotifications(
+	ctx context.Context,
+	req *connect.Request[servicerpcv1.ListNotificationsRequest],
+) (*connect.Response[servicerpcv1.ListNotificationsResponse], error) {
+	resp, err := s.Notification.ListNotifications(ctx, req.Msg)
+	if err != nil {
+		return nil, err
+	}
+	return connect.NewResponse(resp), nil
+}
+
+func (s ImsService) MarkAllNotificationsRead(
+	ctx context.Context,
+	req *connect.Request[servicerpcv1.MarkAllNotificationsReadRequest],
+) (*connect.Response[servicerpcv1.MarkAllNotificationsReadResponse], error) {
+	resp, err := s.Notification.MarkAllNotificationsRead(ctx, req.Msg)
+	if err != nil {
+		return nil, err
+	}
+	return connect.NewResponse(resp), nil
+}
+
+func (s ImsService) MarkNotificationRead(
+	ctx context.Context,
+	req *connect.Request[servicerpcv1.MarkNotificationReadRequest],
+) (*connect.Response[servicerpcv1.MarkNotificationReadResponse], error) {
+	resp, err := s.Notification.MarkNotificationRead(ctx, req.Msg)
+	if err != nil {
+		return nil, err
+	}
+	return connect.NewResponse(resp), nil
+}
+
+// The two web-push RPCs below are thin methods over push.Service (connect.go, plan 09h/1c), retiring
+// REST POST/DELETE /push/subscribe. SubscribePush lifts the best-effort device label (User-Agent) off
+// the request here at the HTTP boundary and hands it to the domain method as a plain string, mirroring
+// how Login derives the client IP in its delegate.
+
+func (s ImsService) SubscribePush(
+	ctx context.Context,
+	req *connect.Request[servicerpcv1.SubscribePushRequest],
+) (*connect.Response[servicerpcv1.SubscribePushResponse], error) {
+	resp, err := s.Push.SubscribePush(ctx, req.Msg, req.Header().Get("User-Agent"))
+	if err != nil {
+		return nil, err
+	}
+	return connect.NewResponse(resp), nil
+}
+
+func (s ImsService) UnsubscribePush(
+	ctx context.Context,
+	req *connect.Request[servicerpcv1.UnsubscribePushRequest],
+) (*connect.Response[servicerpcv1.UnsubscribePushResponse], error) {
+	resp, err := s.Push.UnsubscribePush(ctx, req.Msg)
+	if err != nil {
+		return nil, err
+	}
+	return connect.NewResponse(resp), nil
+}
+
 // AddConnectToMux registers the ImsService Connect handler on the shared mux
 // next to AddToMux (plan 09g). connect handlers are plain http.Handlers mounted
 // at a path prefix, so the RPC surface coexists with the REST/web routes on one
@@ -886,6 +953,8 @@ func AddConnectToMux(
 				UserStore: userStore,
 				Crews:     crewsCache,
 			},
+			Notification: notification.Service{ImsDBQ: imsDBQ, UserStore: userStore},
+			Push:         push.Service{ImsDBQ: imsDBQ},
 		},
 		connect.WithInterceptors(interceptors...),
 	)
