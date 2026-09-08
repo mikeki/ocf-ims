@@ -119,12 +119,24 @@ func (a ApiHelper) setPersonPasswordDefault(ctx context.Context, personID int64)
 	return a.imsPost(ctx, personapi.SetPersonPasswordRequest{UseDefaultPassword: true}, path)
 }
 
-// changeOwnPassword calls the self-service endpoint (the caller sets their own
-// password, resolved from their JWT).
+// changeOwnPassword calls the self-service password change through the generated Connect
+// client (ChangeOwnPassword). The REST POST /ims/api/auth/password endpoint was retired when
+// the RPC was extracted (plan 09h/1c); the caller is resolved from the JWT, never a field. The
+// retired endpoint returned 204 on success, mirrored by the synthesized *http.Response (else
+// connectStatus(err)), so the call sites' status assertions are unchanged.
 func (a ApiHelper) changeOwnPassword(ctx context.Context, password string) *http.Response {
 	a.t.Helper()
-	path := a.serverURL.JoinPath("/ims/api/auth/password").String()
-	return a.imsPost(ctx, personapi.SetOwnPasswordRequest{Password: password}, path)
+	client := servicev1connect.NewImsServiceClient(http.DefaultClient, a.serverURL.String())
+	rpcReq := connect.NewRequest(&servicerpcv1.ChangeOwnPasswordRequest{Password: password})
+	if a.jwt != "" {
+		rpcReq.Header().Set("Authorization", "Bearer "+a.jwt)
+	}
+	_, err := client.ChangeOwnPassword(ctx, rpcReq)
+	status := http.StatusNoContent
+	if err != nil {
+		status = connectStatus(err)
+	}
+	return &http.Response{StatusCode: status, Body: http.NoBody}
 }
 
 func (a ApiHelper) setPersonAdmin(ctx context.Context, personID int64, isAdmin bool) *http.Response {

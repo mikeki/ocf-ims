@@ -82,7 +82,7 @@ func newTestConnectClientWithLogger(t *testing.T, logger server.ActionLogger) (s
 	// queries the DB is covered by the api/integration suite instead. es / metricsCache /
 	// pushSender are nil for the same reason — only the incident-mutation RPCs touch them,
 	// and those are exercised in api/integration, not here.
-	mux := api.AddConnectToMux(http.NewServeMux(), cfg, nil, logger, nil, nil, nil, nil)
+	mux := api.AddConnectToMux(http.NewServeMux(), cfg, nil, logger, nil, nil, nil, nil, nil)
 
 	srv := httptest.NewServer(mux)
 	t.Cleanup(srv.Close)

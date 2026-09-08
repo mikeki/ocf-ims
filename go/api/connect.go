@@ -27,7 +27,9 @@ import (
 	"github.com/mikeki/ocf-ims/gen/ocf/ims/service/v1/servicev1connect"
 	"github.com/mikeki/ocf-ims/internal/event"
 	"github.com/mikeki/ocf-ims/internal/incident"
+	"github.com/mikeki/ocf-ims/internal/person"
 	"github.com/mikeki/ocf-ims/internal/server"
+	"github.com/mikeki/ocf-ims/lib/attachment"
 	"github.com/mikeki/ocf-ims/lib/authz"
 	pushlib "github.com/mikeki/ocf-ims/lib/push"
 	"github.com/mikeki/ocf-ims/store"
@@ -56,6 +58,7 @@ type ImsService struct {
 	// in so a Connect write fans out and invalidates exactly as the REST surface does.
 	Event    event.Service
 	Incident incident.Service
+	Person   person.Service
 }
 
 // ListEvents is a thin RPC method over the event.ListEvents domain method (plan
@@ -289,6 +292,51 @@ func (ImsService) GetAuthStatus(
 	}), nil
 }
 
+// ChangeOwnPassword is a thin RPC method over the person.ChangeOwnPassword domain method (plan
+// 09h/1c). Its REST predecessor (POST /auth/password) was deleted in the same slice, so this is the
+// only transport for a caller changing their own password. The domain method authorizes from ctx
+// claims (the JWT subject is the target) and speaks Connect errors, so this just delegates.
+func (s ImsService) ChangeOwnPassword(
+	ctx context.Context,
+	req *connect.Request[servicerpcv1.ChangeOwnPasswordRequest],
+) (*connect.Response[servicerpcv1.ChangeOwnPasswordResponse], error) {
+	resp, err := s.Person.ChangeOwnPassword(ctx, req.Msg)
+	if err != nil {
+		return nil, err
+	}
+	return connect.NewResponse(resp), nil
+}
+
+// UpdateOwnProfile is a thin RPC method over the person.UpdateOwnProfile domain method (plan
+// 09h/1c). Its REST predecessor (POST /auth/profile) was deleted in the same slice, so this is the
+// only transport for a caller editing their own identity/contact fields. The domain method
+// authorizes from ctx claims and speaks Connect errors, so this just delegates.
+func (s ImsService) UpdateOwnProfile(
+	ctx context.Context,
+	req *connect.Request[servicerpcv1.UpdateOwnProfileRequest],
+) (*connect.Response[servicerpcv1.UpdateOwnProfileResponse], error) {
+	resp, err := s.Person.UpdateOwnProfile(ctx, req.Msg)
+	if err != nil {
+		return nil, err
+	}
+	return connect.NewResponse(resp), nil
+}
+
+// DeleteOwnProfilePicture is a thin RPC method over the person.DeleteOwnProfilePicture domain method
+// (plan 09h/1c). Its REST predecessor (DELETE /auth/picture) was deleted in the same slice, so this
+// is the only transport for a caller removing their own picture. The domain method authorizes from
+// ctx claims and speaks Connect errors, so this just delegates. (The picture *upload* stays REST.)
+func (s ImsService) DeleteOwnProfilePicture(
+	ctx context.Context,
+	req *connect.Request[servicerpcv1.DeleteOwnProfilePictureRequest],
+) (*connect.Response[servicerpcv1.DeleteOwnProfilePictureResponse], error) {
+	resp, err := s.Person.DeleteOwnProfilePicture(ctx, req.Msg)
+	if err != nil {
+		return nil, err
+	}
+	return connect.NewResponse(resp), nil
+}
+
 // AddConnectToMux registers the ImsService Connect handler on the shared mux
 // next to AddToMux (plan 09g). connect handlers are plain http.Handlers mounted
 // at a path prefix, so the RPC surface coexists with the REST/web routes on one
@@ -305,6 +353,7 @@ func AddConnectToMux(
 	es *server.EventSourcerer,
 	metricsCache *server.MetricsCache,
 	pushSender pushlib.Sender,
+	s3Client *attachment.S3Client,
 ) *http.ServeMux {
 	if mux == nil {
 		mux = http.NewServeMux()
@@ -329,6 +378,13 @@ func AddConnectToMux(
 				Pusher:             pusher,
 				Metrics:            metricsCache,
 				AttachmentsEnabled: attachmentsEnabled,
+			},
+			Person: person.Service{
+				ImsDBQ:           imsDBQ,
+				UserStore:        userStore,
+				DefaultPassword:  cfg.Core.DefaultPassword,
+				AttachmentsStore: cfg.AttachmentsStore,
+				S3Client:         s3Client,
 			},
 		},
 		connect.WithInterceptors(interceptors...),
