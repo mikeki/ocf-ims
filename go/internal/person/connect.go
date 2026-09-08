@@ -69,7 +69,7 @@ func (s Service) ListPersonnel(
 		return nil, connect.NewError(connect.CodeUnauthenticated, errors.New("authentication required"))
 	}
 	people, errHTTP := s.listPersonnel(ctx, *claims,
-		req.GetEventId(), req.GetQuery(), req.GetAll(), req.GetShowAll(), req.GetPersonId())
+		req.GetEventId(), req.GetQuery(), req.GetAll(), req.GetShowAll(), req.GetPersonIds())
 	if errHTTP != nil {
 		return nil, server.HerrToConnect(errHTTP)
 	}

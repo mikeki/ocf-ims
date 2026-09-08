@@ -286,11 +286,17 @@ writes are the next PR. The REST `GET /personnel` handler was a 4-mode multiplex
 profile-card `?person_id=`, admin/roster `?all=`+`?showAll=`, default directory); its assembly is
 ported verbatim into a ctx-based `listPersonnel` in `personnel.go` that still produces `imsjson.Person`
 (the shared read shape), and `connect.go` bridges the result to the wire (`personToProto`). Two contract
-fill-ins: the 0e `ListPersonnelRequest` had `event_id`/`query`/`all` but the multiplexer also needs
-**`person_id`** (profile-card mode) and **`show_all`**, so both were added (the standing "a list RPC
-grows a field per REST query param it can't read off the URL" move). The event scope is keyed by id, not
-name, so the REST name-validation-400 and the non-numeric-`person_id`-400 cases have no analogue and were
-dropped (matching the GetAuthStatus extraction). The retired route's auth coverage relocated from the
+fill-ins: the 0e `ListPersonnelRequest` had `event_id`/`query`/`all` but the multiplexer also needs a
+by-id selector (profile-card mode) and **`show_all`**, so both were added (the standing "a list RPC
+grows a field per REST query param it can't read off the URL" move). The by-id selector is
+**`person_ids`**, a `repeated int32` (protovalidate: 1..100 positive, unique), not the REST singular
+`?person_id=`: on a *list* RPC an id selector is a filter, so it is plural, keeps request order, and
+simply omits an id that matches no person (the REST 404 has no analogue) — the profile card sends one
+id, and the Phase-3 client can resolve an incident's attached people in one call. The batch is two
+queries (`PeopleByIDs` + `PersonEventsForPeople`, the repo's first `sqlc.slice` uses) plus the roster's
+existing per-event crew query; the single-person `PersonCrews` query retired with it. The event scope is
+keyed by id, not name, so the REST name-validation-400 and the non-numeric-`person_id`-400 cases have no
+analogue and were dropped (matching the GetAuthStatus extraction). The retired route's auth coverage relocated from the
 `TestAnyUnauthenticatedUserEndpoints` sweep into a focused `TestListPersonnelAuthorization` (unauth→401,
 any-authenticated→200 for the directory listing, non-admin `all=true`→403). ListPersonnel is
 `NO_SIDE_EFFECTS`.

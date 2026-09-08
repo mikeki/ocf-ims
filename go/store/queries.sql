@@ -910,22 +910,6 @@ where
 order by cm.`IS_LEADER` desc, p.HANDLE, p.NAME
 ;
 
--- name: PersonCrews :many
--- The crews a person belongs to for an event (with the crew's display name and
--- whether the person leads it). Drives the People roster / profile-card crew field.
-select
-    cm.`CREW_SLUG`,
-    cm.`IS_LEADER`,
-    c.`NAME` as CREW_NAME
-from
-    CREW_MEMBERSHIP cm
-    join CREW c on c.`EVENT` = cm.`EVENT` and c.`SLUG` = cm.`CREW_SLUG`
-where
-    cm.`EVENT` = ?
-    and cm.`PERSON_ID` = ?
-order by c.`SORT_ORDER`, c.`NAME`
-;
-
 -- name: CrewsLedByPerson :many
 -- The crew slugs a person leads for an event (IS_LEADER = true). Used to derive the
 -- crew_leader read-only role and to scope which crews' reports a leader may review.
@@ -1226,6 +1210,15 @@ select ID, HANDLE, NAME, EMAIL, PHONE, IS_ADMIN, PROFILE_PICTURE, PASSWORD is no
 from PERSON
 where ID = ?;
 
+-- name: PeopleByIDs :many
+-- The by-id personnel lookup (ListPersonnel person_ids), one query for the whole set:
+-- the profile card asks for one person, a client resolving an incident's attached
+-- people asks for several. Same projection as PersonByID (never the password hash).
+-- Ids that match no row are simply absent; the caller restores request order.
+select ID, HANDLE, NAME, EMAIL, PHONE, IS_ADMIN, PROFILE_PICTURE, PASSWORD is not null as HAS_PASSWORD
+from PERSON
+where ID in (sqlc.slice('ids'));
+
 -- name: CreatePerson :execlastid
 insert into PERSON (HANDLE, NAME, EMAIL, PHONE, PASSWORD, CREATED, PASSWORD_CHANGED)
 values (?, ?, ?, ?, ?, ?, ?);
@@ -1304,6 +1297,14 @@ limit 25;
 select PERSON_ID, EVENT, WRISTBAND, PARTICIPATION_TYPE
 from PERSON__EVENT
 where PERSON_ID = ? and EVENT = ?;
+
+-- PersonEventsForPeople returns the participation rows of a set of people in one event
+-- (the by-id lookup's per-event columns, fetched once for the whole set rather than one
+-- PersonEvent per person). People with no row for the event are simply absent.
+-- name: PersonEventsForPeople :many
+select PERSON_ID, EVENT, WRISTBAND, PARTICIPATION_TYPE
+from PERSON__EVENT
+where EVENT = ? and PERSON_ID in (sqlc.slice('person_ids'));
 
 -- PersonEventsForPerson returns every per-event participation row for one person.
 -- It backs the cross-event permission map (plan 52b: access derives from

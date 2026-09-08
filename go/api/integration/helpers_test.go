@@ -253,12 +253,21 @@ func (a ApiHelper) getEventRoster(ctx context.Context, eventName string) ([]imsj
 	return a.listPersonnel(ctx, &servicerpcv1.ListPersonnelRequest{All: true, EventId: &id})
 }
 
-// getPersonnelByID fetches one person's profile-card view (person_id [+ event]), scoped to an
-// event so the row carries that event's participation. Backs the person profile card.
+// getPersonnelByID fetches one person's profile-card view (person_ids = [id] [+ event]), scoped
+// to an event so the row carries that event's participation. Backs the person profile card.
 func (a ApiHelper) getPersonnelByID(ctx context.Context, personID int64, eventName string) ([]imsjson.Person, *http.Response) {
 	a.t.Helper()
-	pid := int32(personID)
-	req := &servicerpcv1.ListPersonnelRequest{PersonId: &pid}
+	return a.getPersonnelByIDs(ctx, []int64{personID}, eventName)
+}
+
+// getPersonnelByIDs is the batch form of the by-id lookup (ListPersonnel person_ids): the
+// listing filtered to exactly those people, in request order, with unknown ids omitted.
+func (a ApiHelper) getPersonnelByIDs(ctx context.Context, personIDs []int64, eventName string) ([]imsjson.Person, *http.Response) {
+	a.t.Helper()
+	req := &servicerpcv1.ListPersonnelRequest{PersonIds: make([]int32, 0, len(personIDs))}
+	for _, id := range personIDs {
+		req.PersonIds = append(req.PersonIds, int32(id))
+	}
 	if eventName != "" {
 		id := a.resolveEventID(ctx, eventName)
 		req.EventId = &id

@@ -37,16 +37,16 @@ import (
 // (the RPC rejects anon); GlobalReadPersonnel is the floor checked here.
 //
 // Modes, in precedence order (matching the REST handler): a non-empty query is the
-// event-scoped typeahead; a positive personID is the single-person profile card; all is
-// the admin/roster listing (with showAll expanding an event roster to everyone); the
-// default is the cached login directory.
+// event-scoped typeahead; a non-empty personIDs is the by-id filter (the profile card, or a
+// batch resolve); all is the admin/roster listing (with showAll expanding an event roster to
+// everyone); the default is the cached login directory.
 func (s Service) listPersonnel(
 	ctx context.Context,
 	claims authz.IMSClaims,
 	eventID int32,
 	query string,
 	all, showAll bool,
-	personID int32,
+	personIDs []int32,
 ) ([]imsjson.Person, *herr.HTTPError) {
 	response := make([]imsjson.Person, 0)
 	_, globalPermissions, err := authz.EventPermissions(ctx, nil, s.ImsDBQ, claims)
@@ -65,14 +65,16 @@ func (s Service) listPersonnel(
 		return s.searchPersonnel(ctx, eventID, q)
 	}
 
-	// A person_id lookup backs the person profile card: clicking a person in an incident's
-	// People list opens a card showing their details. It returns that one person's identity
-	// (fair name + legal name) and — when an event is scoped — their participation in that
-	// event, with email/phone included only for a personnel admin, mirroring the all=
-	// listing's contact gate. Any logged-in user (GlobalReadPersonnel, checked above) may
-	// see identity + participation; only an admin sees contact info.
-	if personID > 0 {
-		return s.personnelByID(ctx, personID, eventID, globalPermissions, claims.PersonID())
+	// A person_ids lookup filters the listing to exactly those people. It backs the person
+	// profile card (clicking a person in an incident's People list sends that one id) and lets
+	// a client resolve an incident's attached people in one call. Each row carries identity
+	// (fair name + legal name) and — when an event is scoped — participation and crews in that
+	// event, with email/phone included only for a personnel admin or on the caller's own row,
+	// mirroring the all= listing's contact gate. Any logged-in user (GlobalReadPersonnel,
+	// checked above) may see identity + participation; only an admin sees contact info.
+	// protovalidate has already bounded the list (1..100 positive, unique ids).
+	if len(personIDs) > 0 {
+		return s.personnelByIDs(ctx, personIDs, eventID, globalPermissions, claims.PersonID())
 	}
 
 	// The admin People page requests all=true to manage every person, including inactive
@@ -215,89 +217,97 @@ func (s Service) listAllPersonnel(
 	return response, nil
 }
 
-// personnelByID returns a single person for the profile card. Identity (fair name + legal
-// name) goes to any authenticated viewer; email/phone are gated on GlobalAdministratePersonnel
-// (or the person viewing their own card), exactly like the all= admin listing. With an event
-// scoped, the person's wristband + participation type + crews for that event are included
-// (empty if they have no row for it).
-func (s Service) personnelByID(
+// personnelByIDs is the person_ids branch of listPersonnel: the profile card (one id) and the
+// batch resolve (several). It is a list FILTER, not a get — the result is exactly the requested
+// people, in request order, and an id that matches no person is simply absent rather than an
+// error (protovalidate already bounds the list to 1..100 positive, unique ids). Identity + picture
+// go to any authenticated viewer; email/phone are gated on GlobalAdministratePersonnel or on the
+// caller's own row, exactly like the all= admin listing; the admin flag stays admin-only. With an
+// event scoped, each person's wristband + participation type + crews for that event are included
+// (empty if they have no row for it). Three set queries regardless of how many ids: the people,
+// their participation rows, and the event's crew memberships.
+func (s Service) personnelByIDs(
 	ctx context.Context,
-	personID, eventID int32,
+	personIDs []int32,
+	eventID int32,
 	globalPermissions authz.GlobalPermissionMask,
 	callerID int32,
 ) ([]imsjson.Person, *herr.HTTPError) {
-	response := make([]imsjson.Person, 0)
-	person, err := s.ImsDBQ.PersonByID(ctx, s.ImsDBQ, personID)
-	if errors.Is(err, sql.ErrNoRows) {
-		return response, herr.NotFound("No such person", err)
-	}
+	response := make([]imsjson.Person, 0, len(personIDs))
+	rows, err := s.ImsDBQ.PeopleByIDs(ctx, s.ImsDBQ, personIDs)
 	if err != nil {
-		return response, herr.InternalServerError("Failed to get person", err).From("[PersonByID]")
+		return response, herr.InternalServerError("Failed to get people", err).From("[PeopleByIDs]")
 	}
+	byID := make(map[int32]imsdb.PeopleByIDsRow, len(rows))
+	for _, row := range rows {
+		byID[row.ID] = row
+	}
+	isPersonnelAdmin := globalPermissions&authz.GlobalAdministratePersonnel != 0
 
-	p := imsjson.Person{
-		PersonID: int64(person.ID),
-		Handle:   person.Handle.String,
-		Name:     person.Name.String,
-	}
-	// A profile picture is an identification aid, not contact PII, so its URL goes to anyone
-	// who can open the card (unlike email/phone below). Sent only when the person actually has
-	// one; the URL points at the picture serve endpoint.
-	if person.ProfilePicture.Valid && person.ProfilePicture.String != "" {
-		url := personProfilePictureURL(person.ID)
-		p.ProfilePictureURL = &url
-	}
-	// Contact info is shown to a personnel admin (like the all= listing) and to the person
-	// viewing their OWN card — they need to see and self-edit their email/phone. The admin flag
-	// stays admin-only (it's not self-editable and not the viewer's concern on their own card).
-	isSelf := callerID > 0 && person.ID == callerID
-	if globalPermissions&authz.GlobalAdministratePersonnel != 0 || isSelf {
-		p.Email = person.Email.String
-		p.Phone = person.Phone.String
-	}
-	if globalPermissions&authz.GlobalAdministratePersonnel != 0 {
-		p.IsAdmin = person.IsAdmin
-	}
-
-	// With an event scoped, include that event's participation + wristband — the same per-event
-	// fields the roster/typeahead carry. A missing row is not an error.
+	// With an event scoped, include that event's participation + wristband and crews — the same
+	// per-event fields the roster carries — fetched once for the whole set (no N+1). A person
+	// with no participation row for the event is not an error; their per-event fields stay empty.
+	var participation map[int32]imsdb.PersonEvent
+	var crewsByPerson map[int32][]imsjson.PersonCrew
 	if eventID != 0 {
 		errHTTP := s.requireEvent(ctx, eventID)
 		if errHTTP != nil {
 			return response, errHTTP
 		}
-		pe, err := s.ImsDBQ.PersonEvent(ctx, s.ImsDBQ, imsdb.PersonEventParams{
-			PersonID: person.ID,
-			Event:    eventID,
-		})
-		switch {
-		case err == nil:
-			p.Wristband = pe.Wristband.String
-			p.ParticipationType = string(pe.ParticipationType)
-		case errors.Is(err, sql.ErrNoRows):
-			// No participation row for this event — leave the fields empty.
-		default:
-			return response, herr.InternalServerError("Failed to get participation", err).From("[PersonEvent]")
-		}
-
-		// The person's crews for this event (slice 10c), shown on the profile card.
-		crewRows, err := s.ImsDBQ.PersonCrews(ctx, s.ImsDBQ, imsdb.PersonCrewsParams{
-			Event:    eventID,
-			PersonID: person.ID,
+		peRows, err := s.ImsDBQ.PersonEventsForPeople(ctx, s.ImsDBQ, imsdb.PersonEventsForPeopleParams{
+			Event:     eventID,
+			PersonIds: personIDs,
 		})
 		if err != nil {
-			return response, herr.InternalServerError("Failed to get crews", err).From("[PersonCrews]")
+			return response, herr.InternalServerError("Failed to get participation", err).From("[PersonEventsForPeople]")
 		}
-		for _, cr := range crewRows {
-			p.Crews = append(p.Crews, imsjson.PersonCrew{
-				Name:     cr.CrewName,
-				Slug:     cr.CrewSlug,
-				IsLeader: cr.IsLeader,
-			})
+		participation = make(map[int32]imsdb.PersonEvent, len(peRows))
+		for _, pe := range peRows {
+			participation[pe.PersonID] = pe
+		}
+		crewsByPerson, err = crewsByPersonForEvent(ctx, s.ImsDBQ, eventID)
+		if err != nil {
+			return response, herr.InternalServerError("Failed to get crew memberships", err).From("[EventCrewMemberships]")
 		}
 	}
 
-	response = append(response, p)
+	for _, id := range personIDs {
+		person, found := byID[id]
+		if !found {
+			// A list filter: an unknown id is absent from the result, not a 404.
+			continue
+		}
+		p := imsjson.Person{
+			PersonID: int64(person.ID),
+			Handle:   person.Handle.String,
+			Name:     person.Name.String,
+		}
+		// A profile picture is an identification aid, not contact PII, so its URL goes to anyone
+		// who can open the card (unlike email/phone below). Sent only when the person actually
+		// has one; the URL points at the picture serve endpoint.
+		if person.ProfilePicture.Valid && person.ProfilePicture.String != "" {
+			url := personProfilePictureURL(person.ID)
+			p.ProfilePictureURL = &url
+		}
+		// Contact info is shown to a personnel admin (like the all= listing) and to the person
+		// viewing their OWN row — they need to see and self-edit their email/phone. The admin
+		// flag stays admin-only (it's not self-editable and not the viewer's concern on their
+		// own card).
+		isSelf := callerID > 0 && person.ID == callerID
+		if isPersonnelAdmin || isSelf {
+			p.Email = person.Email.String
+			p.Phone = person.Phone.String
+		}
+		if isPersonnelAdmin {
+			p.IsAdmin = person.IsAdmin
+		}
+		if pe, enrolled := participation[person.ID]; enrolled {
+			p.Wristband = pe.Wristband.String
+			p.ParticipationType = string(pe.ParticipationType)
+		}
+		p.Crews = crewsByPerson[person.ID]
+		response = append(response, p)
+	}
 	return response, nil
 }
 

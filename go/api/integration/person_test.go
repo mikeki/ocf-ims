@@ -430,11 +430,13 @@ func TestEventRosterAddRemove(t *testing.T) {
 	require.NoError(t, resp.Body.Close())
 }
 
-// TestPersonProfileCard exercises the by-id lookup that backs the person profile
-// card (GET /ims/api/personnel?person_id=&event=). It asserts the role-gated shape:
-// identity (fair name + full legal name) and the event's participation go to any
-// authenticated viewer, while email/phone are withheld from a non-admin and included
-// for a personnel admin. It also covers the not-found and invalid-id guards.
+// TestPersonProfileCard exercises the by-id lookup that backs the person profile card
+// (ListPersonnel with person_ids, the successor of GET /ims/api/personnel?person_id=&event=).
+// It asserts the role-gated shape: identity (fair name + full legal name) and the event's
+// participation go to any authenticated viewer, while email/phone are withheld from a
+// non-admin and included for a personnel admin. It also covers the list-filter semantics
+// of person_ids (unknown id → absent, several ids → request order, per-row contact gate)
+// and the protovalidate bounds on the ids.
 func TestPersonProfileCard(t *testing.T) {
 	t.Parallel()
 	ctx := t.Context()
@@ -502,13 +504,39 @@ func TestPersonProfileCard(t *testing.T) {
 	require.Empty(t, people[0].Wristband)
 	require.Equal(t, handle, people[0].Handle)
 
-	// A nonexistent person id is a 404.
-	_, resp = apisAlice.getPersonnelByID(ctx, 999999999, eventName)
-	require.Equal(t, http.StatusNotFound, resp.StatusCode)
+	// An unknown person id is not an error: person_ids is a list filter, so the id is simply
+	// absent from the result — an empty list here. (REST answered 404 for ?person_id=.)
+	people, resp = apisAlice.getPersonnelByID(ctx, nonexistentPersonID, eventName)
+	require.Equal(t, http.StatusOK, resp.StatusCode)
+	require.NoError(t, resp.Body.Close())
+	require.Empty(t, people)
+
+	// Several ids resolve in one call, in request order, with the contact gate applied per
+	// row: Alice (a non-admin) sees her own email but not the subject's, and the unknown id
+	// in the middle is dropped rather than failing the whole call.
+	people, resp = apisAlice.getPersonnelByIDs(ctx, []int64{subjectID, nonexistentPersonID, userAlicePersonID}, eventName)
+	require.Equal(t, http.StatusOK, resp.StatusCode)
+	require.NoError(t, resp.Body.Close())
+	require.Len(t, people, 2)
+	require.Equal(t, subjectID, people[0].PersonID)
+	require.Equal(t, "WB-42", people[0].Wristband)
+	require.Empty(t, people[0].Email, "another person's email stays admin-only on a batch read")
+	require.Equal(t, int64(userAlicePersonID), people[1].PersonID)
+	require.NotEmpty(t, people[1].Email, "a person sees their own email on a batch read too")
+	require.Empty(t, people[1].Wristband, "Alice is not enrolled in this event")
+
+	// protovalidate bounds the filter: ids must be positive and unique. (REST returned 400 for
+	// person_id <= 0; without the constraint a non-positive id would fall through the mode
+	// check into the directory listing and answer 200 in the wrong mode.)
+	_, resp = apisAlice.getPersonnelByIDs(ctx, []int64{0}, "")
+	require.Equal(t, http.StatusBadRequest, resp.StatusCode)
+	require.NoError(t, resp.Body.Close())
+	_, resp = apisAlice.getPersonnelByIDs(ctx, []int64{subjectID, subjectID}, "")
+	require.Equal(t, http.StatusBadRequest, resp.StatusCode)
 	require.NoError(t, resp.Body.Close())
 
 	// (The REST "non-numeric person_id is a 400" case has no analogue: the contract types
-	// person_id as an int32, so a non-numeric value can't be sent — dropped with the RPC
+	// person_ids as int32s, so a non-numeric value can't be sent — dropped with the RPC
 	// extraction, like the GetAuthStatus name-validation-400 case.)
 }
 
