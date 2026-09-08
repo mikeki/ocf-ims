@@ -27,7 +27,6 @@ import (
 	"github.com/mikeki/ocf-ims/internal/area"
 	"github.com/mikeki/ocf-ims/internal/crew"
 	"github.com/mikeki/ocf-ims/internal/debug"
-	"github.com/mikeki/ocf-ims/internal/event"
 	"github.com/mikeki/ocf-ims/internal/incident"
 	"github.com/mikeki/ocf-ims/internal/metrics"
 	"github.com/mikeki/ocf-ims/internal/notification"
@@ -342,21 +341,12 @@ func AddToMux(
 		),
 	)
 
-	// GET /ims/api/events was retired: listing events is now the ListEvents RPC
-	// (plan 09h/1c). Per the migration decision (plan 09 §Migration strategy), a
-	// resource's REST reads are DELETED as they are extracted rather than kept as
-	// shims — there is no live product to protect in the off-season, and the templ
-	// UI is being replaced by the Expo client, not ported. POST /events (event
-	// create/update) is still REST until its own extraction lands.
-	mux.Handle("POST /ims/api/events",
-		server.Adapt(
-			event.EditEvent{ImsDBQ: db, UserStore: userStore},
-			server.RecoverFromPanic(),
-			server.RequireAuthN(jwter),
-			server.LogRequest(true, actionLogger, userStore),
-			server.LimitRequestBytes(cfg.Core.MaxRequestBytes),
-		),
-	)
+	// The event read + create/update moved to the ImsService RPCs (plan 09h/1c) and their REST
+	// routes were retired: GET /events → ListEvents, and the POST /events multiplexer (EditEvent)
+	// decomposed into CreateEvent / UpdateEvent. Per the migration decision (plan 09 §Migration
+	// strategy) a resource's REST surface is DELETED as it is extracted rather than kept as a shim —
+	// there is no live product to protect in the off-season, and the templ UI is being replaced by
+	// the Expo client, not ported.
 
 	// The incident-type read + all writes (the POST multiplexer, decomposed into
 	// Create/Update/Approve/SetHidden, and the event-scoped writer Propose) moved to the

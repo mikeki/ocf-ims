@@ -83,6 +83,31 @@ func (s ImsService) ListEvents(
 	return connect.NewResponse(resp), nil
 }
 
+// CreateEvent and UpdateEvent are thin methods over event.Service (plan 09h/1c). They decompose the
+// retired REST POST /events multiplexer (EditEvent) into an explicit create and update.
+
+func (s ImsService) CreateEvent(
+	ctx context.Context,
+	req *connect.Request[servicerpcv1.CreateEventRequest],
+) (*connect.Response[servicerpcv1.CreateEventResponse], error) {
+	resp, err := s.Event.CreateEvent(ctx, req.Msg)
+	if err != nil {
+		return nil, err
+	}
+	return connect.NewResponse(resp), nil
+}
+
+func (s ImsService) UpdateEvent(
+	ctx context.Context,
+	req *connect.Request[servicerpcv1.UpdateEventRequest],
+) (*connect.Response[servicerpcv1.UpdateEventResponse], error) {
+	resp, err := s.Event.UpdateEvent(ctx, req.Msg)
+	if err != nil {
+		return nil, err
+	}
+	return connect.NewResponse(resp), nil
+}
+
 // ListIncidents is a thin RPC method over the incident.ListIncidents domain method
 // (plan 09h/1c). Its REST predecessor (GET /events/{eventName}/incidents) was deleted in
 // the same slice, so this is the only transport for listing an event's incidents. The
