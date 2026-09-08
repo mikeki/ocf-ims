@@ -93,7 +93,10 @@ service ImsService {
   rpc UpdateEvent(rpc.v1.UpdateEventRequest) returns (rpc.v1.UpdateEventResponse);
 
   // --- Areas --- (POST /areas multiplexes these four verbs; see 09e)
-  rpc ListAreas(rpc.v1.ListAreasRequest) returns (rpc.v1.ListAreasResponse);
+  // A read (see the GetAuthStatus note): NO_SIDE_EFFECTS so the action-log interceptor skips it.
+  rpc ListAreas(rpc.v1.ListAreasRequest) returns (rpc.v1.ListAreasResponse) {
+    option idempotency_level = NO_SIDE_EFFECTS;
+  }
   rpc CreateArea(rpc.v1.CreateAreaRequest) returns (rpc.v1.CreateAreaResponse);
   rpc UpdateArea(rpc.v1.UpdateAreaRequest) returns (rpc.v1.UpdateAreaResponse);
   rpc ApproveArea(rpc.v1.ApproveAreaRequest) returns (rpc.v1.ApproveAreaResponse);

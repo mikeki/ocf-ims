@@ -320,6 +320,32 @@ func incidentTypeGroupPtrToString(g *resourcesv1.IncidentTypeGroup) *string {
 	return &s
 }
 
+// areaProtoToJSON maps a resources/v1.Area from the ListAreas RPC back to the legacy imsjson.Area the
+// area tests assert against — the inverse of the server's area.areaToProto. The optional scalars carry
+// straight across; the proposer PersonRef becomes a *Mention (reusing personRefToMention). Dies with
+// json/ when the read is rebuilt DB→proto.
+func areaProtoToJSON(p *resourcesv1.Area) imsjson.Area {
+	return imsjson.Area{
+		Slug:       p.GetSlug(),
+		Name:       p.Name,
+		ParentSlug: p.ParentSlug,
+		Approved:   p.Approved,
+		SortOrder:  p.SortOrder,
+		Proposer:   personRefToMention(p.GetProposer()),
+	}
+}
+
+// areaMsgFromJSON builds the resources/v1.Area the create/update area helpers send from the legacy
+// imsjson.Area the call sites still construct. Only the writable fields (name/parent_slug/sort_order)
+// are carried; the slug is either server-derived (create) or passed as the UpdateArea request key.
+func areaMsgFromJSON(req imsjson.Area) *resourcesv1.Area {
+	return &resourcesv1.Area{
+		Name:       req.Name,
+		ParentSlug: req.ParentSlug,
+		SortOrder:  req.SortOrder,
+	}
+}
+
 // eventMsgFromJSON builds the resources/v1.Event the create/update event helpers send from the
 // legacy imsjson.Event the call sites still construct. All fields carry straight across (the JSON
 // struct already uses pointers for the optional fields); id is not part of the write body (it is the

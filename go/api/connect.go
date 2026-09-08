@@ -25,6 +25,7 @@ import (
 	"github.com/mikeki/ocf-ims/directory"
 	servicerpcv1 "github.com/mikeki/ocf-ims/gen/ocf/ims/service/rpc/v1"
 	"github.com/mikeki/ocf-ims/gen/ocf/ims/service/v1/servicev1connect"
+	"github.com/mikeki/ocf-ims/internal/area"
 	"github.com/mikeki/ocf-ims/internal/auth"
 	"github.com/mikeki/ocf-ims/internal/event"
 	"github.com/mikeki/ocf-ims/internal/incident"
@@ -65,6 +66,7 @@ type ImsService struct {
 	Auth         auth.Service
 	IncidentType incidenttype.Service
 	Outcome      outcome.Service
+	Area         area.Service
 }
 
 // ListEvents is a thin RPC method over the event.ListEvents domain method (plan
@@ -642,6 +644,65 @@ func (s ImsService) ProposeOutcome(
 	return connect.NewResponse(resp), nil
 }
 
+// The five area RPCs below are thin methods over the matching area.Service domain methods (connect.go,
+// plan 09h/1c). The POST /areas multiplexer was decomposed into Create/Update/Approve/MarkDuplicate;
+// they retired their REST routes in the same slice.
+
+func (s ImsService) ListAreas(
+	ctx context.Context,
+	req *connect.Request[servicerpcv1.ListAreasRequest],
+) (*connect.Response[servicerpcv1.ListAreasResponse], error) {
+	resp, err := s.Area.ListAreas(ctx, req.Msg)
+	if err != nil {
+		return nil, err
+	}
+	return connect.NewResponse(resp), nil
+}
+
+func (s ImsService) CreateArea(
+	ctx context.Context,
+	req *connect.Request[servicerpcv1.CreateAreaRequest],
+) (*connect.Response[servicerpcv1.CreateAreaResponse], error) {
+	resp, err := s.Area.CreateArea(ctx, req.Msg)
+	if err != nil {
+		return nil, err
+	}
+	return connect.NewResponse(resp), nil
+}
+
+func (s ImsService) UpdateArea(
+	ctx context.Context,
+	req *connect.Request[servicerpcv1.UpdateAreaRequest],
+) (*connect.Response[servicerpcv1.UpdateAreaResponse], error) {
+	resp, err := s.Area.UpdateArea(ctx, req.Msg)
+	if err != nil {
+		return nil, err
+	}
+	return connect.NewResponse(resp), nil
+}
+
+func (s ImsService) ApproveArea(
+	ctx context.Context,
+	req *connect.Request[servicerpcv1.ApproveAreaRequest],
+) (*connect.Response[servicerpcv1.ApproveAreaResponse], error) {
+	resp, err := s.Area.ApproveArea(ctx, req.Msg)
+	if err != nil {
+		return nil, err
+	}
+	return connect.NewResponse(resp), nil
+}
+
+func (s ImsService) MarkAreaDuplicate(
+	ctx context.Context,
+	req *connect.Request[servicerpcv1.MarkAreaDuplicateRequest],
+) (*connect.Response[servicerpcv1.MarkAreaDuplicateResponse], error) {
+	resp, err := s.Area.MarkAreaDuplicate(ctx, req.Msg)
+	if err != nil {
+		return nil, err
+	}
+	return connect.NewResponse(resp), nil
+}
+
 // AddConnectToMux registers the ImsService Connect handler on the shared mux
 // next to AddToMux (plan 09g). connect handlers are plain http.Handlers mounted
 // at a path prefix, so the RPC surface coexists with the REST/web routes on one
@@ -683,6 +744,10 @@ func AddConnectToMux(
 	// which the incident writes also use; outcomes carry no group so they feed no metrics).
 	incidentTypesCache := server.NewIncidentTypesCache()
 	outcomesCache := server.NewOutcomesCache()
+	// The per-event area cache likewise moved here from AddToMux with the area extraction (plan
+	// 09h/1c): its only consumers are now the area RPCs (an area write invalidates it and the shared
+	// metricsCache the dashboard reads).
+	areasCache := server.NewAreasCache()
 	path, handler := servicev1connect.NewImsServiceHandler(
 		ImsService{
 			Event: event.Service{ImsDBQ: imsDBQ, UserStore: userStore},
@@ -722,6 +787,12 @@ func AddConnectToMux(
 				ImsDBQ:    imsDBQ,
 				UserStore: userStore,
 				Outcomes:  outcomesCache,
+			},
+			Area: area.Service{
+				ImsDBQ:    imsDBQ,
+				UserStore: userStore,
+				Metrics:   metricsCache,
+				Areas:     areasCache,
 			},
 		},
 		connect.WithInterceptors(interceptors...),
