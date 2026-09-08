@@ -30,7 +30,6 @@ import (
 	"github.com/mikeki/ocf-ims/lib/authz"
 	"github.com/mikeki/ocf-ims/lib/herr"
 	"github.com/mikeki/ocf-ims/store"
-	"github.com/mikeki/ocf-ims/store/imsdb"
 )
 
 type authError string
@@ -167,20 +166,12 @@ func (action PostAuth) postAuth(req *http.Request) (PostAuthResponse, *http.Cook
 	return resp, refreshCookie, nil
 }
 
-type GetAuth struct {
-	ImsDBQ             *store.DBQ
-	UserStore          directory.UserStore
-	JwtSecret          string
-	AttachmentsEnabled bool
-	// pushVAPIDPublicKey is the web-push public key (plan 84), surfaced to the
-	// client so it can subscribe. Empty ⇒ push is unconfigured and the client
-	// hides the feature.
-	PushVAPIDPublicKey string
-	// defaultPassword is the shared default password (plaintext, conf DefaultPassword),
-	// used to flag a user still signed in with it so the client can prompt a change.
-	// Empty ⇒ no default configured, so the flag is never set.
-	DefaultPassword string
-}
+// GetAuth (REST GET /ims/api/auth — the whoami / session status) was RETIRED in slice 1c when
+// it moved onto Connect as auth.Service.GetAuthStatus (connect.go), which the ImsService
+// .GetAuthStatus RPC delegates to. Its REST route was deleted, not shimmed (aggressive
+// migration, plan 09 §6). The GetAuthResponse / AccessForEvent shapes below are kept: they are
+// the DTO the integration suite still asserts against (the test helper maps the RPC's proto
+// response back into them), the same bridging role imsjson types play for the other resources.
 
 type GetAuthResponse struct {
 	Authenticated bool   `json:"authenticated"`
@@ -226,136 +217,6 @@ type AccessForEvent struct {
 	// event — create a login-capable reporter and set reporter participation. Held
 	// by writers and crew leaders (and admins). Reveals the People tab + invite UI.
 	InviteReporters bool `json:"inviteReporters"`
-}
-
-func (action GetAuth) ServeHTTP(w http.ResponseWriter, req *http.Request) {
-	resp, errHTTP := action.getAuth(req)
-	if errHTTP != nil {
-		errHTTP.From("[getAuth]").WriteResponse(w)
-		return
-	}
-	server.MustWriteJSON(w, req, resp)
-}
-func (action GetAuth) getAuth(req *http.Request) (GetAuthResponse, *herr.HTTPError) {
-	resp := GetAuthResponse{}
-
-	// This endpoint is unauthenticated (doesn't require an Authorization header).
-	jwtCtx, found := req.Context().Value(server.JWTContextKey).(server.JWTContext)
-	if !found || jwtCtx.Error != nil || jwtCtx.Claims == nil {
-		resp = GetAuthResponse{
-			Authenticated: false,
-		}
-		return resp, nil //lint:ignore nilerr since the jwtCtx.Error is irrelevant
-	}
-	claims := jwtCtx.Claims
-	handle := claims.PersonHandle()
-	// Compute global permissions via the shared path so UI-gating flags stay in step
-	// with the authoritative endpoint checks (and with any future non-admin grants).
-	_, globalPermissions, err := authz.EventPermissions(req.Context(), nil, action.ImsDBQ, *claims)
-	if err != nil {
-		return resp, herr.InternalServerError("Failed to fetch permissions", err).From("[EventPermissions]")
-	}
-	resp = GetAuthResponse{
-		Authenticated:      true,
-		User:               handle,
-		PersonID:           int64(claims.PersonID()),
-		Admin:              claims.PersonAdmin(),
-		CanManagePersonnel: globalPermissions&authz.GlobalAdministratePersonnel != 0,
-		PushVAPIDPublicKey: action.PushVAPIDPublicKey,
-	}
-	// Flag a user still signed in with the shared default password so the client can
-	// prompt them to change it. To keep this cheap, we only run the argon2 verify for
-	// a user whose PASSWORD_CHANGED flag is still false ("may be on the default"); once
-	// a user is known to be off it (either a password write recorded it, or the check
-	// below records it the first time), we skip the verify entirely. So it costs at
-	// most one argon2 per user, not one per page load. Only meaningful when a default
-	// is configured.
-	if action.DefaultPassword != "" {
-		// GetAllUsers returns the cached directory map keyed by PERSON.ID, so index
-		// the caller directly by id rather than scanning every user.
-		people, err := action.UserStore.GetAllUsers(req.Context())
-		if err != nil {
-			return resp, herr.InternalServerError("Failed to fetch personnel", err).From("[GetAllUsers]")
-		}
-		if person, ok := people[int64(claims.PersonID())]; ok && !person.PasswordChanged && person.Password != "" {
-			// Verify the configured default against the user's stored hash — so it
-			// catches every user on the default regardless of how their hash was
-			// salted. A malformed/incompatible hash simply isn't the default (false).
-			match, _ := authn.Verify(action.DefaultPassword, person.Password)
-			resp.UsingDefaultPassword = match
-			if !match {
-				// Off the default but not yet recorded (a pre-existing row, or a
-				// password set outside the tracked paths). Persist it so we never
-				// verify this user again. Best-effort: a failure just re-verifies next
-				// time, so don't fail the auth check over it.
-				err := action.ImsDBQ.MarkPasswordChanged(req.Context(), action.ImsDBQ, claims.PersonID())
-				if err != nil {
-					// #nosec G706 // log injection
-					slog.Warn("Failed to record password-changed flag", "person_id", claims.PersonID(), "err", err)
-				} else {
-					action.UserStore.InvalidateUsers()
-				}
-			}
-		}
-	}
-	// event_id is an optional query param for this endpoint
-	eventName := req.FormValue("event_id")
-	if eventName != "" {
-		event, errHTTP := server.GetEvent(req, eventName, action.ImsDBQ)
-		if errHTTP != nil {
-			if errHTTP.Code != http.StatusNotFound {
-				return resp, errHTTP.From("[server.GetEvent]")
-			} else {
-				// We don't want to return a 404 if the event doesn't exist.
-				// Just make it look like the event might exist, but that the
-				// user has no access.
-				resp.EventAccess = map[string]AccessForEvent{
-					eventName: {
-						ReadIncidents:  false,
-						WriteIncidents: false,
-						WriteReports:   false,
-						ReadVisits:     false,
-						WriteVisits:    false,
-						AttachFiles:    false,
-					},
-				}
-				return resp, nil
-			}
-		}
-
-		eventPermissions, _, err := authz.EventPermissions(req.Context(), &event.ID, action.ImsDBQ, *claims)
-		if err != nil {
-			return resp, herr.InternalServerError("Failed to fetch event permissions", err).From("[EventPermissions]")
-		}
-
-		readIncidents := eventPermissions[event.ID]&authz.EventReadIncidents != 0
-		// 52f: surface "can reach the Incidents list via per-incident grants" only when
-		// the caller doesn't already have event-wide incident read.
-		readIncidentsViaGrant := false
-		if !readIncidents {
-			readIncidentsViaGrant, err = action.ImsDBQ.PersonHasAnyGrantInEvent(req.Context(), action.ImsDBQ,
-				imsdb.PersonHasAnyGrantInEventParams{Event: event.ID, PersonID: claims.PersonID()})
-			if err != nil {
-				return resp, herr.InternalServerError("Failed to check incident grants", err).From("[PersonHasAnyGrantInEvent]")
-			}
-		}
-
-		resp.EventAccess = map[string]AccessForEvent{
-			eventName: {
-				EventID:               event.ID,
-				ReadIncidents:         readIncidents,
-				WriteIncidents:        eventPermissions[event.ID]&authz.EventWriteIncidents != 0,
-				WriteReports:          eventPermissions[event.ID]&(authz.EventWriteOwnReports|authz.EventWriteAllReports) != 0,
-				ReadVisits:            eventPermissions[event.ID]&authz.EventReadVisits != 0,
-				WriteVisits:           eventPermissions[event.ID]&authz.EventWriteVisits != 0,
-				AttachFiles:           action.AttachmentsEnabled,
-				ReadAreas:             eventPermissions[event.ID]&authz.EventReadAreas != 0,
-				ReadIncidentsViaGrant: readIncidentsViaGrant,
-				InviteReporters:       eventPermissions[event.ID]&authz.EventInviteReporters != 0,
-			},
-		}
-	}
-	return resp, nil
 }
 
 type RefreshAccessToken struct {

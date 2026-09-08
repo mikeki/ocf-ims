@@ -247,11 +247,21 @@ Still outstanding on the incident core: the direct DB→proto read-mapper follow
 `incidentToJSON`/`incidentJSONToProto`/`incidentViewToJSON` and the test-side
 `incidentViewToJSON`/`incidentUpdateFromJSON` bridges) — deferrable and best done once the
 report writes have landed so the whole json read layer retires in one sweep.
-Next: **auth & session** (`Login`, `RefreshToken`, `GetAuthStatus` — the riskiest slice: Login
-carries the plan-90 `ThrottleLogin` rate-limit/lockout control and sets the HttpOnly refresh cookie,
-RefreshToken reads that cookie, so both need HTTP-header access across the Connect boundary;
-`GetAuthStatus` is partially built in 1b and must be completed — `can_manage_personnel`,
-`event_access`, `push_vapid_public_key`, `using_default_password`), then people/personnel → taxonomies →
+The **`GetAuthStatus`** completion is now done (branch `feat/1c-getauthstatus`, stacked on
+`feat/1c-profile`): the 1b in-line identity stub moved onto a **new `auth.Service`** and gained the
+viewer-derived remainder — `can_manage_personnel`, per-event `event_access`,
+`push_vapid_public_key`, `using_default_password` — ported verbatim from REST `getAuth`. The REST
+`GET /auth` route + handler were deleted; the `GetAuthResponse`/`AccessForEvent` DTO shapes are kept
+as the test bridge (the helper maps the RPC's proto response back into them). **Contract shift, not a
+port:** the event is addressed by **numeric id** (`event_access` keyed by event id), not the REST
+name query — so the REST name-validation 400 case dropped with the route, and the getAuth helper
+resolves the name→id (a sentinel id for an unknown name exercises the "event might exist, no access"
+branch), re-keying the single entry under the name so the name-keyed assertions hold. `TestGetActionLog`
+switched its logged fixture from GET /auth (now a NO_SIDE_EFFECTS RPC the action-log interceptor
+skips) to the still-REST login.
+Next: **auth & session — Login + RefreshToken** (the riskiest remaining slice: Login carries the
+plan-90 `ThrottleLogin` rate-limit/lockout control and sets the HttpOnly refresh cookie, RefreshToken
+reads that cookie, so both need HTTP-header access across the Connect boundary), then people/personnel → taxonomies →
 events(EditEvent)/areas/crews → notifications/push → metrics/action log. For each: move handler logic into a
 proto-shaped domain method on its domain `Service` returning Connect errors, add the RPC
 method to `ImsService`, **delete the REST route + handler and move its `api/integration`

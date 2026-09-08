@@ -97,14 +97,51 @@ func (a ApiHelper) refreshAccessToken(ctx context.Context, refreshCookie *http.C
 	return resp.StatusCode, response
 }
 
+// getAuth drives the whoami / session status through the generated Connect client
+// (GetAuthStatus). The REST GET /ims/api/auth endpoint was retired when the RPC was extracted
+// (plan 09h/1c). Call sites still express the event as a NAME; the contract addresses it by
+// numeric id, so the name is resolved to its id (a name with no matching event uses a
+// non-existent sentinel id so the server's "event might exist, no access" path runs), and the
+// single returned event_access entry is re-keyed under the original name so the ~existing
+// name-keyed assertions hold. The response is mapped back into the legacy authapi.GetAuthResponse
+// (getAuthResponseFromProto), and a synthesized *http.Response carries the equivalent status
+// (connectStatus) since the retired endpoint always answered 200 for a well-formed request.
 func (a ApiHelper) getAuth(ctx context.Context, eventName string) (authapi.GetAuthResponse, *http.Response) {
 	a.t.Helper()
-	path := a.serverURL.JoinPath("/ims/api/auth").String()
+	client := servicev1connect.NewImsServiceClient(http.DefaultClient, a.serverURL.String())
+	rpcReq := &servicerpcv1.GetAuthStatusRequest{}
 	if eventName != "" {
-		path = path + "?event_id=" + eventName
+		id := a.resolveEventIDOrSentinel(ctx, eventName)
+		rpcReq.EventId = &id
 	}
-	bod, resp := a.imsGet(ctx, path, &authapi.GetAuthResponse{})
-	return *bod.(*authapi.GetAuthResponse), resp
+	req := connect.NewRequest(rpcReq)
+	if a.jwt != "" {
+		req.Header().Set("Authorization", "Bearer "+a.jwt)
+	}
+	resp, err := client.GetAuthStatus(ctx, req)
+	httpResp := &http.Response{StatusCode: connectStatus(err), Body: http.NoBody}
+	if err != nil {
+		return authapi.GetAuthResponse{}, httpResp
+	}
+	return getAuthResponseFromProto(resp.Msg, eventName), httpResp
+}
+
+// resolveEventIDOrSentinel is resolveEventID's non-failing sibling for getAuth: an event that
+// exists returns its id; an unknown name returns a sentinel id that no event has, so the caller
+// can exercise the "requested an event I can't see / doesn't exist" branch without a hard failure.
+func (a ApiHelper) resolveEventIDOrSentinel(ctx context.Context, eventName string) int32 {
+	a.t.Helper()
+	client := servicev1connect.NewImsServiceClient(http.DefaultClient, a.serverURL.String())
+	req := connect.NewRequest(&servicerpcv1.ListEventsRequest{IncludeGroups: true})
+	req.Header().Set("Authorization", "Bearer "+adminJWTCached(a.t, ctx))
+	resp, err := client.ListEvents(ctx, req)
+	require.NoError(a.t, err)
+	for _, e := range resp.Msg.GetEvents() {
+		if e.GetName() == eventName {
+			return e.GetId()
+		}
+	}
+	return 1 << 30
 }
 
 func (a ApiHelper) setPersonPassword(ctx context.Context, personID int64, password string) *http.Response {

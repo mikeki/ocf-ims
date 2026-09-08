@@ -21,6 +21,7 @@ import (
 	"testing"
 	"time"
 
+	authapi "github.com/mikeki/ocf-ims/internal/auth"
 	imsjson "github.com/mikeki/ocf-ims/json"
 	"github.com/mikeki/ocf-ims/lib/conv"
 	"github.com/stretchr/testify/assert"
@@ -34,11 +35,16 @@ func TestGetActionLog(t *testing.T) {
 	referrer := "testGetActionLog"
 	apisAdmin := ApiHelper{t: t, serverURL: shared.serverURL, jwt: jwtForAdmin(ctx, t), referrer: referrer}
 
-	// admin user can authenticate
-	_, resp := apisAdmin.getAuth(ctx, "")
-	require.NotNil(t, resp)
-	require.Equal(t, http.StatusOK, resp.StatusCode)
-	require.NoError(t, resp.Body.Close())
+	// Generate one action-logged request carrying this test's unique Referer to read back.
+	// A login (POST /auth) is still REST and action-logged (LogRequest(true)) and — being a
+	// raw imsPost — carries the Referer the getActionLogs read filters on. The former fixture,
+	// GET /auth, is now the GetAuthStatus RPC: a NO_SIDE_EFFECTS read the action-log interceptor
+	// deliberately skips, so it can no longer serve as a logged fixture.
+	statusCode, _, _ := apisAdmin.postAuth(ctx, authapi.PostAuthRequest{
+		Identification: userAdminEmail,
+		Password:       userAdminPassword,
+	})
+	require.Equal(t, http.StatusOK, statusCode)
 
 	longAgo := time.Now().Add(-500 * time.Hour).UnixMilli()
 	longFromNow := time.Now().Add(500 * time.Hour).UnixMilli()
@@ -55,7 +61,7 @@ func TestGetActionLog(t *testing.T) {
 	}
 	assert.NotZero(t, foundLog)
 	assert.Equal(t, "/ims/api/auth", foundLog.Path)
-	assert.Equal(t, "GET", foundLog.Method)
+	assert.Equal(t, "POST", foundLog.Method)
 
 	// Now test error cases
 	_, response = apisAdmin.getActionLogs(ctx, "not a valid time", "")
