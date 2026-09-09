@@ -449,7 +449,7 @@ func (action AttachToIncident) attachToIncident(req *http.Request) (int32, *herr
 		return 0, errHTTP.From("[addIncidentJournalEntry]")
 	}
 
-	action.Es.NotifyIncidentUpdate(event.ID, incidentNumber)
+	action.Es.NotifyIncidentUpdate(ctx, event.ID, incidentNumber)
 	return reID, nil
 }
 
@@ -616,7 +616,7 @@ func (action AttachToReport) attachToReport(req *http.Request) (int32, *herr.HTT
 
 	action.Es.NotifyReportUpdate(event.ID, reportNumber)
 	if report.Report.IncidentNumber.Valid {
-		action.Es.NotifyIncidentUpdate(event.ID, report.Report.IncidentNumber.Int32)
+		action.Es.NotifyIncidentUpdate(ctx, event.ID, report.Report.IncidentNumber.Int32)
 	}
 	return reID, nil
 }

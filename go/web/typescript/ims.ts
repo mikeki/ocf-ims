@@ -4284,7 +4284,9 @@ export type IncidentBroadcast = {
     // fields from SSE
     event_id?: number|null;
     incident_number?: number|null;
-    // additional fields for use in BroadcastChannel
+    // update_all is set locally by the InitialEvent handler (a missed-SSE catch-up), AND
+    // emitted by the server for a PRIVATE incident: the stream omits the number and asks
+    // for a full gated reload so the private incident's number never crosses the wire.
     update_all?: boolean;
 }
 
