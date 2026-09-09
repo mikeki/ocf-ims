@@ -23,6 +23,13 @@ option go_package = "github.com/mikeki/ocf-ims/gen/ocf/ims/service/rpc/v1;servic
 message LoginRequest {
   string email = 1 [(buf.validate.field).string.min_len = 1];
   string password = 2 [(buf.validate.field).string.min_len = 1];
+  // return_refresh_token selects where the refresh token lives (plan 09i E4, slice
+  // 3a.0). false (the default, and what the web client sends): the refresh token is
+  // set ONLY as the HttpOnly refresh cookie, exactly as before. true (the native Expo
+  // client, which has no cookie jar): the response carries refresh_token and
+  // refresh_expires_at and NO cookie is set, so a client is always in exactly one
+  // session mode.
+  bool return_refresh_token = 3;
 }
 
 // LoginResponse mirrors api.PostAuthResponse. expires_at is the suggested
@@ -30,15 +37,35 @@ message LoginRequest {
 message LoginResponse {
   string token = 1;
   google.protobuf.Timestamp expires_at = 2;
+  // refresh_token / refresh_expires_at are populated only when the request asked for a
+  // body-carried token (return_refresh_token); a web client never sees them. The client
+  // stores ONLY refresh_token (an opaque string, a few hundred bytes — well under the
+  // 2 KB expo-secure-store value limit, which a server test asserts). refresh_expires_at
+  // is the hard end of the session: a refresh mints a new access token but never a new
+  // refresh token (no rotation / sliding window — plan 09i §12 Q1).
+  string refresh_token = 3;
+  google.protobuf.Timestamp refresh_expires_at = 4;
 }
 
-// RefreshTokenRequest is empty: the web client's refresh token rides in the HttpOnly
-// cookie (unchanged under Connect — the handler reads it from the request headers).
-// The native Expo client has no cookie jar, so it will carry the token in the request
-// body and store it in expo-secure-store; that is a planned Phase-3a addition (its
-// exact shape is a 3a decision, and field numbers stay free until the app ships, so
-// adding the field then is non-breaking).
-message RefreshTokenRequest {}
+// RefreshTokenRequest carries the native client's refresh token in the body (plan 09i
+// E4, slice 3a.0). The web client leaves it empty and its token rides in the HttpOnly
+// cookie, unchanged. Body wins, cookie is the fallback: a non-empty refresh_token is
+// the token that is verified — if it fails, the RPC is Unauthenticated even when a
+// valid cookie is also present, so the two are never merged; an empty refresh_token
+// falls back to the cookie; neither present ⇒ Unauthenticated.
+message RefreshTokenRequest {
+  string refresh_token = 1;
+}
+
+// LogoutRequest is empty: the session being ended is the caller's own — the refresh
+// cookie the browser sends, or (native) the token the client is about to wipe from its
+// secure store. There is nothing to identify server-side because no server-side
+// revocation exists (the plan-90 residual: a refresh token stays valid until it
+// expires; the client discarding it is what ends a native session).
+message LogoutRequest {}
+
+// LogoutResponse is empty; the effect is on the HTTP layer (the cleared cookie).
+message LogoutResponse {}
 
 // RefreshTokenResponse mirrors api.RefreshAccessTokenResponse.
 message RefreshTokenResponse {

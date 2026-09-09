@@ -20,7 +20,9 @@ import (
 	"crypto/rand"
 	"errors"
 	"fmt"
+	"net/url"
 	"os"
+	"strings"
 	"time"
 
 	"github.com/mikeki/ocf-ims/lib/redact"
@@ -150,6 +152,14 @@ func (c *IMSConfig) Validate() error {
 		}
 	}
 
+	// CORS allow-list entries must be exact origins: rs/cors matches the Origin header
+	// verbatim, so a trailing slash, a path, a bare host or a wildcard would never match
+	// and fail silently in the browser (or, for "*", be refused alongside credentials).
+	// Reject them at boot instead.
+	for _, origin := range c.Core.CORSAllowedOrigins {
+		errs = append(errs, validateOrigin(origin))
+	}
+
 	// Assorted other validations
 	if c.Core.AccessTokenLifetime > c.Core.RefreshTokenLifetime {
 		errs = append(errs, errors.New("access token lifetime should not be greater than refresh token lifetime"))
@@ -165,6 +175,31 @@ func (c *IMSConfig) Validate() error {
 			c.Core.MaxAttachmentBytes, c.Core.MaxRequestBytes))
 	}
 	return errors.Join(errs...)
+}
+
+// validateOrigin accepts exactly "scheme://host[:port]" with an http or https scheme and
+// nothing else — no userinfo, path (not even "/"), query, fragment or wildcard.
+func validateOrigin(origin string) error {
+	bad := func(why string) error {
+		return fmt.Errorf("IMS_CORS_ALLOWED_ORIGINS entry %q: %s (want an exact origin like http://localhost:8081)", origin, why)
+	}
+	if strings.Contains(origin, "*") {
+		return bad("wildcards are not allowed")
+	}
+	u, err := url.Parse(origin)
+	if err != nil {
+		return bad("not a valid URL")
+	}
+	if u.Scheme != "http" && u.Scheme != "https" {
+		return bad("scheme must be http or https")
+	}
+	if u.Host == "" || u.User != nil {
+		return bad("must have a host and no userinfo")
+	}
+	if u.Path != "" || u.RawQuery != "" || u.Fragment != "" || u.Opaque != "" {
+		return bad("must not carry a path, query or fragment (drop any trailing slash)")
+	}
+	return nil
 }
 
 func (c *IMSConfig) PrintRedacted() string {
@@ -303,6 +338,16 @@ type ConfigCore struct {
 	// validated at boot (see Validate). Stored plaintext, so it is a secret.
 	// #nosec G117 // Exported secret struct field
 	DefaultPassword string `redact:"true"`
+
+	// CORSAllowedOrigins is the development cross-origin allow-list (plan 09i E9, slice
+	// 3a.0), from IMS_CORS_ALLOWED_ORIGINS (comma-separated). Each entry is an exact
+	// origin — scheme://host[:port], no path, no wildcard — that may call the Connect
+	// prefix and the blob routes cross-origin with credentials; the Expo dev server
+	// (http://localhost:8081) against the docker stack is the case it exists for. Empty
+	// (the default) ⇒ CORS is off and no Access-Control-* header is ever emitted.
+	// Production is same-origin by construction (the Expo web export is served beside
+	// the API) and leaves this unset.
+	CORSAllowedOrigins []string
 }
 
 type DBStore struct {

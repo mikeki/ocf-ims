@@ -238,6 +238,11 @@ Key configuration concepts:
   set in `docker-compose.dev.yml`). New profiles (e.g. a future secret-free
   `prod` bootstrap) plug into `conf.SeedProfile` + `store.Seed`.
 - **Attachments stores**: `local` (filesystem) or `s3` (AWS S3)
+- **Dev CORS** (`IMS_CORS_ALLOWED_ORIGINS`): comma-separated exact origins (e.g.
+  `http://localhost:8081`, the Expo dev server) allowed to call the Connect RPCs and
+  the attachment/profile-picture routes cross-origin with credentials. Unset = off
+  (no `Access-Control-*` header is emitted); production is same-origin and leaves it
+  unset. A malformed entry (path, trailing slash, wildcard) fails boot.
 
 Demo/test users live in the IMS-DB `PERSON` table, seeded from
 `store/fakeimsdb/seed.sql` (loaded into the `ims-db` container **only on first
@@ -296,6 +301,11 @@ JWT-based authentication with separate access and refresh tokens:
 - Access tokens: Short-lived (default 15 min)
 - Refresh tokens: Long-lived (default 7 days)
 - Tokens signed with `IMS_JWT_SECRET`
+- The refresh token has two homes (plan 09i E4 / 09j): the web client keeps it in the
+  HttpOnly `refresh_token` cookie; the native Expo client asks `Login` for it in the body
+  (`return_refresh_token`, then **no** cookie is set) and sends it back in
+  `RefreshTokenRequest.refresh_token` — body wins, cookie is the fallback. `Logout`
+  clears the cookie and is audited; there is no server-side revocation.
 
 Passwords are stored locally (argon2id hash in `PERSON.PASSWORD`); there is no
 external credential provider (Clubhouse was retired). There is no self-service /

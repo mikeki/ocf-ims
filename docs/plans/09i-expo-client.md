@@ -43,10 +43,10 @@ transport)` from `@connectrpc/connect` v2 works with **no extra codegen**.
 
 | Resource | RPCs |
 |---|---|
-| Auth & session | `Login`, `RefreshToken` (NSE), `GetAuthStatus` (NSE) |
+| Auth & session | `Login`, `RefreshToken` (NSE), `GetAuthStatus` (NSE), `Logout` (3a.0) |
 | Own profile | `ChangeOwnPassword`, `UpdateOwnProfile`, `DeleteOwnProfilePicture` |
 | Incidents | `ListIncidents` (NSE), `GetIncident` (NSE), `CreateIncident`, `UpdateIncident`, `AttachPersonToIncident`, `DetachPersonFromIncident`, `UpdateIncidentJournalEntry` |
-| Reports | `ListReports`, `GetReport`, `CreateReport`, `UpdateReport`, `UpdateReportJournalEntry` |
+| Reports | `ListReports` (NSE), `GetReport` (NSE), `CreateReport`, `UpdateReport`, `UpdateReportJournalEntry` |
 | Events | `ListEvents` (NSE), `CreateEvent`, `UpdateEvent` |
 | Areas | `ListAreas` (NSE), `CreateArea`, `UpdateArea`, `ApproveArea`, `MarkAreaDuplicate` |
 | Crews | `ListCrews` (NSE), `CreateCrew`, `UpdateCrew`, `DeleteCrew`, `SetCrewMembership`, `ListMyCrews` (NSE), `SetMyCrewMembership` |
@@ -58,8 +58,8 @@ transport)` from `@connectrpc/connect` v2 works with **no extra codegen**.
 | Web push | `SubscribePush`, `UnsubscribePush` |
 
 (NSE = `idempotency_level = NO_SIDE_EFFECTS`: skipped by the audit log and
-GET-able. `ListReports`/`GetReport` are reads that lack the marker and so
-over-log — a one-line fix folded into 3a.0.)
+GET-able. `ListReports`/`GetReport` were reads that lacked the marker and so
+over-logged — marked in 3a.0, [09j](09j-session-contract-cors.md).)
 
 **The plain-HTTP surfaces the client must also speak** (M8, all Bearer-authenticated
 except where noted):
@@ -73,16 +73,18 @@ except where noted):
 | Readiness / ping | `GET /ims/api/readyz`, `GET /ims/api/ping` (unauthenticated) | connectivity probe |
 | Visits | `/ims/api/events/{eventName}/visits…` | **excluded** — subsystem is being retired, never modelled |
 
-**What the server still lacks for a native client** (each is a server slice in §8,
-architect-tier):
+**What the server still lacked for a native client** when this plan was written
+(each is a server slice in §8, architect-tier; 1–3 landed in 3a.0,
+[09j](09j-session-contract-cors.md)):
 
 1. A **body-carried refresh token** — `LoginResponse` sets the refresh token only
    as an HttpOnly cookie and `RefreshTokenRequest` is empty (the auth.proto comment
-   already reserves this as the "planned Phase-3a addition").
+   already reserves this as the "planned Phase-3a addition"). *Done in 3a.0.*
 2. A **`Logout` RPC** — only the server can clear the HttpOnly cookie, and the
-   templ `GET /ims/auth/logout` dies in Phase 4.
+   templ `GET /ims/auth/logout` dies in Phase 4. *Done in 3a.0.*
 3. **CORS for development** — the Expo dev server runs on a different origin; the
-   server sets no `Access-Control-*` headers today.
+   server sets no `Access-Control-*` headers today. *Done in 3a.0
+   (`IMS_CORS_ALLOWED_ORIGINS`).*
 4. A **per-subscriber live-update stream** — the SSE stream is cookie-gated and
    broadcast-redacted; native needs a Connect server-streaming RPC (plan 09 M8, the
    1e finding's "deferred to Phase 3").
@@ -295,7 +297,7 @@ local docker stack, with CI building the web export. Nothing product-shaped.
 
 | Task | Owner | Deliverable | Depends on |
 |---|---|---|---|
-| **3a.0 Server: session contract + dev CORS** | Architect | `LoginRequest.return_refresh_token`, `LoginResponse.refresh_token/refresh_expires_at` (cookie suppressed when set), `RefreshTokenRequest.refresh_token` (body wins, cookie fallback), `Logout` RPC (clears cookie; audited), `ListReports`/`GetReport` marked NSE, `IMS_CORS_ALLOWED_ORIGINS` (connect cors + rs/cors, credentials, Connect prefix + blob routes), tests for every branch, `.env.example`, `docs/plans/09e` mapping table rows. Full Go verification protocol. | — |
+| **3a.0 Server: session contract + dev CORS** → [09j](09j-session-contract-cors.md) | Architect | `LoginRequest.return_refresh_token`, `LoginResponse.refresh_token/refresh_expires_at` (cookie suppressed when set), `RefreshTokenRequest.refresh_token` (body wins, cookie fallback), `Logout` RPC (clears cookie; audited), `ListReports`/`GetReport` marked NSE, `IMS_CORS_ALLOWED_ORIGINS` (connect cors + rs/cors, credentials, Connect prefix + blob routes), tests for every branch, `.env.example`, `docs/plans/09e` mapping table rows. Full Go verification protocol. | — |
 | **3a.1 Scaffold** | Mechanic (Architect signs off the layout) | `packages/interface` from `create-expo-app` (blank TS + Router), workspace wiring, `pnpm generate`, scripts (`typecheck`, `lint`, `test`, `export:web`, `e2e`), biome fix (E13), `.gitignore` (`.expo/`, `dist/`, `ios/`, `android/`), `README.md`, the `Interface` CI job with the egress allow-list, `CLAUDE.md` section (commands, "run from the repo root", "generate first"). | — |
 | **3a.2 Foundations** | Architect | `src/api/transport.ts` (E3 interceptor, single-flight refresh, proactive refresh), `src/session/*` (E4; web cookie / native SecureStore; size assertion), session state machine bootstrapping from `GetAuthStatus`, connect-query provider + persister (E5), `src/api/errors.ts`, env config (`EXPO_PUBLIC_API_URL`, dev JSON vs prod binary), `src/design/tokens.ts` stub + 6 primitives, Jest harness with a fake transport (`createRouterTransport`) so hooks test without a server. | 3a.0, 3a.1 |
 | **3a.3 Tracer screens** | Builder | Login (email/password, show/hide, throttle countdown on `ResourceExhausted`, **forced password change** when `using_default_password`, web-only `?o=` return path restricted to in-app routes), Events list (pick + persist; default = newest event: highest numeric name, else highest id), Incidents list (read-only rows: number, state, priority, summary, area, last modified; private badge; pull-to-refresh; polling), Incident detail (read-only: header, location, types, people, journal incl. system-entries toggle, attachments listed not previewed), Sign out. Loading/empty/error states. Jest for hooks; Playwright smoke `login → events → incidents → detail → logout`. | 3a.2, D0 tokens |

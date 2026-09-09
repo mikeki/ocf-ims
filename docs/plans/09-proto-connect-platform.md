@@ -1576,6 +1576,44 @@ writes, areas and crews — and lands the one `#234` miss the review batched. Fi
   REST handlers (picture upload/serve, attachment upload/serve, visits) — deferred until visits are
   deleted, which shrinks that surface first.
 
+### 3a.0 — Session contract for a native client + dev CORS (2026-09-09)
+
+The first Phase-3 slice ([09j](09j-session-contract-cors.md)) gives the Expo client what the
+server still lacked for a native session: a body-carried refresh token (`Login` with
+`return_refresh_token` ⇒ token in the response, **no cookie**), `RefreshToken` with the
+token in the body (**body wins, cookie is the fallback**), a `Logout` RPC, `NO_SIDE_EFFECTS`
+on the two report reads, and a dev-only CORS allow-list (`IMS_CORS_ALLOWED_ORIGINS`).
+Findings:
+
+- **Where the token lives is a domain decision.** `auth.Login` returns either a cookie or a
+  filled body and a nil cookie; the transport delegate only moves a non-nil cookie onto the
+  headers. The alternative — the delegate reading the request flag and deciding — would have
+  put the first branch of session logic back into `api/`, exactly what the funlen gate is for.
+  Same shape for `Logout`: the domain method hands back the clearing cookie.
+- **"Body wins" only helps if it is strict.** Falling back to the cookie when the body token
+  is *invalid* would let a stale native token silently ride a web session in the same browser
+  profile (Expo web against the docker stack in dev is precisely that). Rejecting means a
+  client is always in exactly one session mode, and the integration test states it.
+- **Go 1.22 method patterns and CORS preflights don't mix.** `"POST /path"` routes answer
+  `OPTIONS` with 405 at the mux, before any adapter runs — wrapping the six blob handlers
+  alone left every preflight unanswered. One `OPTIONS /ims/api/` route, registered only when
+  the allow-list is non-empty, fixes it and keeps the CORS-off server byte-identical (the
+  test suite asserts no `Access-Control-*` header anywhere in that state).
+- **`rs/cors` ≥ 1.11 is strict about the browser form of a preflight.** It validates
+  `Access-Control-Request-Headers` as the Fetch spec has browsers send it — lowercase,
+  sorted, unique — and refuses anything else. A hand-written preflight in a test (or curl)
+  with `Authorization, Connect-Protocol-Version` is denied outright; the unit test now models
+  a browser. Worth knowing before debugging a "CORS doesn't work" report from a script.
+- **`connectrpc.com/cors` is three string lists**, not middleware: the methods, request
+  headers and exposed headers Connect and gRPC-web need. Taken as a dependency so those lists
+  track the protocol; `rs/cors` still does the work, and the app adds `Authorization`,
+  `X-Request-Id`, `Retry-After` (the login throttle) and `Content-Disposition` (downloads).
+- **A logout must never fail.** Requiring a Bearer on `Logout` would make "sign out after
+  the access token expired" a client special case. It tolerates an anonymous caller like
+  `GetAuthStatus`, audits whatever identity is present, and touches no state — the same
+  behaviour the templ route had. No server-side revocation exists; the plan-90 residual is
+  restated on the RPC rather than silently inherited.
+
 ## 8. Open questions
 
 1. **Does the Go binary keep serving static assets in production**, or does Caddy?

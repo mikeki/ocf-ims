@@ -70,6 +70,10 @@ services:
       # boot (the empty passthrough below falls back to that default).
       IMS_TOKEN_LIFETIME: "604800"
       IMS_JWT_SECRET: "${IMS_JWT_SECRET:-}"
+      # Dev CORS (plan 09j): forward a host-provided allow-list so the Expo dev server
+      # (e.g. http://localhost:8081) can call this stack cross-origin with credentials.
+      # Empty (the default) keeps CORS off. Same passthrough shape as IMS_JWT_SECRET.
+      IMS_CORS_ALLOWED_ORIGINS: "${IMS_CORS_ALLOWED_ORIGINS:-}"
       # Disable HTTP caching in dev so rebuilt JS/CSS propagate without a hard
       # refresh. The static cache-buster (?v=…) is a constant ("deadbeef") in dev
       # because git VCS stamping is off, so a non-zero cache TTL serves stale JS
