@@ -30,8 +30,8 @@ import (
 // and demotion run against the dedicated Carol user so they don't disturb other
 // parallel tests. The last-admin guard is checked against AdminTestRanger (the
 // only persistently-flagged admin, so it's the one the guard protects) — the
-// guard returns 409 *without* writing, so AdminTestRanger stays an admin and
-// other tests are unaffected.
+// guard returns FailedPrecondition *without* writing, so AdminTestRanger stays an
+// admin and other tests are unaffected.
 func TestSetPersonAdmin(t *testing.T) {
 	t.Parallel()
 	ctx := t.Context()
@@ -84,9 +84,10 @@ func TestSetPersonAdmin(t *testing.T) {
 	require.NoError(t, resp.Body.Close())
 
 	// Attempting to clear the last remaining admin (AdminTestRanger) is blocked
-	// with 409 to avoid leaving the instance with no administrator. The guard
-	// rejects before writing, so AdminTestRanger stays an admin.
+	// with FailedPrecondition (412 through the test bridge; the REST route said 409)
+	// to avoid leaving the instance with no administrator. The guard rejects before
+	// writing, so AdminTestRanger stays an admin.
 	resp = apisAdmin.setPersonAdmin(ctx, userAdminPersonID, false)
-	require.Equal(t, http.StatusConflict, resp.StatusCode)
+	require.Equal(t, http.StatusPreconditionFailed, resp.StatusCode)
 	require.NoError(t, resp.Body.Close())
 }

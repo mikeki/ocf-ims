@@ -24,6 +24,7 @@ import (
 	"strings"
 	"time"
 
+	"connectrpc.com/connect"
 	"github.com/go-sql-driver/mysql"
 	resourcesv1 "github.com/mikeki/ocf-ims/gen/ocf/ims/resources/v1"
 	rpcv1 "github.com/mikeki/ocf-ims/gen/ocf/ims/service/rpc/v1"
@@ -33,17 +34,19 @@ import (
 	"github.com/mikeki/ocf-ims/lib/argon2id"
 	"github.com/mikeki/ocf-ims/lib/authz"
 	"github.com/mikeki/ocf-ims/lib/conv"
-	"github.com/mikeki/ocf-ims/lib/herr"
 	"github.com/mikeki/ocf-ims/store/imsdb"
 )
 
 // This file holds the admin personnel-management writes — the RPCs that manage OTHER people
 // (create/edit/reset-password/set-admin/set-participation/remove-from-event/delete-picture),
 // as opposed to the caller's own self-service writes in connect.go. Each RPC method is a thin
-// wrapper (the ImsService delegate shape) over a herr-returning core that ports the retired
-// REST handler verbatim and reuses the shared helpers in person.go (applyProfileFields,
-// setPersonEvent, defaultParticipation, validParticipation, mayAssignParticipation,
-// wristbandConflict, clearProfilePicture); the wrapper maps herr→Connect via server.HerrToConnect.
+// wrapper (the ImsService delegate shape) over a core that ports the retired REST handler and
+// speaks Connect natively: connect.NewError for a literal client-facing failure, server.InternalError
+// / server.PublicError where a cause is wrapped. The kept REST-era shared helpers in person.go
+// (applyProfileFields, setPersonEvent, wristbandConflict, clearProfilePicture, requireEvent) and
+// server.PersonByID still return *herr.HTTPError; each call into one maps at the call site via
+// server.HerrToConnect, and their results are always held in a *herr.HTTPError-typed variable —
+// never an error-typed one, since a nil *herr.HTTPError stored in an error is non-nil.
 // The event scope is keyed by id, not name (the contract, and the sibling read RPCs).
 
 // CreatePerson is the domain method behind the CreatePerson RPC (plan 09h/1c), retiring REST
@@ -53,9 +56,9 @@ func (s Service) CreatePerson(
 	ctx context.Context,
 	req *rpcv1.CreatePersonRequest,
 ) (*rpcv1.CreatePersonResponse, error) {
-	created, errHTTP := s.createPerson(ctx, req)
-	if errHTTP != nil {
-		return nil, server.HerrToConnect(errHTTP)
+	created, err := s.createPerson(ctx, req)
+	if err != nil {
+		return nil, err
 	}
 	return &rpcv1.CreatePersonResponse{Person: personToProto(created)}, nil
 }
@@ -67,9 +70,9 @@ func (s Service) UpdatePerson(
 	ctx context.Context,
 	req *rpcv1.UpdatePersonRequest,
 ) (*rpcv1.UpdatePersonResponse, error) {
-	errHTTP := s.editPerson(ctx, req)
-	if errHTTP != nil {
-		return nil, server.HerrToConnect(errHTTP)
+	err := s.editPerson(ctx, req)
+	if err != nil {
+		return nil, err
 	}
 	return &rpcv1.UpdatePersonResponse{}, nil
 }
@@ -81,9 +84,9 @@ func (s Service) SetPersonPassword(
 	ctx context.Context,
 	req *rpcv1.SetPersonPasswordRequest,
 ) (*rpcv1.SetPersonPasswordResponse, error) {
-	errHTTP := s.setPersonPassword(ctx, req.GetPersonId(), req.GetPassword(), req.GetUseDefaultPassword())
-	if errHTTP != nil {
-		return nil, server.HerrToConnect(errHTTP)
+	err := s.setPersonPassword(ctx, req.GetPersonId(), req.GetPassword(), req.GetUseDefaultPassword())
+	if err != nil {
+		return nil, err
 	}
 	return &rpcv1.SetPersonPasswordResponse{}, nil
 }
@@ -96,9 +99,9 @@ func (s Service) SetPersonAdmin(
 	ctx context.Context,
 	req *rpcv1.SetPersonAdminRequest,
 ) (*rpcv1.SetPersonAdminResponse, error) {
-	errHTTP := s.setPersonAdmin(ctx, req.GetPersonId(), req.GetIsAdmin())
-	if errHTTP != nil {
-		return nil, server.HerrToConnect(errHTTP)
+	err := s.setPersonAdmin(ctx, req.GetPersonId(), req.GetIsAdmin())
+	if err != nil {
+		return nil, err
 	}
 	return &rpcv1.SetPersonAdminResponse{}, nil
 }
@@ -111,9 +114,9 @@ func (s Service) SetPersonParticipation(
 	ctx context.Context,
 	req *rpcv1.SetPersonParticipationRequest,
 ) (*rpcv1.SetPersonParticipationResponse, error) {
-	errHTTP := s.setParticipation(ctx, req)
-	if errHTTP != nil {
-		return nil, server.HerrToConnect(errHTTP)
+	err := s.setParticipation(ctx, req)
+	if err != nil {
+		return nil, err
 	}
 	return &rpcv1.SetPersonParticipationResponse{}, nil
 }
@@ -125,9 +128,9 @@ func (s Service) RemovePersonFromEvent(
 	ctx context.Context,
 	req *rpcv1.RemovePersonFromEventRequest,
 ) (*rpcv1.RemovePersonFromEventResponse, error) {
-	errHTTP := s.removePersonEvent(ctx, req.GetPersonId(), req.GetEventId())
-	if errHTTP != nil {
-		return nil, server.HerrToConnect(errHTTP)
+	err := s.removePersonEvent(ctx, req.GetPersonId(), req.GetEventId())
+	if err != nil {
+		return nil, err
 	}
 	return &rpcv1.RemovePersonFromEventResponse{}, nil
 }
@@ -139,25 +142,24 @@ func (s Service) DeletePersonProfilePicture(
 	ctx context.Context,
 	req *rpcv1.DeletePersonProfilePictureRequest,
 ) (*rpcv1.DeletePersonProfilePictureResponse, error) {
-	errHTTP := s.deletePersonProfilePicture(ctx, req.GetPersonId())
-	if errHTTP != nil {
-		return nil, server.HerrToConnect(errHTTP)
+	err := s.deletePersonProfilePicture(ctx, req.GetPersonId())
+	if err != nil {
+		return nil, err
 	}
 	return &rpcv1.DeletePersonProfilePictureResponse{}, nil
 }
 
 // personnelGlobals resolves the caller's claims + global permission mask from the ctx the auth
 // interceptor populated — the Connect analogue of the REST server.GetGlobalPermissions. A missing
-// claims context is Unauthorized (mapped to Unauthenticated); a permission-computation failure is a
-// 500.
-func (s Service) personnelGlobals(ctx context.Context) (*authz.IMSClaims, authz.GlobalPermissionMask, *herr.HTTPError) {
+// claims context is Unauthenticated; a permission-computation failure is Internal.
+func (s Service) personnelGlobals(ctx context.Context) (*authz.IMSClaims, authz.GlobalPermissionMask, error) {
 	claims, ok := server.ClaimsFromContext(ctx)
 	if !ok {
-		return nil, 0, herr.Unauthorized("Authentication required", nil)
+		return nil, 0, connect.NewError(connect.CodeUnauthenticated, errors.New("authentication required"))
 	}
 	_, globalPermissions, err := authz.EventPermissions(ctx, nil, s.ImsDBQ, *claims)
 	if err != nil {
-		return nil, 0, herr.InternalServerError("Failed to compute permissions", err).From("[EventPermissions]")
+		return nil, 0, server.InternalError("failed to compute permissions", err)
 	}
 	return claims, globalPermissions, nil
 }
@@ -165,11 +167,11 @@ func (s Service) personnelGlobals(ctx context.Context) (*authz.IMSClaims, authz.
 // createPerson ports the retired REST CreatePerson handler to ctx + proto inputs. The per-field
 // length-400s are gone (protovalidate enforces the max_len constraints before the handler); the
 // cross-field identity invariant and the password/access rules stay handler checks.
-func (s Service) createPerson(ctx context.Context, req *rpcv1.CreatePersonRequest) (imsjson.Person, *herr.HTTPError) {
+func (s Service) createPerson(ctx context.Context, req *rpcv1.CreatePersonRequest) (imsjson.Person, error) {
 	var empty imsjson.Person
-	claims, globalPermissions, errHTTP := s.personnelGlobals(ctx)
-	if errHTTP != nil {
-		return empty, errHTTP
+	claims, globalPermissions, errConn := s.personnelGlobals(ctx)
+	if errConn != nil {
+		return empty, errConn
 	}
 
 	handle := strings.TrimSpace(req.GetHandle())
@@ -181,7 +183,7 @@ func (s Service) createPerson(ctx context.Context, req *rpcv1.CreatePersonReques
 	// Identity: a registry person needs at least a fair name or a full legal name (a cross-field
 	// OR that protovalidate can't express, so it stays a handler check).
 	if handle == "" && name == "" {
-		return empty, herr.BadRequest("A fair name or full legal name is required", nil)
+		return empty, connect.NewError(connect.CodeInvalidArgument, errors.New("A fair name or full legal name is required"))
 	}
 
 	isPersonnelAdmin := globalPermissions&authz.GlobalAdministratePersonnel != 0
@@ -191,14 +193,14 @@ func (s Service) createPerson(ctx context.Context, req *rpcv1.CreatePersonReques
 	// below via mayAssignParticipation.
 	var eventID int32
 	if !isPersonnelAdmin {
-		eventID, errHTTP = s.eventForInvite(ctx, claims, req.GetEventId())
-		if errHTTP != nil {
-			return empty, errHTTP
+		eventID, errConn = s.eventForInvite(ctx, claims, req.GetEventId())
+		if errConn != nil {
+			return empty, errConn
 		}
 	} else if req.GetEventId() != 0 {
-		errHTTP = s.requireEvent(ctx, req.GetEventId())
+		errHTTP := s.requireEvent(ctx, req.GetEventId())
 		if errHTTP != nil {
-			return empty, errHTTP
+			return empty, server.HerrToConnect(errHTTP)
 		}
 		eventID = req.GetEventId()
 	}
@@ -210,7 +212,7 @@ func (s Service) createPerson(ctx context.Context, req *rpcv1.CreatePersonReques
 	if pt := req.GetParticipationType(); pt != resourcesv1.ParticipationType_PARTICIPATION_TYPE_UNSPECIFIED {
 		mapped := participationTypeFromProto(pt)
 		if !mayAssignParticipation(isPersonnelAdmin, mapped) {
-			return empty, herr.Forbidden("Only an admin may assign the writer or crew_leader role", nil)
+			return empty, connect.NewError(connect.CodePermissionDenied, errors.New("Only an admin may assign the writer or crew_leader role"))
 		}
 		participation = mapped
 	}
@@ -231,10 +233,10 @@ func (s Service) createPerson(ctx context.Context, req *rpcv1.CreatePersonReques
 	// access requires BOTH a fair name and an email (login matches email only).
 	grantAccess := req.GetPassword() != "" || req.GetUseDefaultPassword()
 	if grantAccess && handle == "" {
-		return empty, herr.BadRequest("A fair name is required to provide IMS access", nil)
+		return empty, connect.NewError(connect.CodeInvalidArgument, errors.New("A fair name is required to provide IMS access"))
 	}
 	if grantAccess && email == "" {
-		return empty, herr.BadRequest("An email is required to provide IMS access (it is the login identifier)", nil)
+		return empty, connect.NewError(connect.CodeInvalidArgument, errors.New("An email is required to provide IMS access (it is the login identifier)"))
 	}
 
 	// A password is optional; whether specific or the shared default it is hashed per user. A
@@ -246,17 +248,17 @@ func (s Service) createPerson(ctx context.Context, req *rpcv1.CreatePersonReques
 	switch {
 	case req.GetPassword() != "":
 		if len(req.GetPassword()) < minPasswordLength {
-			return empty, herr.BadRequest("Password must be at least 8 characters", nil)
+			return empty, connect.NewError(connect.CodeInvalidArgument, errors.New("Password must be at least 8 characters"))
 		}
 		if len(req.GetPassword()) > maxPasswordLength {
-			return empty, herr.BadRequest("Outrageously long passwords are disallowed", auth.ErrLongPassword)
+			return empty, server.PublicError(connect.CodeInvalidArgument, "Outrageously long passwords are disallowed", auth.ErrLongPassword)
 		}
 		hashed := argon2id.CreateHash(req.GetPassword(), argon2id.DefaultParams)
 		passwordNull = conv.StringToSql(&hashed, 255)
 		passwordChanged = req.GetPassword() != s.DefaultPassword
 	case req.GetUseDefaultPassword():
 		if s.DefaultPassword == "" {
-			return empty, herr.BadRequest("No default password is configured on this server; set a specific password instead", nil)
+			return empty, connect.NewError(connect.CodeInvalidArgument, errors.New("No default password is configured on this server; set a specific password instead"))
 		}
 		hashed := argon2id.CreateHash(s.DefaultPassword, argon2id.DefaultParams)
 		passwordNull = conv.StringToSql(&hashed, 255)
@@ -266,15 +268,15 @@ func (s Service) createPerson(ctx context.Context, req *rpcv1.CreatePersonReques
 	if handle != "" {
 		_, err := s.ImsDBQ.PersonByHandle(ctx, s.ImsDBQ, handleNull)
 		if err == nil {
-			return empty, herr.Conflict("A person with that handle already exists", nil)
+			return empty, connect.NewError(connect.CodeAlreadyExists, errors.New("A person with that handle already exists"))
 		}
 		if !errors.Is(err, sql.ErrNoRows) {
-			return empty, herr.InternalServerError("Failed to check handle", err).From("[PersonByHandle]")
+			return empty, server.InternalError("failed to check handle", err)
 		}
 	}
 
 	// The PERSON row and its optional PERSON__EVENT row are one transaction, so a wristband
-	// conflict on the participation insert (409) cannot leave an orphan person behind
+	// conflict on the participation insert (AlreadyExists) cannot leave an orphan person behind
 	// (store.RunInTx also retries a transient deadlock; both statements are idempotent to re-run
 	// inside a fresh transaction).
 	var newID int64
@@ -291,14 +293,14 @@ func (s Service) createPerson(ctx context.Context, req *rpcv1.CreatePersonReques
 		if err != nil {
 			var mysqlErr *mysql.MySQLError
 			if errors.As(err, &mysqlErr) && mysqlErr.Number == DupEntryError {
-				return herr.Conflict("That handle or email is already in use", nil)
+				return connect.NewError(connect.CodeAlreadyExists, errors.New("That handle or email is already in use"))
 			}
-			return herr.InternalServerError("Failed to create person", err).From("[CreatePerson]")
+			return server.InternalError("failed to create person", err)
 		}
 		newID = id
 
 		// Write the per-event participation row when an event was named. The person is brand-new,
-		// so this is always an insert; a wristband already taken in the event is a 409.
+		// so this is always an insert; a wristband already taken in the event is AlreadyExists.
 		if eventID != 0 {
 			var wristbandNull sql.NullString
 			if wristband != "" {
@@ -311,13 +313,13 @@ func (s Service) createPerson(ctx context.Context, req *rpcv1.CreatePersonReques
 				ParticipationType: participation,
 			})
 			if err != nil {
-				return wristbandConflict(err)
+				return server.HerrToConnect(wristbandConflict(err))
 			}
 		}
 		return nil
 	})
 	if runErr != nil {
-		return empty, herr.AsHTTPError(runErr)
+		return empty, runErr
 	}
 
 	resp := imsjson.Person{
@@ -341,37 +343,37 @@ func (s Service) createPerson(ctx context.Context, req *rpcv1.CreatePersonReques
 // eventForInvite authorizes a non-admin create: the caller must name an event (by id) they may
 // invite reporters to (EventInviteReporters — writers and crew leaders, plan 53b). Returns that
 // event's id for the PERSON__EVENT row.
-func (s Service) eventForInvite(ctx context.Context, claims *authz.IMSClaims, eventID int32) (int32, *herr.HTTPError) {
+func (s Service) eventForInvite(ctx context.Context, claims *authz.IMSClaims, eventID int32) (int32, error) {
 	if eventID == 0 {
-		return 0, herr.Forbidden("Creating a person requires GlobalAdministratePersonnel, or invite-reporters access on a named event", nil)
+		return 0, connect.NewError(connect.CodePermissionDenied, errors.New("Creating a person requires GlobalAdministratePersonnel, or invite-reporters access on a named event"))
 	}
 	errHTTP := s.requireEvent(ctx, eventID)
 	if errHTTP != nil {
-		return 0, errHTTP
+		return 0, server.HerrToConnect(errHTTP)
 	}
 	perms, _, err := authz.EventPermissions(ctx, &eventID, s.ImsDBQ, *claims)
 	if err != nil {
-		return 0, herr.InternalServerError("Failed to compute permissions", err).From("[EventPermissions]")
+		return 0, server.InternalError("failed to compute permissions", err)
 	}
 	if perms[eventID]&authz.EventInviteReporters == 0 {
-		return 0, herr.Forbidden("You do not have invite-reporters access to that event", nil)
+		return 0, connect.NewError(connect.CodePermissionDenied, errors.New("You do not have invite-reporters access to that event"))
 	}
 	return eventID, nil
 }
 
 // editPerson ports the retired REST EditPerson handler to ctx + proto inputs.
-func (s Service) editPerson(ctx context.Context, req *rpcv1.UpdatePersonRequest) *herr.HTTPError {
-	_, globalPermissions, errHTTP := s.personnelGlobals(ctx)
-	if errHTTP != nil {
-		return errHTTP
+func (s Service) editPerson(ctx context.Context, req *rpcv1.UpdatePersonRequest) error {
+	_, globalPermissions, errConn := s.personnelGlobals(ctx)
+	if errConn != nil {
+		return errConn
 	}
 	if globalPermissions&authz.GlobalAdministratePersonnel == 0 {
-		return herr.Forbidden("The requestor does not have GlobalAdministratePersonnel permission", nil)
+		return connect.NewError(connect.CodePermissionDenied, errors.New("The requestor does not have GlobalAdministratePersonnel permission"))
 	}
 
 	person, errHTTP := server.PersonByID(ctx, s.ImsDBQ, req.GetPersonId())
 	if errHTTP != nil {
-		return errHTTP
+		return server.HerrToConnect(errHTTP)
 	}
 
 	// applyProfileFields wants presence pointers (nil = leave unchanged); the optional proto fields
@@ -383,15 +385,15 @@ func (s Service) editPerson(ctx context.Context, req *rpcv1.UpdatePersonRequest)
 	}
 	errHTTP = applyProfileFields(ctx, s.ImsDBQ, person, patch.handle, patch.name, patch.email, patch.phone)
 	if errHTTP != nil {
-		return errHTTP
+		return server.HerrToConnect(errHTTP)
 	}
 
 	// Per-event participation: applied only when an event is named AND a wristband or participation
 	// type is supplied (else editing a profile while an event is selected would mint a stray 'public'
 	// row).
-	errHTTP = s.editParticipation(ctx, req)
-	if errHTTP != nil {
-		return errHTTP
+	errConn = s.editParticipation(ctx, req)
+	if errConn != nil {
+		return errConn
 	}
 
 	s.UserStore.InvalidateUsers()
@@ -402,7 +404,7 @@ func (s Service) editPerson(ctx context.Context, req *rpcv1.UpdatePersonRequest)
 
 // editParticipation upserts the person's PERSON__EVENT row when the update names an event (by id)
 // and supplies a wristband or participation type — the ctx/proto port of EditPerson.editParticipation.
-func (s Service) editParticipation(ctx context.Context, req *rpcv1.UpdatePersonRequest) *herr.HTTPError {
+func (s Service) editParticipation(ctx context.Context, req *rpcv1.UpdatePersonRequest) error {
 	eventID := req.GetEventId()
 	if eventID == 0 {
 		return nil
@@ -420,47 +422,51 @@ func (s Service) editParticipation(ctx context.Context, req *rpcv1.UpdatePersonR
 
 	errHTTP := s.requireEvent(ctx, eventID)
 	if errHTTP != nil {
-		return errHTTP
+		return server.HerrToConnect(errHTTP)
 	}
 	var wristbandNull sql.NullString
 	if wristband != "" {
 		wristbandNull = conv.StringToSql(&wristband, maxWristbandLength)
 	}
-	return setPersonEvent(ctx, s.ImsDBQ, req.GetPersonId(), eventID, wristbandNull, participation)
+	errHTTP = setPersonEvent(ctx, s.ImsDBQ, req.GetPersonId(), eventID, wristbandNull, participation)
+	if errHTTP != nil {
+		return server.HerrToConnect(errHTTP)
+	}
+	return nil
 }
 
 // setPersonPassword ports the retired REST SetPersonPassword handler (admin reset) to ctx inputs.
-func (s Service) setPersonPassword(ctx context.Context, personID int32, password string, useDefault bool) *herr.HTTPError {
-	_, globalPermissions, errHTTP := s.personnelGlobals(ctx)
-	if errHTTP != nil {
-		return errHTTP
+func (s Service) setPersonPassword(ctx context.Context, personID int32, password string, useDefault bool) error {
+	_, globalPermissions, errConn := s.personnelGlobals(ctx)
+	if errConn != nil {
+		return errConn
 	}
 	if globalPermissions&authz.GlobalAdministratePersonnel == 0 {
-		return herr.Forbidden("The requestor does not have GlobalAdministratePersonnel permission", nil)
+		return connect.NewError(connect.CodePermissionDenied, errors.New("The requestor does not have GlobalAdministratePersonnel permission"))
 	}
 
 	// Two paths: reset to the shared default, or set a specific typed password (same bounds as the
 	// create/auth endpoints — the hashing-exhaustion vector).
 	if useDefault {
 		if s.DefaultPassword == "" {
-			return herr.BadRequest("No default password is configured on this server; set a specific password instead", nil)
+			return connect.NewError(connect.CodeInvalidArgument, errors.New("No default password is configured on this server; set a specific password instead"))
 		}
 	} else {
 		if len(password) < minPasswordLength {
-			return herr.BadRequest("Password must be at least 8 characters", nil)
+			return connect.NewError(connect.CodeInvalidArgument, errors.New("Password must be at least 8 characters"))
 		}
 		if len(password) > maxPasswordLength {
-			return herr.BadRequest("Outrageously long passwords are disallowed", auth.ErrLongPassword)
+			return server.PublicError(connect.CodeInvalidArgument, "Outrageously long passwords are disallowed", auth.ErrLongPassword)
 		}
 	}
 
 	person, errHTTP := server.PersonByID(ctx, s.ImsDBQ, personID)
 	if errHTTP != nil {
-		return errHTTP
+		return server.HerrToConnect(errHTTP)
 	}
 	// Login matches EMAIL only, so a password is useless without one.
 	if person.Email.String == "" {
-		return herr.BadRequest("This person has no email; an email is the login identifier, so add one before setting a password", nil)
+		return connect.NewError(connect.CodeInvalidArgument, errors.New("This person has no email; an email is the login identifier, so add one before setting a password"))
 	}
 
 	pw := s.DefaultPassword
@@ -474,7 +480,7 @@ func (s Service) setPersonPassword(ctx context.Context, personID int32, password
 		ID:              person.ID,
 	})
 	if err != nil {
-		return herr.InternalServerError("Failed to set password", err).From("[SetPersonPassword]")
+		return server.InternalError("failed to set password", err)
 	}
 
 	s.UserStore.InvalidateUsers()
@@ -484,31 +490,32 @@ func (s Service) setPersonPassword(ctx context.Context, personID int32, password
 }
 
 // setPersonAdmin ports the retired REST SetPersonAdmin handler. It is gated on the CALLER being an
-// admin (not the delegatable GlobalAdministratePersonnel) and refuses to clear the last admin.
-func (s Service) setPersonAdmin(ctx context.Context, personID int32, isAdmin bool) *herr.HTTPError {
+// admin (not the delegatable GlobalAdministratePersonnel) and refuses to clear the last admin
+// (FailedPrecondition: the request is well-formed; the system's state forbids it).
+func (s Service) setPersonAdmin(ctx context.Context, personID int32, isAdmin bool) error {
 	claims, ok := server.ClaimsFromContext(ctx)
 	if !ok {
-		return herr.Unauthorized("Authentication required", nil)
+		return connect.NewError(connect.CodeUnauthenticated, errors.New("authentication required"))
 	}
 	// Only an administrator may change administrator status — gate on the caller's own IS_ADMIN, not
 	// a delegatable permission, so delegating personnel management never implies minting admins.
 	if !claims.PersonAdmin() {
-		return herr.Forbidden("Only administrators may change administrator status", nil)
+		return connect.NewError(connect.CodePermissionDenied, errors.New("Only administrators may change administrator status"))
 	}
 
 	target, errHTTP := server.PersonByID(ctx, s.ImsDBQ, personID)
 	if errHTTP != nil {
-		return errHTTP
+		return server.HerrToConnect(errHTTP)
 	}
 
 	// Guard against removing the last flagged administrator (recoverable only by a direct DB write).
 	if !isAdmin && target.IsAdmin {
 		adminCount, err := s.ImsDBQ.CountAdmins(ctx, s.ImsDBQ)
 		if err != nil {
-			return herr.InternalServerError("Failed to count administrators", err).From("[CountAdmins]")
+			return server.InternalError("failed to count administrators", err)
 		}
 		if adminCount <= 1 {
-			return herr.Conflict("Cannot remove the last administrator", nil)
+			return connect.NewError(connect.CodeFailedPrecondition, errors.New("Cannot remove the last administrator"))
 		}
 	}
 
@@ -517,7 +524,7 @@ func (s Service) setPersonAdmin(ctx context.Context, personID int32, isAdmin boo
 		ID:      target.ID,
 	})
 	if err != nil {
-		return herr.InternalServerError("Failed to set admin flag", err).From("[SetPersonAdmin]")
+		return server.InternalError("failed to set admin flag", err)
 	}
 
 	// Permissions are cached and baked into access tokens, so drop the cache to make the change
@@ -530,21 +537,21 @@ func (s Service) setPersonAdmin(ctx context.Context, personID int32, isAdmin boo
 
 // setParticipation ports the retired REST SetPersonParticipation handler — the roster's
 // profile-neutral per-event upsert (enroll / mark not-present / eject).
-func (s Service) setParticipation(ctx context.Context, req *rpcv1.SetPersonParticipationRequest) *herr.HTTPError {
-	claims, globalPermissions, errHTTP := s.personnelGlobals(ctx)
-	if errHTTP != nil {
-		return errHTTP
+func (s Service) setParticipation(ctx context.Context, req *rpcv1.SetPersonParticipationRequest) error {
+	claims, globalPermissions, errConn := s.personnelGlobals(ctx)
+	if errConn != nil {
+		return errConn
 	}
 	isPersonnelAdmin := globalPermissions&authz.GlobalAdministratePersonnel != 0
 
 	person, errHTTP := server.PersonByID(ctx, s.ImsDBQ, req.GetPersonId())
 	if errHTTP != nil {
-		return errHTTP
+		return server.HerrToConnect(errHTTP)
 	}
 	eventID := req.GetEventId()
 	errHTTP = s.requireEvent(ctx, eventID)
 	if errHTTP != nil {
-		return errHTTP
+		return server.HerrToConnect(errHTTP)
 	}
 
 	// Authorization (plan 53b): an admin may set any participation; a non-admin needs the
@@ -552,10 +559,10 @@ func (s Service) setParticipation(ctx context.Context, req *rpcv1.SetPersonParti
 	if !isPersonnelAdmin {
 		perms, _, err := authz.EventPermissions(ctx, &eventID, s.ImsDBQ, *claims)
 		if err != nil {
-			return herr.InternalServerError("Failed to compute permissions", err).From("[EventPermissions]")
+			return server.InternalError("failed to compute permissions", err)
 		}
 		if perms[eventID]&authz.EventInviteReporters == 0 {
-			return herr.Forbidden("Setting participation requires GlobalAdministratePersonnel or invite-reporters access for this event", nil)
+			return connect.NewError(connect.CodePermissionDenied, errors.New("Setting participation requires GlobalAdministratePersonnel or invite-reporters access for this event"))
 		}
 	}
 
@@ -569,7 +576,7 @@ func (s Service) setParticipation(ctx context.Context, req *rpcv1.SetPersonParti
 	// rungs, and may not touch a person who is already a writer or crew_leader on the event.
 	if !isPersonnelAdmin {
 		if !mayAssignParticipation(false, participation) {
-			return herr.Forbidden("Only an admin may assign the writer or crew_leader role", nil)
+			return connect.NewError(connect.CodePermissionDenied, errors.New("Only an admin may assign the writer or crew_leader role"))
 		}
 		current, err := s.ImsDBQ.PersonEvent(ctx, s.ImsDBQ, imsdb.PersonEventParams{
 			PersonID: person.ID,
@@ -579,10 +586,10 @@ func (s Service) setParticipation(ctx context.Context, req *rpcv1.SetPersonParti
 		case errors.Is(err, sql.ErrNoRows):
 			// No participation row yet — enrolling a new volunteer is allowed.
 		case err != nil:
-			return herr.InternalServerError("Failed to read participation", err).From("[PersonEvent]")
+			return server.InternalError("failed to read participation", err)
 		default:
 			if !mayAssignParticipation(false, current.ParticipationType) {
-				return herr.Forbidden("You may not modify a writer or crew leader", nil)
+				return connect.NewError(connect.CodePermissionDenied, errors.New("You may not modify a writer or crew leader"))
 			}
 		}
 	}
@@ -593,7 +600,7 @@ func (s Service) setParticipation(ctx context.Context, req *rpcv1.SetPersonParti
 	}
 	errHTTP = setPersonEvent(ctx, s.ImsDBQ, person.ID, eventID, wristbandNull, participation)
 	if errHTTP != nil {
-		return errHTTP
+		return server.HerrToConnect(errHTTP)
 	}
 
 	s.UserStore.InvalidateUsers()
@@ -604,22 +611,22 @@ func (s Service) setParticipation(ctx context.Context, req *rpcv1.SetPersonParti
 
 // removePersonEvent ports the retired REST RemovePersonEvent handler — deletes the PERSON__EVENT
 // row (the person stays in the registry).
-func (s Service) removePersonEvent(ctx context.Context, personID, eventID int32) *herr.HTTPError {
-	_, globalPermissions, errHTTP := s.personnelGlobals(ctx)
-	if errHTTP != nil {
-		return errHTTP
+func (s Service) removePersonEvent(ctx context.Context, personID, eventID int32) error {
+	_, globalPermissions, errConn := s.personnelGlobals(ctx)
+	if errConn != nil {
+		return errConn
 	}
 	if globalPermissions&authz.GlobalAdministratePersonnel == 0 {
-		return herr.Forbidden("The requestor does not have GlobalAdministratePersonnel permission", nil)
+		return connect.NewError(connect.CodePermissionDenied, errors.New("The requestor does not have GlobalAdministratePersonnel permission"))
 	}
 
 	person, errHTTP := server.PersonByID(ctx, s.ImsDBQ, personID)
 	if errHTTP != nil {
-		return errHTTP
+		return server.HerrToConnect(errHTTP)
 	}
 	errHTTP = s.requireEvent(ctx, eventID)
 	if errHTTP != nil {
-		return errHTTP
+		return server.HerrToConnect(errHTTP)
 	}
 
 	err := s.ImsDBQ.DeletePersonEvent(ctx, s.ImsDBQ, imsdb.DeletePersonEventParams{
@@ -627,7 +634,7 @@ func (s Service) removePersonEvent(ctx context.Context, personID, eventID int32)
 		Event:    eventID,
 	})
 	if err != nil {
-		return herr.InternalServerError("Failed to remove participation", err).From("[DeletePersonEvent]")
+		return server.InternalError("failed to remove participation", err)
 	}
 
 	s.UserStore.InvalidateUsers()
@@ -638,20 +645,24 @@ func (s Service) removePersonEvent(ctx context.Context, personID, eventID int32)
 
 // deletePersonProfilePicture ports the retired REST DeletePersonProfilePicture handler — the
 // admin remove, sharing clearProfilePicture with the self-service DeleteOwnProfilePicture.
-func (s Service) deletePersonProfilePicture(ctx context.Context, personID int32) *herr.HTTPError {
-	_, globalPermissions, errHTTP := s.personnelGlobals(ctx)
-	if errHTTP != nil {
-		return errHTTP
+func (s Service) deletePersonProfilePicture(ctx context.Context, personID int32) error {
+	_, globalPermissions, errConn := s.personnelGlobals(ctx)
+	if errConn != nil {
+		return errConn
 	}
 	if globalPermissions&authz.GlobalAdministratePersonnel == 0 {
-		return herr.Forbidden("The requestor does not have GlobalAdministratePersonnel permission", nil)
+		return connect.NewError(connect.CodePermissionDenied, errors.New("The requestor does not have GlobalAdministratePersonnel permission"))
 	}
 
 	person, errHTTP := server.PersonByID(ctx, s.ImsDBQ, personID)
 	if errHTTP != nil {
-		return errHTTP
+		return server.HerrToConnect(errHTTP)
 	}
-	return clearProfilePicture(ctx, s.AttachmentsStore, s.S3Client, s.ImsDBQ, person.ID, person.ProfilePicture.String)
+	errHTTP = clearProfilePicture(ctx, s.AttachmentsStore, s.S3Client, s.ImsDBQ, person.ID, person.ProfilePicture.String)
+	if errHTTP != nil {
+		return server.HerrToConnect(errHTTP)
+	}
+	return nil
 }
 
 // participationTypeFromProto maps the proto ParticipationType enum onto the stored PERSON__EVENT

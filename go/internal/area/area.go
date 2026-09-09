@@ -19,13 +19,14 @@ package area
 import (
 	"context"
 	"database/sql"
+	"errors"
 	"fmt"
 	"regexp"
 	"slices"
 	"strings"
 
+	"connectrpc.com/connect"
 	imsjson "github.com/mikeki/ocf-ims/json"
-	"github.com/mikeki/ocf-ims/lib/herr"
 	"github.com/mikeki/ocf-ims/store"
 	"github.com/mikeki/ocf-ims/store/imsdb"
 )
@@ -55,21 +56,21 @@ func loadAreasJSON(ctx context.Context, imsDBQ *store.DBQ, eventID int32) (imsjs
 // SQL string. A nil pointer or "" means top-level (NULL). Otherwise the parent
 // must be an existing area in the same event, must not be the area itself, and
 // (single-level hierarchy for the beta) must itself be top-level.
-func validateParent(existing []imsdb.Area, parentSlug *string, selfSlug string) (sql.NullString, *herr.HTTPError) {
+func validateParent(existing []imsdb.Area, parentSlug *string, selfSlug string) (sql.NullString, error) {
 	if parentSlug == nil || *parentSlug == "" {
 		return sql.NullString{}, nil
 	}
 	if *parentSlug == selfSlug {
-		return sql.NullString{}, herr.BadRequest("An area may not be its own parent", nil)
+		return sql.NullString{}, connect.NewError(connect.CodeInvalidArgument, errors.New("An area may not be its own parent"))
 	}
 	idx := slices.IndexFunc(existing, func(a imsdb.Area) bool { return a.Slug == *parentSlug })
 	if idx < 0 {
-		return sql.NullString{}, herr.BadRequest(
-			fmt.Sprintf("Parent area %q does not exist in this event", *parentSlug), nil)
+		return sql.NullString{}, connect.NewError(connect.CodeInvalidArgument,
+			fmt.Errorf("Parent area %q does not exist in this event", *parentSlug))
 	}
 	if existing[idx].ParentSlug.Valid {
-		return sql.NullString{}, herr.BadRequest(
-			"Areas may be nested only one level deep", nil)
+		return sql.NullString{}, connect.NewError(connect.CodeInvalidArgument,
+			errors.New("Areas may be nested only one level deep"))
 	}
 	return sql.NullString{String: *parentSlug, Valid: true}, nil
 }

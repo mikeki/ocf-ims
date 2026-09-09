@@ -483,3 +483,13 @@ Remaining 1c tail (not a resource slice): **`funlen`** path-scoped enablement �
 turned on once the files it scopes are actually thin, so it lands now that every handler is extracted;
 and the **direct DB→proto read-mapper** follow-up that retires the throwaway json↔proto test bridges
 (incidentToJSON/incidentViewToJSON/metricsProtoToJSON/actionLogProtoToJSON/…).
+
+**Post-review follow-up (2026-09-09).** The three "thin RPC over a herr-returning core" slices above
+(personnel writes, areas, crews) were converted to the house hybrid style: the cores return `error`
+built from `connect.NewError` / `server.InternalError` / `server.PublicError`, and `server.HerrToConnect`
+survives only at calls into the shared REST-era helpers. The "reuse the herr core when the body is
+intricate" guidance stands for the *port*; the port is then finished by flipping the core's error
+vocabulary in the same slice rather than leaving a second style behind. The last-admin guard became
+`FailedPrecondition` (the test bridge maps it to 412), and the one `#234` miss (`ListEvents` wrapping
+the `PermissionsByEvent` herr in a plain Connect error) was fixed with `HerrToConnect`. Findings and the
+typed-nil rule: plan 09 §7 "Review follow-up — domain errors speak Connect natively".

@@ -81,7 +81,9 @@ func (s Service) ListEvents(
 	}
 	permsByEvent, errHTTP := server.PermissionsByEvent(ctx, server.JWTContext{Claims: claims}, s.ImsDBQ, s.UserStore)
 	if errHTTP != nil {
-		return nil, connect.NewError(connect.CodeInternal, errHTTP)
+		// A shared REST-era helper: map through HerrToConnect so only the public message crosses
+		// the wire and the cause is logged (herr.HTTPError.Error() would print the cause).
+		return nil, server.HerrToConnect(errHTTP)
 	}
 
 	excludeGroups := !req.GetIncludeGroups()

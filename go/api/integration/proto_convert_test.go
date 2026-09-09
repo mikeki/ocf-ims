@@ -607,6 +607,8 @@ func connectStatus(err error) int {
 		return http.StatusBadRequest
 	case connect.CodeAlreadyExists:
 		return http.StatusConflict
+	case connect.CodeFailedPrecondition:
+		return http.StatusPreconditionFailed
 	case connect.CodeResourceExhausted:
 		return http.StatusTooManyRequests
 	default:

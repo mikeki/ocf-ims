@@ -1531,6 +1531,46 @@ is a filter, so it is plural).
   `cicd.yml` triggers `pull_request` only for base `master` — so only the bottom PR of a stack ever
   shows CI, and the stack's real gate is the local verify protocol.
 
+### Review follow-up — domain errors speak Connect natively (2026-09-09)
+
+The stack review left three error styles side by side (pure herr core, hybrid, fully native). This
+slice collapses the first into the house hybrid on the three places it survived — the personnel
+writes, areas and crews — and lands the one `#234` miss the review batched. Findings:
+
+- **A single-caller herr core buys nothing; it existed only because the port was verbatim.** Each
+  core (`createPerson`, `markAreaDuplicate`, `deleteCrew`, …) had exactly one caller, its RPC
+  wrapper, so the `*herr.HTTPError` return was a second error vocabulary per package plus a
+  `HerrToConnect` at every wrapper. Converting is mechanical — literal failures become
+  `connect.NewError(code, errors.New(…))`, cause-wrapping ones `server.InternalError` /
+  `server.PublicError` — and `HerrToConnect` survives only at calls into the *shared* REST-era
+  helpers (`server.PersonByID`, `requireEvent`, `applyProfileFields`, `setPersonEvent`,
+  `wristbandConflict`, `clearProfilePicture`), which is the hybrid rule. *The "reuse the herr core
+  when the body is intricate" guidance (areas finding above) is right for the port and wrong as an
+  end state: finish the port by flipping the core's vocabulary in the same slice.*
+- **The typed-nil trap is the real hazard of a mixed vocabulary.** A `*herr.HTTPError` result
+  assigned to an `error`-typed variable, or returned straight from an `error`-returning function, is
+  **non-nil when the helper returned nil** — every call would fail — and the compiler only objects
+  where the types differ, never where an interface absorbs the pointer. The mechanical pass produced
+  two such sites (`return setPersonEvent(…)`, `return clearProfilePicture(…)`) and one variable that
+  would have carried both types. Rule written into the file header: a helper that returns
+  `*herr.HTTPError` is called into a `*herr.HTTPError`-typed variable and mapped explicitly; never
+  `return helper()` from an `error` function. *Worth stating wherever a stack describes an error-model
+  migration (extends the stack-review finding above).*
+- **`409` was a REST idiom covering two Connect codes.** Duplicates (handle, email, wristband) are
+  `AlreadyExists`; the last-admin guard — a well-formed request the system's state forbids — is
+  `FailedPrecondition`, and the test bridge gained the 412 mapping. A faithful port carries the
+  REST status into the nearest code; the second reading is where the honest code gets chosen.
+- **The review's one miss was found by the audit it prescribed.** `ListEvents` (on master since #209)
+  wrapped the herr from `server.PermissionsByEvent` in `connect.NewError(CodeInternal, errHTTP)`;
+  `herr.HTTPError.Error()` prints the InternalErr, so a failed permission query would have put
+  MariaDB text on the wire. `HerrToConnect` fixes it; the grep for `connect.NewError(…, <non-literal>)`
+  finds exactly this site and is the check to keep running.
+- **What remains hybrid, on purpose.** The personnel read path (`listPersonnel` and its branches)
+  and the self-service profile writes still map at their shared-helper sites. Retiring `HerrToConnect`
+  entirely means flipping those helpers' return types and adding a reverse mapper for the surviving
+  REST handlers (picture upload/serve, attachment upload/serve, visits) — deferred until visits are
+  deleted, which shrinks that surface first.
+
 ## 8. Open questions
 
 1. **Does the Go binary keep serving static assets in production**, or does Caddy?
@@ -1557,20 +1597,28 @@ is a filter, so it is plural).
 
 ## 9. Exit criteria
 
-- [ ] **Phase 0:** `proto/ocf/ims/**` models the full current API surface with
-      protovalidate constraints; buf lint and breaking clean; Go, TypeScript and
-      OpenAPI generate hermetically in CI; every one of the 65 REST routes is
-      mapped to an RPC or a named M8 exception.
-- [ ] **Phase 1:** the module lives at `go/` in domain packages; every RPC has a
-      handler with no `Unimplemented` embedding; cross-cutting behaviour is
-      interceptors, on by default; integration tests run through the generated
-      client; the `TestCreateAndGetIncident` deadlock flake is gone.
-- [ ] **Phase 2:** `json/` deleted, no REST route remains, the legacy UI runs on
-      the generated TypeScript client with **zero npm at runtime** and no
-      behaviour change; its feature set is frozen and the rule is written down.
-- [ ] **Phase 3:** the replacement ships to both app stores and covers dispatch,
-      admin and the long tail on web; field numbers frozen; the list of what must
-      exist before the legacy UI can go is written down.
+- [x] **Phase 0** (2026-08-25 — 0a #202, 0b/0c/0d #203, 0e #204): `proto/ocf/ims/**`
+      models the full current API surface with protovalidate constraints; buf lint
+      and breaking clean; Go, TypeScript and OpenAPI generate hermetically in CI;
+      every one of the REST routes is mapped to an RPC, a named M8 exception, or
+      the deliberately-excluded visits (70 routes, zero unclassified — 09e).
+- [x] **Phase 1** (2026-09-09 — 1a #205–#207, 1b #208, 1c #209–#231, review
+      #233–#237, this follow-up): the module lives at `go/` in domain packages;
+      every RPC has a handler with no `Unimplemented` embedding (exit gate #230);
+      cross-cutting behaviour is interceptors, on by default; integration tests
+      run through the generated client; the `TestCreateAndGetIncident` deadlock
+      flake has not reproduced across the 1c verification runs (`RunInTx`
+      retries 1213/1205 on every multi-statement write). Optional tails left
+      open, not gate items: the full read-mapper retirement, 1f config→struct
+      tags, an `ACTION_LOG.CREATED_AT` index.
+- ~~**Phase 2**~~ — **superseded 2026-08-31** (§6 Migration strategy): REST was
+      retired per resource inside Phase 1 and the legacy UI was never ported.
+      What survives of this line item: `json/` shrinks with the remaining REST
+      routes (the M8 exceptions and visits) and is deleted with them in Phase 4.
+- [ ] **Phase 3** (master plan: [09i](09i-expo-client.md)): the replacement ships
+      to both app stores and covers dispatch, admin and the long tail on web;
+      field numbers frozen; the list of what must exist before the legacy UI can
+      go is written down.
 - [ ] **Phase 4:** the templ pages and `web/typescript` are deleted; the deviation
       ledger has no open rows except the accepted ones (V2, V6, V10), each
       documented upstream.
