@@ -184,6 +184,21 @@ contract.
 7. **Debug endpoints are plain-HTTP exceptions**, not RPCs — one-off diagnostic shapes
    (buildinfo/runtimemetrics/gc), admin-only, not part of the product contract.
 
+## Contract additions after Phase 0
+
+The mapping table above is the Phase-0 record and is left as it was. Later slices that
+change the service surface are logged here so the table plus this list is always the
+whole contract.
+
+### Slice 3a.0 — session contract for a native client (2026-09-09, [09j](09j-session-contract-cors.md))
+
+| Change | Disposition | Notes |
+|---|---|---|
+| `rpc Logout` | **new RPC** (61 in `ImsService`) | No REST predecessor on the API; the templ page route `GET /ims/auth/logout` (in `web/`, not `/ims/api`) stays until Phase 4. Un-annotated ⇒ audited. Tolerates an anonymous caller. |
+| `LoginRequest.return_refresh_token`, `LoginResponse.refresh_token` / `refresh_expires_at` | field additions | Native session mode: the refresh token in the body and **no cookie**. Default keeps the web behaviour. |
+| `RefreshTokenRequest.refresh_token` | field addition (closes Q2 below) | Body wins, cookie is the fallback; an invalid body token is `Unauthenticated` even beside a valid cookie. |
+| `ListReports`, `GetReport` | `NO_SIDE_EFFECTS` | Reads that had merely over-logged since 1c. |
+
 ## Open questions — resolved (review, 2026-08-26)
 
 The three questions flagged during 0e were worked through and applied to the contract:
@@ -199,6 +214,7 @@ The three questions flagged during 0e were worked through and applied to the con
 - **Q2 — `RefreshToken` stays empty.** The web client's refresh token rides in the
   HttpOnly cookie; the native Expo client's body-carried token is a **Phase-3a addition**
   (a decision 3a owns), non-breaking to add pre-ship. The proto comment now says so.
+  *Landed 2026-09-09 in slice 3a.0 — see "Contract additions after Phase 0" above.*
 - **Q3 — decompose the multiplexers, don't just upsert.** Investigation showed
   `POST /areas`, `POST /incident_types` and `POST /outcomes` each **body-multiplex**
   create/update/approve/(set-hidden | mark-duplicate) — the same shape crews had. They

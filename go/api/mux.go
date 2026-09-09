@@ -57,6 +57,23 @@ func AddToMux(
 	jwter := authz.JWTer{SecretKey: cfg.Core.JWTSecret}
 	attachmentsEnabled := cfg.AttachmentsStore.Type != conf.AttachmentsStoreNone
 
+	// Dev CORS (plan 09i E9 / slice 3a.0) for the plain-HTTP blob routes the Expo client
+	// must also speak (M8): attachment upload/download, profile-picture upload/serve. The
+	// adapter is applied OUTERMOST on those six routes so the headers land on a 401 too;
+	// it is the identity when no origin is configured (production). The routes are
+	// registered with method-specific patterns, which never see an OPTIONS preflight (the
+	// mux answers 405 first), so when CORS is on one OPTIONS catch-all under /ims/api/
+	// answers preflights; a non-preflight OPTIONS falls through it to the same 405 as today.
+	// The SSE stream, visits, debug and readiness routes deliberately get no CORS.
+	cors := server.CORS(cfg.Core.CORSAllowedOrigins)
+	if server.CORSEnabled(cfg.Core.CORSAllowedOrigins) {
+		mux.Handle("OPTIONS /ims/api/", cors(http.HandlerFunc(
+			func(w http.ResponseWriter, _ *http.Request) {
+				http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+			},
+		)))
+	}
+
 	// Web-push fan-out (plan 84c) is no longer wired here: the REST surface's last
 	// push-firing route (AttachPersonToIncident) moved onto Connect in slice 1c, so the
 	// Pusher now lives only on the Connect surface (AddConnectToMux builds it from the
@@ -90,6 +107,7 @@ func AddToMux(
 	mux.Handle("POST /ims/api/auth/picture",
 		server.Adapt(
 			person.SetOwnProfilePicture{ImsDBQ: db, AttachmentsStore: cfg.AttachmentsStore, S3Client: s3Client},
+			cors,
 			server.RecoverFromPanic(),
 			server.RequireAuthN(jwter),
 			server.LogRequest(true, actionLogger, userStore),
@@ -112,6 +130,7 @@ func AddToMux(
 	mux.Handle("GET /ims/api/events/{eventName}/incidents/{incidentNumber}/attachments/{attachmentNumber}",
 		server.Adapt(
 			incident.GetIncidentAttachment{ImsDBQ: db, UserStore: userStore, AttachmentsStore: cfg.AttachmentsStore, S3Client: s3Client},
+			cors,
 			server.RecoverFromPanic(),
 			server.RequireAuthN(jwter),
 			server.LogRequest(true, actionLogger, userStore),
@@ -122,6 +141,7 @@ func AddToMux(
 	mux.Handle("POST /ims/api/events/{eventName}/incidents/{incidentNumber}/attachments",
 		server.Adapt(
 			incident.AttachToIncident{ImsDBQ: db, UserStore: userStore, Es: es, AttachmentsStore: cfg.AttachmentsStore, S3Client: s3Client, MaxAttachmentBytes: cfg.Core.MaxAttachmentBytes},
+			cors,
 			server.RecoverFromPanic(),
 			server.RequireAuthN(jwter),
 			server.LogRequest(true, actionLogger, userStore),
@@ -147,6 +167,7 @@ func AddToMux(
 	mux.Handle("GET /ims/api/events/{eventName}/reports/{reportNumber}/attachments/{attachmentNumber}",
 		server.Adapt(
 			incident.GetReportAttachment{ImsDBQ: db, UserStore: userStore, AttachmentsStore: cfg.AttachmentsStore, S3Client: s3Client},
+			cors,
 			server.RecoverFromPanic(),
 			server.RequireAuthN(jwter),
 			server.LogRequest(true, actionLogger, userStore),
@@ -157,6 +178,7 @@ func AddToMux(
 	mux.Handle("POST /ims/api/events/{eventName}/reports/{reportNumber}/attachments",
 		server.Adapt(
 			incident.AttachToReport{ImsDBQ: db, UserStore: userStore, Es: es, AttachmentsStore: cfg.AttachmentsStore, S3Client: s3Client, MaxAttachmentBytes: cfg.Core.MaxAttachmentBytes},
+			cors,
 			server.RecoverFromPanic(),
 			server.RequireAuthN(jwter),
 			server.LogRequest(true, actionLogger, userStore),
@@ -291,6 +313,7 @@ func AddToMux(
 	mux.Handle("POST /ims/api/personnel/{personId}/picture",
 		server.Adapt(
 			person.SetPersonProfilePicture{ImsDBQ: db, UserStore: userStore, AttachmentsStore: cfg.AttachmentsStore, S3Client: s3Client},
+			cors,
 			server.RecoverFromPanic(),
 			server.RequireAuthN(jwter),
 			server.LogRequest(true, actionLogger, userStore),
@@ -301,6 +324,7 @@ func AddToMux(
 	mux.Handle("GET /ims/api/personnel/{personId}/picture",
 		server.Adapt(
 			person.GetPersonProfilePicture{ImsDBQ: db, UserStore: userStore, AttachmentsStore: cfg.AttachmentsStore, S3Client: s3Client},
+			cors,
 			server.RecoverFromPanic(),
 			server.RequireAuthN(jwter),
 			server.LogRequest(false, actionLogger, userStore),

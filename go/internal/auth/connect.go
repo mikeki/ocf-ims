@@ -43,9 +43,15 @@ import (
 // per-call dependency list. It mirrors event.Service / incident.Service / person.Service
 // (plan 09h/1c). api.ImsService composes one of these (built once in AddConnectToMux) and
 // delegates to it. It carries GetAuthStatus (the whoami / session status) plus the session
-// mutations Login and RefreshToken. AttachmentsEnabled / PushVAPIDPublicKey / DefaultPassword
-// feed GetAuthStatus's derived flags; JwtSecret / the token durations / LoginLimiter drive
-// Login and RefreshToken.
+// mutations Login, RefreshToken and Logout. AttachmentsEnabled / PushVAPIDPublicKey /
+// DefaultPassword feed GetAuthStatus's derived flags; JwtSecret / the token durations /
+// LoginLimiter drive Login and RefreshToken.
+//
+// Where the refresh token lives (plan 09i E4, slice 3a.0) is decided HERE, not in the
+// transport: Login hands back either a cookie (web) or a body-carried token (native, when
+// the request asks for it — then no cookie), RefreshToken applies "body wins, cookie is the
+// fallback", and Logout hands back the clearing cookie. The api delegates only move cookies
+// between these results and the HTTP headers.
 type Service struct {
 	ImsDBQ             *store.DBQ
 	UserStore          directory.UserStore
@@ -135,9 +141,14 @@ func (s Service) GetAuthStatus(
 }
 
 // Login is the domain method behind the Login RPC — it authenticates an email + password
-// and issues an access token (in the response) plus a refresh token (returned as the
-// HttpOnly cookie the caller sets on the HTTP response). The REST POST /ims/api/auth
-// endpoint was RETIRED with this extraction, not shimmed (migration decision, plan 09 §6).
+// and issues an access token (in the response) plus a refresh token. The refresh token's
+// home depends on the request (plan 09i E4): by default it is returned as the HttpOnly
+// cookie the caller sets on the HTTP response (the web client); when the request sets
+// return_refresh_token it is returned IN the response (refresh_token / refresh_expires_at)
+// for the native client to keep in its secure store, and the cookie result is nil so no
+// cookie is set — a client is always in exactly one session mode. The REST POST
+// /ims/api/auth endpoint was RETIRED with this extraction, not shimmed (migration
+// decision, plan 09 §6).
 // It ports the REST postAuth verbatim, folding in what the REST ThrottleLogin middleware did:
 // the plan-90 rate-limit check runs inline here, before the argon2 verify, keyed on the
 // client IP and the lowercased email. clientIP is supplied by the transport (the delegate
@@ -225,7 +236,8 @@ func (s Service) Login(
 		return nil, nil, server.InternalError("failed to create access token", err)
 	}
 	// The refresh token outlives the access token so the client can silently renew.
-	refreshToken, err := jwter.CreateRefreshToken(matched.Handle, matched.ID, time.Now().Add(s.RefreshTokenDuration))
+	refreshExpiry := time.Now().Add(s.RefreshTokenDuration)
+	refreshToken, err := jwter.CreateRefreshToken(matched.Handle, matched.ID, refreshExpiry)
 	if err != nil {
 		return nil, nil, server.InternalError("failed to create refresh token", err)
 	}
@@ -233,23 +245,41 @@ func (s Service) Login(
 		Token:     accessToken,
 		ExpiresAt: timestamppb.New(accessExpiry.Add(authz.SuggestedEarlyAccessTokenRefresh)),
 	}
+	if req.GetReturnRefreshToken() {
+		// Native client: the token travels in the body and NO cookie is set (a nil cookie
+		// result tells the transport to set none). refresh_expires_at is the session's hard
+		// end — a refresh never re-mints the refresh token (no rotation, plan 09i §12 Q1).
+		resp.RefreshToken = refreshToken
+		resp.RefreshExpiresAt = timestamppb.New(refreshExpiry)
+		return resp, nil, nil
+	}
 	return resp, newRefreshCookie(refreshToken, s.RefreshTokenDuration), nil
 }
 
 // RefreshToken is the domain method behind the RefreshToken RPC — it exchanges a valid
 // refresh token for a fresh access token. The REST POST /ims/api/auth/refresh endpoint was
 // RETIRED with this extraction, not shimmed (migration decision, plan 09 §6). The token
-// rides in the HttpOnly cookie; the transport reads it from the request headers and passes
-// its value in (empty ⇒ no cookie present). This ports the REST refreshAccessToken verbatim.
-// It performs no persistent state change, which is why the contract marks it NO_SIDE_EFFECTS
-// (the action-log interceptor skips it, matching the REST route's LogRequest(false)).
+// comes from one of two places (plan 09i E4): the request body (the native client) or the
+// HttpOnly cookie, whose value the transport reads from the request headers and passes in
+// as cookieToken (empty ⇒ no cookie present). Body wins, cookie is the fallback — and
+// strictly so: a non-empty body token that fails verification is Unauthenticated even when
+// a valid cookie is also present, so a stale native token can never silently ride a web
+// session in the same browser profile (Expo web in dev is exactly that case). Beyond the
+// token's source this ports the REST refreshAccessToken verbatim. It performs no persistent
+// state change, which is why the contract marks it NO_SIDE_EFFECTS (the action-log
+// interceptor skips it, matching the REST route's LogRequest(false)).
 func (s Service) RefreshToken(
 	ctx context.Context,
-	_ *rpcv1.RefreshTokenRequest,
-	refreshToken string,
+	req *rpcv1.RefreshTokenRequest,
+	cookieToken string,
 ) (*rpcv1.RefreshTokenResponse, error) {
+	refreshToken := req.GetRefreshToken()
 	if refreshToken == "" {
-		return nil, connect.NewError(connect.CodeUnauthenticated, errors.New("no refresh token cookie found"))
+		refreshToken = cookieToken
+	}
+	if refreshToken == "" {
+		return nil, connect.NewError(connect.CodeUnauthenticated,
+			errors.New("no refresh token in the request body or the refresh cookie"))
 	}
 	claims, err := authz.JWTer{SecretKey: s.JwtSecret}.AuthenticateRefreshToken(refreshToken)
 	if err != nil {
@@ -283,6 +313,24 @@ func (s Service) RefreshToken(
 		Token:     accessToken,
 		ExpiresAt: timestamppb.New(accessExpiry.Add(authz.SuggestedEarlyAccessTokenRefresh)),
 	}, nil
+}
+
+// Logout is the domain method behind the Logout RPC (plan 09i, slice 3a.0). It ends the
+// caller's session as far as the server can: it hands back the clearing refresh cookie for
+// the transport to set (the web session — only the server can clear an HttpOnly cookie); a
+// native client wipes its own copy of the token after calling. It deliberately tolerates an
+// anonymous caller — the access token may already have expired, and a logout must never
+// fail — and touches no state, so it cannot error. The caller's identity, when the auth
+// interceptor found one, is logged here and audited by the action-log interceptor (Logout
+// is un-annotated in the contract for exactly that reason, mirroring Login). No server-side
+// revocation exists (refresh tokens are not persisted — see authz.CreateRefreshToken), so an
+// already-issued refresh token stays valid until it expires: the plan-90 residual.
+func (s Service) Logout(ctx context.Context, _ *rpcv1.LogoutRequest) (*rpcv1.LogoutResponse, *http.Cookie) {
+	if claims, ok := server.ClaimsFromContext(ctx); ok {
+		// #nosec G706 // log injection
+		slog.Info("Logout", "handle", claims.PersonHandle())
+	}
+	return &rpcv1.LogoutResponse{}, clearedRefreshCookie()
 }
 
 // usingDefaultPassword reports whether the caller is still signed in with the shared default
@@ -420,6 +468,21 @@ func newRefreshCookie(token string, ttl time.Duration) *http.Cookie {
 		Value:    token,
 		Path:     "/",
 		MaxAge:   int(ttl.Milliseconds() / 1000),
+		HttpOnly: true,
+		Secure:   true,
+		SameSite: http.SameSiteStrictMode,
+	}
+}
+
+// clearedRefreshCookie is the exact inverse of newRefreshCookie: the same name, path and
+// attributes (a browser only replaces a cookie whose name/path/attributes match) with an
+// empty value and Max-Age<0, which net/http serialises as Max-Age=0 — "expire now".
+func clearedRefreshCookie() *http.Cookie {
+	return &http.Cookie{
+		Name:     authz.RefreshTokenCookieName,
+		Value:    "",
+		Path:     "/",
+		MaxAge:   -1,
 		HttpOnly: true,
 		Secure:   true,
 		SameSite: http.SameSiteStrictMode,

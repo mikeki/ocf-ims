@@ -59,6 +59,7 @@ func TestMustApplyEnvConfig(t *testing.T) {
 	t.Setenv("AWS_REGION", "mars")
 	t.Setenv("IMS_ATTACHMENTS_S3_BUCKET", "big-bucket")
 	t.Setenv("IMS_ATTACHMENTS_S3_COMMON_KEY_PREFIX", "safe/dir")
+	t.Setenv("IMS_CORS_ALLOWED_ORIGINS", " http://localhost:8081, http://192.168.1.10:8081 ,, ")
 
 	baseCfg := conf.DefaultIMS()
 	cfg := mustApplyEnvConfig(baseCfg, ".env")
@@ -89,4 +90,17 @@ func TestMustApplyEnvConfig(t *testing.T) {
 	assert.Equal(t, "mars", cfg.AttachmentsStore.S3.AWSRegion)
 	assert.Equal(t, "big-bucket", cfg.AttachmentsStore.S3.Bucket)
 	assert.Equal(t, "safe/dir", cfg.AttachmentsStore.S3.CommonKeyPrefix)
+	// Comma-separated, whitespace-tolerant, empties dropped (plan 09j).
+	assert.Equal(t, []string{"http://localhost:8081", "http://192.168.1.10:8081"}, cfg.Core.CORSAllowedOrigins)
+}
+
+// TestSplitCommaList pins the env-list parsing IMS_CORS_ALLOWED_ORIGINS relies on: an empty
+// or blank value is nil (so the compose passthrough's "" default leaves CORS off), and
+// surrounding whitespace / empty entries are dropped.
+func TestSplitCommaList(t *testing.T) {
+	t.Parallel()
+	assert.Nil(t, splitCommaList(""))
+	assert.Nil(t, splitCommaList("  , ,"))
+	assert.Equal(t, []string{"a"}, splitCommaList("a"))
+	assert.Equal(t, []string{"a", "b"}, splitCommaList(" a ,b,, "))
 }

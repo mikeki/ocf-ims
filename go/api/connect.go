@@ -313,7 +313,9 @@ func (s ImsService) UpdateIncidentJournalEntry(
 // predecessor (POST /auth) was deleted in the same slice, so this is the only transport for
 // logging in. The delegate does the two HTTP-boundary jobs the domain method stays clear of:
 // it derives the rate-limit client IP from the forwarded headers / peer, and it sets the
-// HttpOnly refresh cookie the domain method returns onto the response headers.
+// HttpOnly refresh cookie the domain method returns onto the response headers. A nil cookie
+// means the domain method put the refresh token in the body instead (the native client
+// asked for it, plan 09i E4) and no cookie must be set.
 func (s ImsService) Login(
 	ctx context.Context,
 	req *connect.Request[servicerpcv1.LoginRequest],
@@ -324,16 +326,20 @@ func (s ImsService) Login(
 		return nil, err
 	}
 	resp := connect.NewResponse(msg)
-	resp.Header().Set("Set-Cookie", cookie.String())
+	if cookie != nil {
+		resp.Header().Set("Set-Cookie", cookie.String())
+	}
 	// A credential-minting response must never be cached by an intermediary.
 	resp.Header().Set("Cache-Control", "no-store")
 	return resp, nil
 }
 
 // RefreshToken is a thin RPC method over the auth.RefreshToken domain method (plan 09h/1c).
-// Its REST predecessor (POST /auth/refresh) was deleted in the same slice. The refresh token
-// rides in the HttpOnly cookie, so the delegate reads it from the request headers and hands
-// its value to the domain method (which stays HTTP-agnostic).
+// Its REST predecessor (POST /auth/refresh) was deleted in the same slice. The web client's
+// refresh token rides in the HttpOnly cookie, so the delegate reads it from the request
+// headers and hands its value to the domain method (which stays HTTP-agnostic) as the
+// fallback; the native client's token is in the request body, which the domain method
+// prefers (plan 09i E4 — body wins).
 func (s ImsService) RefreshToken(
 	ctx context.Context,
 	req *connect.Request[servicerpcv1.RefreshTokenRequest],
@@ -352,7 +358,8 @@ func (s ImsService) RefreshToken(
 }
 
 // refreshTokenFromHeader pulls the refresh-token cookie value out of a request's headers,
-// returning "" when it is absent (which the domain method treats as Unauthenticated). It reuses
+// returning "" when it is absent (which the domain method treats as "no cookie" — it then
+// falls back to the body, and is Unauthenticated when neither is present). It reuses
 // net/http's cookie parser by wrapping the header map in a throwaway request.
 func refreshTokenFromHeader(h http.Header) string {
 	cookie, err := (&http.Request{Header: h}).Cookie(authz.RefreshTokenCookieName)
@@ -360,6 +367,23 @@ func refreshTokenFromHeader(h http.Header) string {
 		return ""
 	}
 	return cookie.Value
+}
+
+// Logout is a thin RPC method over the auth.Logout domain method (plan 09i, slice 3a.0). It
+// has no REST predecessor on the API (the templ UI's GET /ims/auth/logout page route stays
+// until Phase 4). The delegate's one HTTP-boundary job is to set the clearing refresh cookie
+// the domain method returns onto the response headers; the domain method tolerates an
+// anonymous caller and cannot fail.
+func (s ImsService) Logout(
+	ctx context.Context,
+	req *connect.Request[servicerpcv1.LogoutRequest],
+) (*connect.Response[servicerpcv1.LogoutResponse], error) {
+	msg, cookie := s.Auth.Logout(ctx, req.Msg)
+	resp := connect.NewResponse(msg)
+	resp.Header().Set("Set-Cookie", cookie.String())
+	// A session-ending response must never be served from a cache either.
+	resp.Header().Set("Cache-Control", "no-store")
+	return resp, nil
 }
 
 // GetAuthStatus is a thin RPC method over the auth.GetAuthStatus domain method (plan
@@ -1006,6 +1030,10 @@ func AddConnectToMux(
 		},
 		connect.WithInterceptors(interceptors...),
 	)
-	mux.Handle(path, handler)
+	// Dev CORS (plan 09i E9 / slice 3a.0): the Expo dev server calls this prefix cross-origin
+	// with credentials. server.CORS is the identity adapter when no origin is configured (the
+	// production case — same-origin by construction), so nothing changes there. It wraps the
+	// whole prefix, so preflights (OPTIONS) are answered before connect-go sees them.
+	mux.Handle(path, server.CORS(cfg.Core.CORSAllowedOrigins)(handler))
 	return mux
 }

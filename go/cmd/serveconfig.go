@@ -117,6 +117,12 @@ func mustApplyEnvConfig(baseCfg *conf.IMSConfig, envFileName string) *conf.IMSCo
 	if v, ok := lookupEnv("IMS_DEFAULT_PASSWORD"); ok {
 		baseCfg.Core.DefaultPassword = v
 	}
+	// Dev CORS allow-list (plan 09i E9): comma-separated exact origins, whitespace
+	// tolerated, empty entries dropped. An empty value (the compose passthrough's
+	// default) leaves CORS off. Validated at boot by conf.Validate.
+	if v, ok := lookupEnv("IMS_CORS_ALLOWED_ORIGINS"); ok {
+		baseCfg.Core.CORSAllowedOrigins = splitCommaList(v)
+	}
 	if v, ok := lookupEnv("IMS_DB_STORE_TYPE"); ok {
 		baseCfg.Store.Type = conf.DBStoreType(strings.ToLower(v))
 	}
@@ -176,6 +182,19 @@ func mustApplyEnvConfig(baseCfg *conf.IMSConfig, envFileName string) *conf.IMSCo
 	}
 
 	return baseCfg
+}
+
+// splitCommaList splits a comma-separated env value into trimmed, non-empty entries; an
+// empty or all-whitespace value yields nil (so "unset" and "" mean the same thing).
+func splitCommaList(v string) []string {
+	var out []string
+	for part := range strings.SplitSeq(v, ",") {
+		part = strings.TrimSpace(part)
+		if part != "" {
+			out = append(out, part)
+		}
+	}
+	return out
 }
 
 func lookupEnv(key string) (string, bool) {

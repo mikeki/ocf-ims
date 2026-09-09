@@ -58,6 +58,15 @@ service ImsService {
   rpc GetAuthStatus(rpc.v1.GetAuthStatusRequest) returns (rpc.v1.GetAuthStatusResponse) {
     option idempotency_level = NO_SIDE_EFFECTS;
   }
+  // Logout ends the caller's session (plan 09i, slice 3a.0): the server clears the
+  // HttpOnly refresh cookie (the only party that can); a native client calls it too and
+  // then wipes the refresh token from its secure store. It tolerates an anonymous caller
+  // — the access token may already have expired, and a logout must never fail — and is
+  // left un-annotated so the action-log interceptor records the session's end (with
+  // whatever caller identity is present) as Login records its start. No server-side
+  // revocation exists: an already-issued refresh token stays valid until it expires
+  // (the plan-90 residual), so the effect is on the client's copy of the token.
+  rpc Logout(rpc.v1.LogoutRequest) returns (rpc.v1.LogoutResponse);
 
   // --- Profile (the caller's own account) ---
   rpc ChangeOwnPassword(rpc.v1.ChangeOwnPasswordRequest) returns (rpc.v1.ChangeOwnPasswordResponse);
@@ -82,8 +91,15 @@ service ImsService {
   rpc UpdateIncidentJournalEntry(rpc.v1.UpdateIncidentJournalEntryRequest) returns (rpc.v1.UpdateIncidentJournalEntryResponse);
 
   // --- Field reports ---
-  rpc ListReports(rpc.v1.ListReportsRequest) returns (rpc.v1.ListReportsResponse);
-  rpc GetReport(rpc.v1.GetReportRequest) returns (rpc.v1.GetReportResponse);
+  // Both are reads (see the GetAuthStatus note): NO_SIDE_EFFECTS so the action-log
+  // interceptor skips them. They landed in 1c without the marker and merely over-logged
+  // (fails safe); marked in 3a.0 (plan 09i §2).
+  rpc ListReports(rpc.v1.ListReportsRequest) returns (rpc.v1.ListReportsResponse) {
+    option idempotency_level = NO_SIDE_EFFECTS;
+  }
+  rpc GetReport(rpc.v1.GetReportRequest) returns (rpc.v1.GetReportResponse) {
+    option idempotency_level = NO_SIDE_EFFECTS;
+  }
   rpc CreateReport(rpc.v1.CreateReportRequest) returns (rpc.v1.CreateReportResponse);
   rpc UpdateReport(rpc.v1.UpdateReportRequest) returns (rpc.v1.UpdateReportResponse);
   rpc UpdateReportJournalEntry(rpc.v1.UpdateReportJournalEntryRequest) returns (rpc.v1.UpdateReportJournalEntryResponse);

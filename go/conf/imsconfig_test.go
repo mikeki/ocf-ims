@@ -126,6 +126,39 @@ func TestValidateJWTSecretLength(t *testing.T) {
 	cfg.Core.JWTSecret = strings.Repeat("a", 32)
 	require.NoError(t, cfg.Validate())
 }
+
+// TestValidateCORSAllowedOrigins pins the allow-list's "exact origin" rule (plan 09j): rs/cors
+// matches the Origin header verbatim, so anything that is not scheme://host[:port] would never
+// match and fail silently in the browser — reject it at boot instead.
+func TestValidateCORSAllowedOrigins(t *testing.T) {
+	t.Parallel()
+
+	cfg := conf.DefaultIMS()
+	require.Empty(t, cfg.Core.CORSAllowedOrigins, "CORS is off by default")
+	cfg.Core.CORSAllowedOrigins = []string{"http://localhost:8081", "https://ims-dev.example.org", "http://192.168.1.10:8081"}
+	require.NoError(t, cfg.Validate())
+
+	for _, bad := range []string{
+		"*",                      // wildcard: browsers refuse it alongside credentials
+		"http://*.example.org",   // wildcard host
+		"localhost:8081",         // no scheme (parses as scheme "localhost")
+		"http://localhost:8081/", // trailing slash never matches an Origin header
+		"http://localhost/ims",   // path
+		"http://localhost?x=1",   // query
+		"http://localhost#frag",  // fragment
+		"ftp://localhost",        // not a web origin
+		"http://user@localhost",  // userinfo
+		"",                       // empty entry (the env parser drops these; a literal one is a bug)
+		"http://",                // no host
+	} {
+		cfg = conf.DefaultIMS()
+		cfg.Core.CORSAllowedOrigins = []string{bad}
+		err := cfg.Validate()
+		require.Error(t, err, "origin %q should be rejected", bad)
+		require.Contains(t, err.Error(), "IMS_CORS_ALLOWED_ORIGINS")
+	}
+}
+
 func TestValidateAttachmentsStore(t *testing.T) {
 	t.Parallel()
 	temp, err := os.OpenRoot(t.TempDir())
