@@ -222,6 +222,11 @@ packages/interface/
   generic with request id.
 - Platform splits use Expo's `.native.ts` / `.web.ts` file suffixes, confined to
   `session/`, push, and file pickers.
+- Imports (decided 2026-09-09, 3a.1): `@/…` is the alias for `src/…` (tsconfig
+  `paths`, mirrored in `jest.config.js`); generated protos are always deep-imported
+  (`@ocf-ims/protocol-buffers/ocf/ims/…/x_pb`); **no barrel files** (`index.ts`
+  re-exports) — Metro does not tree-shake, and a barrel over the generated tree
+  would drag every message into every bundle.
 - Every screen ships its loading, empty and error states from the design handoff.
 
 ## 6. Design track (Claude Design)

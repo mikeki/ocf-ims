@@ -14,26 +14,6 @@
 // limitations under the License.
 //
 
-import { ImsService } from "@ocf-ims/protocol-buffers/ocf/ims/service/v1/service_pb";
-import { StyleSheet, Text, View } from "react-native";
-import { APP_NAME } from "@/lib/app";
-
-export default function Index() {
-  return (
-    <View style={styles.container}>
-      <Text style={styles.text}>{APP_NAME}</Text>
-      <Text style={styles.text}>{ImsService.typeName}</Text>
-    </View>
-  );
-}
-
-const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    justifyContent: "center",
-    alignItems: "center",
-  },
-  text: {
-    fontSize: 18,
-  },
-});
+// The first file under src/: imported by app/index.tsx as `@/lib/app`, which
+// proves the path alias resolves in tsc, Metro (the web export) and Jest.
+export const APP_NAME = "OCF IMS";

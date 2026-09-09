@@ -102,8 +102,10 @@ pnpm -F @ocf-ims/interface start       # Metro dev server on :8081
 The `Interface` CI job runs the same list. Against the docker stack the dev server
 is cross-origin: set `IMS_CORS_ALLOWED_ORIGINS=http://localhost:8081` (see
 Configuration). Every `.ts`/`.tsx` file carries the Apache header (the
-`prepend-license` hook stamps both). `ios/`, `android/`, `.expo/`, `dist/` and
-`expo-env.d.ts` are generated and never committed. See `packages/interface/README.md`.
+`prepend-license` hook stamps both). Imports: `@/x` is `src/x`; generated protos
+are deep-imported (`@ocf-ims/protocol-buffers/ocf/ims/…/x_pb`); **no barrel
+files**. `ios/`, `android/`, `.expo/`, `dist/` and `expo-env.d.ts` are generated
+and never committed. See `packages/interface/README.md`.
 
 ### Code Generation
 
