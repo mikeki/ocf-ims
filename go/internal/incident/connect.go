@@ -21,7 +21,6 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
-	"net/http"
 	"strings"
 	"time"
 
@@ -86,13 +85,13 @@ func (s Service) GetIncident(
 		if errors.Is(err, sql.ErrNoRows) {
 			return nil, connect.NewError(connect.CodeNotFound, errors.New("event not found"))
 		}
-		return nil, connect.NewError(connect.CodeInternal, fmt.Errorf("failed to fetch event: %w", err))
+		return nil, server.InternalError("failed to fetch event", err)
 	}
 	event := eventRow.Event
 
 	eventPerms, _, err := authz.EventPermissions(ctx, &event.ID, s.ImsDBQ, *claims)
 	if err != nil {
-		return nil, connect.NewError(connect.CodeInternal, fmt.Errorf("failed to compute permissions: %w", err))
+		return nil, server.InternalError("failed to compute permissions", err)
 	}
 	eventPermissions := eventPerms[event.ID]
 
@@ -111,7 +110,7 @@ func (s Service) GetIncident(
 			Event: event.ID, IncidentNumber: incidentNumber, PersonID: viewerPersonID,
 		})
 		if err != nil {
-			return nil, connect.NewError(connect.CodeInternal, fmt.Errorf("failed to check incident grant: %w", err))
+			return nil, server.InternalError("failed to check incident grant", err)
 		}
 		if !hasGrant {
 			return nil, connect.NewError(connect.CodePermissionDenied,
@@ -121,7 +120,7 @@ func (s Service) GetIncident(
 
 	storedRow, journalEntries, errHTTP := fetchIncident(ctx, s.ImsDBQ, event.ID, incidentNumber, s.AttachmentsEnabled)
 	if errHTTP != nil {
-		return nil, herrToConnect(errHTTP)
+		return nil, server.HerrToConnect(errHTTP)
 	}
 
 	// A private incident is off-limits to event-wide readers who aren't its creator,
@@ -134,7 +133,7 @@ func (s Service) GetIncident(
 			Event: event.ID, IncidentNumber: incidentNumber, PersonID: viewerPersonID,
 		})
 		if err != nil {
-			return nil, connect.NewError(connect.CodeInternal, fmt.Errorf("failed to check incident grant: %w", err))
+			return nil, server.InternalError("failed to check incident grant", err)
 		}
 		if !hasGrant {
 			return nil, connect.NewError(connect.CodeNotFound, errors.New("incident not found"))
@@ -143,7 +142,7 @@ func (s Service) GetIncident(
 
 	permsByEvent, errHTTP := server.PermissionsByEvent(ctx, server.JWTContext{Claims: claims}, s.ImsDBQ, s.UserStore)
 	if errHTTP != nil {
-		return nil, herrToConnect(errHTTP)
+		return nil, server.HerrToConnect(errHTTP)
 	}
 
 	peopleRows, err := s.ImsDBQ.Incident_People(ctx, s.ImsDBQ, imsdb.Incident_PeopleParams{
@@ -151,7 +150,7 @@ func (s Service) GetIncident(
 		IncidentNumber: incidentNumber,
 	})
 	if err != nil {
-		return nil, connect.NewError(connect.CodeInternal, fmt.Errorf("failed to fetch people: %w", err))
+		return nil, server.InternalError("failed to fetch people", err)
 	}
 	people := make([]imsjson.IncidentPerson, len(peopleRows))
 	for i, row := range peopleRows {
@@ -163,7 +162,7 @@ func (s Service) GetIncident(
 		IncidentNumber1: incidentNumber,
 	})
 	if err != nil {
-		return nil, connect.NewError(connect.CodeInternal, fmt.Errorf("failed to fetch linked incidents: %w", err))
+		return nil, server.InternalError("failed to fetch linked incidents", err)
 	}
 	for i := range linkedIncidents {
 		li := linkedIncidents[i]
@@ -184,7 +183,7 @@ func (s Service) GetIncident(
 	// into a direct DB→proto mapping (plan 09 §Migration strategy).
 	incJSON, errHTTP := incidentToJSON(storedRow, people, journalEntries, linkedIncidents, event, s.AttachmentsEnabled)
 	if errHTTP != nil {
-		return nil, herrToConnect(errHTTP)
+		return nil, server.HerrToConnect(errHTTP)
 	}
 	// 52f: a writer (or admin) may always add journal entries; an involved reporter
 	// may too, but only on incidents they were granted.
@@ -226,13 +225,13 @@ func (s Service) ListIncidents(
 		if errors.Is(err, sql.ErrNoRows) {
 			return nil, connect.NewError(connect.CodeNotFound, errors.New("event not found"))
 		}
-		return nil, connect.NewError(connect.CodeInternal, fmt.Errorf("failed to fetch event: %w", err))
+		return nil, server.InternalError("failed to fetch event", err)
 	}
 	event := eventRow.Event
 
 	eventPerms, _, err := authz.EventPermissions(ctx, &event.ID, s.ImsDBQ, *claims)
 	if err != nil {
-		return nil, connect.NewError(connect.CodeInternal, fmt.Errorf("failed to compute permissions: %w", err))
+		return nil, server.InternalError("failed to compute permissions", err)
 	}
 	eventPermissions := eventPerms[event.ID]
 	hasEventRead := eventPermissions&authz.EventReadIncidents != 0
@@ -249,7 +248,7 @@ func (s Service) ListIncidents(
 		grantedNums, err := s.ImsDBQ.GrantedIncidentNumbersForPerson(ctx, s.ImsDBQ,
 			imsdb.GrantedIncidentNumbersForPersonParams{Event: event.ID, PersonID: viewerPersonID})
 		if err != nil {
-			return nil, connect.NewError(connect.CodeInternal, fmt.Errorf("failed to fetch granted incidents: %w", err))
+			return nil, server.InternalError("failed to fetch granted incidents", err)
 		}
 		if !hasEventRead && len(grantedNums) == 0 {
 			return nil, connect.NewError(connect.CodePermissionDenied,
@@ -271,7 +270,7 @@ func (s Service) ListIncidents(
 		journalEntries, err := s.ImsDBQ.Incidents_JournalEntries(groupCtx, s.ImsDBQ,
 			imsdb.Incidents_JournalEntriesParams{Event: event.ID, Generated: includeSystemEntries})
 		if err != nil {
-			return connect.NewError(connect.CodeInternal, fmt.Errorf("failed to fetch incident journal entries: %w", err))
+			return server.InternalError("failed to fetch incident journal entries", err)
 		}
 		for _, row := range journalEntries {
 			// Incidents don't set "on behalf of" (6m is reports-only for now).
@@ -285,7 +284,7 @@ func (s Service) ListIncidents(
 	group.Go(func() error {
 		peopleRows, err := s.ImsDBQ.Incidents_People(groupCtx, s.ImsDBQ, event.ID)
 		if err != nil {
-			return connect.NewError(connect.CodeInternal, fmt.Errorf("failed to fetch people: %w", err))
+			return server.InternalError("failed to fetch people", err)
 		}
 		for _, row := range peopleRows {
 			peopleByIncident[row.IncidentPerson.IncidentNumber] = append(peopleByIncident[row.IncidentPerson.IncidentNumber],
@@ -299,7 +298,7 @@ func (s Service) ListIncidents(
 		var err error
 		incidentsRows, err = s.ImsDBQ.Incidents(groupCtx, s.ImsDBQ, event.ID)
 		if err != nil {
-			return connect.NewError(connect.CodeInternal, fmt.Errorf("failed to fetch incidents: %w", err))
+			return server.InternalError("failed to fetch incidents", err)
 		}
 		return nil
 	})
@@ -324,7 +323,7 @@ func (s Service) ListIncidents(
 		var emptyLinkedIncidents []imsdb.Incident_LinkedIncidentsRow
 		incJSON, errHTTP := incidentToJSON(incidentRow, peopleByIncident[r.Incident.Number], entriesByIncident[r.Incident.Number], emptyLinkedIncidents, event, s.AttachmentsEnabled)
 		if errHTTP != nil {
-			return nil, herrToConnect(errHTTP)
+			return nil, server.HerrToConnect(errHTTP)
 		}
 		views = append(views, &rpcv1.IncidentView{
 			Incident:            incidentJSONToProto(incJSON),
@@ -363,13 +362,13 @@ func (s Service) CreateIncident(
 		if errors.Is(err, sql.ErrNoRows) {
 			return nil, connect.NewError(connect.CodeNotFound, errors.New("event not found"))
 		}
-		return nil, connect.NewError(connect.CodeInternal, fmt.Errorf("failed to fetch event: %w", err))
+		return nil, server.InternalError("failed to fetch event", err)
 	}
 	event := eventRow.Event
 
 	eventPerms, _, err := authz.EventPermissions(ctx, &event.ID, s.ImsDBQ, *claims)
 	if err != nil {
-		return nil, connect.NewError(connect.CodeInternal, fmt.Errorf("failed to compute permissions: %w", err))
+		return nil, server.InternalError("failed to compute permissions", err)
 	}
 	if eventPerms[event.ID]&authz.EventWriteIncidents == 0 {
 		return nil, connect.NewError(connect.CodePermissionDenied,
@@ -382,7 +381,7 @@ func (s Service) CreateIncident(
 	// the row with the create defaults before applying the caller's fields over it.
 	newIncidentNumber, err := s.ImsDBQ.NextIncidentNumber(ctx, s.ImsDBQ, event.ID)
 	if err != nil {
-		return nil, connect.NewError(connect.CodeInternal, fmt.Errorf("failed to find next incident number: %w", err))
+		return nil, server.InternalError("failed to find next incident number", err)
 	}
 	now := conv.TimeToFloat(time.Now())
 	_, err = s.ImsDBQ.CreateIncident(ctx, s.ImsDBQ, imsdb.CreateIncidentParams{
@@ -395,7 +394,7 @@ func (s Service) CreateIncident(
 		CreatedBy: sql.NullInt32{Int32: authorPersonID, Valid: true},
 	})
 	if err != nil {
-		return nil, connect.NewError(connect.CodeInternal, fmt.Errorf("failed to create incident: %w", err))
+		return nil, server.InternalError("failed to create incident", err)
 	}
 
 	newIncident := incidentUpdateToJSON(req.GetIncident())
@@ -405,7 +404,7 @@ func (s Service) CreateIncident(
 
 	errHTTP := updateIncident(ctx, s.ImsDBQ, s.UserStore, s.Es, s.Pusher, newIncident, authorPersonID, claims.PersonAdmin())
 	if errHTTP != nil {
-		return nil, herrToConnect(errHTTP)
+		return nil, server.HerrToConnect(errHTTP)
 	}
 
 	// A new incident shifts the dashboard aggregate for this event.
@@ -440,13 +439,13 @@ func (s Service) UpdateIncident(
 		if errors.Is(err, sql.ErrNoRows) {
 			return nil, connect.NewError(connect.CodeNotFound, errors.New("event not found"))
 		}
-		return nil, connect.NewError(connect.CodeInternal, fmt.Errorf("failed to fetch event: %w", err))
+		return nil, server.InternalError("failed to fetch event", err)
 	}
 	event := eventRow.Event
 
 	eventPerms, _, err := authz.EventPermissions(ctx, &event.ID, s.ImsDBQ, *claims)
 	if err != nil {
-		return nil, connect.NewError(connect.CodeInternal, fmt.Errorf("failed to compute permissions: %w", err))
+		return nil, server.InternalError("failed to compute permissions", err)
 	}
 	eventPermissions := eventPerms[event.ID]
 
@@ -465,7 +464,7 @@ func (s Service) UpdateIncident(
 			Event: event.ID, IncidentNumber: incidentNumber, PersonID: claims.PersonID(),
 		})
 		if err != nil {
-			return nil, connect.NewError(connect.CodeInternal, fmt.Errorf("failed to check incident grant: %w", err))
+			return nil, server.InternalError("failed to check incident grant", err)
 		}
 		if !hasGrant {
 			return nil, connect.NewError(connect.CodePermissionDenied,
@@ -479,7 +478,7 @@ func (s Service) UpdateIncident(
 
 	errHTTP := updateIncident(ctx, s.ImsDBQ, s.UserStore, s.Es, s.Pusher, newIncident, claims.PersonID(), claims.PersonAdmin())
 	if errHTTP != nil {
-		return nil, herrToConnect(errHTTP)
+		return nil, server.HerrToConnect(errHTTP)
 	}
 
 	// State / priority / outcome / area edits all feed the dashboard aggregate.
@@ -515,7 +514,7 @@ func (s Service) AttachPersonToIncident(
 	incidentNumber := req.GetIncidentNumber()
 	person, errHTTP := server.PersonByID(ctx, s.ImsDBQ, req.GetPersonId())
 	if errHTTP != nil {
-		return nil, herrToConnect(errHTTP)
+		return nil, server.HerrToConnect(errHTTP)
 	}
 	personID := person.ID
 	actorPersonID := claims.PersonID()
@@ -599,7 +598,7 @@ func (s Service) AttachPersonToIncident(
 		return nil
 	})
 	if runErr != nil {
-		return nil, herrToConnect(herr.AsHTTPError(runErr))
+		return nil, server.HerrToConnect(herr.AsHTTPError(runErr))
 	}
 	s.Es.NotifyIncidentUpdate(ctx, event.ID, incidentNumber)
 	// Web push the added person (plan 84c): after commit, off the request path, and only on a
@@ -634,7 +633,7 @@ func (s Service) DetachPersonFromIncident(
 	incidentNumber := req.GetIncidentNumber()
 	person, errHTTP := server.PersonByID(ctx, s.ImsDBQ, req.GetPersonId())
 	if errHTTP != nil {
-		return nil, herrToConnect(errHTTP)
+		return nil, server.HerrToConnect(errHTTP)
 	}
 	personID := person.ID
 	actorPersonID := claims.PersonID()
@@ -661,7 +660,7 @@ func (s Service) DetachPersonFromIncident(
 		return nil
 	})
 	if runErr != nil {
-		return nil, herrToConnect(herr.AsHTTPError(runErr))
+		return nil, server.HerrToConnect(herr.AsHTTPError(runErr))
 	}
 
 	s.Es.NotifyIncidentUpdate(ctx, event.ID, incidentNumber)
@@ -701,7 +700,7 @@ func (s Service) UpdateIncidentJournalEntry(
 
 	txn, err := s.ImsDBQ.Begin()
 	if err != nil {
-		return nil, connect.NewError(connect.CodeInternal, fmt.Errorf("failed to begin transaction: %w", err))
+		return nil, server.InternalError("failed to begin transaction", err)
 	}
 	defer server.Rollback(txn)
 
@@ -709,7 +708,7 @@ func (s Service) UpdateIncidentJournalEntry(
 		Stricken: *stricken, Event: event.ID, IncidentNumber: incidentNumber, JournalEntry: journalEntryID,
 	})
 	if err != nil {
-		return nil, connect.NewError(connect.CodeInternal, fmt.Errorf("failed to set journal entry stricken: %w", err))
+		return nil, server.InternalError("failed to set journal entry stricken", err)
 	}
 	struckVerb := "Struck"
 	if !*stricken {
@@ -722,7 +721,7 @@ func (s Service) UpdateIncidentJournalEntry(
 	}
 	err = txn.Commit()
 	if err != nil {
-		return nil, connect.NewError(connect.CodeInternal, fmt.Errorf("failed to commit transaction: %w", err))
+		return nil, server.InternalError("failed to commit transaction", err)
 	}
 
 	defer s.Es.NotifyIncidentUpdate(ctx, event.ID, incidentNumber)
@@ -753,13 +752,13 @@ func (s Service) GetReport(
 		if errors.Is(err, sql.ErrNoRows) {
 			return nil, connect.NewError(connect.CodeNotFound, errors.New("event not found"))
 		}
-		return nil, connect.NewError(connect.CodeInternal, fmt.Errorf("failed to fetch event: %w", err))
+		return nil, server.InternalError("failed to fetch event", err)
 	}
 	event := eventRow.Event
 
 	eventPerms, _, err := authz.EventPermissions(ctx, &event.ID, s.ImsDBQ, *claims)
 	if err != nil {
-		return nil, connect.NewError(connect.CodeInternal, fmt.Errorf("failed to compute permissions: %w", err))
+		return nil, server.InternalError("failed to compute permissions", err)
 	}
 	eventPermissions := eventPerms[event.ID]
 	if eventPermissions&(authz.EventReadAllReports|authz.EventReadOwnReports|authz.EventReadCrewReports) == 0 {
@@ -771,7 +770,7 @@ func (s Service) GetReport(
 	reportNumber := req.GetReportNumber()
 	report, journalEntries, errHTTP := fetchReport(ctx, s.ImsDBQ, event.ID, reportNumber, s.AttachmentsEnabled)
 	if errHTTP != nil {
-		return nil, herrToConnect(errHTTP)
+		return nil, server.HerrToConnect(errHTTP)
 	}
 	reportRow := imsdb.ReportsRow(report)
 
@@ -783,7 +782,7 @@ func (s Service) GetReport(
 		if !ownVisible && eventPermissions&authz.EventReadCrewReports != 0 {
 			crewReportNums, errHTTP := crewReportNumberSet(ctx, s.ImsDBQ, event.ID, callerPersonID)
 			if errHTTP != nil {
-				return nil, herrToConnect(errHTTP)
+				return nil, server.HerrToConnect(errHTTP)
 			}
 			crewVisible = crewReportNums[reportNumber]
 		}
@@ -822,13 +821,13 @@ func (s Service) ListReports(
 		if errors.Is(err, sql.ErrNoRows) {
 			return nil, connect.NewError(connect.CodeNotFound, errors.New("event not found"))
 		}
-		return nil, connect.NewError(connect.CodeInternal, fmt.Errorf("failed to fetch event: %w", err))
+		return nil, server.InternalError("failed to fetch event", err)
 	}
 	event := eventRow.Event
 
 	eventPerms, _, err := authz.EventPermissions(ctx, &event.ID, s.ImsDBQ, *claims)
 	if err != nil {
-		return nil, connect.NewError(connect.CodeInternal, fmt.Errorf("failed to compute permissions: %w", err))
+		return nil, server.InternalError("failed to compute permissions", err)
 	}
 	eventPermissions := eventPerms[event.ID]
 	if eventPermissions&(authz.EventReadAllReports|authz.EventReadOwnReports|authz.EventReadCrewReports) == 0 {
@@ -842,7 +841,7 @@ func (s Service) ListReports(
 		Event: event.ID, Generated: includeSystemEntries,
 	})
 	if err != nil {
-		return nil, connect.NewError(connect.CodeInternal, fmt.Errorf("failed to get report journal entries: %w", err))
+		return nil, server.InternalError("failed to get report journal entries", err)
 	}
 	entriesByReport := make(map[int32][]imsjson.JournalEntry)
 	for _, row := range journalEntryRows {
@@ -854,7 +853,7 @@ func (s Service) ListReports(
 
 	storedReports, err := s.ImsDBQ.Reports(ctx, s.ImsDBQ, event.ID)
 	if err != nil {
-		return nil, connect.NewError(connect.CodeInternal, fmt.Errorf("failed to fetch reports: %w", err))
+		return nil, server.InternalError("failed to fetch reports", err)
 	}
 
 	callerPersonID := claims.PersonID()
@@ -868,7 +867,7 @@ func (s Service) ListReports(
 		if eventPermissions&authz.EventReadCrewReports != 0 {
 			set, errHTTP := crewReportNumberSet(ctx, s.ImsDBQ, event.ID, callerPersonID)
 			if errHTTP != nil {
-				return nil, herrToConnect(errHTTP)
+				return nil, server.HerrToConnect(errHTTP)
 			}
 			crewReportNums = set
 		}
@@ -926,7 +925,7 @@ func (s Service) CreateReport(
 
 	newReportNum, err := s.ImsDBQ.NextReportNumber(ctx, s.ImsDBQ, event.ID)
 	if err != nil {
-		return nil, connect.NewError(connect.CodeInternal, fmt.Errorf("failed to find next report number: %w", err))
+		return nil, server.InternalError("failed to find next report number", err)
 	}
 	report.Number = newReportNum
 
@@ -942,12 +941,12 @@ func (s Service) CreateReport(
 		if isNoReferencedRow(err) {
 			return nil, connect.NewError(connect.CodeNotFound, errors.New("no such Incident"))
 		}
-		return nil, connect.NewError(connect.CodeInternal, fmt.Errorf("failed to create report: %w", err))
+		return nil, server.InternalError("failed to create report", err)
 	}
 
 	txn, err := s.ImsDBQ.Begin()
 	if err != nil {
-		return nil, connect.NewError(connect.CodeInternal, fmt.Errorf("failed to begin transaction: %w", err))
+		return nil, server.InternalError("failed to begin transaction", err)
 	}
 	defer server.Rollback(txn)
 
@@ -979,7 +978,7 @@ func (s Service) CreateReport(
 
 	err = txn.Commit()
 	if err != nil {
-		return nil, connect.NewError(connect.CodeInternal, fmt.Errorf("failed to commit transaction: %w", err))
+		return nil, server.InternalError("failed to commit transaction", err)
 	}
 
 	defer s.Es.NotifyReportUpdate(event.ID, report.Number)
@@ -1029,7 +1028,7 @@ func (s Service) UpdateReport(
 		return nil, connect.NewError(connect.CodeNotFound, errors.New("report does not exist"))
 	}
 	if err != nil {
-		return nil, connect.NewError(connect.CodeInternal, fmt.Errorf("failed to fetch report: %w", err))
+		return nil, server.InternalError("failed to fetch report", err)
 	}
 	storedReport := reportRow.Report
 
@@ -1081,7 +1080,7 @@ func (s Service) UpdateReport(
 
 	txn, err := s.ImsDBQ.Begin()
 	if err != nil {
-		return nil, connect.NewError(connect.CodeInternal, fmt.Errorf("failed to begin transaction: %w", err))
+		return nil, server.InternalError("failed to begin transaction", err)
 	}
 	defer server.Rollback(txn)
 
@@ -1100,7 +1099,7 @@ func (s Service) UpdateReport(
 		IncidentNumber: storedReport.IncidentNumber,
 	})
 	if err != nil {
-		return nil, connect.NewError(connect.CodeInternal, fmt.Errorf("failed to update report: %w", err))
+		return nil, server.InternalError("failed to update report", err)
 	}
 
 	mentionedPersonIDs, errConn := s.applyReportJournalEntries(ctx, txn, event.ID, storedReport.Number, authorPersonID, report.JournalEntries)
@@ -1110,7 +1109,7 @@ func (s Service) UpdateReport(
 
 	err = txn.Commit()
 	if err != nil {
-		return nil, connect.NewError(connect.CodeInternal, fmt.Errorf("failed to commit transaction: %w", err))
+		return nil, server.InternalError("failed to commit transaction", err)
 	}
 
 	defer s.Es.NotifyReportUpdate(event.ID, storedReport.Number)
@@ -1163,7 +1162,7 @@ func (s Service) UpdateReportJournalEntry(
 			return nil, connect.NewError(connect.CodeNotFound, errors.New("there is no such JournalEntry on this Report"))
 		}
 		if err != nil {
-			return nil, connect.NewError(connect.CodeInternal, fmt.Errorf("failed to fetch journal entry author: %w", err))
+			return nil, server.InternalError("failed to fetch journal entry author", err)
 		}
 		if author.String != claims.PersonHandle() {
 			return nil, connect.NewError(connect.CodePermissionDenied,
@@ -1173,7 +1172,7 @@ func (s Service) UpdateReportJournalEntry(
 
 	txn, err := s.ImsDBQ.Begin()
 	if err != nil {
-		return nil, connect.NewError(connect.CodeInternal, fmt.Errorf("failed to begin transaction: %w", err))
+		return nil, server.InternalError("failed to begin transaction", err)
 	}
 	defer server.Rollback(txn)
 
@@ -1181,7 +1180,7 @@ func (s Service) UpdateReportJournalEntry(
 		Stricken: *stricken, Event: event.ID, ReportNumber: reportNumber, JournalEntry: journalEntryID,
 	})
 	if err != nil {
-		return nil, connect.NewError(connect.CodeInternal, fmt.Errorf("failed to set journal entry stricken: %w", err))
+		return nil, server.InternalError("failed to set journal entry stricken", err)
 	}
 	struckVerb := "Struck"
 	if !*stricken {
@@ -1194,7 +1193,7 @@ func (s Service) UpdateReportJournalEntry(
 	}
 	err = txn.Commit()
 	if err != nil {
-		return nil, connect.NewError(connect.CodeInternal, fmt.Errorf("failed to commit transaction: %w", err))
+		return nil, server.InternalError("failed to commit transaction", err)
 	}
 
 	defer s.Es.NotifyReportUpdate(event.ID, reportNumber)
@@ -1213,13 +1212,13 @@ func (s Service) reportWriteContext(
 		if errors.Is(err, sql.ErrNoRows) {
 			return imsdb.Event{}, 0, connect.NewError(connect.CodeNotFound, errors.New("event not found"))
 		}
-		return imsdb.Event{}, 0, connect.NewError(connect.CodeInternal, fmt.Errorf("failed to fetch event: %w", err))
+		return imsdb.Event{}, 0, server.InternalError("failed to fetch event", err)
 	}
 	event := eventRow.Event
 
 	eventPerms, _, err := authz.EventPermissions(ctx, &event.ID, s.ImsDBQ, claims)
 	if err != nil {
-		return imsdb.Event{}, 0, connect.NewError(connect.CodeInternal, fmt.Errorf("failed to compute permissions: %w", err))
+		return imsdb.Event{}, 0, server.InternalError("failed to compute permissions", err)
 	}
 	eventPermissions := eventPerms[event.ID]
 	if eventPermissions&(authz.EventWriteAllReports|authz.EventWriteOwnReports) == 0 {
@@ -1243,13 +1242,13 @@ func (s Service) incidentWriteContext(
 		if errors.Is(err, sql.ErrNoRows) {
 			return imsdb.Event{}, connect.NewError(connect.CodeNotFound, errors.New("event not found"))
 		}
-		return imsdb.Event{}, connect.NewError(connect.CodeInternal, fmt.Errorf("failed to fetch event: %w", err))
+		return imsdb.Event{}, server.InternalError("failed to fetch event", err)
 	}
 	event := eventRow.Event
 
 	eventPerms, _, err := authz.EventPermissions(ctx, &event.ID, s.ImsDBQ, claims)
 	if err != nil {
-		return imsdb.Event{}, connect.NewError(connect.CodeInternal, fmt.Errorf("failed to compute permissions: %w", err))
+		return imsdb.Event{}, server.InternalError("failed to compute permissions", err)
 	}
 	if eventPerms[event.ID]&authz.EventWriteIncidents == 0 {
 		return imsdb.Event{}, connect.NewError(connect.CodePermissionDenied,
@@ -1265,7 +1264,7 @@ func (s Service) isPreviousReportAuthor(ctx context.Context, eventID, reportNumb
 		Event: eventID, ReportNumber: reportNumber,
 	})
 	if err != nil {
-		return false, connect.NewError(connect.CodeInternal, fmt.Errorf("failed to fetch report journal entries: %w", err))
+		return false, server.InternalError("failed to fetch report journal entries", err)
 	}
 	for _, entry := range entries {
 		if entry.Author.String == handle {
@@ -1319,7 +1318,7 @@ func (s Service) reconcileReportLink(
 		if isNoReferencedRow(err) {
 			return connect.NewError(connect.CodeNotFound, errors.New("no such Incident"))
 		}
-		return connect.NewError(connect.CodeInternal, fmt.Errorf("failed to attach report to incident: %w", err))
+		return server.InternalError("failed to attach report to incident", err)
 	}
 	errConn := s.addGeneratedReportEntry(ctx, s.ImsDBQ, event.ID, reportNumber, actorPersonID, reportEntryText)
 	if errConn != nil {
@@ -1351,15 +1350,15 @@ func (s Service) applyReportJournalEntries(
 		entryID, errHTTP := addJournalEntry(ctx, s.ImsDBQ, txn, eventID, reportNumber, authorPersonID,
 			entry.Text, false, "", "", "", onBehalfOfParam(entry.OnBehalfOfPersonID))
 		if errHTTP != nil {
-			return nil, herrToConnect(errHTTP)
+			return nil, server.HerrToConnect(errHTTP)
 		}
 		errHTTP = addJournalEntryMentions(ctx, s.ImsDBQ, s.UserStore, txn, entryID, entry.Text, entry.MentionedPersonIDs)
 		if errHTTP != nil {
-			return nil, herrToConnect(errHTTP)
+			return nil, server.HerrToConnect(errHTTP)
 		}
 		recipients, errHTTP := notification.GenerateReportMentionNotifications(ctx, s.ImsDBQ, txn, eventID, reportNumber, entryID, authorPersonID)
 		if errHTTP != nil {
-			return nil, herrToConnect(errHTTP)
+			return nil, server.HerrToConnect(errHTTP)
 		}
 		mentionedPersonIDs = append(mentionedPersonIDs, recipients...)
 	}
@@ -1375,7 +1374,7 @@ func (s Service) addGeneratedReportEntry(
 ) error {
 	_, errHTTP := addJournalEntry(ctx, s.ImsDBQ, dbtx, eventID, reportNumber, authorPersonID, text, true, "", "", "", sql.NullInt32{})
 	if errHTTP != nil {
-		return herrToConnect(errHTTP)
+		return server.HerrToConnect(errHTTP)
 	}
 	return nil
 }
@@ -1387,7 +1386,7 @@ func (s Service) addGeneratedIncidentEntry(
 ) error {
 	_, errHTTP := addIncidentJournalEntry(ctx, s.ImsDBQ, dbtx, eventID, incidentNumber, authorPersonID, text, true, "", "", "")
 	if errHTTP != nil {
-		return herrToConnect(errHTTP)
+		return server.HerrToConnect(errHTTP)
 	}
 	return nil
 }
@@ -1537,25 +1536,6 @@ func incidentPriorityFromProto(p resourcesv1.IncidentPriority) int8 {
 	default:
 		return 0
 	}
-}
-
-// herrToConnect maps an herr.HTTPError from the reused REST-era helpers
-// (fetchIncident, PermissionsByEvent) onto the equivalent Connect error code, so the
-// extracted domain function speaks Connect codes end to end. Only the client-facing
-// ResponseMessage crosses the boundary; the internal error detail stays server-side.
-func herrToConnect(e *herr.HTTPError) error {
-	code := connect.CodeInternal
-	switch e.Code {
-	case http.StatusBadRequest:
-		code = connect.CodeInvalidArgument
-	case http.StatusUnauthorized:
-		code = connect.CodeUnauthenticated
-	case http.StatusForbidden:
-		code = connect.CodePermissionDenied
-	case http.StatusNotFound:
-		code = connect.CodeNotFound
-	}
-	return connect.NewError(code, errors.New(e.ResponseMessage))
 }
 
 // incidentJSONToProto maps the assembled imsjson.Incident — still the shared read/

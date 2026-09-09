@@ -68,7 +68,7 @@ func (s Service) ListEvents(
 	// First level of authorization (global). Per-event filtering happens below.
 	_, globalPermissions, err := authz.EventPermissions(ctx, nil, s.ImsDBQ, *claims)
 	if err != nil {
-		return nil, connect.NewError(connect.CodeInternal, fmt.Errorf("failed to compute permissions: %w", err))
+		return nil, server.InternalError("failed to compute permissions", err)
 	}
 	if globalPermissions&authz.GlobalListEvents == 0 {
 		return nil, connect.NewError(connect.CodePermissionDenied,
@@ -77,7 +77,7 @@ func (s Service) ListEvents(
 
 	allEvents, err := s.ImsDBQ.Events(ctx, s.ImsDBQ)
 	if err != nil {
-		return nil, connect.NewError(connect.CodeInternal, fmt.Errorf("failed to get events: %w", err))
+		return nil, server.InternalError("failed to get events", err)
 	}
 	permsByEvent, errHTTP := server.PermissionsByEvent(ctx, server.JWTContext{Claims: claims}, s.ImsDBQ, s.UserStore)
 	if errHTTP != nil {
@@ -121,7 +121,7 @@ func (s Service) CreateEvent(
 	}
 	id, err := s.ImsDBQ.CreateEvent(ctx, s.ImsDBQ, imsdb.CreateEventParams{Name: ev.GetName()})
 	if err != nil {
-		return nil, connect.NewError(connect.CodeInternal, fmt.Errorf("failed to create event: %w", err))
+		return nil, server.InternalError("failed to create event", err)
 	}
 	eventID := conv.MustInt32(id)
 	// #nosec G706 // log injection
@@ -129,7 +129,7 @@ func (s Service) CreateEvent(
 
 	existing, err := s.ImsDBQ.Event(ctx, s.ImsDBQ, eventID)
 	if err != nil {
-		return nil, connect.NewError(connect.CodeInternal, fmt.Errorf("failed to fetch event: %w", err))
+		return nil, server.InternalError("failed to fetch event", err)
 	}
 	params, err := s.applyEventEdits(ctx, existing.Event, ev)
 	if err != nil {
@@ -137,7 +137,7 @@ func (s Service) CreateEvent(
 	}
 	err = s.ImsDBQ.UpdateEvent(ctx, s.ImsDBQ, params)
 	if err != nil {
-		return nil, connect.NewError(connect.CodeInternal, fmt.Errorf("failed to update event: %w", err))
+		return nil, server.InternalError("failed to update event", err)
 	}
 	// A brand-new real event (not an event group) is given a starting area set: the first event ever
 	// is seeded from the canonical OCF list, and later events inherit the previous event's areas so
@@ -146,7 +146,7 @@ func (s Service) CreateEvent(
 	if !params.IsGroup {
 		err = s.ImsDBQ.PopulateNewEventAreas(ctx, eventID)
 		if err != nil {
-			return nil, connect.NewError(connect.CodeInternal, fmt.Errorf("failed to populate event areas: %w", err))
+			return nil, server.InternalError("failed to populate event areas", err)
 		}
 	}
 	return &rpcv1.CreateEventResponse{EventId: eventID}, nil
@@ -165,7 +165,7 @@ func (s Service) UpdateEvent(
 	}
 	existing, err := s.ImsDBQ.Event(ctx, s.ImsDBQ, req.GetEventId())
 	if err != nil {
-		return nil, connect.NewError(connect.CodeInternal, fmt.Errorf("failed to fetch event: %w", err))
+		return nil, server.InternalError("failed to fetch event", err)
 	}
 	params, err := s.applyEventEdits(ctx, existing.Event, req.GetEvent())
 	if err != nil {
@@ -173,7 +173,7 @@ func (s Service) UpdateEvent(
 	}
 	err = s.ImsDBQ.UpdateEvent(ctx, s.ImsDBQ, params)
 	if err != nil {
-		return nil, connect.NewError(connect.CodeInternal, fmt.Errorf("failed to update event: %w", err))
+		return nil, server.InternalError("failed to update event", err)
 	}
 	return &rpcv1.UpdateEventResponse{}, nil
 }
@@ -187,7 +187,7 @@ func (s Service) requireEventAdmin(ctx context.Context) error {
 	}
 	_, globalPermissions, err := authz.EventPermissions(ctx, nil, s.ImsDBQ, *claims)
 	if err != nil {
-		return connect.NewError(connect.CodeInternal, fmt.Errorf("failed to compute permissions: %w", err))
+		return server.InternalError("failed to compute permissions", err)
 	}
 	if globalPermissions&authz.GlobalAdministrateEvents == 0 {
 		return connect.NewError(connect.CodePermissionDenied,
@@ -230,7 +230,7 @@ func (s Service) applyEventEdits(
 		if pg > 0 {
 			target, err := s.ImsDBQ.Event(ctx, s.ImsDBQ, pg)
 			if err != nil {
-				return params, connect.NewError(connect.CodeInternal, fmt.Errorf("failed to fetch parent group: %w", err))
+				return params, server.InternalError("failed to fetch parent group", err)
 			}
 			if !target.Event.IsGroup {
 				return params, connect.NewError(connect.CodeInvalidArgument,

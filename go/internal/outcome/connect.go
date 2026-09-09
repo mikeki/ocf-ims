@@ -20,7 +20,6 @@ import (
 	"context"
 	"database/sql"
 	"errors"
-	"fmt"
 	"log/slog"
 	"strings"
 
@@ -67,7 +66,7 @@ func (s Service) ListOutcomes(
 		return loadOutcomesJSON(ctx, s.ImsDBQ)
 	})
 	if err != nil {
-		return nil, connect.NewError(connect.CodeInternal, fmt.Errorf("failed to fetch outcomes: %w", err))
+		return nil, server.InternalError("failed to fetch outcomes", err)
 	}
 	out := make([]*resourcesv1.Outcome, 0, len(outcomes))
 	for i := range outcomes {
@@ -98,7 +97,7 @@ func (s Service) CreateOutcome(
 		ProposedByPersonID: sql.NullInt32{},
 	})
 	if err != nil {
-		return nil, connect.NewError(connect.CodeInternal, fmt.Errorf("failed to create outcome: %w", err))
+		return nil, server.InternalError("failed to create outcome", err)
 	}
 	s.Outcomes.Invalidate()
 	slog.Info("Created outcome", "outcome_id", id, "name", name)
@@ -118,7 +117,7 @@ func (s Service) UpdateOutcome(
 	}
 	row, err := s.ImsDBQ.Outcome(ctx, s.ImsDBQ, req.GetOutcomeId())
 	if err != nil {
-		return nil, connect.NewError(connect.CodeInternal, fmt.Errorf("failed to fetch outcome: %w", err))
+		return nil, server.InternalError("failed to fetch outcome", err)
 	}
 	o := req.GetOutcome()
 	if o.Name != nil {
@@ -130,7 +129,7 @@ func (s Service) UpdateOutcome(
 		ID:     row.Outcome.ID,
 	})
 	if err != nil {
-		return nil, connect.NewError(connect.CodeInternal, fmt.Errorf("failed to update outcome: %w", err))
+		return nil, server.InternalError("failed to update outcome", err)
 	}
 	s.Outcomes.Invalidate()
 	return &rpcv1.UpdateOutcomeResponse{}, nil
@@ -148,7 +147,7 @@ func (s Service) ApproveOutcome(
 	}
 	err = s.ImsDBQ.ApproveOutcome(ctx, s.ImsDBQ, req.GetOutcomeId())
 	if err != nil {
-		return nil, connect.NewError(connect.CodeInternal, fmt.Errorf("failed to approve outcome: %w", err))
+		return nil, server.InternalError("failed to approve outcome", err)
 	}
 	s.Outcomes.Invalidate()
 	return &rpcv1.ApproveOutcomeResponse{}, nil
@@ -167,7 +166,7 @@ func (s Service) SetOutcomeHidden(
 	}
 	row, err := s.ImsDBQ.Outcome(ctx, s.ImsDBQ, req.GetOutcomeId())
 	if err != nil {
-		return nil, connect.NewError(connect.CodeInternal, fmt.Errorf("failed to fetch outcome: %w", err))
+		return nil, server.InternalError("failed to fetch outcome", err)
 	}
 	err = s.ImsDBQ.UpdateOutcome(ctx, s.ImsDBQ, imsdb.UpdateOutcomeParams{
 		Hidden: req.GetHidden(),
@@ -175,7 +174,7 @@ func (s Service) SetOutcomeHidden(
 		ID:     row.Outcome.ID,
 	})
 	if err != nil {
-		return nil, connect.NewError(connect.CodeInternal, fmt.Errorf("failed to set outcome hidden: %w", err))
+		return nil, server.InternalError("failed to set outcome hidden", err)
 	}
 	s.Outcomes.Invalidate()
 	return &rpcv1.SetOutcomeHiddenResponse{}, nil
@@ -196,7 +195,7 @@ func (s Service) ProposeOutcome(
 	eventID := req.GetEventId()
 	perms, _, err := authz.EventPermissions(ctx, &eventID, s.ImsDBQ, *claims)
 	if err != nil {
-		return nil, connect.NewError(connect.CodeInternal, fmt.Errorf("failed to compute permissions: %w", err))
+		return nil, server.InternalError("failed to compute permissions", err)
 	}
 	if perms[eventID]&authz.EventWriteIncidents == 0 {
 		return nil, connect.NewError(connect.CodePermissionDenied,
@@ -224,7 +223,7 @@ func (s Service) ProposeOutcome(
 				return &rpcv1.ProposeOutcomeResponse{OutcomeId: existing.Outcome.ID}, nil
 			}
 		}
-		return nil, connect.NewError(connect.CodeInternal, fmt.Errorf("failed to propose outcome: %w", err))
+		return nil, server.InternalError("failed to propose outcome", err)
 	}
 	s.Outcomes.Invalidate()
 	return &rpcv1.ProposeOutcomeResponse{OutcomeId: conv.MustInt32(id)}, nil
@@ -239,7 +238,7 @@ func (s Service) globalPerms(ctx context.Context) (*authz.IMSClaims, authz.Globa
 	}
 	_, globalPermissions, err := authz.EventPermissions(ctx, nil, s.ImsDBQ, *claims)
 	if err != nil {
-		return nil, 0, connect.NewError(connect.CodeInternal, fmt.Errorf("failed to compute permissions: %w", err))
+		return nil, 0, server.InternalError("failed to compute permissions", err)
 	}
 	return claims, globalPermissions, nil
 }
