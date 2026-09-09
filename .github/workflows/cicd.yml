@@ -90,6 +90,103 @@ jobs:
         run: uvx pre-commit run --all-files
 
 
+  interface:
+
+    name: Interface
+
+    # The Expo client (packages/interface, plan 09i E12): the same list a
+    # developer runs from the repo root (packages/interface/README.md).
+    # Store builds (EAS) never run here.
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    env:
+      # The Expo CLI never phones home from CI: no telemetry, and offline mode
+      # skips its version/SDK checks (api.expo.dev is not on the allow-list).
+      EXPO_NO_TELEMETRY: "1"
+      EXPO_OFFLINE: "1"
+      CI: "1"
+
+    steps:
+
+      - name: Harden Runner
+        uses: step-security/harden-runner@v2.19.4
+        with:
+          egress-policy: block
+          # npm registry for pnpm; the Go hosts because `pnpm generate` runs
+          # `go tool buf` from the module cache; Microsoft's Playwright CDN and
+          # its fallback for `playwright install chromium`.
+          allowed-endpoints: >
+            *.github.com:443
+            *.githubusercontent.com:443
+            *.go.dev:443
+            *.golang.org:443
+            cdn.playwright.dev:443
+            dl.google.com:443
+            github.com:443
+            go.dev:443
+            golang.org:443
+            playwright.download.prss.microsoft.com:443
+            registry.npmjs.org:443
+            storage.googleapis.com:443
+
+      - name: Checkout source code
+        uses: actions/checkout@v6
+
+      - name: Set up Go
+        # Only for `go tool buf`: the client's generated TypeScript comes from
+        # the buf web template (buf.gen.web.yaml) via the root `pnpm generate`.
+        uses: actions/setup-go@v6
+        with:
+          go-version-file: "go/go.mod"
+
+      - name: Set up pnpm
+        # Version from the packageManager field in package.json. Must precede
+        # setup-node so the pnpm store cache can be keyed.
+        uses: pnpm/action-setup@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v7
+        with:
+          node-version-file: ".nvmrc"
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Generate the proto TypeScript (buf, protoc-gen-es)
+        # Generated code is never committed (see .gitignore); the client cannot
+        # typecheck, test or bundle without it.
+        run: pnpm generate
+
+      - name: Typecheck (tsc)
+        run: pnpm -F @ocf-ims/interface typecheck
+
+      - name: Lint (biome, whole workspace)
+        run: pnpm lint
+
+      - name: Unit tests (jest-expo)
+        run: pnpm -F @ocf-ims/interface test
+
+      - name: Export the web build (expo export)
+        run: pnpm -F @ocf-ims/interface export:web
+
+      - name: Install Playwright's Chromium
+        # The runner image already carries Chromium's shared libraries, so no
+        # `--with-deps` (which would need apt egress).
+        run: pnpm -F @ocf-ims/interface exec playwright install chromium
+
+      - name: Web smoke (Playwright against the export)
+        run: pnpm -F @ocf-ims/interface e2e
+
+      - name: Upload the Playwright report
+        if: failure()
+        uses: actions/upload-artifact@v7
+        with:
+          name: playwright-report
+          path: packages/interface/playwright-report
+
+
   build:
 
     name: Build application

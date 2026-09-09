@@ -3,7 +3,10 @@
   "version": "0.0.0",
   "private": true,
   "type": "module",
-  "description": "Generated TypeScript for the OCF IMS proto contract. src/ is produced by `buf generate` (protoc-gen-es) and is gitignored.",
+  "description": "Generated TypeScript for the OCF IMS proto contract. src/ is produced by `buf generate` (protoc-gen-es) and is gitignored. Import as: @ocf-ims/protocol-buffers/ocf/ims/service/v1/service_pb",
+  "exports": {
+    "./*": "./src/*.ts"
+  },
   "dependencies": {
     "@bufbuild/protobuf": "^2.14.0"
   }

@@ -6,7 +6,12 @@
     "useIgnoreFile": true
   },
   "files": {
-    "includes": ["packages/**", "package.json", "biome.json", "!**/src"]
+    "includes": [
+      "packages/**",
+      "package.json",
+      "biome.json",
+      "!packages/protocol-buffers/src"
+    ]
   },
   "formatter": {
     "enabled": true,

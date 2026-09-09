@@ -26,6 +26,11 @@ air_tmp
 /go/web/static/*.js
 /go/gen/
 /packages/protocol-buffers/src/
+/packages/interface/.expo/
+/packages/interface/dist/
+/packages/interface/ios/
+/packages/interface/android/
+/packages/interface/expo-env.d.ts
 
 # playwright generated stuff, including any node_modules anywhere
 **/node_modules
