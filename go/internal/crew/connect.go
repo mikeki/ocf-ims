@@ -35,7 +35,6 @@ import (
 	imsjson "github.com/mikeki/ocf-ims/json"
 	"github.com/mikeki/ocf-ims/lib/authz"
 	"github.com/mikeki/ocf-ims/lib/conv"
-	"github.com/mikeki/ocf-ims/lib/herr"
 	"github.com/mikeki/ocf-ims/store"
 	"github.com/mikeki/ocf-ims/store/imsdb"
 )
@@ -43,9 +42,9 @@ import (
 // Service is the crew domain's Connect surface (plan 09h/1c). It holds the deps the seven crew RPCs
 // share, mirroring the other domain Services. api.ImsService composes one (built in AddConnectToMux)
 // and delegates to it. Crews is the per-event ref-data cache a write invalidates. The write RPCs are
-// thin wrappers over the herr-returning cores ported from the retired REST EditCrews / EditMyCrew
-// handlers (mapped to Connect codes via server.HerrToConnect) — the crew delete and the crew-leader
-// self-service member edit are intricate enough to keep verbatim.
+// thin wrappers over cores ported from the retired REST EditCrews / EditMyCrew handlers — the crew
+// delete and the crew-leader self-service member edit are intricate enough to keep verbatim — that
+// speak Connect natively (no herr, no HerrToConnect).
 type Service struct {
 	ImsDBQ    *store.DBQ
 	UserStore directory.UserStore
@@ -84,9 +83,9 @@ func (s Service) CreateCrew(
 	if err != nil {
 		return nil, err
 	}
-	slug, herrErr := s.createCrew(ctx, eventID, crewMsgToJSON(req.GetCrew()))
-	if herrErr != nil {
-		return nil, server.HerrToConnect(herrErr)
+	slug, err := s.createCrew(ctx, eventID, crewMsgToJSON(req.GetCrew()))
+	if err != nil {
+		return nil, err
 	}
 	s.Crews.InvalidateEvent(crewCacheKey(eventID))
 	return &rpcv1.CreateCrewResponse{CrewSlug: slug}, nil
@@ -105,9 +104,9 @@ func (s Service) UpdateCrew(
 	}
 	crewReq := crewMsgToJSON(req.GetCrew())
 	crewReq.Slug = req.GetCrewSlug()
-	herrErr := s.updateCrew(ctx, eventID, crewReq)
-	if herrErr != nil {
-		return nil, server.HerrToConnect(herrErr)
+	err = s.updateCrew(ctx, eventID, crewReq)
+	if err != nil {
+		return nil, err
 	}
 	s.Crews.InvalidateEvent(crewCacheKey(eventID))
 	return &rpcv1.UpdateCrewResponse{}, nil
@@ -124,9 +123,9 @@ func (s Service) DeleteCrew(
 	if err != nil {
 		return nil, err
 	}
-	herrErr := s.deleteCrew(ctx, eventID, req.GetCrewSlug())
-	if herrErr != nil {
-		return nil, server.HerrToConnect(herrErr)
+	err = s.deleteCrew(ctx, eventID, req.GetCrewSlug())
+	if err != nil {
+		return nil, err
 	}
 	s.Crews.InvalidateEvent(crewCacheKey(eventID))
 	return &rpcv1.DeleteCrewResponse{}, nil
@@ -148,9 +147,9 @@ func (s Service) SetCrewMembership(
 		Remove:   req.GetRemove(),
 		IsLeader: req.GetIsLeader(),
 	}
-	herrErr := s.adminEditMember(ctx, eventID, req.GetCrewSlug(), edit)
-	if herrErr != nil {
-		return nil, server.HerrToConnect(herrErr)
+	err = s.adminEditMember(ctx, eventID, req.GetCrewSlug(), edit)
+	if err != nil {
+		return nil, err
 	}
 	s.Crews.InvalidateEvent(crewCacheKey(eventID))
 	return &rpcv1.SetCrewMembershipResponse{}, nil
@@ -209,9 +208,9 @@ func (s Service) SetMyCrewMembership(
 		Remove:   req.GetRemove(),
 		IsLeader: req.GetIsLeader(),
 	}
-	herrErr := s.myEditMember(ctx, eventID, slug, edit)
-	if herrErr != nil {
-		return nil, server.HerrToConnect(herrErr)
+	err = s.myEditMember(ctx, eventID, slug, edit)
+	if err != nil {
+		return nil, err
 	}
 	s.Crews.InvalidateEvent(crewCacheKey(eventID))
 	return &rpcv1.SetMyCrewMembershipResponse{}, nil
@@ -245,13 +244,13 @@ func (s Service) requireCrewAdmin(ctx context.Context, eventID int32) error {
 }
 
 // createCrew inserts a new crew with a server-generated slug (ported from EditCrews.create).
-func (s Service) createCrew(ctx context.Context, eventID int32, crewReq imsjson.Crew) (string, *herr.HTTPError) {
+func (s Service) createCrew(ctx context.Context, eventID int32, crewReq imsjson.Crew) (string, error) {
 	if crewReq.Name == nil || strings.TrimSpace(*crewReq.Name) == "" {
-		return "", herr.BadRequest("Crew name is required for a new Crew", nil)
+		return "", connect.NewError(connect.CodeInvalidArgument, errors.New("Crew name is required for a new Crew"))
 	}
 	existing, err := s.ImsDBQ.Crews(ctx, s.ImsDBQ, eventID)
 	if err != nil {
-		return "", herr.InternalServerError("Failed to fetch Crews", err).From("[Crews]")
+		return "", server.InternalError("failed to fetch crews", err)
 	}
 	taken := make([]string, 0, len(existing))
 	for _, c := range existing {
@@ -266,21 +265,21 @@ func (s Service) createCrew(ctx context.Context, eventID int32, crewReq imsjson.
 		SortOrder: area.DerefInt32(crewReq.SortOrder, 0),
 	})
 	if err != nil {
-		return "", herr.InternalServerError("Failed to create Crew", err).From("[CreateCrew]")
+		return "", server.InternalError("failed to create crew", err)
 	}
 	return slug, nil
 }
 
 // updateCrew renames / reorders an existing crew (ported from EditCrews.update).
-func (s Service) updateCrew(ctx context.Context, eventID int32, crewReq imsjson.Crew) *herr.HTTPError {
-	row, errHTTP := s.mustFindCrew(ctx, eventID, crewReq.Slug)
-	if errHTTP != nil {
-		return errHTTP
+func (s Service) updateCrew(ctx context.Context, eventID int32, crewReq imsjson.Crew) error {
+	row, findErr := s.mustFindCrew(ctx, eventID, crewReq.Slug)
+	if findErr != nil {
+		return findErr
 	}
 	name := row.Name
 	if crewReq.Name != nil {
 		if strings.TrimSpace(*crewReq.Name) == "" {
-			return herr.BadRequest("Crew name may not be blank", nil)
+			return connect.NewError(connect.CodeInvalidArgument, errors.New("Crew name may not be blank"))
 		}
 		name = strings.TrimSpace(*crewReq.Name)
 	}
@@ -295,49 +294,45 @@ func (s Service) updateCrew(ctx context.Context, eventID int32, crewReq imsjson.
 		Slug:      crewReq.Slug,
 	})
 	if err != nil {
-		return herr.InternalServerError("Failed to update Crew", err).From("[UpdateCrew]")
+		return server.InternalError("failed to update crew", err)
 	}
 	return nil
 }
 
 // deleteCrew removes a crew and all its membership rows in one transaction (ported from
 // EditCrews.delete; the CREW_MEMBERSHIP FK references CREW, so members must go first).
-func (s Service) deleteCrew(ctx context.Context, eventID int32, slug string) *herr.HTTPError {
-	_, errHTTP := s.mustFindCrew(ctx, eventID, slug)
-	if errHTTP != nil {
-		return errHTTP
+func (s Service) deleteCrew(ctx context.Context, eventID int32, slug string) error {
+	_, findErr := s.mustFindCrew(ctx, eventID, slug)
+	if findErr != nil {
+		return findErr
 	}
-	runErr := s.ImsDBQ.RunInTx(ctx, func(tx *sql.Tx) error {
+	return s.ImsDBQ.RunInTx(ctx, func(tx *sql.Tx) error {
 		txErr := s.ImsDBQ.RemoveAllCrewMembers(ctx, tx, imsdb.RemoveAllCrewMembersParams{
 			Event:    eventID,
 			CrewSlug: slug,
 		})
 		if txErr != nil {
-			return herr.InternalServerError("Failed to clear crew membership", txErr).From("[RemoveAllCrewMembers]")
+			return server.InternalError("failed to clear crew membership", txErr)
 		}
 		txErr = s.ImsDBQ.DeleteCrew(ctx, tx, imsdb.DeleteCrewParams{Event: eventID, Slug: slug})
 		if txErr != nil {
-			return herr.InternalServerError("Failed to delete Crew", txErr).From("[DeleteCrew]")
+			return server.InternalError("failed to delete crew", txErr)
 		}
 		return nil
 	})
-	if runErr != nil {
-		return herr.AsHTTPError(runErr).From("[RunInTx]")
-	}
-	return nil
 }
 
 // adminEditMember adds, updates, or removes one person's membership in a crew (ported from
 // EditCrews.editMember): the admin path, which may set/clear the leader flag.
-func (s Service) adminEditMember(ctx context.Context, eventID int32, slug string, edit imsjson.CrewMemberEdit) *herr.HTTPError {
-	_, errHTTP := s.mustFindCrew(ctx, eventID, slug)
-	if errHTTP != nil {
-		return errHTTP
+func (s Service) adminEditMember(ctx context.Context, eventID int32, slug string, edit imsjson.CrewMemberEdit) error {
+	_, findErr := s.mustFindCrew(ctx, eventID, slug)
+	if findErr != nil {
+		return findErr
 	}
 	// Defence in depth: the proto already enforces person_id > 0 at protovalidate, so this only
-	// guards a direct (non-RPC) caller of the herr-core helper.
+	// guards a direct (non-RPC) caller of the core helper.
 	if edit.PersonID == 0 {
-		return herr.BadRequest("A person id is required to change crew membership", nil)
+		return connect.NewError(connect.CodeInvalidArgument, errors.New("A person id is required to change crew membership"))
 	}
 	if edit.Remove {
 		err := s.ImsDBQ.RemoveCrewMember(ctx, s.ImsDBQ, imsdb.RemoveCrewMemberParams{
@@ -346,7 +341,7 @@ func (s Service) adminEditMember(ctx context.Context, eventID int32, slug string
 			PersonID: edit.PersonID,
 		})
 		if err != nil {
-			return herr.InternalServerError("Failed to remove crew member", err).From("[RemoveCrewMember]")
+			return server.InternalError("failed to remove crew member", err)
 		}
 		return nil
 	}
@@ -361,9 +356,9 @@ func (s Service) adminEditMember(ctx context.Context, eventID int32, slug string
 	if err != nil {
 		var mysqlErr *mysql.MySQLError
 		if errors.As(err, &mysqlErr) && mysqlErr.Number == mySQLErNoReferencedRow {
-			return herr.NotFound("No such person", err)
+			return server.PublicError(connect.CodeNotFound, "No such person", err)
 		}
-		return herr.InternalServerError("Failed to add crew member", err).From("[AddCrewMember]")
+		return server.InternalError("failed to add crew member", err)
 	}
 	return nil
 }
@@ -371,11 +366,11 @@ func (s Service) adminEditMember(ctx context.Context, eventID int32, slug string
 // myEditMember adds a plain member or removes a non-leader member (ported from EditMyCrew.editMember):
 // the crew-leader self-service path. Leader flags are never touched here — an add never promotes, and
 // a fellow leader may not be removed (that stays an admin act).
-func (s Service) myEditMember(ctx context.Context, eventID int32, slug string, edit imsjson.CrewMemberEdit) *herr.HTTPError {
+func (s Service) myEditMember(ctx context.Context, eventID int32, slug string, edit imsjson.CrewMemberEdit) error {
 	// Defence in depth: the proto already enforces person_id > 0 at protovalidate, so this only
-	// guards a direct (non-RPC) caller of the herr-core helper.
+	// guards a direct (non-RPC) caller of the core helper.
 	if edit.PersonID == 0 {
-		return herr.BadRequest("A person id is required to change crew membership", nil)
+		return connect.NewError(connect.CodeInvalidArgument, errors.New("A person id is required to change crew membership"))
 	}
 	if edit.Remove {
 		isLeader, err := s.ImsDBQ.CrewMembership(ctx, s.ImsDBQ, imsdb.CrewMembershipParams{
@@ -388,10 +383,10 @@ func (s Service) myEditMember(ctx context.Context, eventID int32, slug string, e
 			// Already not a member — nothing to do (idempotent).
 			return nil
 		case err != nil:
-			return herr.InternalServerError("Failed to look up crew member", err).From("[CrewMembership]")
+			return server.InternalError("failed to look up crew member", err)
 		}
 		if isLeader {
-			return herr.Forbidden("Crew leaders are managed by an admin and can't be removed here", nil)
+			return connect.NewError(connect.CodePermissionDenied, errors.New("Crew leaders are managed by an admin and can't be removed here"))
 		}
 		err = s.ImsDBQ.RemoveCrewMember(ctx, s.ImsDBQ, imsdb.RemoveCrewMemberParams{
 			Event:    eventID,
@@ -399,7 +394,7 @@ func (s Service) myEditMember(ctx context.Context, eventID int32, slug string, e
 			PersonID: edit.PersonID,
 		})
 		if err != nil {
-			return herr.InternalServerError("Failed to remove crew member", err).From("[RemoveCrewMember]")
+			return server.InternalError("failed to remove crew member", err)
 		}
 		return nil
 	}
@@ -414,23 +409,23 @@ func (s Service) myEditMember(ctx context.Context, eventID int32, slug string, e
 	if err != nil {
 		var mysqlErr *mysql.MySQLError
 		if errors.As(err, &mysqlErr) && mysqlErr.Number == mySQLErNoReferencedRow {
-			return herr.NotFound("No such person", err)
+			return server.PublicError(connect.CodeNotFound, "No such person", err)
 		}
-		return herr.InternalServerError("Failed to add crew member", err).From("[AddCrewMemberIfAbsent]")
+		return server.InternalError("failed to add crew member", err)
 	}
 	return nil
 }
 
 // mustFindCrew returns the crew row or a 404 when it does not exist in the event (ported from
 // EditCrews.mustFindCrew).
-func (s Service) mustFindCrew(ctx context.Context, eventID int32, slug string) (imsdb.Crew, *herr.HTTPError) {
+func (s Service) mustFindCrew(ctx context.Context, eventID int32, slug string) (imsdb.Crew, error) {
 	existing, err := s.ImsDBQ.Crews(ctx, s.ImsDBQ, eventID)
 	if err != nil {
-		return imsdb.Crew{}, herr.InternalServerError("Failed to fetch Crews", err).From("[Crews]")
+		return imsdb.Crew{}, server.InternalError("failed to fetch crews", err)
 	}
 	idx := slices.IndexFunc(existing, func(c imsdb.Crew) bool { return c.Slug == slug })
 	if idx < 0 {
-		return imsdb.Crew{}, herr.NotFound("No such Crew", nil)
+		return imsdb.Crew{}, connect.NewError(connect.CodeNotFound, errors.New("No such Crew"))
 	}
 	return existing[idx], nil
 }

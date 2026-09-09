@@ -34,7 +34,6 @@ import (
 	imsjson "github.com/mikeki/ocf-ims/json"
 	"github.com/mikeki/ocf-ims/lib/authz"
 	"github.com/mikeki/ocf-ims/lib/conv"
-	"github.com/mikeki/ocf-ims/lib/herr"
 	"github.com/mikeki/ocf-ims/store"
 	"github.com/mikeki/ocf-ims/store/imsdb"
 )
@@ -43,8 +42,8 @@ import (
 // share, mirroring the other domain Services. api.ImsService composes one (built in AddConnectToMux)
 // and delegates to it. Metrics + Areas are the caches a write invalidates: an area write can shift
 // the dashboard's per-area breakdown for the event, and the per-event area list is served from an
-// in-memory ref-data cache. The write RPCs are thin wrappers over the herr-returning cores ported
-// from the retired REST EditAreas handler (mapped to Connect codes via server.HerrToConnect).
+// in-memory ref-data cache. The write RPCs are thin wrappers over cores ported from the retired REST
+// EditAreas handler that speak Connect natively (no herr, no HerrToConnect).
 type Service struct {
 	ImsDBQ    *store.DBQ
 	UserStore directory.UserStore
@@ -98,9 +97,9 @@ func (s Service) CreateArea(
 	if !isAreaAdmin && eventPermissions&authz.EventWriteIncidents == 0 {
 		return nil, connect.NewError(connect.CodePermissionDenied, errors.New("the requestor may not create areas"))
 	}
-	slug, herrErr := s.createArea(ctx, eventID, areaMsgToJSON(req.GetArea()), isAreaAdmin, claims.PersonID())
-	if herrErr != nil {
-		return nil, server.HerrToConnect(herrErr)
+	slug, err := s.createArea(ctx, eventID, areaMsgToJSON(req.GetArea()), isAreaAdmin, claims.PersonID())
+	if err != nil {
+		return nil, err
 	}
 	s.invalidateAreaCaches(ctx, eventID)
 	return &rpcv1.CreateAreaResponse{AreaSlug: slug}, nil
@@ -119,9 +118,9 @@ func (s Service) UpdateArea(
 	}
 	areaReq := areaMsgToJSON(req.GetArea())
 	areaReq.Slug = req.GetAreaSlug()
-	herrErr := s.updateArea(ctx, eventID, areaReq)
-	if herrErr != nil {
-		return nil, server.HerrToConnect(herrErr)
+	err = s.updateArea(ctx, eventID, areaReq)
+	if err != nil {
+		return nil, err
 	}
 	s.invalidateAreaCaches(ctx, eventID)
 	return &rpcv1.UpdateAreaResponse{}, nil
@@ -138,9 +137,9 @@ func (s Service) ApproveArea(
 	if err != nil {
 		return nil, err
 	}
-	herrErr := s.approveArea(ctx, eventID, req.GetAreaSlug())
-	if herrErr != nil {
-		return nil, server.HerrToConnect(herrErr)
+	err = s.approveArea(ctx, eventID, req.GetAreaSlug())
+	if err != nil {
+		return nil, err
 	}
 	s.invalidateAreaCaches(ctx, eventID)
 	return &rpcv1.ApproveAreaResponse{}, nil
@@ -158,9 +157,9 @@ func (s Service) MarkAreaDuplicate(
 	if err != nil {
 		return nil, err
 	}
-	herrErr := s.markAreaDuplicate(ctx, eventID, req.GetAreaSlug(), req.GetCanonicalSlug())
-	if herrErr != nil {
-		return nil, server.HerrToConnect(herrErr)
+	err = s.markAreaDuplicate(ctx, eventID, req.GetAreaSlug(), req.GetCanonicalSlug())
+	if err != nil {
+		return nil, err
 	}
 	s.invalidateAreaCaches(ctx, eventID)
 	return &rpcv1.MarkAreaDuplicateResponse{}, nil
@@ -201,23 +200,23 @@ func (s Service) requireAreaAdmin(ctx context.Context, eventID int32) error {
 // approved on the spot; a writer's is a proposal awaiting review, tagged with who proposed it.
 func (s Service) createArea(
 	ctx context.Context, eventID int32, areaReq imsjson.Area, isAreaAdmin bool, proposerID int32,
-) (string, *herr.HTTPError) {
+) (string, error) {
 	if areaReq.Name == nil || strings.TrimSpace(*areaReq.Name) == "" {
-		return "", herr.BadRequest("Area name is required for a new Area", nil)
+		return "", connect.NewError(connect.CodeInvalidArgument, errors.New("Area name is required for a new Area"))
 	}
 
 	existing, err := s.ImsDBQ.Areas(ctx, s.ImsDBQ, eventID)
 	if err != nil {
-		return "", herr.InternalServerError("Failed to fetch Areas", err).From("[Areas]")
+		return "", server.InternalError("failed to fetch areas", err)
 	}
 	taken := make([]string, 0, len(existing))
 	for _, a := range existing {
 		taken = append(taken, a.Slug)
 	}
 
-	parent, errHTTP := validateParent(existing, areaReq.ParentSlug, "")
-	if errHTTP != nil {
-		return "", errHTTP
+	parent, parentErr := validateParent(existing, areaReq.ParentSlug, "")
+	if parentErr != nil {
+		return "", parentErr
 	}
 
 	var proposedBy sql.NullInt32
@@ -236,24 +235,24 @@ func (s Service) createArea(
 		ProposedByPersonID: proposedBy,
 	})
 	if err != nil {
-		return "", herr.InternalServerError("Failed to create Area", err).From("[CreateArea]")
+		return "", server.InternalError("failed to create area", err)
 	}
 	return slug, nil
 }
 
 // approveArea marks a proposed area approved (ported from EditAreas.approve). The proposer is kept
 // for audit.
-func (s Service) approveArea(ctx context.Context, eventID int32, slug string) *herr.HTTPError {
+func (s Service) approveArea(ctx context.Context, eventID int32, slug string) error {
 	_, err := s.ImsDBQ.Area(ctx, s.ImsDBQ, imsdb.AreaParams{Event: eventID, Slug: slug})
 	if errors.Is(err, sql.ErrNoRows) {
-		return herr.NotFound("No such Area", nil)
+		return connect.NewError(connect.CodeNotFound, errors.New("No such Area"))
 	}
 	if err != nil {
-		return herr.InternalServerError("Failed to look up Area", err).From("[Area]")
+		return server.InternalError("failed to look up area", err)
 	}
 	err = s.ImsDBQ.ApproveArea(ctx, s.ImsDBQ, imsdb.ApproveAreaParams{Event: eventID, Slug: slug})
 	if err != nil {
-		return herr.InternalServerError("Failed to approve Area", err).From("[ApproveArea]")
+		return server.InternalError("failed to approve area", err)
 	}
 	return nil
 }
@@ -262,70 +261,66 @@ func (s Service) approveArea(ctx context.Context, eventID int32, slug string) *h
 // (ported from EditAreas.markDuplicate): every incident pointing at dupSlug is re-pointed to
 // canonSlug, then dupSlug is deleted, both in one transaction so an incident is never left pointing
 // at a deleted area.
-func (s Service) markAreaDuplicate(ctx context.Context, eventID int32, dupSlug, canonSlug string) *herr.HTTPError {
+func (s Service) markAreaDuplicate(ctx context.Context, eventID int32, dupSlug, canonSlug string) error {
 	if canonSlug == "" {
-		return herr.BadRequest("A canonical area slug is required", nil)
+		return connect.NewError(connect.CodeInvalidArgument, errors.New("A canonical area slug is required"))
 	}
 	if canonSlug == dupSlug {
-		return herr.BadRequest("An area cannot be a duplicate of itself", nil)
+		return connect.NewError(connect.CodeInvalidArgument, errors.New("An area cannot be a duplicate of itself"))
 	}
 	existing, err := s.ImsDBQ.Areas(ctx, s.ImsDBQ, eventID)
 	if err != nil {
-		return herr.InternalServerError("Failed to fetch Areas", err).From("[Areas]")
+		return server.InternalError("failed to fetch areas", err)
 	}
 	dupIdx := slices.IndexFunc(existing, func(a imsdb.Area) bool { return a.Slug == dupSlug })
 	if dupIdx < 0 {
-		return herr.NotFound("No such Area", nil)
+		return connect.NewError(connect.CodeNotFound, errors.New("No such Area"))
 	}
 	if slices.IndexFunc(existing, func(a imsdb.Area) bool { return a.Slug == canonSlug }) < 0 {
-		return herr.BadRequest("The canonical area does not exist in this event", nil)
+		return connect.NewError(connect.CodeInvalidArgument, errors.New("The canonical area does not exist in this event"))
 	}
 	// A duplicate with sub-areas would orphan them (AREA_PARENT FK), and a writer proposal is always
 	// flat anyway — refuse rather than cascade-delete.
 	if slices.ContainsFunc(existing, func(a imsdb.Area) bool {
 		return a.ParentSlug.Valid && a.ParentSlug.String == dupSlug
 	}) {
-		return herr.BadRequest("Reparent or remove this area's sub-areas before marking it a duplicate", nil)
+		return connect.NewError(connect.CodeInvalidArgument, errors.New("Reparent or remove this area's sub-areas before marking it a duplicate"))
 	}
 
-	runErr := s.ImsDBQ.RunInTx(ctx, func(tx *sql.Tx) error {
+	return s.ImsDBQ.RunInTx(ctx, func(tx *sql.Tx) error {
 		txErr := s.ImsDBQ.RepointIncidentsArea(ctx, tx, imsdb.RepointIncidentsAreaParams{
 			ToSlug:   sql.NullString{String: canonSlug, Valid: true},
 			Event:    eventID,
 			FromSlug: sql.NullString{String: dupSlug, Valid: true},
 		})
 		if txErr != nil {
-			return herr.InternalServerError("Failed to re-point incidents", txErr).From("[RepointIncidentsArea]")
+			return server.InternalError("failed to re-point incidents", txErr)
 		}
 		txErr = s.ImsDBQ.DeleteArea(ctx, tx, imsdb.DeleteAreaParams{Event: eventID, Slug: dupSlug})
 		if txErr != nil {
-			return herr.InternalServerError("Failed to delete duplicate Area", txErr).From("[DeleteArea]")
+			return server.InternalError("failed to delete duplicate area", txErr)
 		}
 		return nil
 	})
-	if runErr != nil {
-		return herr.AsHTTPError(runErr).From("[RunInTx]")
-	}
-	return nil
 }
 
 // updateArea renames / reparents / reorders an existing area (ported from EditAreas.update). Each
 // field is applied only when present.
-func (s Service) updateArea(ctx context.Context, eventID int32, areaReq imsjson.Area) *herr.HTTPError {
+func (s Service) updateArea(ctx context.Context, eventID int32, areaReq imsjson.Area) error {
 	existing, err := s.ImsDBQ.Areas(ctx, s.ImsDBQ, eventID)
 	if err != nil {
-		return herr.InternalServerError("Failed to fetch Areas", err).From("[Areas]")
+		return server.InternalError("failed to fetch areas", err)
 	}
 	idx := slices.IndexFunc(existing, func(a imsdb.Area) bool { return a.Slug == areaReq.Slug })
 	if idx < 0 {
-		return herr.NotFound("No such Area", nil)
+		return connect.NewError(connect.CodeNotFound, errors.New("No such Area"))
 	}
 	row := existing[idx]
 
 	name := row.Name
 	if areaReq.Name != nil {
 		if strings.TrimSpace(*areaReq.Name) == "" {
-			return herr.BadRequest("Area name may not be blank", nil)
+			return connect.NewError(connect.CodeInvalidArgument, errors.New("Area name may not be blank"))
 		}
 		name = strings.TrimSpace(*areaReq.Name)
 	}
@@ -333,9 +328,9 @@ func (s Service) updateArea(ctx context.Context, eventID int32, areaReq imsjson.
 	if areaReq.ParentSlug != nil {
 		// "" clears the parent (top-level); any other value must be a valid top-level area in the
 		// same event, and not the area itself.
-		validated, errHTTP := validateParent(existing, areaReq.ParentSlug, areaReq.Slug)
-		if errHTTP != nil {
-			return errHTTP
+		validated, parentErr := validateParent(existing, areaReq.ParentSlug, areaReq.Slug)
+		if parentErr != nil {
+			return parentErr
 		}
 		parent = validated
 	}
@@ -352,7 +347,7 @@ func (s Service) updateArea(ctx context.Context, eventID int32, areaReq imsjson.
 		Slug:       areaReq.Slug,
 	})
 	if err != nil {
-		return herr.InternalServerError("Failed to update Area", err).From("[UpdateArea]")
+		return server.InternalError("failed to update area", err)
 	}
 	return nil
 }
