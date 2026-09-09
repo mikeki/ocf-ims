@@ -27,7 +27,7 @@ message ListEventsResponse {
 // the id. Split Create/Update rather than one upsert, for consistency with the rest
 // of the service (there is no `Save*`/upsert form in ImsService).
 message CreateEventRequest {
-  ocf.ims.resources.v1.Event event = 1;
+  ocf.ims.resources.v1.Event event = 1 [(buf.validate.field).required = true];
 }
 
 // CreateEventResponse returns the server-assigned id (REST returned it in the
@@ -40,7 +40,7 @@ message CreateEventResponse {
 // key, as UpdateIncidentType keys by incident_type_id).
 message UpdateEventRequest {
   int32 event_id = 1 [(buf.validate.field).int32.gt = 0];
-  ocf.ims.resources.v1.Event event = 2;
+  ocf.ims.resources.v1.Event event = 2 [(buf.validate.field).required = true];
 }
 
 message UpdateEventResponse {}

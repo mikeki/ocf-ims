@@ -15,7 +15,7 @@ option go_package = "github.com/mikeki/ocf-ims/gen/ocf/ims/service/rpc/v1;servic
 // ReportView wraps the Report resource with the caller-dependent edit-gating flags
 // json.Report carried inline. Response-only.
 message ReportView {
-  ocf.ims.resources.v1.Report report = 1;
+  ocf.ims.resources.v1.Report report = 1 [(buf.validate.field).required = true];
   // may_edit_summary: summary edits are limited to the report's creator and admins.
   bool may_edit_summary = 2;
   // may_add_journal_entry: additionally allows the writer role.
@@ -45,7 +45,7 @@ message GetReportResponse {
 
 message CreateReportRequest {
   int32 event_id = 1 [(buf.validate.field).int32.gt = 0];
-  ocf.ims.resources.v1.Report report = 2;
+  ocf.ims.resources.v1.Report report = 2 [(buf.validate.field).required = true];
 }
 
 message CreateReportResponse {
@@ -60,7 +60,7 @@ message UpdateReportRequest {
   // field convention — report.incident unset leaves the link unchanged, a positive value
   // links to that incident, and a non-positive value detaches — replacing the retired REST
   // "?action=attach|detach" form param. created / created_by / number are read-only.
-  ocf.ims.resources.v1.Report report = 3;
+  ocf.ims.resources.v1.Report report = 3 [(buf.validate.field).required = true];
 }
 
 message UpdateReportResponse {}
@@ -69,7 +69,7 @@ message UpdateReportJournalEntryRequest {
   int32 event_id = 1 [(buf.validate.field).int32.gt = 0];
   int32 report_number = 2 [(buf.validate.field).int32.gt = 0];
   int32 journal_entry_id = 3 [(buf.validate.field).int32.gt = 0];
-  ocf.ims.resources.v1.JournalEntry entry = 4;
+  ocf.ims.resources.v1.JournalEntry entry = 4 [(buf.validate.field).required = true];
 }
 
 message UpdateReportJournalEntryResponse {}

@@ -186,6 +186,32 @@ func TestConnectUnimplementedPassesValidation(t *testing.T) {
 	require.Equal(t, connect.CodeUnimplemented, connect.CodeOf(err))
 }
 
+// TestConnectRequiredSubMessageRejected proves the message-typed request fields carry
+// `(buf.validate.field).required`: a request that omits its resource wrapper (an empty
+// CreateEventRequest, an UpdateIncidentJournalEntryRequest with no entry) is rejected by
+// protovalidate with CodeInvalidArgument before the handler runs. Without the constraint the
+// handlers, which read wrapper fields directly to preserve presence, would dereference nil and
+// the recovery interceptor would answer CodeInternal — a 500 any client could trigger. The
+// check runs inside the auth interceptor, so an anonymous call distinguishes the two cleanly:
+// validation rejects first (InvalidArgument); reaching the handler would answer
+// Unauthenticated instead.
+func TestConnectRequiredSubMessageRejected(t *testing.T) {
+	t.Parallel()
+	client, _ := newTestConnectClient(t)
+
+	_, err := client.CreateEvent(context.Background(),
+		connect.NewRequest(&servicerpcv1.CreateEventRequest{}))
+	require.Error(t, err)
+	require.Equal(t, connect.CodeInvalidArgument, connect.CodeOf(err))
+
+	_, err = client.UpdateIncidentJournalEntry(context.Background(),
+		connect.NewRequest(&servicerpcv1.UpdateIncidentJournalEntryRequest{
+			EventId: 1, IncidentNumber: 1, JournalEntryId: 1,
+		}))
+	require.Error(t, err)
+	require.Equal(t, connect.CodeInvalidArgument, connect.CodeOf(err))
+}
+
 // TestConnectActionLogSkipsReads proves the action-log interceptor's default-on
 // read/write split: GetAuthStatus is marked NO_SIDE_EFFECTS in the contract, so
 // no audit row is written even though every RPC gets the interceptor. This runs

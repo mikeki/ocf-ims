@@ -115,9 +115,9 @@ func (s Service) UpdateOutcome(
 	if err != nil {
 		return nil, err
 	}
-	row, err := s.ImsDBQ.Outcome(ctx, s.ImsDBQ, req.GetOutcomeId())
+	row, err := s.loadOutcome(ctx, req.GetOutcomeId())
 	if err != nil {
-		return nil, server.InternalError("failed to fetch outcome", err)
+		return nil, err
 	}
 	o := req.GetOutcome()
 	if o.Name != nil {
@@ -145,6 +145,13 @@ func (s Service) ApproveOutcome(
 	if err != nil {
 		return nil, err
 	}
+	// Pre-read so an unknown id is NotFound rather than a silently successful no-op UPDATE.
+	// (Rows-affected is not usable for this: MySQL reports *changed* rows by default, so
+	// re-approving an already-approved outcome would also count zero.)
+	_, err = s.loadOutcome(ctx, req.GetOutcomeId())
+	if err != nil {
+		return nil, err
+	}
 	err = s.ImsDBQ.ApproveOutcome(ctx, s.ImsDBQ, req.GetOutcomeId())
 	if err != nil {
 		return nil, server.InternalError("failed to approve outcome", err)
@@ -164,9 +171,9 @@ func (s Service) SetOutcomeHidden(
 	if err != nil {
 		return nil, err
 	}
-	row, err := s.ImsDBQ.Outcome(ctx, s.ImsDBQ, req.GetOutcomeId())
+	row, err := s.loadOutcome(ctx, req.GetOutcomeId())
 	if err != nil {
-		return nil, server.InternalError("failed to fetch outcome", err)
+		return nil, err
 	}
 	err = s.ImsDBQ.UpdateOutcome(ctx, s.ImsDBQ, imsdb.UpdateOutcomeParams{
 		Hidden: req.GetHidden(),
@@ -273,4 +280,19 @@ func outcomeToProto(o imsjson.Outcome) *resourcesv1.Outcome {
 		}
 	}
 	return out
+}
+
+// loadOutcome reads the row a read-modify-write (or an approve) addresses by id, mapping a missing
+// id to NotFound. The retired REST multiplexer answered 500 for an unknown id (it never
+// distinguished sql.ErrNoRows); on the id-keyed contract "no such outcome" is a client outcome,
+// matching what the area and crew slices already do.
+func (s Service) loadOutcome(ctx context.Context, id int32) (imsdb.OutcomeRow, error) {
+	row, err := s.ImsDBQ.Outcome(ctx, s.ImsDBQ, id)
+	if errors.Is(err, sql.ErrNoRows) {
+		return imsdb.OutcomeRow{}, connect.NewError(connect.CodeNotFound, errors.New("outcome not found"))
+	}
+	if err != nil {
+		return imsdb.OutcomeRow{}, server.InternalError("failed to fetch outcome", err)
+	}
+	return row, nil
 }

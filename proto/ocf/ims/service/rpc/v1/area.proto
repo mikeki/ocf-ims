@@ -30,7 +30,7 @@ message ListAreasResponse {
 // server-derived from the name, so it is unset here.
 message CreateAreaRequest {
   int32 event_id = 1 [(buf.validate.field).int32.gt = 0];
-  ocf.ims.resources.v1.Area area = 2;
+  ocf.ims.resources.v1.Area area = 2 [(buf.validate.field).required = true];
 }
 
 // CreateAreaResponse returns the server-derived area_slug (the per-event key).
@@ -42,7 +42,7 @@ message CreateAreaResponse {
 message UpdateAreaRequest {
   int32 event_id = 1 [(buf.validate.field).int32.gt = 0];
   string area_slug = 2 [(buf.validate.field).string.min_len = 1];
-  ocf.ims.resources.v1.Area area = 3;
+  ocf.ims.resources.v1.Area area = 3 [(buf.validate.field).required = true];
 }
 
 message UpdateAreaResponse {}

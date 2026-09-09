@@ -25,7 +25,7 @@ message ListOutcomesResponse {
 // CreateOutcomeRequest is the admin create of a global outcome (approved
 // immediately). A writer's proposal goes through ProposeOutcome instead.
 message CreateOutcomeRequest {
-  ocf.ims.resources.v1.Outcome outcome = 1;
+  ocf.ims.resources.v1.Outcome outcome = 1 [(buf.validate.field).required = true];
 }
 
 // CreateOutcomeResponse returns the server-assigned id.
@@ -36,7 +36,7 @@ message CreateOutcomeResponse {
 // UpdateOutcomeRequest edits an existing outcome (name).
 message UpdateOutcomeRequest {
   int32 outcome_id = 1 [(buf.validate.field).int32.gt = 0];
-  ocf.ims.resources.v1.Outcome outcome = 2;
+  ocf.ims.resources.v1.Outcome outcome = 2 [(buf.validate.field).required = true];
 }
 
 message UpdateOutcomeResponse {}
@@ -62,7 +62,7 @@ message SetOutcomeHiddenResponse {}
 // only to authorize the caller (the outcome is global).
 message ProposeOutcomeRequest {
   int32 event_id = 1 [(buf.validate.field).int32.gt = 0];
-  ocf.ims.resources.v1.Outcome outcome = 2;
+  ocf.ims.resources.v1.Outcome outcome = 2 [(buf.validate.field).required = true];
 }
 
 // ProposeOutcomeResponse returns the id of the created (or, on a name collision, the

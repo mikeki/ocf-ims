@@ -30,7 +30,7 @@ message ListCrewsResponse {
 // not touched here.
 message CreateCrewRequest {
   int32 event_id = 1 [(buf.validate.field).int32.gt = 0];
-  ocf.ims.resources.v1.Crew crew = 2;
+  ocf.ims.resources.v1.Crew crew = 2 [(buf.validate.field).required = true];
 }
 
 // CreateCrewResponse returns the server-generated slug (the per-event key), as
@@ -44,7 +44,7 @@ message CreateCrewResponse {
 message UpdateCrewRequest {
   int32 event_id = 1 [(buf.validate.field).int32.gt = 0];
   string crew_slug = 2 [(buf.validate.field).string.min_len = 1];
-  ocf.ims.resources.v1.Crew crew = 3;
+  ocf.ims.resources.v1.Crew crew = 3 [(buf.validate.field).required = true];
 }
 
 message UpdateCrewResponse {}
