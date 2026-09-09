@@ -1481,6 +1481,56 @@ enforced + the last M8 surface fixed."
   a Connect server-streaming rewrite (the M8 candidate) in Phase 3.* The accepted residual — that *some*
   activity in an event is still observable to an authenticated subscriber — is recorded, not hidden.
 
+### Stack review round — what a second reader caught in sixteen faithful ports (2026-09-08)
+
+An independent review of the whole 1c stack (#216→#231) confirmed every extraction was ported line for
+line — no permission regression, no data-path regression — and found its problems one layer up, in how
+the Connect *tier* handles errors and validation. Every item repeated across slices, which is the
+finding: these are transport-migration gaps, not slice bugs. Answered by #233–#237 — except the one
+per-slice item (#220's unbounded `person_id`), which folded back into #220 itself when the selector
+became `repeated int32 person_ids` (see the ListPersonnel findings above: on a list RPC an id selector
+is a filter, so it is plural).
+
+- **An error-model migration needs an explicit public/cause split, because the wire is `err.Error()`.**
+  REST's `herr.HTTPError` kept `ResponseMessage` (client) and `InternalErr` (server, logged by
+  `WriteResponse`) apart; 107 Connect sites used `connect.NewError(CodeInternal, fmt.Errorf("…: %w", err))`
+  and connect-go sends `err.Error()` — so MariaDB error text went to the browser *and* nothing logged the
+  cause (the slog interceptor emitted one Debug line with the code). The fix is one tiny wrapper type
+  (`server.InternalError(public, cause)`: `Error()` = public, `Unwrap()` = cause) plus an interceptor that
+  logs failures at Error/Warn with `ErrorCause`. *When a stack's error path is "return an error with a
+  code", the cause hiding + logging the old tier did in its response writer has to be re-homed
+  deliberately — the interceptor is the natural place, and the wrapper is what lets it see the cause.*
+- **A handler that reads a sub-message's fields directly (to preserve presence) makes `required` a
+  correctness constraint, not documentation.** Getters are nil-safe, but `ev.Name == nil` on a nil `ev`
+  panics, and the recovery interceptor turns that into a 500 any client can trigger by omitting the
+  wrapper. None of the message-typed request fields carried `(buf.validate.field).required`; all do now,
+  and a probe asserts InvalidArgument. *Rule: a message-typed request field the handler dereferences is
+  `required`; the validate interceptor is the only nil guard.*
+- **"Unknown id → 500" and "approve nothing → success" are what a faithful port of a name-keyed REST
+  multiplexer looks like on an id-keyed contract.** The REST handlers never distinguished
+  `sql.ErrNoRows`; on Connect that is NotFound. And the approve UPDATEs matched zero rows and reported
+  success — fixed by a pre-read, **not** rows-affected: MySQL counts *changed* rows by default (no
+  `clientFoundRows` in the DSN), so re-approving an approved row would also count zero.
+- **An empty request message is a contract smell.** `ListActionLogsRequest {}` read the whole audit
+  table (a row per mutating request) on every admin page load. Adding `limit`/`min_time`/`max_time` is
+  cheap before a client exists and expensive after; the cap is enforced at protovalidate, not clamped.
+- **`NO_SIDE_EFFECTS` has a second meaning: connect-go accepts the RPC over GET.** Marking `RefreshToken`
+  a read to keep it out of the audit log made a credential-minting endpoint GET-able and therefore
+  cacheable by an intermediary. `Cache-Control: no-store` on both auth responses. *Audit-skip and
+  HTTP-GET are the same annotation; annotate a credential read knowing both.*
+- **Privacy rules gate reads *and* writes, and the gate belongs in one helper.** The sub-resource writes
+  (attach/detach/strike) and `UpdateIncident` checked the write bit but not visibility, so a writer could
+  edit a private incident by number (REST had the same gap). `requireIncidentVisible` — one PK read,
+  NotFound on invisibility, after the permission gate so plain denials stay 403 — now sits behind all
+  four. *CLAUDE.md's "any new endpoint that surfaces incident content must honor privacy" applies to
+  endpoints that mutate it too.*
+- **Stacks need a rebase discipline and a CI caveat.** After the bottom two PRs squash-merged, the
+  upper stack still carried duplicate copies of the lower commits (a 13k-line GitHub diff on #225);
+  the tree at the fork point was identical, so `git rebase --onto` replayed cleanly. Two constraints:
+  git < 2.38 has no `--update-refs` (rebase once detached, then move refs positionally), and
+  `cicd.yml` triggers `pull_request` only for base `master` — so only the bottom PR of a stack ever
+  shows CI, and the stack's real gate is the local verify protocol.
+
 ## 8. Open questions
 
 1. **Does the Go binary keep serving static assets in production**, or does Caddy?

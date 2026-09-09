@@ -476,6 +476,15 @@ func (s Service) UpdateIncident(
 		}
 	}
 
+	// Privacy: a private incident is invisible to a writer who is not an admin, its creator, or
+	// per-incident granted, so the edit path must not be a side door around the read rule.
+	// Checked after the permission gate: an unknown or invisible incident is NotFound (existence
+	// hidden, as on the single read), while the permission denials above stay 403.
+	errConn := s.requireIncidentVisible(ctx, event.ID, incidentNumber, *claims)
+	if errConn != nil {
+		return nil, errConn
+	}
+
 	errHTTP := updateIncident(ctx, s.ImsDBQ, s.UserStore, s.Es, s.Pusher, newIncident, claims.PersonID(), claims.PersonAdmin())
 	if errHTTP != nil {
 		return nil, server.HerrToConnect(errHTTP)
@@ -506,7 +515,7 @@ func (s Service) AttachPersonToIncident(
 		return nil, connect.NewError(connect.CodeUnauthenticated, errors.New("authentication required"))
 	}
 
-	event, errConn := s.incidentWriteContext(ctx, req.GetEventId(), *claims)
+	event, errConn := s.incidentWriteContext(ctx, req.GetEventId(), req.GetIncidentNumber(), *claims)
 	if errConn != nil {
 		return nil, errConn
 	}
@@ -625,7 +634,7 @@ func (s Service) DetachPersonFromIncident(
 		return nil, connect.NewError(connect.CodeUnauthenticated, errors.New("authentication required"))
 	}
 
-	event, errConn := s.incidentWriteContext(ctx, req.GetEventId(), *claims)
+	event, errConn := s.incidentWriteContext(ctx, req.GetEventId(), req.GetIncidentNumber(), *claims)
 	if errConn != nil {
 		return nil, errConn
 	}
@@ -683,7 +692,7 @@ func (s Service) UpdateIncidentJournalEntry(
 		return nil, connect.NewError(connect.CodeUnauthenticated, errors.New("authentication required"))
 	}
 
-	event, errConn := s.incidentWriteContext(ctx, req.GetEventId(), *claims)
+	event, errConn := s.incidentWriteContext(ctx, req.GetEventId(), req.GetIncidentNumber(), *claims)
 	if errConn != nil {
 		return nil, errConn
 	}
@@ -1232,10 +1241,12 @@ func (s Service) reportWriteContext(
 // sub-resource writes share (attach/detach a person, strike a journal entry). A missing event is
 // NotFound; a caller without the write bit is PermissionDenied. Unlike UpdateIncident there is no
 // journal-only grant path here: a 52f-granted reporter manages no people and strikes no entries —
-// those actions have always required the full write bit. It returns only the event (none of the
-// three needs the permission mask past the gate).
+// those actions have always required the full write bit. Past the gate it applies the privacy rule
+// (requireIncidentVisible): a private incident the caller may not view answers NotFound, so these
+// writes are not a side door around it. It returns only the event (none of the three needs the
+// permission mask past the gate).
 func (s Service) incidentWriteContext(
-	ctx context.Context, eventID int32, claims authz.IMSClaims,
+	ctx context.Context, eventID, incidentNumber int32, claims authz.IMSClaims,
 ) (imsdb.Event, error) {
 	eventRow, err := s.ImsDBQ.Event(ctx, s.ImsDBQ, eventID)
 	if err != nil {
@@ -1254,7 +1265,43 @@ func (s Service) incidentWriteContext(
 		return imsdb.Event{}, connect.NewError(connect.CodePermissionDenied,
 			errors.New("the requestor does not have EventWriteIncidents permission for this Event"))
 	}
+	errConn := s.requireIncidentVisible(ctx, event.ID, incidentNumber, claims)
+	if errConn != nil {
+		return imsdb.Event{}, errConn
+	}
 	return event, nil
+}
+
+// requireIncidentVisible is the privacy gate the incident writes share (CLAUDE.md, "Private
+// incidents"): a PRIVATE incident is visible only to an admin, its creator, or a person granted
+// per-incident access (52f) — event-wide write is deliberately not sufficient — so a caller who may
+// not view it must not be able to edit it, attach people to it or strike its entries either. An
+// unknown or invisible incident answers NotFound (existence hidden, exactly as the single read does);
+// a non-private incident passes with one primary-key read and no grant query. Checked after the
+// permission gate, so a plain permission denial stays PermissionDenied.
+func (s Service) requireIncidentVisible(
+	ctx context.Context, eventID, incidentNumber int32, claims authz.IMSClaims,
+) error {
+	row, err := s.ImsDBQ.Incident(ctx, s.ImsDBQ, imsdb.IncidentParams{Event: eventID, Number: incidentNumber})
+	if errors.Is(err, sql.ErrNoRows) {
+		return connect.NewError(connect.CodeNotFound, errors.New("incident not found"))
+	}
+	if err != nil {
+		return server.InternalError("failed to fetch incident", err)
+	}
+	if !row.Incident.Private {
+		return nil
+	}
+	hasGrant, err := s.ImsDBQ.IncidentPersonHasGrant(ctx, s.ImsDBQ, imsdb.IncidentPersonHasGrantParams{
+		Event: eventID, IncidentNumber: incidentNumber, PersonID: claims.PersonID(),
+	})
+	if err != nil {
+		return server.InternalError("failed to check incident grant", err)
+	}
+	if !mayViewIncident(true, row.Incident.CreatedBy, claims.PersonID(), claims.PersonAdmin(), false, hasGrant) {
+		return connect.NewError(connect.CodeNotFound, errors.New("incident not found"))
+	}
+	return nil
 }
 
 // isPreviousReportAuthor reports whether the caller authored any of the report's journal entries

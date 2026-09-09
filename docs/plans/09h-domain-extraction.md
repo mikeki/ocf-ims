@@ -135,6 +135,32 @@ Three stacked closeout PRs then landed off it (all verified, awaiting bottom-up 
 What's left of Phase 1: the deferred full read-mapper retirement (optional cleanup), and 1f (config →
 struct tags, explicitly optional). See the newest §7 finding for details.
 
+**Stack review round (2026-09-08).** An independent review of #216→#231 (all faithful ports, no
+permission or data-path regression) produced cross-stack findings, answered by five follow-up PRs —
+one to master and four stacked on #231, each verified like a slice:
+
+- **#233 `fix/x-crypto-govulncheck` → master** — x/crypto v0.56.0 (GO-2026-6354/6355 via
+  testcontainers in test code only); the CI Linters job was red on master and every PR. Merge first.
+- **#234 `fix/1c-review-error-handling`** (X3) — `server.InternalError`/`PublicError`: the wire gets the
+  public message, the cause stays server-side; the slog interceptor logs failures at Error/Warn with the
+  cause; Login/throttle Warn lines restored; 429 mapped.
+- **#235 `fix/1c-review-contract-hardening`** (X4/X5) — every message-typed request field is
+  `required` (nil-deref 500s → InvalidArgument); unknown taxonomy/event ids are NotFound; approves
+  pre-read (MySQL rows-affected counts *changed* rows). (The review's #220 item — `person_id` gt 0 —
+  first rode here, then folded into #220 itself when that selector became `repeated int32 person_ids`,
+  bounded 1..100 positive unique; see the ListPersonnel section below.)
+- **#236 `fix/1c-review-actionlog-bounded`** (#228) — `ListActionLogs` is newest-first, bounded
+  (`limit`, default 200 / cap 1000) and windowed (`min_time`/`max_time`).
+- **#237 `fix/1c-review-privacy-sse-followups`** (#231/#216/X6 + nits) — oracle on
+  `context.WithoutCancel`; SSE cookie subject must exist; `requireIncidentVisible` gates the four incident
+  writes (private → 404); `no-store` on Login/RefreshToken; createPerson in one txn.
+
+Also from the review: stack B (#225→#231) had been cut from the pre-#214 master and carried duplicate
+copies of #214–#224; it was rebased onto the (already master-rebased) stack A and onto #233 locally —
+the sixteen branch force-pushes are the one manual step left (see the memory file). Note `cicd.yml`
+runs `pull_request` only for base `master`, so only the bottom PR of a stack ever shows CI; the stack's
+signal is the local verify protocol plus master after each merge.
+
 State lives in git + memory, not here. To continue: `git log --oneline -5` on the
 current 1c branch (or master, if a chunk merged), read the newest §7 finding and the
 memory file `maybloom-stack-go-adoption.md`, then take the next resource in the order

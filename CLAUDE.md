@@ -330,18 +330,22 @@ Event-based access control defined in `lib/authz/`:
   only to an admin, its creator (`CREATED_BY`), and people granted per-incident access
   (the 52f `INCIDENT__PERSON.GRANTED_ACCESS` grant) — **event-wide read is not
   sufficient**, so writers/crew-leaders can't see it. The shared helper
-  `mayViewIncident` in `api/incident.go` encodes this; an unauthorized single read
-  returns **404** (not 403) so the incident's existence stays hidden. Only an admin or
+  `mayViewIncident` in `internal/incident/incident.go` encodes this; an unauthorized single
+  read returns **404** (not 403) so the incident's existence stays hidden. Only an admin or
   the creator may toggle the flag (enforced in `updateIncident`; `isJournalOnly`
   excludes `Private` so a granted reporter can't flip it). **When adding any new
   endpoint that surfaces incident content (summary, people, journal entries,
-  attachments), it must honor privacy** — see how `getIncident`/`getIncidents`/
+  attachments), it must honor privacy** — see how `GetIncident`/`ListIncidents`/
   `GetIncidentAttachment`/notifications/metrics/linked-incident summaries were gated.
+  **Writes honor it too:** `UpdateIncident`, attach/detach a person and strike a journal
+  entry all pass through `requireIncidentVisible` (`internal/incident/connect.go`), so a
+  private incident the caller may not view answers 404 on the write path as well. The SSE
+  "poke" stream (`GET /ims/api/eventsource`) requires the refresh-token cookie and redacts a
+  private incident's number at publish time (`EventSourcerer` privacy oracle → a number-less
+  `update_all` poke); the accepted residual is that *some* activity in an event is observable
+  to an authenticated subscriber, until a per-subscriber Connect stream replaces it (Phase 3).
   Non-sensitive attributes (state, priority, type, area) may still feed aggregate
-  dashboard counts. **Known follow-up:** the SSE "poke" stream (`api/eventsource.go`)
-  still broadcasts a private incident's number + change-timing (content stays safe —
-  clients re-fetch through the gated API); authenticating that endpoint and filtering
-  per-subscriber is deferred.
+  dashboard counts.
 
 ### Action Logging
 

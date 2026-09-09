@@ -114,6 +114,71 @@ func TestPrivateIncidentVisibility(t *testing.T) {
 	requireSeesIncident(t, ctx, dave, eventName, num)
 }
 
+// TestPrivateIncidentWritesHidden covers the write side of the privacy rule: a writer who
+// may not view a private incident (not admin, not creator, not granted) cannot edit it,
+// attach or detach people, or strike its entries either — each answers 404 (existence
+// hidden, exactly as the single read does), so the write RPCs are not a side door around
+// the read rule. The creator keeps every one of them.
+func TestPrivateIncidentWritesHidden(t *testing.T) {
+	t.Parallel()
+	ctx := t.Context()
+
+	admin := ApiHelper{t: t, serverURL: shared.serverURL, jwt: jwtForAdmin(ctx, t)}
+	alice := ApiHelper{t: t, serverURL: shared.serverURL, jwt: jwtForAlice(t, ctx)} // creator (writer)
+	erin := ApiHelper{t: t, serverURL: shared.serverURL, jwt: jwtForErin(t, ctx)}   // another writer
+
+	eventName := rand.NonCryptoText()
+	_, resp := admin.createEvent(ctx, imsjson.Event{Name: &eventName})
+	require.Equal(t, http.StatusNoContent, resp.StatusCode)
+	require.NoError(t, resp.Body.Close())
+	for _, handle := range []string{userAliceHandle, userErinHandle} {
+		resp = admin.addWriter(ctx, eventName, handle)
+		require.Equal(t, http.StatusNoContent, resp.StatusCode)
+		require.NoError(t, resp.Body.Close())
+	}
+	resp = admin.addReporter(ctx, eventName, userDaveHandle)
+	require.Equal(t, http.StatusNoContent, resp.StatusCode)
+	require.NoError(t, resp.Body.Close())
+
+	num := alice.newIncidentSuccess(ctx, imsjson.Incident{Event: eventName, Summary: new("sensitive op")})
+	resp = alice.updateIncident(ctx, eventName, num, imsjson.Incident{
+		Event: eventName, Number: num, Private: new(true),
+	})
+	require.Equal(t, http.StatusNoContent, resp.StatusCode)
+	require.NoError(t, resp.Body.Close())
+
+	// Erin (writer, not creator/admin/granted): every write path answers 404.
+	resp = erin.updateIncident(ctx, eventName, num, imsjson.Incident{
+		Event: eventName, Number: num, Summary: new("changed by erin"),
+	})
+	require.Equal(t, http.StatusNotFound, resp.StatusCode)
+	require.NoError(t, resp.Body.Close())
+	resp = erin.attachPersonToIncident(ctx, eventName, num, userDavePersonID)
+	require.Equal(t, http.StatusNotFound, resp.StatusCode)
+	require.NoError(t, resp.Body.Close())
+	resp = erin.detachPersonFromIncident(ctx, eventName, num, userDavePersonID)
+	require.Equal(t, http.StatusNotFound, resp.StatusCode)
+	require.NoError(t, resp.Body.Close())
+	resp = erin.updateIncidentJournalEntry(ctx, eventName, num, imsjson.JournalEntry{ID: 1, Stricken: new(true)})
+	require.Equal(t, http.StatusNotFound, resp.StatusCode)
+	require.NoError(t, resp.Body.Close())
+
+	// Nothing landed: the summary is untouched.
+	got, resp := alice.getIncident(ctx, eventName, num)
+	require.Equal(t, http.StatusOK, resp.StatusCode)
+	require.NoError(t, resp.Body.Close())
+	require.NotNil(t, got.Summary)
+	require.Equal(t, "sensitive op", *got.Summary)
+
+	// The creator keeps the write paths.
+	resp = alice.attachPersonToIncident(ctx, eventName, num, userDavePersonID)
+	require.Equal(t, http.StatusNoContent, resp.StatusCode)
+	require.NoError(t, resp.Body.Close())
+	resp = alice.detachPersonFromIncident(ctx, eventName, num, userDavePersonID)
+	require.Equal(t, http.StatusNoContent, resp.StatusCode)
+	require.NoError(t, resp.Body.Close())
+}
+
 // findIncidentPerson returns the involved-person entry for personID, or nil.
 func findIncidentPerson(people *[]imsjson.IncidentPerson, personID int64) *imsjson.IncidentPerson {
 	if people == nil {

@@ -273,21 +273,51 @@ func (s Service) createPerson(ctx context.Context, req *rpcv1.CreatePersonReques
 		}
 	}
 
-	newID, err := s.ImsDBQ.CreatePerson(ctx, s.ImsDBQ, imsdb.CreatePersonParams{
-		Handle:          handleNull,
-		Name:            nameNull,
-		Email:           emailNull,
-		Phone:           phoneNull,
-		Password:        passwordNull,
-		Created:         conv.TimeToFloat(time.Now()),
-		PasswordChanged: passwordChanged,
-	})
-	if err != nil {
-		var mysqlErr *mysql.MySQLError
-		if errors.As(err, &mysqlErr) && mysqlErr.Number == DupEntryError {
-			return empty, herr.Conflict("That handle or email is already in use", nil)
+	// The PERSON row and its optional PERSON__EVENT row are one transaction, so a wristband
+	// conflict on the participation insert (409) cannot leave an orphan person behind
+	// (store.RunInTx also retries a transient deadlock; both statements are idempotent to re-run
+	// inside a fresh transaction).
+	var newID int64
+	runErr := s.ImsDBQ.RunInTx(ctx, func(txn *sql.Tx) error {
+		id, err := s.ImsDBQ.CreatePerson(ctx, txn, imsdb.CreatePersonParams{
+			Handle:          handleNull,
+			Name:            nameNull,
+			Email:           emailNull,
+			Phone:           phoneNull,
+			Password:        passwordNull,
+			Created:         conv.TimeToFloat(time.Now()),
+			PasswordChanged: passwordChanged,
+		})
+		if err != nil {
+			var mysqlErr *mysql.MySQLError
+			if errors.As(err, &mysqlErr) && mysqlErr.Number == DupEntryError {
+				return herr.Conflict("That handle or email is already in use", nil)
+			}
+			return herr.InternalServerError("Failed to create person", err).From("[CreatePerson]")
 		}
-		return empty, herr.InternalServerError("Failed to create person", err).From("[CreatePerson]")
+		newID = id
+
+		// Write the per-event participation row when an event was named. The person is brand-new,
+		// so this is always an insert; a wristband already taken in the event is a 409.
+		if eventID != 0 {
+			var wristbandNull sql.NullString
+			if wristband != "" {
+				wristbandNull = conv.StringToSql(&wristband, maxWristbandLength)
+			}
+			err = s.ImsDBQ.InsertPersonEvent(ctx, txn, imsdb.InsertPersonEventParams{
+				PersonID:          int32(id),
+				Event:             eventID,
+				Wristband:         wristbandNull,
+				ParticipationType: participation,
+			})
+			if err != nil {
+				return wristbandConflict(err)
+			}
+		}
+		return nil
+	})
+	if runErr != nil {
+		return empty, herr.AsHTTPError(runErr)
 	}
 
 	resp := imsjson.Person{
@@ -297,23 +327,7 @@ func (s Service) createPerson(ctx context.Context, req *rpcv1.CreatePersonReques
 		Email:    email,
 		Phone:    phone,
 	}
-
-	// Write the per-event participation row when an event was named. The person is brand-new, so
-	// this is always an insert; a wristband already taken in the event is a 409.
 	if eventID != 0 {
-		var wristbandNull sql.NullString
-		if wristband != "" {
-			wristbandNull = conv.StringToSql(&wristband, maxWristbandLength)
-		}
-		err = s.ImsDBQ.InsertPersonEvent(ctx, s.ImsDBQ, imsdb.InsertPersonEventParams{
-			PersonID:          int32(newID),
-			Event:             eventID,
-			Wristband:         wristbandNull,
-			ParticipationType: participation,
-		})
-		if err != nil {
-			return empty, wristbandConflict(err)
-		}
 		resp.Wristband = wristband
 		resp.ParticipationType = string(participation)
 	}

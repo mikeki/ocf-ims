@@ -441,8 +441,26 @@ func TestEventSource_RequiresAuthn(t *testing.T) {
 	// Mint a valid refresh token with the server's signing secret — the same credential
 	// the Login RPC issues in its refresh cookie. Minting (rather than logging in) keeps
 	// this test independent of a shared user's live login state, which parallel tests
-	// mutate; the adapter validates the token, not the person behind it.
+	// mutate; the adapter validates the token and that its person still exists, not the
+	// person's login state.
 	jwter := authz.JWTer{SecretKey: shared.cfg.Core.JWTSecret}
+
+	// A well-signed token for a person who is not in the directory (removed/deactivated
+	// after the cookie was issued) is rejected like the RefreshToken RPC rejects it.
+	ghostToken, err := jwter.CreateRefreshToken("ghost", 999_999, time.Now().Add(time.Hour))
+	require.NoError(t, err)
+	ghostReq, err := http.NewRequestWithContext(ctx, http.MethodGet, path.String(), nil)
+	require.NoError(t, err)
+	ghostReq.AddCookie(&http.Cookie{
+		Name: authz.RefreshTokenCookieName, Value: ghostToken,
+		Secure: true, HttpOnly: true, SameSite: http.SameSiteStrictMode,
+	})
+	// #nosec G704 // SSRF via taint analysis.
+	ghostResp, err := client.Do(ghostReq)
+	require.NoError(t, err)
+	require.NoError(t, ghostResp.Body.Close())
+	require.Equal(t, http.StatusUnauthorized, ghostResp.StatusCode)
+
 	refreshToken, err := jwter.CreateRefreshToken(userAliceHandle, userAlicePersonID, time.Now().Add(time.Hour))
 	require.NoError(t, err)
 	// The security attributes are cosmetic on a request cookie (only name=value is sent),

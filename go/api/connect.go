@@ -325,6 +325,8 @@ func (s ImsService) Login(
 	}
 	resp := connect.NewResponse(msg)
 	resp.Header().Set("Set-Cookie", cookie.String())
+	// A credential-minting response must never be cached by an intermediary.
+	resp.Header().Set("Cache-Control", "no-store")
 	return resp, nil
 }
 
@@ -340,7 +342,13 @@ func (s ImsService) RefreshToken(
 	if err != nil {
 		return nil, err
 	}
-	return connect.NewResponse(msg), nil
+	resp := connect.NewResponse(msg)
+	// RefreshToken is NO_SIDE_EFFECTS (audit-skipped), which also makes connect-go accept it over
+	// HTTP GET — so the minted access token must carry an explicit no-store: a GET response is
+	// otherwise cacheable by an intermediary. (SameSite=Strict on the cookie already limits
+	// cross-site use; this closes the caching side.)
+	resp.Header().Set("Cache-Control", "no-store")
+	return resp, nil
 }
 
 // refreshTokenFromHeader pulls the refresh-token cookie value out of a request's headers,

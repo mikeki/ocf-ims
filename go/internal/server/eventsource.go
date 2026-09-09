@@ -181,8 +181,14 @@ func (es *EventSourcerer) NotifyVisitUpdate(eventID int32, visitNumber int32) {
 // incidentEventData builds the payload for an incident poke, redacting the number
 // when the incident is private (IMSEventData.UpdateAllIncidents). On an oracle error
 // it fails SAFE — redacting — so a lookup failure never leaks a private number.
+//
+// The oracle runs on a context detached from the request's cancellation: the poke is
+// published after the write has committed, and if the writing client has already
+// disconnected the request ctx is cancelled — the lookup would then fail and the
+// fail-safe would turn a targeted poke into an update_all full reload for every
+// subscriber. The values (request id, claims) are kept; only cancellation is dropped.
 func (es *EventSourcerer) incidentEventData(ctx context.Context, eventID, incidentNumber int32) IMSEventData {
-	private, err := es.incidentIsPrivate(ctx, eventID, incidentNumber)
+	private, err := es.incidentIsPrivate(context.WithoutCancel(ctx), eventID, incidentNumber)
 	if err != nil {
 		slog.Error("SSE incident-privacy lookup failed; redacting the poke to be safe",
 			"eventID", eventID, "incidentNumber", incidentNumber, "err", err)

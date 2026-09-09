@@ -426,6 +426,18 @@ func (a ApiHelper) editType(ctx context.Context, req imsjson.IncidentType) (*int
 		rpcReq := connect.NewRequest(&servicerpcv1.UpdateIncidentTypeRequest{IncidentTypeId: req.ID, IncidentType: incidentTypeMsgFromJSON(req)})
 		a.authorizeRPC(rpcReq)
 		_, err := client.UpdateIncidentType(ctx, rpcReq)
+		if err != nil {
+			return nil, writeRPCStatus(err)
+		}
+		// The legacy multiplexer's update branch applied name and hidden together; the
+		// decomposed contract splits hidden into SetIncidentTypeHidden, so a DTO carrying both
+		// fans out to both RPCs here (UpdateIncidentType leaves hidden alone) — the same shape
+		// as editOutcome.
+		if req.Hidden != nil {
+			hReq := connect.NewRequest(&servicerpcv1.SetIncidentTypeHiddenRequest{IncidentTypeId: req.ID, Hidden: *req.Hidden})
+			a.authorizeRPC(hReq)
+			_, err = client.SetIncidentTypeHidden(ctx, hReq)
+		}
 		return nil, writeRPCStatus(err)
 	}
 }

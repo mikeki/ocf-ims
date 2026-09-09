@@ -20,6 +20,7 @@ import (
 	"context"
 	"database/sql"
 	"errors"
+	"log/slog"
 	"slices"
 	"strconv"
 	"strings"
@@ -364,6 +365,10 @@ func (s Service) invalidateAreaCaches(ctx context.Context, eventID int32) {
 	s.Areas.InvalidateEvent(areaCacheKey(eventID))
 	ev, err := s.ImsDBQ.Event(ctx, s.ImsDBQ, eventID)
 	if err != nil {
+		// Best-effort: the write itself succeeded. Log so a broken lookup is visible rather
+		// than silently leaving the dashboard metrics stale until their TTL.
+		slog.Warn("Failed to resolve event for metrics invalidation; dashboard stays stale until TTL",
+			"eventID", eventID, "err", err)
 		return
 	}
 	s.Metrics.InvalidateEvent(ev.Event.Name)
