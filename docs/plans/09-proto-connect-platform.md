@@ -307,6 +307,11 @@ generated type dependency and nothing else.
 
 ### Phase 3 — Build the replacement
 
+> **Master plan: [09i-expo-client.md](09i-expo-client.md)** (2026-09-08) — the
+> slice-by-slice task breakdown, the decisions (session, streaming, push, web
+> serving, testing), and which model builds what. The 3a–3d outline below stands;
+> 09i is where it is detailed and tracked.
+
 Sequenced mobile-first, because that is the surface with no incumbent — value
 reaches people immediately, instead of waiting on the surfaces where something
 already works.

@@ -40,6 +40,7 @@ management system.
 | [09d-taxonomies-admin.md](09d-taxonomies-admin.md) | Phase 0, slice 0d — resources/v1 taxonomies & admin (incident type, outcome, action log, notification, metrics); White Bird visits deliberately excluded | In progress — for review (PR #203) |
 | [09e-service-surface.md](09e-service-surface.md) | Phase 0, slice 0e — single `ImsService` (49 RPCs) + service/v1 request/response envelopes + the route→RPC mapping table (70 routes, zero unclassified) | In progress — for review (stacked on #203) |
 | [09f-server-restructure.md](09f-server-restructure.md) | Phase 1, slice 1a — transport de-risk spike, then relocate the Go tree to `go/` + `internal/<domain>/` (opens Phase 1) | Plan — for review |
+| [09i-expo-client.md](09i-expo-client.md) | Phase 3 — the Expo client master plan: MVP that validates Expo against Connect (3a), field app (3b), dispatch on web (3c), admin & long tail (3d); slice tasks with model assignment (Claude Design / Opus / Sonnet / Haiku) | Plan — for review |
 | [10-cleanup-pass.md](10-cleanup-pass.md) | Phase 1 — Preparation & clean-up | ✅ Done (PRs #1–#5) |
 | [11-remove-concentric-streets.md](11-remove-concentric-streets.md) | Phase 1 — Remove Concentric Streets | ✅ Done (PR #1) |
 | [20-terminology.md](20-terminology.md) | Phase 2 — Terminology | 2a ✅ (PR #13), 2c ✅ (PR #14); 2b → Phase 3; 2d awaiting OCF wording |
