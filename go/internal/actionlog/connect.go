@@ -42,16 +42,28 @@ type Service struct {
 	UserStore directory.UserStore
 }
 
+const (
+	// defaultActionLogLimit is the page size when the request carries limit == 0.
+	defaultActionLogLimit = 200
+	// maxActionLogLimit is the hard cap on one read; the proto's int32.lte mirrors it so an
+	// over-large request is rejected at protovalidate rather than silently clamped.
+	maxActionLogLimit = 1000
+	// noMaxTime is the open upper bound: CREATED_AT is a unix-seconds double, so any real
+	// timestamp is far below it.
+	noMaxTime = 1e100
+)
+
 // ListActionLogs is the domain method behind the ListActionLogs RPC, retiring REST GET /actionlogs.
-// It authorizes from the ctx claims (GlobalAdministrateDebugging, admin-only) and returns every audit
-// record. The REST endpoint accepted min/max-time + userName/path query filters; the contract exposes
-// none yet (ListActionLogsRequest is empty), so this reads the full range — the same defaults the
-// REST handler used when those params were absent — and the id-keyed/empty contract drops the REST
-// invalid-time 400s (they have no analogue). Filters move onto the request message when a real need
-// appears.
+// It authorizes from the ctx claims (GlobalAdministrateDebugging, admin-only) and returns audit
+// records newest-first, bounded by the request's limit (defaultActionLogLimit when 0, at most
+// maxActionLogLimit) and optionally windowed by [min_time, max_time). The audit table grows by one
+// row per mutating request, so an unbounded read would pull the whole table on every admin page
+// load. The REST endpoint's userName/path filters were Go-side post-filters over the full range and
+// are not carried (a client filters what it displays within its window); its invalid-time 400s have
+// no analogue on the typed contract.
 func (s Service) ListActionLogs(
 	ctx context.Context,
-	_ *rpcv1.ListActionLogsRequest,
+	req *rpcv1.ListActionLogsRequest,
 ) (*rpcv1.ListActionLogsResponse, error) {
 	claims, ok := server.ClaimsFromContext(ctx)
 	if !ok {
@@ -66,10 +78,22 @@ func (s Service) ListActionLogs(
 			errors.New("the requestor does not have GlobalAdministrateDebugging permission"))
 	}
 
+	limit := req.GetLimit()
+	if limit == 0 {
+		limit = defaultActionLogLimit
+	}
+	limit = min(limit, maxActionLogLimit)
+	minTime, maxTime := 0.0, noMaxTime
+	if req.GetMinTime() != nil {
+		minTime = conv.TimeToFloat(req.GetMinTime().AsTime())
+	}
+	if req.GetMaxTime() != nil {
+		maxTime = conv.TimeToFloat(req.GetMaxTime().AsTime())
+	}
 	rows, err := s.ImsDBQ.ActionLogs(ctx, s.ImsDBQ, imsdb.ActionLogsParams{
-		// long ago .. long from now: the whole table.
-		MinTime: 1e0,
-		MaxTime: 1e100,
+		MinTime: minTime,
+		MaxTime: maxTime,
+		Limit:   limit,
 	})
 	if err != nil {
 		return nil, server.InternalError("failed to fetch action logs", err)

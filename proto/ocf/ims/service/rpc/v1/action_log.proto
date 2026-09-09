@@ -4,17 +4,33 @@ syntax = "proto3";
 
 package ocf.ims.service.rpc.v1;
 
+import "buf/validate/validate.proto";
+import "google/protobuf/timestamp.proto";
 import "ocf/ims/resources/v1/action_log.proto";
 
 option go_package = "github.com/mikeki/ocf-ims/gen/ocf/ims/service/rpc/v1;servicerpcv1";
 
 // Request/response envelopes for the action-log RPC (declared in ../../v1/service.proto).
 
-// ListActionLogsRequest is the admin audit read (GET /actionlogs). No filters are
-// exposed by the REST endpoint today; kept empty (add pagination/filters here when
-// the endpoint grows them).
-message ListActionLogsRequest {}
+// ListActionLogsRequest is the admin audit read (retired REST GET /actionlogs). The audit
+// table grows by one row per mutating request, so the read is bounded: rows come back
+// newest-first, at most `limit` of them, optionally windowed by created_at. The REST
+// endpoint's userName/path filters were Go-side post-filters over the full range and are
+// not carried; a client filters what it displays within the window it asked for.
+message ListActionLogsRequest {
+  // Inclusive lower bound on created_at; unset = no lower bound.
+  google.protobuf.Timestamp min_time = 1;
+  // Exclusive upper bound on created_at; unset = no upper bound.
+  google.protobuf.Timestamp max_time = 2;
+  // Maximum rows to return (newest first). 0 = the server default (200); the server caps
+  // at 1000, which is also enforced here.
+  int32 limit = 3 [(buf.validate.field).int32 = {
+    gte: 0
+    lte: 1000
+  }];
+}
 
 message ListActionLogsResponse {
+  // Newest first (created_at descending).
   repeated ocf.ims.resources.v1.ActionLog action_logs = 1;
 }

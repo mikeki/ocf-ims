@@ -718,13 +718,18 @@ values
 ;
 
 -- name: ActionLogs :many
+-- Newest first and bounded: the audit table grows by one row per mutating request, so the
+-- admin read (ListActionLogs) never pulls the whole table. The window is half-open
+-- [min_time, max_time).
 select
     sqlc.embed(al)
 from
     ACTION_LOG al
 where
-    al.CREATED_AT > sqlc.arg(min_time)
+    al.CREATED_AT >= sqlc.arg(min_time)
     and al.CREATED_AT < sqlc.arg(max_time)
+order by al.CREATED_AT desc, al.ID desc
+limit ?
 ;
 
 -- name: Areas :many

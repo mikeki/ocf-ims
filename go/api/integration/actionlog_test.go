@@ -20,10 +20,13 @@ import (
 	"net/http"
 	"strconv"
 	"testing"
+	"time"
 
 	resourcesv1 "github.com/mikeki/ocf-ims/gen/ocf/ims/resources/v1"
+	servicerpcv1 "github.com/mikeki/ocf-ims/gen/ocf/ims/service/rpc/v1"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"google.golang.org/protobuf/types/known/timestamppb"
 )
 
 func TestGetActionLog(t *testing.T) {
@@ -33,34 +36,59 @@ func TestGetActionLog(t *testing.T) {
 	referrer := "testGetActionLog"
 	apisAdmin := ApiHelper{t: t, serverURL: shared.serverURL, jwt: jwtForAdmin(ctx, t), referrer: referrer}
 
-	// Generate one action-logged request carrying this test's unique Referer to read back.
-	// As the API migrates to Connect, the action-log interceptor records RPCs but captures no
-	// Referer (that is a REST-only field), so an RPC can't serve as a Referer-keyed fixture (Login,
-	// then createEvent, each stopped being one as they were extracted). The multipart
-	// profile-picture upload (POST /personnel/{id}/picture) stays REST for the whole migration
-	// (binary, M8), is action-logged (LogRequest(true)), and — as a raw request — carries the Referer
-	// the getActionLogs read filters on, so it is the durable fixture. The admin uploads to its own
-	// record (self-upload is always allowed).
+	// Generate one action-logged request carrying this test's unique Referer to read back. The
+	// multipart profile-picture upload (POST /personnel/{id}/picture) stays REST for the whole
+	// migration (binary, M8), is action-logged (LogRequest(true)), and — as a raw request — carries
+	// the Referer the read below keys on, so it is the durable fixture (an RPC records no Referer).
+	// The admin uploads to its own record (self-upload is always allowed).
+	before := time.Now().Add(-time.Second)
 	uploadPath := "/ims/api/personnel/" + strconv.FormatInt(userAdminPersonID, 10) + "/picture"
 	resp := apisAdmin.uploadProfilePicture(ctx, userAdminPersonID, onePixelPNG)
 	require.NoError(t, resp.Body.Close())
 
-	// ListActionLogs takes no time/name/path filters (the empty request), so the read returns the
-	// whole table and the fixture is found by its unique Referer in Go. The REST endpoint's
-	// invalid-time → 400 cases have no analogue in the id-keyed/empty contract (like the other
-	// extracted reads), so they are dropped rather than ported.
-	logs, response := apisAdmin.getActionLogs(ctx)
+	// The read is bounded and newest-first, so window it from just before the fixture: parallel
+	// tests keep appending rows, but everything newer than `before` fits well inside one page.
+	logs, response := apisAdmin.listActionLogs(ctx, &servicerpcv1.ListActionLogsRequest{
+		MinTime: timestamppb.New(before),
+	})
 	require.NotNil(t, response)
 	require.Equal(t, http.StatusOK, response.StatusCode)
 	require.NoError(t, response.Body.Close())
 
 	var foundLog *resourcesv1.ActionLog
-	for _, al := range logs {
+	for i, al := range logs {
 		if al.GetReferrer() == referrer {
 			foundLog = al
+		}
+		if i > 0 {
+			assert.False(t, al.GetCreatedAt().AsTime().After(logs[i-1].GetCreatedAt().AsTime()),
+				"rows must come back newest first")
 		}
 	}
 	require.NotNil(t, foundLog)
 	assert.Equal(t, uploadPath, foundLog.GetPath())
 	assert.Equal(t, "POST", foundLog.GetMethod())
+
+	// max_time is exclusive: a window that ends before the fixture was written excludes it.
+	older, response := apisAdmin.listActionLogs(ctx, &servicerpcv1.ListActionLogsRequest{
+		MaxTime: timestamppb.New(before),
+	})
+	require.Equal(t, http.StatusOK, response.StatusCode)
+	require.NoError(t, response.Body.Close())
+	for _, al := range older {
+		assert.NotEqual(t, referrer, al.GetReferrer(), "max_time must exclude the fixture")
+	}
+
+	// limit caps the page (at least the fixture exists in the window, so exactly one comes back).
+	one, response := apisAdmin.listActionLogs(ctx, &servicerpcv1.ListActionLogsRequest{
+		MinTime: timestamppb.New(before), Limit: 1,
+	})
+	require.Equal(t, http.StatusOK, response.StatusCode)
+	require.NoError(t, response.Body.Close())
+	require.Len(t, one, 1)
+
+	// A limit past the server cap is rejected by protovalidate (int32.lte), not clamped.
+	_, response = apisAdmin.listActionLogs(ctx, &servicerpcv1.ListActionLogsRequest{Limit: 1001})
+	require.Equal(t, http.StatusBadRequest, response.StatusCode)
+	require.NoError(t, response.Body.Close())
 }
