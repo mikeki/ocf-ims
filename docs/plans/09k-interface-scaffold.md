@@ -1,6 +1,6 @@
 # 09k — `packages/interface` scaffold (slice 3a.1)
 
-> **Status:** Built — for review on `feat/3a1-interface-scaffold`
+> **Status:** Built — for review (PR #241, `feat/3a1-interface-scaffold`); `Interface` CI job green on its first run (2m23s)
 > **Parent:** [09i-expo-client.md](09i-expo-client.md) (Phase 3, slice 3a.1) under
 > [09-proto-connect-platform.md](09-proto-connect-platform.md) (Phase 3)
 > **Follows:** [09j](09j-session-contract-cors.md) (3a.0, merged as #240) — master is the
@@ -243,7 +243,9 @@ don't improvise). The architect then fixed the following on top of the mechanic'
       `expo-env.d.ts`, `node_modules`, `ios/`, `android/`.
 - [x] `cd go && go run bin/prependlicense/prependlicense.go` is a no-op on the new
       tree, including after an export (no generated `.ts` appears under the package).
-- [ ] The `Interface` job is green on the PR.
+- [x] The `Interface` job is green on the PR (#241, first run, 2m23s — the allow-list
+      needed no iteration; setup-go's cache warning about a root `go.mod` is shared with
+      the other jobs and harmless).
 
 ## Out of scope (3a.2 and later)
 
@@ -269,7 +271,7 @@ untouched.
 - [x] Client protocol green locally
 - [x] Go protocol green locally
 - [x] Docs: 09i 3a.1 row → 09k, 09j status → merged, README rows, plan 09 §7 finding
-- [ ] PR to master; `Interface` CI job green
+- [x] PR to master (#241); `Interface` CI job green
 
 ## Findings
 
