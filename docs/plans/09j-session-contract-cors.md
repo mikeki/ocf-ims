@@ -1,6 +1,6 @@
 # 09j — Session contract for a native client + dev CORS (slice 3a.0)
 
-> **Status:** Built — for review on `feat/3a0-session-contract`
+> **Status:** ✅ Merged (PR #240, 2026-09-09) — continues in [09k](09k-interface-scaffold.md) (3a.1)
 > **Parent:** [09i-expo-client.md](09i-expo-client.md) (Phase 3, slice 3a.0) under
 > [09-proto-connect-platform.md](09-proto-connect-platform.md) (Phase 3)
 > **Follows:** the Phase-1 closeout (#237, #239) — master is the base, no stacking (09i E16)

@@ -16,10 +16,19 @@
 # the diverging-roots note in docs/plans/09f-server-restructure.md). buf resolves
 # `out` relative to that CWD, so the path reaches back UP to the repo-root pnpm
 # workspace (../packages), where packages/ stays with the TS tier.
+#
+# `include_imports` also generates the modules the contract imports — today just
+# the vendored protovalidate (`third_party/protovalidate` → `buf/validate/validate_pb.ts`),
+# which every `*_pb.ts` imports for its field rules. Without it the generated
+# tree has dangling relative imports and no client can typecheck or bundle it.
+# The Go template does not need this: Go imports protovalidate from its published
+# module. Well-known types are still NOT generated (`include_wkt` stays off):
+# protoc-gen-es imports them from `@bufbuild/protobuf/wkt`.
 version: v2
 plugins:
   - local: ["pnpm", "exec", "protoc-gen-es"]
     out: ../packages/protocol-buffers/src
+    include_imports: true
     opt:
       - target=ts
       - json_types=true

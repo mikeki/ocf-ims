@@ -81,6 +81,32 @@ cd playwright
 npx playwright test
 ```
 
+### Expo client (`packages/interface`)
+
+The replacement client (plan 09i; scaffold 09k): Expo SDK 57 + Expo Router,
+TypeScript strict, a package in the repo-root pnpm workspace. **Run its commands
+from the repo root**, and **generate first** — it imports the proto TypeScript from
+`@ocf-ims/protocol-buffers`, which is git-ignored `buf` output:
+
+```bash
+pnpm install --frozen-lockfile
+pnpm generate                          # buf web template → packages/protocol-buffers/src (needs Go)
+pnpm -F @ocf-ims/interface typecheck   # tsc --noEmit
+pnpm lint                              # biome, whole workspace (client included)
+pnpm -F @ocf-ims/interface test        # jest-expo
+pnpm -F @ocf-ims/interface export:web  # expo export -p web → packages/interface/dist
+pnpm -F @ocf-ims/interface e2e         # Playwright (Chromium) against the export
+pnpm -F @ocf-ims/interface start       # Metro dev server on :8081
+```
+
+The `Interface` CI job runs the same list. Against the docker stack the dev server
+is cross-origin: set `IMS_CORS_ALLOWED_ORIGINS=http://localhost:8081` (see
+Configuration). Every `.ts`/`.tsx` file carries the Apache header (the
+`prepend-license` hook stamps both). Imports: `@/x` is `src/x`; generated protos
+are deep-imported (`@ocf-ims/protocol-buffers/ocf/ims/…/x_pb`); **no barrel
+files**. `ios/`, `android/`, `.expo/`, `dist/` and `expo-env.d.ts` are generated
+and never committed. See `packages/interface/README.md`.
+
 ### Code Generation
 
 The build script runs all code generators, but you can run them individually (from `go/`):
@@ -155,6 +181,7 @@ The codebase follows a layered architecture:
 - **`directory/`** - User directory layer (local IMS-DB-backed people store behind the `IUserStore` seam)
 - **`lib/`** - Reusable utilities (auth, logging, caching, formatting, etc.)
 - **`json/`** - JSON serialization types for the API
+- **`packages/interface/`** - Expo mobile and web client (React Native, Expo Router, TypeScript)
 
 ### Database Architecture
 

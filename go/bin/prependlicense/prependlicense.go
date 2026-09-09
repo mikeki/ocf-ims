@@ -72,10 +72,11 @@ func main() {
 		if d != nil && d.IsDir() && d.Name() == "node_modules" {
 			return fs.SkipDir
 		}
-		// conveniently, all of .go, .templ, and .ts support double slashed comments
+		// conveniently, all of .go, .templ, .ts and .tsx support double slashed comments
 		relevantType := strings.HasSuffix(d.Name(), ".go") ||
 			strings.HasSuffix(d.Name(), ".templ") ||
-			strings.HasSuffix(d.Name(), ".ts")
+			strings.HasSuffix(d.Name(), ".ts") ||
+			strings.HasSuffix(d.Name(), ".tsx")
 		if !d.IsDir() && relevantType {
 			if needsLicense(repo, path) {
 				addLicense(repo, path)

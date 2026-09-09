@@ -1614,6 +1614,48 @@ Findings:
   behaviour the templ route had. No server-side revocation exists; the plan-90 residual is
   restated on the RPC rather than silently inherited.
 
+### 3a.1 — The Expo client's package and toolchain (2026-09-09)
+
+The scaffold slice ([09k](09k-interface-scaffold.md)) puts `packages/interface` (Expo SDK
+57 + Router, TypeScript 6 strict) into the pnpm workspace and proves the toolchain in CI:
+`pnpm generate` → typecheck → biome → jest-expo → `expo export -p web` → a Playwright smoke
+against the export. It was the first *consumer* of the Phase-0 TypeScript target, and that
+is where the findings come from:
+
+- **The proto TypeScript had dangling imports since slice 0a and nothing noticed.**
+  `buf.gen.web.yaml` generated only the contract module; every `*_pb.ts` imports
+  `buf/validate/validate_pb` (the field rules), which lives in the vendored
+  `third_party/protovalidate` module and was never emitted. Go never saw it because
+  `protoc-gen-go` output imports protovalidate's *published* Go module. Fix: per-plugin
+  `include_imports: true` (not `include_wkt` — protoc-gen-es imports the well-known types
+  from `@bufbuild/protobuf/wkt`). The lesson is G1 itself: a generated target that nothing
+  compiles against is not verified, whatever CI says.
+- **TypeScript 6 (the SDK 57 pin) no longer includes every `@types/*` automatically.**
+  The Jest globals need an explicit `types: ["jest"]`; anything else is imported. A
+  `tsc` that suddenly cannot find `describe` in a fresh Expo project is this, not a
+  missing package.
+- **React Native Testing Library 14's `render` is asynchronous** (React 19 act
+  semantics): `screen` is bound only after `await render(…)`. The Expo docs already show
+  the `await`; the older synchronous form fails with a misleading "not implemented".
+- **The monorepo setup is one line.** `node-linker=hoisted` in `.npmrc` (Expo's guide);
+  SDK 52+ detects the workspace and configures Metro itself, so there is no
+  `metro.config.js`. The proto package needs no build step: an `exports` map pointing
+  at raw `.ts` (`"./*": "./src/*.ts"`) is resolved identically by `tsc`
+  (`moduleResolution: bundler`), Metro (package exports on by default since SDK 53) and
+  Jest — the render test and the browser smoke both read `ImsService.typeName` through it.
+- **`newArchEnabled` is gone from the SDK 57 config schema.** The New Architecture is
+  the only architecture; `expo-doctor` rejects the flag. E2's intent stands, the knob
+  does not.
+- **biome 2 finds the root config from a package directory** and honours the package's
+  own `.gitignore` through `vcs.useIgnoreFile`, so `dist/` and `.expo/` stay out of lint
+  with no config; the only E13 change was narrowing the `src` exclusion to the generated
+  package.
+- **CI egress for a client job**: `registry.npmjs.org`, the Go hosts (because
+  `pnpm generate` runs `go tool buf`), and Playwright's CDN
+  (`playwright.download.prss.microsoft.com`, fallback `cdn.playwright.dev`).
+  `EXPO_OFFLINE=1` + `EXPO_NO_TELEMETRY=1` keep the Expo CLI from reaching for
+  `api.expo.dev`; `expo serve` hosts the export so the smoke needs no server yet.
+
 ## 8. Open questions
 
 1. **Does the Go binary keep serving static assets in production**, or does Caddy?

@@ -1,0 +1,17 @@
+{
+  "extends": "expo/tsconfig.base",
+  "compilerOptions": {
+    "strict": true,
+    // TypeScript 6 no longer includes every @types/* package automatically;
+    // the Jest globals (describe / it / expect) in __tests__ need this one.
+    // Playwright and React Native Testing Library are imported explicitly.
+    "types": ["jest"],
+    // `@/x` is `src/x`. Metro reads these paths natively; jest.config.js maps
+    // the same prefix. Generated protos keep their deep import paths
+    // (`@ocf-ims/protocol-buffers/ocf/ims/...`) and there are no barrel files.
+    "paths": {
+      "@/*": ["./src/*"]
+    }
+  },
+  "exclude": ["node_modules", "dist", "jest.config.js", "android", "ios"]
+}

@@ -222,6 +222,11 @@ packages/interface/
   generic with request id.
 - Platform splits use Expo's `.native.ts` / `.web.ts` file suffixes, confined to
   `session/`, push, and file pickers.
+- Imports (decided 2026-09-09, 3a.1): `@/…` is the alias for `src/…` (tsconfig
+  `paths`, mirrored in `jest.config.js`); generated protos are always deep-imported
+  (`@ocf-ims/protocol-buffers/ocf/ims/…/x_pb`); **no barrel files** (`index.ts`
+  re-exports) — Metro does not tree-shake, and a barrel over the generated tree
+  would drag every message into every bundle.
 - Every screen ships its loading, empty and error states from the design handoff.
 
 ## 6. Design track (Claude Design)
@@ -298,7 +303,7 @@ local docker stack, with CI building the web export. Nothing product-shaped.
 | Task | Owner | Deliverable | Depends on |
 |---|---|---|---|
 | **3a.0 Server: session contract + dev CORS** → [09j](09j-session-contract-cors.md) | Architect | `LoginRequest.return_refresh_token`, `LoginResponse.refresh_token/refresh_expires_at` (cookie suppressed when set), `RefreshTokenRequest.refresh_token` (body wins, cookie fallback), `Logout` RPC (clears cookie; audited), `ListReports`/`GetReport` marked NSE, `IMS_CORS_ALLOWED_ORIGINS` (connect cors + rs/cors, credentials, Connect prefix + blob routes), tests for every branch, `.env.example`, `docs/plans/09e` mapping table rows. Full Go verification protocol. | — |
-| **3a.1 Scaffold** | Mechanic (Architect signs off the layout) | `packages/interface` from `create-expo-app` (blank TS + Router), workspace wiring, `pnpm generate`, scripts (`typecheck`, `lint`, `test`, `export:web`, `e2e`), biome fix (E13), `.gitignore` (`.expo/`, `dist/`, `ios/`, `android/`), `README.md`, the `Interface` CI job with the egress allow-list, `CLAUDE.md` section (commands, "run from the repo root", "generate first"). | — |
+| **3a.1 Scaffold** → [09k](09k-interface-scaffold.md) | Mechanic (Architect signs off the layout) | `packages/interface` from `create-expo-app` (blank TS + Router), workspace wiring, `pnpm generate`, scripts (`typecheck`, `lint`, `test`, `export:web`, `e2e`), biome fix (E13), `.gitignore` (`.expo/`, `dist/`, `ios/`, `android/`), `README.md`, the `Interface` CI job with the egress allow-list, `CLAUDE.md` section (commands, "run from the repo root", "generate first"). | — |
 | **3a.2 Foundations** | Architect | `src/api/transport.ts` (E3 interceptor, single-flight refresh, proactive refresh), `src/session/*` (E4; web cookie / native SecureStore; size assertion), session state machine bootstrapping from `GetAuthStatus`, connect-query provider + persister (E5), `src/api/errors.ts`, env config (`EXPO_PUBLIC_API_URL`, dev JSON vs prod binary), `src/design/tokens.ts` stub + 6 primitives, Jest harness with a fake transport (`createRouterTransport`) so hooks test without a server. | 3a.0, 3a.1 |
 | **3a.3 Tracer screens** | Builder | Login (email/password, show/hide, throttle countdown on `ResourceExhausted`, **forced password change** when `using_default_password`, web-only `?o=` return path restricted to in-app routes), Events list (pick + persist; default = newest event: highest numeric name, else highest id), Incidents list (read-only rows: number, state, priority, summary, area, last modified; private badge; pull-to-refresh; polling), Incident detail (read-only: header, location, types, people, journal incl. system-entries toggle, attachments listed not previewed), Sign out. Loading/empty/error states. Jest for hooks; Playwright smoke `login → events → incidents → detail → logout`. | 3a.2, D0 tokens |
 | **3a.4 Design system v0 applied** | Claude Design → Builder | D0 bundle; tokens generated; primitives restyled; tracer screens re-skinned; dark mode. Screenshots ×3 platforms in the PR. | D0, 3a.3 |
