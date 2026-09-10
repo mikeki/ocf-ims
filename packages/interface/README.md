@@ -88,11 +88,14 @@ log) and binary in production.
   and the only file that may hold a colour, spacing, font-size or duration
   literal — colour roles for both schemes, the `tones` a badge paints, spacing,
   radii, the type scale, `elevation` and the `motion` budget; read them through
-  `useTheme()`. Six primitives (`Box`, `Text`, `Button`, `Field`, `ListRow`,
-  `Badge`) styled with `StyleSheet` only. `motion.tsx` holds the app's entire
-  motion budget in two components — `PressFeedback` (a 0.97 press-in scale over
-  120 ms) and `StateFade` (an empty / error body arriving) — both Reanimated CSS
-  transitions, so nothing re-renders per frame and nothing needs a worklet. The
+  `useTheme()`. Seven primitives (`Box`, `Text`, `Button`, `Field`, `ListRow`,
+  `Badge`, `TextButton` — a pressable word, so the app has one class of
+  pressable and not two) styled with `StyleSheet` only. `motion.tsx` holds the
+  app's entire motion budget — `PressFeedback` (a 0.97 press-in scale over
+  120 ms), `StateFade` (an empty / error body arriving) and `useScreenAnimation()`
+  (the stack's transition, a cross-fade under reduced motion) — the first two
+  Reanimated CSS transitions, so nothing re-renders per frame and nothing needs
+  a worklet. The
   direction the values encode — "Dispatch", chosen in D0 on 2026-09-10 — its
   colour language, its motion budget and what it deliberately leaves undone are
   in [DESIGN.md](DESIGN.md); read that before changing a token or adding an

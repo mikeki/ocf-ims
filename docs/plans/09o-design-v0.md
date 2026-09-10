@@ -241,9 +241,15 @@ which is the artefact to argue with if the direction is ever revisited.
       from the tokens — so nobody has to open a binary to change them. No splash screen is
       configured: `expo-splash-screen` is not installed, an inherited gap this run did not
       widen the PR to close.
-- [ ] `review-animations` pass over the press feedback and the state fades — **Miguel's to
-      run**: that skill is `disable-model-invocation`, so it only runs when he types
-      `/review-animations`. What it has to look at is § *Build notes* below.
+- [x] `review-animations` pass over the press feedback and the state fades — **Miguel ran
+      it 2026-09-10** (the skill is `disable-model-invocation`). Verdict **Block**, on one
+      real defect: this section promised `animation: 'fade'` under reduced motion and the
+      builder run never wrote it, so an Android or web user who asked the OS for less
+      movement still got every full slide (iOS cross-fades on its own). Two cohesion
+      findings came with it — `PasswordField`'s toggle and the linked-incident number were
+      bare pressable `Text`, announcing themselves as buttons and then answering a press
+      with nothing while the `Button` and `ListRow` beside them scaled. All three are
+      fixed in the motion follow-up (§ *Build notes — the motion follow-up*).
 - [x] 09i §9 protocol green locally; CI on the PR.
 
 ## Files
@@ -300,8 +306,10 @@ schemes), the contrast table, and the `review-animations` table — all recorded
 - [x] Route chosen (Miguel): **B**, the in-code picker
 - [x] D0 produced and reviewed — **Dispatch** chosen 2026-09-10
 - [x] Token diff + `DESIGN.md` (architect)
-- [x] Builder run; Chrome screenshots; PR — [ ] `review-animations` (Miguel), CI green, Miguel merges
-- [ ] Hosted tracer green on staging; 09i 3a.4 row + README row → Merged
+- [x] Builder run; Chrome screenshots; PR — [x] `review-animations` (Miguel, 2026-09-10:
+      **Block**, three findings fixed in the motion follow-up), CI green, Miguel merges
+- [x] Hosted tracer green on staging — **2026-09-10 against 180ba55**, 2 passed / 1 skipped
+- [ ] 09i 3a.4 row + README row → Merged
 - [ ] Plan 09 §7 finding ("what a design system costs on Expo": tokens on three platforms, elevation, the motion budget)
 
 ## Build notes
@@ -459,6 +467,56 @@ records the split so a later audit does not "fix" it.
 tests), `export:web --clear`, Playwright: the smoke green against a server-free export and
 both tracer tests green in interim mode against `https://ims-staging.maybloom.tech`. `grep`
 still finds no colour, spacing, font-size or duration literal outside `src/design/`.
+
+### The motion follow-up (2026-09-10, after `/review-animations`)
+
+The review's verdict was **Block**, and it was right about one thing that mattered.
+§ *Motion and feel* above says "`animation: 'fade'` under reduced motion", and the
+builder run shipped `useReducedMotion()` inside `PressFeedback` and nowhere else — so
+`app/_layout.tsx` and both group layouts still handed the native stack its default
+push. On iOS that is invisible (UIKit cross-fades under Reduce Motion by itself); on
+Android and on the hosted web build, someone who asked the OS for less movement got
+every full slide anyway. A screen push is the largest movement in the app, so this was
+the one place the setting mattered most and the one place it was not read.
+
+`useScreenAnimation()` joins the motion budget in `src/design/motion.tsx` — the whole
+of it is still that one file — and the three `<Stack>`s pass its result as `animation`.
+The hook is called before each layout's session `switch`, since the early returns would
+otherwise make it conditional.
+
+The other two findings were one cohesion problem seen twice: `PasswordField`'s
+show/hide toggle and the linked-incident number on the detail were bare `<Text
+accessibilityRole="button" onPress>`. Both announced themselves as buttons and then
+answered a press with nothing, directly beside a `Button` and a `ListRow` that both
+scale — the app had two classes of pressable split by implementation history rather
+than by intent. Rather than wrap each site, a seventh primitive fixes it at the root:
+
+`src/design/primitives/TextButton.tsx` — a pressable word. `Pressable` +
+`PressFeedback`, `alignSelf: "flex-start"` so the press scale applies to the word and
+not to a full-width invisible block, and `hitSlop` off the spacing scale to buy the
+44 pt target back without growing the visual. Its `accessibilityLabel` is the label, so
+the accessible name is pinned the same way `ScreenHeader`'s back control pins its own.
+
+**Deliberately not done, and why.** Two more findings were raised and left open on
+purpose. `StateFade` fires on *every* mount, including a navigation back to a
+cached-empty list where nothing was waited for — gating it needs a `waited` prop
+threaded from each screen's `isLoading`, which is a wider change than a motion fix and
+is better made when 3b touches those screens anyway. And `Button`'s disabled/loading
+swap is a hard cut where a 200 ms opacity transition (and a 2 px blur across the
+label → spinner swap) would read better; sign-in is occasional-tier so standard
+animation is permitted there, but it is polish, not a defect.
+
+Two escalation triggers were considered and consciously **not** flagged. The press is
+symmetric at 120 ms in and out: standard 9 targets *hold* interactions, where the
+deliberate phase should be slow and the release should snap, and a tap has no
+deliberate phase. And `StateFade` is a pure fade with no initial transform, which is on
+the trigger list — but that rule guards against an element arriving from nowhere, and
+this is one full-bleed body crossfading into another; a transform would add movement
+that reduced motion would then have to strip.
+
+150 tests still pass, and the two that press the newly-wrapped controls
+(`getByText("Show password")`, `getByText("#4")`) needed no change: RNTL walks up to
+the `Pressable` ancestor for the handler.
 
 ## Findings
 

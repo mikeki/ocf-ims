@@ -7,12 +7,18 @@ import { Button } from "@/design/primitives/Button";
 import { Field } from "@/design/primitives/Field";
 import { ListRow } from "@/design/primitives/ListRow";
 import { Text } from "@/design/primitives/Text";
+import { TextButton } from "@/design/primitives/TextButton";
 import { ThemeProvider } from "@/design/theme";
 import type { ColorScheme } from "@/design/tokens";
 
-// The six primitives render in both schemes and behave (plan 09l F14).
+// The seven primitives render in both schemes and behave (plan 09l F14;
+// TextButton joined them in the 09o motion follow-up).
 
-function Everything(props: { onPress: () => void; onRow: () => void }) {
+function Everything(props: {
+  onPress: () => void;
+  onRow: () => void;
+  onWord: () => void;
+}) {
   return (
     <Box p="lg" gap="md" bg="background" radius="md">
       <Text variant="title">Title</Text>
@@ -34,6 +40,7 @@ function Everything(props: { onPress: () => void; onRow: () => void }) {
         onPress={props.onRow}
       />
       <Badge label="private" tone="danger" />
+      <TextButton label="Show password" onPress={props.onWord} />
     </Box>
   );
 }
@@ -42,9 +49,10 @@ describe.each<ColorScheme>(["light", "dark"])("primitives in %s", (scheme) => {
   it("render and respond", async () => {
     const onPress = jest.fn();
     const onRow = jest.fn();
+    const onWord = jest.fn();
     await render(
       <ThemeProvider scheme={scheme}>
-        <Everything onPress={onPress} onRow={onRow} />
+        <Everything onPress={onPress} onRow={onRow} onWord={onWord} />
       </ThemeProvider>,
     );
 
@@ -59,6 +67,12 @@ describe.each<ColorScheme>(["light", "dark"])("primitives in %s", (scheme) => {
 
     await fireEvent.press(screen.getByText("Row"));
     expect(onRow).toHaveBeenCalledTimes(1);
+
+    // A TextButton is a real button to a screen reader, and pressing its
+    // word reaches the Pressable wrapping it.
+    screen.getByRole("button", { name: "Show password" });
+    await fireEvent.press(screen.getByText("Show password"));
+    expect(onWord).toHaveBeenCalledTimes(1);
 
     // A loading button shows a spinner instead of its label and blocks presses.
     expect(screen.queryByText("Busy")).toBeNull();

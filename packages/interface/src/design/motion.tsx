@@ -88,3 +88,15 @@ export function StateFade(props: StateFadeProps) {
     </Animated.View>
   );
 }
+
+/**
+ * The screen transition a native stack uses. Under reduced motion the
+ * platform's push becomes a cross-fade (plan 09o § Motion and feel): iOS
+ * does that on its own under Reduce Motion, but Android and the web build
+ * do not, so the whole slide would otherwise still play for someone who
+ * asked the OS for less movement. A screen push is the largest movement in
+ * the app — this is the one place the setting matters most.
+ */
+export function useScreenAnimation(): "default" | "fade" {
+  return useReducedMotion() ? "fade" : "default";
+}

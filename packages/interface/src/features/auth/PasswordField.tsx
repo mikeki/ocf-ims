@@ -2,7 +2,7 @@
 
 import { Box } from "@/design/primitives/Box";
 import { Field, type FieldProps } from "@/design/primitives/Field";
-import { Text } from "@/design/primitives/Text";
+import { TextButton } from "@/design/primitives/TextButton";
 
 // A Field that hides its value by default, with a text-button toggle (plan
 // 09n). `shown`/`onToggleShown` are controlled by the caller rather than
@@ -19,14 +19,10 @@ export function PasswordField(props: PasswordFieldProps) {
   return (
     <Box gap="sm">
       <Field {...field} secureTextEntry={!shown} />
-      <Text
-        accessibilityRole="button"
-        variant="label"
-        color="primary"
+      <TextButton
+        label={shown ? "Hide password" : "Show password"}
         onPress={onToggleShown}
-      >
-        {shown ? "Hide password" : "Show password"}
-      </Text>
+      />
     </Box>
   );
 }

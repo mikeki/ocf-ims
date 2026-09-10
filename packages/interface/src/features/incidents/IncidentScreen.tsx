@@ -13,6 +13,7 @@ import { toAppError } from "@/api/errors";
 import { Badge } from "@/design/primitives/Badge";
 import { Box } from "@/design/primitives/Box";
 import { Text } from "@/design/primitives/Text";
+import { TextButton } from "@/design/primitives/TextButton";
 import { useTheme } from "@/design/theme";
 import { useEventAccess } from "@/features/events/hooks";
 import {
@@ -214,15 +215,12 @@ function IncidentDetail(props: IncidentDetailProps) {
         {incident.linkedIncidents.length > 0 ? (
           <Section title="Linked incidents">
             {incident.linkedIncidents.map((ref) => (
-              <Text
+              <TextButton
                 key={ref.incidentNumber}
-                accessibilityRole="button"
+                label={`#${ref.incidentNumber}`}
                 variant="figure"
-                color="primary"
                 onPress={() => onOpenIncident(ref.incidentNumber)}
-              >
-                {`#${ref.incidentNumber}`}
-              </Text>
+              />
             ))}
           </Section>
         ) : null}

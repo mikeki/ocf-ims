@@ -2,6 +2,7 @@
 
 import { Redirect, Stack, usePathname } from "expo-router";
 import { Platform } from "react-native";
+import { useScreenAnimation } from "@/design/motion";
 import { ChangePasswordScreen } from "@/features/auth/ChangePasswordScreen";
 import { Splash } from "@/features/shell/Splash";
 import { Unreachable } from "@/features/shell/Unreachable";
@@ -21,6 +22,7 @@ export const unstable_settings = {
 export default function AppLayout() {
   const { state, retry } = useSession();
   const pathname = usePathname();
+  const animation = useScreenAnimation();
 
   switch (state.status) {
     case "unknown":
@@ -40,6 +42,6 @@ export default function AppLayout() {
       if (state.auth.usingDefaultPassword) {
         return <ChangePasswordScreen />;
       }
-      return <Stack screenOptions={{ headerShown: false }} />;
+      return <Stack screenOptions={{ headerShown: false, animation }} />;
   }
 }
