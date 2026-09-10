@@ -307,7 +307,7 @@ local docker stack, with CI building the web export. Nothing product-shaped.
 | **3a.2 Foundations** → [09l](09l-client-foundations.md) | Architect | `src/api/transport.ts` (E3 interceptor, single-flight refresh, proactive refresh), `src/session/*` (E4; web cookie / native SecureStore; size assertion), session state machine bootstrapping from `GetAuthStatus`, connect-query provider + persister (E5), `src/api/errors.ts`, env config (`EXPO_PUBLIC_API_URL`, dev JSON vs prod binary), `src/design/tokens.ts` stub + 6 primitives, Jest harness with a fake transport (`createRouterTransport`) so hooks test without a server. | 3a.0, 3a.1 |
 | **Staging instance** → [09m](09m-staging-instance.md) | Architect | `docker-compose.staging.yml` (the production image following master, the demo seed, the client knobs), `deploy/.env.staging.example`, `deploy/staging-pull.sh`, the Caddy block, the runbook section; **step 2:** the web export image built in CI, a `web` service, the Caddy path split (E9) — required for web checks, since the refresh cookie is `SameSite=Strict`. | 3a.2 |
 | **3a.3 Tracer screens** → [09n](09n-tracer-screens.md) | Builder | Login (email/password, show/hide, throttle countdown on `ResourceExhausted`, **forced password change** when `using_default_password`, web-only `?o=` return path restricted to in-app routes), Events list (pick + persist; default = newest event: highest numeric name, else highest id), Incidents list (read-only rows: number, state, priority, summary, area, last modified; private badge; pull-to-refresh; polling), Incident detail (read-only: header, location, types, people, journal incl. system-entries toggle, attachments listed not previewed), Sign out. Loading/empty/error states. Jest for hooks; the environment-gated Playwright tracer `login → events → incidents → detail → sign out` against the staging instance. | 3a.2, 09m, D0 tokens |
-| **3a.4 Design system v0 applied** → [09o](09o-design-v0.md) | D0 picker → Builder | **Built 2026-09-10.** D0 ("Dispatch") + `DESIGN.md` landed as #250; the re-skin followed: `tones` on the tokens, the six primitives (the ledger `ListRow`, tinted-chip `Badge`, press feedback on `Button` / `ListRow` / the header's back, a focus ring on `Field`), the seven screens, dark mode, generated brand assets, a 42-pair contrast table. Motion is `src/design/motion.tsx` on Reanimated CSS transitions. **Open:** Miguel's `/review-animations`, the iOS / Android screenshots (no Xcode here — 3a gate device row) and the hosted tracer after the merge. | D0, 3a.3 |
+| **3a.4 Design system v0 applied** → [09o](09o-design-v0.md) | D0 picker → Builder | **Built 2026-09-10.** D0 ("Dispatch") + `DESIGN.md` landed as #250; the re-skin followed: `tones` on the tokens, the six primitives (the ledger `ListRow`, tinted-chip `Badge`, press feedback on `Button` / `ListRow` / the header's back, a focus ring on `Field`), the seven screens, dark mode, generated brand assets, a 42-pair contrast table. Motion is `src/design/motion.tsx` on Reanimated CSS transitions. `/review-animations` ran 2026-09-10 → **Block** on the reduced-motion screen transition (promised in 09o, never written) plus two bare pressable `Text`s; fixed by `useScreenAnimation()` and a seventh primitive, `TextButton`. Hosted tracer green on 180ba55. **Open:** the iOS / Android screenshots (no Xcode here — 3a gate device row). | D0, 3a.3 |
 
 **Gate (all must hold):** the tracer runs on all three platforms against the
 staging instance ([09m](09m-staging-instance.md); the docker dev stack where a
@@ -318,6 +318,28 @@ native; a private incident the user may not view is absent from the list and 404
 in detail; `Interface` CI job green including Playwright smoke; `expo export -p
 web` output served by the static web container on staging (09m step 2); a plan-09
 §7 finding written ("what it took to put an Expo client on connect-go").
+
+**Gate status, 2026-09-10.** Everything a laptop can prove is proven; what is left
+needs hardware this machine does not have.
+
+| Gate row | State |
+|---|---|
+| Tracer on **web** against staging | ✅ Green on 180ba55 — 2 passed / 1 skipped, the hosted (same-origin) mode, so the cookie reload-resume is included |
+| Tracer on **iOS / Android** | ⛔ **Blocked here.** `xcrun simctl` does not exist on this machine (Command Line Tools only, no Xcode), and the Android emulator is not started by the standing no-local-stacks rule. Needs a device session |
+| Refresh — **native** (body) | ✅ `Login{return_refresh_token:true}` answers a body token and sets **no** cookie; `RefreshToken{refresh_token}` returns a fresh access token |
+| Refresh — **web** (cookie) | ✅ `Login` with no flag sets `refresh_token` `HttpOnly; Secure; SameSite=Strict` and does **not** leak it into the body; `RefreshToken` with an empty body and the cookie returns a fresh access token |
+| The **proactive** refresh watched in devtools | ⛔ Needs `IMS_ACCESS_TOKEN_LIFETIME=90` on the staging host — **Miguel's**, it is an env change on his server. The mechanism is proven above; what is unwatched is the client firing it 60 s early |
+| Logout clears the **cookie** (web) | ✅ `Logout` answers `refresh_token=; Max-Age=0; HttpOnly; Secure`, and a refresh with the cleared jar is `401 unauthenticated` |
+| Logout clears **SecureStore** (native) | ⛔ Device row |
+| **Private incident** absent from the list, 404 in detail | ✅ Proven against staging: an admin created a private incident (#203, event 1); a *writer* on the same event who is neither creator nor grantee sees 202 of 203 in `ListIncidents`, and `GetIncident` **and** `UpdateIncident` both answer `{"code":"not_found","message":"incident not found"}` — existence leaks through neither the read nor the write path. The client renders it "Not found", never "private" |
+| `Interface` CI green incl. Playwright smoke | ✅ |
+| `expo export -p web` served by the static container | ✅ 09m step 2 |
+| Plan-09 §7 finding written | ✅ Two — "what a design system costs on Expo" (3a.4) and "what it took to put an Expo client on connect-go" (this gate) |
+
+So the gate is **held open by one thing: a device session** (the iOS / Android tracer
+runs, their screenshots, and native SecureStore sign-out), plus Miguel's one-line
+staging env change for the proactive-refresh watch. Nothing in the code is known to
+be missing.
 
 ### 3b — The field app (mobile-first)
 

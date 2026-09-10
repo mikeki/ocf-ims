@@ -310,7 +310,7 @@ schemes), the contrast table, and the `review-animations` table — all recorded
       **Block**, three findings fixed in the motion follow-up), CI green, Miguel merges
 - [x] Hosted tracer green on staging — **2026-09-10 against 180ba55**, 2 passed / 1 skipped
 - [ ] 09i 3a.4 row + README row → Merged
-- [ ] Plan 09 §7 finding ("what a design system costs on Expo": tokens on three platforms, elevation, the motion budget)
+- [x] Plan 09 §7 finding ("what a design system costs on Expo": tokens on three platforms, elevation, the motion budget) — **written 2026-09-10**, with the 3a gate's companion finding
 
 ## Build notes
 

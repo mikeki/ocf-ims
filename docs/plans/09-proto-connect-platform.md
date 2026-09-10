@@ -1792,6 +1792,139 @@ it caught, and what the interim mode taught on the way ([09n](09n-tracer-screens
 - **A pull-based staging lags CI by its cron interval** (ten minutes here). The first
   hosted run hit the previous image; the lag is now written down where the tracer is.
 
+### 3a.4 — What a design system costs on Expo (2026-09-10)
+
+Plan [09o](09o-design-v0.md). One token file, six primitives and seven screens
+restyled for three platforms and two colour schemes, plus the whole motion budget.
+What that actually cost, and where the stack's client blueprints are silent:
+
+- **A "colour token" is not one value, it is a scheme-indexed record.** The usual
+  blueprint shape — a flat `colors` object — cannot express a design that ships dark
+  mode, and retrofitting the index later touches every primitive. Indexing by
+  `ColorScheme` from the first line costs nothing; adding it in v1 is a rewrite. The
+  same is true of `elevation`, which is genuinely *different* per scheme rather than
+  merely darker: a dark surface needs a heavier shadow to read at all.
+- **One elevation token needs three renderings.** iOS and web take `boxShadow`
+  (React Native 0.76+ maps it to the native shadow), Android needs its own numeric
+  `elevation`, and the two do not derive from each other. A cross-platform token file
+  has to carry both and let the platform pick — there is no single-value answer.
+- **Badge tints must be pre-blended, not alpha.** A translucent chip changes colour
+  with whatever is behind it, so the same badge reads differently on `surface` and on
+  `background`, and its contrast cannot be checked at all. Blending the tint against
+  the surface once, in the token file, makes every pair a fixed number an automated
+  table can verify. All 42 pairs were computed by script rather than judged by eye;
+  the worst is 4.60:1.
+- **The decorative/perceivable border split needs to be a named role.** A single
+  `border` token gets used both for a row rule (which should be quiet, and is
+  legitimately below 3:1) and for a control boundary (which must clear 3:1). One
+  token cannot be both, and a later accessibility audit will "fix" the decorative
+  use unless the split is written down. `border` / `borderStrong`, with the reason
+  in `DESIGN.md`.
+- **Reanimated 4 does not need worklets for state-driven motion, and should not use
+  them.** A press scale and a state fade are CSS transitions (`transitionProperty` /
+  `transitionDuration` / `transitionTimingFunction` in the style, `cubicBezier()`
+  exported from the package root): a style value flips and the UI runtime
+  interpolates it. No shared value, no `useAnimatedStyle`, no `scheduleOnRN`, and
+  nothing re-renders per frame. Reaching for a shared value on a two-state toggle is
+  the mobile equivalent of installing a motion library for a fade. **Verified**, not
+  assumed: the web export computes
+  `transform 0.12s cubic-bezier(0.23, 1, 0.32, 1)` and `matrix(0.97, …)` under the
+  pointer.
+- **Reanimated breaks jest-expo, and the documented mock is broken.** Installing it
+  took six suites down with `Cannot read properties of undefined (reading
+  'loadUnpackers')` — jest-expo resolves the `.native` entry, which reaches for a
+  TurboModule Node does not have. `react-native-reanimated/mock` no longer ships the
+  file it requires (4.5.1), so the fix is the *worklets* package's own resolver:
+  `resolver: require.resolve("react-native-worklets/jest/resolver.js")` in
+  `jest.config.js`. Cost: the suite went 4.4 s → ~9 s warm. Worth installing the
+  packages and getting the existing suite green **before** writing any motion code,
+  so a resolver failure cannot be confused with a design bug.
+- **`outlineStyle: "none"` does not typecheck** in RN 0.86 — the union is
+  `"solid" | "dotted" | "dashed"`. `outlineWidth: 0` is the way to drop a web focus
+  outline you are replacing with your own ring.
+- **A design change is a test change exactly once, and that is the useful signal.**
+  147 of 148 assertions survived a full re-skin untouched; the one that broke
+  (`getByText("#1 First")`) broke because the incident number stopped being a prefix
+  and became a column — a real product decision, not a brittle test. Tests written
+  against roles and text rather than structure make the blast radius of a restyle
+  legible. The motion follow-up repeated this: wrapping two `Text` pressables in
+  `Pressable` + `PressFeedback` changed no test, because RNTL walks up to the
+  ancestor holding the handler.
+- **The motion budget has to name the screen transition, or it will be missed.**
+  `useReducedMotion()` landed in the press-feedback component and nowhere else, so
+  the largest movement in the app — the native stack push — ignored the setting on
+  Android and web while looking correct on iOS (UIKit cross-fades under Reduce
+  Motion by itself). A platform that silently does the right thing on one of three
+  targets is exactly where a written budget earns its keep; the review caught it,
+  and `useScreenAnimation()` now lives beside the other two.
+- **Brand assets can be generated from the tokens.** The Expo template's placeholder
+  icon, adaptive layers, monochrome layer and favicon were replaced by a ~200-line
+  pure-Node script (zlib deflate + CRC32 + a supersampled rasteriser, no image
+  dependency) that draws the mark from `primary` / `onPrimary`. Changing the brand
+  colour is now a token edit and a `node scripts/brand-assets.mjs`, not six binaries
+  edited by hand. The stack's client blueprints treat icons as static assets; for a
+  system whose colour is a token, they are output.
+
+### 3a gate — what it took to put an Expo client on connect-go (2026-09-10)
+
+The gate closing Phase 3a. The client is Expo SDK 57 on connect-es over the same
+`ImsService` the web UI uses, sharing the contract and nothing else. What the
+blueprint does not tell you:
+
+- **Finding #3 ("unary-only is stale") is confirmed from the client side.** Nothing
+  in this phase needed a workaround for React Native: connect-es works, the generated
+  types are the same ones the templ client consumes, and the wire format is a
+  transport option (JSON in dev so devtools and the server log stay readable, binary
+  in production). The rule that removed streaming from every backend was protecting
+  against a constraint that no longer exists.
+- **A refresh token has two homes, and the contract has to say which.** The web
+  client keeps it in the HttpOnly cookie the server sets; a native client cannot
+  read that cookie, so `Login` grows a `return_refresh_token` flag and answers in
+  the body — and then must **not** set the cookie. `RefreshToken` takes the token in
+  the body with the cookie as fallback, body winning. This is a contract change, not
+  a client detail, and it is the single most important thing to get into the proto
+  before a native client exists.
+- **`SameSite=Strict` makes the dev loop and the deployed app different animals.**
+  A Metro-served web build on `localhost` is cross-site to the API host, so the
+  refresh cookie is never sent and the session dies at its first refresh. Nothing is
+  broken; the environment is simply incapable of proving that path. The consequence
+  is structural: web refresh and reload-resume can only be verified on a **hosted,
+  same-origin** build, which is why this phase needed a staging instance
+  ([09m](09m-staging-instance.md)) before it could close, and why the end-to-end
+  tracer has two modes rather than one.
+- **Only a definitive `Unauthenticated` from `RefreshToken` may end a session.** The
+  templ client's #189 bug — clearing the session on *any* refresh error, so a 502
+  during a redeploy logged everyone out — is a mistake the contract makes easy to
+  repeat. Written into `transport.ts` as a rule with the incident number attached.
+- **Privacy has to hold on the write path too, and 404 is the answer on both.**
+  A private incident the caller may not view answers `not_found` for the single read
+  *and* for `UpdateIncident` and the attach/strike writes, so existence never leaks
+  through a write. Proven against staging at the gate: a writer on the same event,
+  who is neither creator nor grantee, sees 202 of 203 incidents in the list and gets
+  `{"code":"not_found","message":"incident not found"}` from both paths — and the
+  client renders that as "Not found", never as "private".
+- **Route groups, not route guards.** Two Expo Router groups (`(auth)` / `(app)`)
+  each switching on the session state in their layout means a URL cannot bypass the
+  gate — there is no guard to forget on a new screen, because the screen's group
+  decides. The forced password change replaces the stack rather than being a route
+  inside it, so there is nothing to navigate around.
+- **A stack anchor changes what "back" means.** With `unstable_settings.anchor`, a
+  screen reached by deep link, reload or a return path has the anchor beneath it and
+  not its parent, so `canGoBack()` is true and `back()` goes somewhere wrong.
+  `dismissTo(parent)` is the primitive that matches a back button's meaning. Jest
+  cannot see this — routes are deliberately untested — so it needs a real navigation
+  stack, which is what the tracer is for.
+- **The generated client is the test double.** `createRouterTransport` plus a
+  programmable fake `ImsService` runs the *real* transport, session machine and
+  query layer with no server and no HTTP, so refresh, retry and sign-out are unit
+  tests rather than integration tests. This is the biggest practical payoff of a
+  contract-first client and neither client blueprint mentions it.
+- **Generated code that is not committed costs the client tier too.** Finding #9 was
+  filed about Go; the same rule means a fresh clone cannot typecheck the Expo package
+  either, because `@ocf-ims/protocol-buffers` is buf output. `pnpm generate` needs Go
+  installed to build a *TypeScript* package — a cross-tier dependency worth stating
+  wherever the rule is given.
+
 ## 8. Open questions
 
 1. **Does the Go binary keep serving static assets in production**, or does Caddy?

@@ -197,7 +197,7 @@ On the host: § *Bring-up brief* step 5 and the cron no-op are the acceptance ch
 - [x] Bring-up on the home server (the server-side agent session, § *Bring-up brief*); report recorded under *Build notes* (#245); vhost + DNS up 2026-09-10
 - [ ] 09l hand check (native) done against staging → tick in 09l
 - [x] Step 2 PR: web image in CI, `web` service, Caddy path split (#247)
-- [ ] 09l hand check (web) against the hosted build — reload-resume (the cookie) and sign-out are proven by the hosted tracer (2026-09-10); the shortened-lifetime refresh watch (`IMS_ACCESS_TOKEN_LIFETIME=90`, devtools) is still to do
+- [ ] 09l hand check (web) against the hosted build — reload-resume (the cookie) and sign-out are proven by the hosted tracer (2026-09-10), and the 3a gate run the same day proved both refresh homes against the API directly (native body token with no cookie; web `HttpOnly; Secure; SameSite=Strict`; `Logout` → `Max-Age=0` then `401`). Still to do: the shortened-lifetime **watch** (`IMS_ACCESS_TOKEN_LIFETIME=90`, devtools) — the client firing its refresh 60 s early, which needs the env change on the host
 - [x] 3a.3 tracer pointed at staging (S7) — 2026-09-10, 09n § *Verification*
 
 ## Build notes
