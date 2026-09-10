@@ -1,7 +1,9 @@
 # 09o — Design system v0: D0, then applied to the tracer screens (slice 3a.4)
 
-> **Status:** Brief — D0 waits on one decision from Miguel (§ *How D0 gets made*); nothing
-> is built yet.
+> **Status:** **D0 is done** — route B ran, Miguel chose **Dispatch** (2026-09-10), and its
+> values are in `src/design/tokens.ts` with `DESIGN.md` beside them. What remains of 3a.4 is
+> the builder's re-skin: the primitives, the seven screens, the motion packages and the
+> screenshots (§ *3a.4 acceptance criteria*, § *Build plan* step 4).
 > **Parent:** [09i-expo-client.md](09i-expo-client.md) (Phase 3, §6 D0 and the 3a.4 row) under
 > [09-proto-connect-platform.md](09-proto-connect-platform.md) (Phase 3)
 > **Follows:** [09n](09n-tracer-screens.md) (3a.3, merged as #246; its staging follow-up #249)
@@ -176,11 +178,33 @@ judgement D0 needs — "which of these feels right on a phone in the sun" — is
 picker answers in an afternoon. A is the right tool once flows need prototyping (3b's
 D1, 3c's D2), and the component reference can be synced then from the v0 tokens.
 
+### What happened — route B, 2026-09-10
+
+Miguel invoked `/prototype`. Three directions were built on a throwaway surface
+(`src/prototypes/d0/` + a dev-only `app/(dev)/prototypes.tsx`), each a complete token set
+for both schemes plus its own copies of the six primitives, applied to the incidents list
+with seed-shaped content from `src/test/fixtures.ts` and no server:
+
+| Variant | Axis | Outcome |
+|---|---|---|
+| Field notebook | Warm paper and ink; a ruled ledger; outlined stamps | Closest to the brief's stated tone; quietest at arm's length in glare |
+| Signage | High-contrast painted sign; a framed board per incident; solid blocks | Loudest and most legible; ~half the incidents per screen |
+| **Dispatch** | **Dense, cool, tabular; fixed number and time columns; tinted chips** | **Chosen.** Scans fastest, and 3c's console inherits it most directly |
+
+The winner's values were promoted into `src/design/tokens.ts` and the prototype surface
+was deleted, per the skill's cleanup rule. The reasoning — including why the cool palette
+beat the warm one the brief leaned toward — is recorded in `packages/interface/DESIGN.md`,
+which is the artefact to argue with if the direction is ever revisited.
+
 ## 3a.4 acceptance criteria (the builder's list, after D0)
 
-- [ ] `tokens.ts` values replaced for both schemes; new groups (`elevation`, `motion`, any
+- [x] `tokens.ts` values replaced for both schemes; new groups (`elevation`, `motion`, any
       new role) typed and consumed through `useTheme()`; **still the only file with a
       colour, spacing, font-size or duration literal** (grep-verified in the PR).
+      *(D0, this PR. The new roles — `surfaceSunken`, `borderStrong`, `restricted` /
+      `onRestricted`, `focus`, `overlay` — and the `figure` type step are defined and
+      typed; `borderStrong` and `figure` get their first uses in the builder run below,
+      and `overlay` / `surfaceSunken` wait for 3b/3c, as `DESIGN.md` records.)*
 - [ ] The six primitives restyled; `Button` and `ListRow` carry the press feedback above;
       `Field` has a visible focus state on web (keyboard); `Badge` speaks the colour
       language; `ScreenHeader` is the toolbar design.
@@ -192,8 +216,9 @@ D1, 3c's D2), and the component reference can be synced then from the v0 tokens.
       for Login, Events, Incidents, Incident (09i 3a.4 row).
 - [ ] Accessibility: a contrast table in the PR (every text/background pair, AA); 44 pt
       targets; the `accessibilityLabel`s / roles / `testID`s the tests use are unchanged.
-- [ ] `packages/interface/DESIGN.md` written; `app.json` icon / adaptive icon / splash /
-      favicon replaced with the D0 assets, `adaptiveIcon.backgroundColor` from the tokens.
+- [x] `packages/interface/DESIGN.md` written *(D0, this PR)*; [ ] `app.json` icon /
+      adaptive icon / splash / favicon replaced with the D0 assets,
+      `adaptiveIcon.backgroundColor` from the tokens *(still Expo's placeholders)*.
 - [ ] `review-animations` pass over the press feedback and the state fades, recorded in
       § *Build notes*.
 - [ ] 09i §9 protocol green locally and in CI.
@@ -226,12 +251,14 @@ proper (D2); a user-facing scheme preference (OS only for now).
 
 ## Build plan
 
-1. **Miguel:** pick the route (A → `/design-login`; B → `/prototype` with this file's brief
-   as the description). Nothing else starts before this.
-2. **D0** produced and reviewed by Miguel (the canvas, or the picker on a phone).
-3. **Architect:** the token diff, `DESIGN.md`, the acceptance criteria above finalised
-   against what D0 chose; `npx expo install` the two motion packages and verify the CSS
-   transition on web before handing over.
+1. ~~**Miguel:** pick the route.~~ **Done** — route B, 2026-09-10.
+2. ~~**D0** produced and reviewed by Miguel.~~ **Done** — three directions behind the
+   picker; **Dispatch** chosen (§ *What happened*).
+3. **Architect:** ~~the token diff, `DESIGN.md`, the acceptance criteria above finalised
+   against what D0 chose~~ **done in this PR**; `npx expo install` the two motion packages
+   and verify the CSS transition on web — **still to do, and it belongs with the builder
+   run** rather than here: nothing imports Reanimated until the press feedback is written,
+   and landing an unused native dependency ahead of it only widens this PR's blast radius.
 4. **Builder (Sonnet, one run under ~500 lines of change, the `emil-design-eng` and
    `animate-expo` skills loaded):** tokens, primitives, screens, screenshots; then the
    architect review with `review-animations`; PR → master; Miguel merges.
@@ -247,16 +274,51 @@ schemes), the contrast table, and the `review-animations` table — all recorded
 ## Checklist
 
 - [x] Brief (this file) before any design or builder work; Emil Kowalski's skills installed
-- [ ] Route chosen (Miguel); `/design-login` run if A
-- [ ] D0 produced and reviewed
-- [ ] Token diff + `DESIGN.md` (architect)
+- [x] Route chosen (Miguel): **B**, the in-code picker
+- [x] D0 produced and reviewed — **Dispatch** chosen 2026-09-10
+- [x] Token diff + `DESIGN.md` (architect)
 - [ ] Builder run; architect review incl. `review-animations`; screenshots; PR; CI green; Miguel merges
 - [ ] Hosted tracer green on staging; 09i 3a.4 row + README row → Merged
 - [ ] Plan 09 §7 finding ("what a design system costs on Expo": tokens on three platforms, elevation, the motion budget)
 
 ## Build notes
 
-(none yet)
+**D0, route B (2026-09-10).** The picker ran on the Metro web build at
+`/prototypes`, three directions switchable with `1`–`3` / `←` `→` and a `?v=` param, plus
+a harness strip for the scene (list / empty / error / a primitives kit), the colour scheme
+and a phone-width frame. Notes worth keeping:
+
+- **The picker port.** `PICKER.md` is written for the DOM; on React Native it became an
+  `Animated` highlight (250 ms, `Easing.bezier(0.23, 1, 0.32, 1)`, enabled only after the
+  second frame so load does not animate, and skipped entirely under
+  `AccessibilityInfo.isReduceMotionEnabled()`), with the keyboard wiring guarded by
+  `Platform.OS === "web"`. Same values, same behaviour, works on a phone through Metro.
+- **`CI=1` disables Metro's file watcher.** The first harness run served a stale bundle
+  for several edits before this was spotted — the symptom is edits that typecheck but
+  never reach the browser. Start the dev server without `CI=1`, and `--clear` on top of
+  the repo's existing `EXPO_PUBLIC_*` caching rule.
+- **Contrast was checked by script, not by eye**, over every text pair each variant
+  actually paints, in both schemes. It caught six failures across the three directions
+  (two inks and four `borderStrong` values) which were darkened before the pick, so the
+  choice was made between three directions that all already cleared AA.
+- **`border` is deliberately below 3:1** in the chosen direction. It is a decorative row
+  rule; `borderStrong` (4.26:1 light, 3.75:1 dark) is the role for any boundary that
+  carries meaning. `DESIGN.md` records the split so a later audit does not "fix" it.
+- **What the tokens alone do not carry.** With the values promoted and no primitive
+  touched, the app is already Dispatch in palette, type, spacing and radii — but the row is
+  still the 09l `ListRow` (number as a title prefix, badges right, a middle-dot meta
+  string). The number-as-a-column and the tinted chips that made the direction win are
+  primitive work, and they are the heart of the builder run.
+
+**Verified on this PR (D0 only).** The 09i §9 protocol from the repo root, all green:
+typecheck, `pnpm lint`, `pnpm -F @ocf-ims/interface test` (18 suites, 147 tests, unchanged
+and unmodified), `export:web --clear` and the Playwright run (smoke passed, the two tracer
+tests skipped without credentials). `grep` confirms no colour literal outside
+`src/design/`, and the export carries no baked-in staging URL. The new tokens were also
+rendered against the live staging instance in Chrome via
+`EXPO_PUBLIC_API_URL=https://ims-staging.maybloom.tech pnpm -F @ocf-ims/interface start
+--clear` (sign-in → the incidents list on real data). The **hosted** tracer belongs to the
+builder PR, which is the one that changes what the screens render.
 
 ## Findings
 
