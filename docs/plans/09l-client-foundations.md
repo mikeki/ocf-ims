@@ -236,8 +236,20 @@ Hand checks against the docker stack are recorded under *Findings* as they are d
 - [x] Plan 09 §7 finding
 - [x] §9 protocol green locally
 - [ ] PR opened; CI green; Miguel merges
-- [ ] Hand check: Chrome against the docker stack (cookie refresh, reload resumes, sign-out clears)
-- [ ] Hand check: iOS simulator against the docker stack (SecureStore resume after relaunch, sign-out wipes)
+- [ ] Hand check: Chrome against the docker stack (cookie refresh, reload resumes, sign-out clears) —
+      **attempted 2026-09-09, blocked by the dev machine, not the client**: (1) the `ocf-ims`
+      dev container's first `air` build was OOM-killed compiling the buf plugins
+      (`protoc-gen-connect-openapi`: `signal: killed`; the generators run in parallel and
+      Docker Desktop had 7.7 GiB); (2) running the server locally against the compose
+      MariaDB found the bind-mounted data dir (`.docker/mysql/data-ims/`) corrupt —
+      `PERSON` "doesn't exist in engine", `INCIDENT` "marked as crashed" — so the 00024
+      migration aborted. Resetting that directory deletes local dev data and is Miguel's
+      call. What *was* observed: the Expo web dev server on :8081 with
+      `EXPO_PUBLIC_API_URL=http://localhost:8090` and nothing listening rendered the
+      `unreachable` state with the "Can't reach the server" title (a real fetch failure
+      maps to `unavailable`, unlike the `expo serve` HTML case). Also noted: `.env.example`
+      still documents an `IMS_DB_STORE_TYPE="fake"` that the server no longer accepts.
+- [ ] Hand check: iOS simulator against the docker stack (SecureStore resume after relaunch, sign-out wipes) — not attempted (same stack)
 
 ## Findings
 
