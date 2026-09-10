@@ -38,6 +38,8 @@ export interface ColorRoles {
   readonly restricted: string;
   readonly onRestricted: string;
   readonly focus: string;
+  /** The focus ring's halo — translucent on purpose, so it never shifts layout. */
+  readonly focusRing: string;
   readonly overlay: string;
 }
 
@@ -62,6 +64,7 @@ export const colors: Readonly<Record<ColorScheme, ColorRoles>> = {
     restricted: "#6D28D9",
     onRestricted: "#FFFFFF",
     focus: "#2457A6",
+    focusRing: "rgba(36, 87, 166, 0.35)",
     overlay: "rgba(20, 26, 33, 0.45)",
   },
   dark: {
@@ -84,7 +87,51 @@ export const colors: Readonly<Record<ColorScheme, ColorRoles>> = {
     restricted: "#C9A6F5",
     onRestricted: "#23093F",
     focus: "#79B1F5",
+    focusRing: "rgba(121, 177, 245, 0.40)",
     overlay: "rgba(0, 0, 0, 0.55)",
+  },
+};
+
+// The tone a mark carries (DESIGN.md § The colour language): Open is `info`
+// and the only state with colour, Closed is `neutral`; High is `danger`, Low
+// `neutral`, Normal wears no badge at all; Private is `restricted`. A badge is
+// a tinted chip — the tone's ink on an opaque wash of itself (14% of the ink
+// over the surface in light, 22% in dark) — so a row with three marks stays
+// calm. The tints are pre-blended rather than an alpha, so they read the same
+// over `surface` and over `background`, and their contrast can be checked.
+export type Tone =
+  | "neutral"
+  | "info"
+  | "success"
+  | "warning"
+  | "danger"
+  | "restricted";
+
+export interface ToneColors {
+  /** The label, and any rule the chip draws. */
+  readonly ink: string;
+  /** The chip's ground. Every ink/tint pair clears AA (lowest 4.60:1). */
+  readonly tint: string;
+}
+
+export const tones: Readonly<
+  Record<ColorScheme, Readonly<Record<Tone, ToneColors>>>
+> = {
+  light: {
+    neutral: { ink: "#566270", tint: "#E7E9EB" },
+    info: { ink: "#0A667F", tint: "#DDEAED" },
+    success: { ink: "#1B6E45", tint: "#DFEBE5" },
+    warning: { ink: "#93520A", tint: "#F0E7DD" },
+    danger: { ink: "#B42318", tint: "#F5E0DF" },
+    restricted: { ink: "#6D28D9", tint: "#EBE1FA" },
+  },
+  dark: {
+    neutral: { ink: "#98A4B3", tint: "#333942" },
+    info: { ink: "#5ED3E6", tint: "#26434D" },
+    success: { ink: "#6FD39A", tint: "#2A433C" },
+    warning: { ink: "#F0B94D", tint: "#463E2B" },
+    danger: { ink: "#FF8B84", tint: "#493438" },
+    restricted: { ink: "#C9A6F5", tint: "#3D3A50" },
   },
 };
 
@@ -141,11 +188,14 @@ export const typeScale: Readonly<Record<TypeVariant, TypeStep>> = {
   },
   body: { fontSize: 15, lineHeight: 20, fontWeight: "400", letterSpacing: 0 },
   label: { fontSize: 13, lineHeight: 16, fontWeight: "500", letterSpacing: 0 },
+  // Tabular: nearly every caption in this app is a timestamp, and a column
+  // of them has to align.
   caption: {
     fontSize: 12,
     lineHeight: 16,
     fontWeight: "400",
     letterSpacing: 0,
+    fontVariant: ["tabular-nums"],
   },
   figure: {
     fontSize: 15,
@@ -192,6 +242,8 @@ export const elevation: Readonly<
 export const motion = {
   /** Press-in scale on anything pressable. */
   pressScale: 0.97,
+  /** The press opacity dip — the half of the feedback reduced motion keeps. */
+  pressOpacity: 0.92,
   /** The press transition, in ms. */
   pressDuration: 120,
   /** An empty / error state fading in, in ms. */
@@ -210,3 +262,13 @@ export const pressRetentionOffset = {
 
 /** Minimum touch target (Apple HIG / Material). */
 export const touchTarget = 44;
+
+/**
+ * The ledger column on an incident row: the number over its time, left of
+ * everything else (DESIGN.md § The one memorable thing). A `minWidth`, not a
+ * width — at 200% text size the column grows rather than clipping the number.
+ */
+export const ledgerColumn = 58;
+
+/** A form stops growing here; on a wide window it sits centred instead. */
+export const formMaxWidth = 420;

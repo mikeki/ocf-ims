@@ -17,9 +17,14 @@ export type PasswordFieldProps = Omit<FieldProps, "secureTextEntry"> & {
 export function PasswordField(props: PasswordFieldProps) {
   const { shown, onToggleShown, ...field } = props;
   return (
-    <Box gap="xs">
+    <Box gap="sm">
       <Field {...field} secureTextEntry={!shown} />
-      <Text accessibilityRole="button" color="primary" onPress={onToggleShown}>
+      <Text
+        accessibilityRole="button"
+        variant="label"
+        color="primary"
+        onPress={onToggleShown}
+      >
         {shown ? "Hide password" : "Show password"}
       </Text>
     </Box>

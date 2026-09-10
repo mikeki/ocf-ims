@@ -13,6 +13,9 @@ import {
   motion,
   radii,
   spacing,
+  type Tone,
+  type ToneColors,
+  tones,
   typeScale,
 } from "@/design/tokens";
 
@@ -30,6 +33,8 @@ export interface Theme {
   readonly type: typeof typeScale;
   /** Scheme-aware: a dark scheme needs a heavier shadow to read at all. */
   readonly elevation: Readonly<Record<ElevationLevel, Elevation>>;
+  /** The ink and the tint a marker carries — what `Badge` paints. */
+  readonly tones: Readonly<Record<Tone, ToneColors>>;
   readonly motion: typeof motion;
 }
 
@@ -41,6 +46,7 @@ export function themeFor(scheme: ColorScheme): Theme {
     radii,
     type: typeScale,
     elevation: elevation[scheme],
+    tones: tones[scheme],
     motion,
   };
 }

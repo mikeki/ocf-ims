@@ -1,12 +1,13 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import { useState } from "react";
-import { Platform } from "react-native";
+import { Platform, StyleSheet } from "react-native";
 import { type AppError, toAppError } from "@/api/errors";
 import { Box } from "@/design/primitives/Box";
 import { Button } from "@/design/primitives/Button";
 import { Field } from "@/design/primitives/Field";
 import { Text } from "@/design/primitives/Text";
+import { formMaxWidth } from "@/design/tokens";
 import { PasswordField } from "@/features/auth/PasswordField";
 import { APP_NAME } from "@/lib/app";
 import { useCountdown } from "@/lib/useCountdown";
@@ -56,46 +57,53 @@ export function LoginScreen() {
   }
 
   return (
-    <Box flex={1} bg="background" justify="center" p="xl" gap="lg">
-      <Text variant="title" align="center">
-        {APP_NAME}
-      </Text>
-      <Text align="center" color="textMuted">
-        Sign in with your email and password
-      </Text>
-      <Box gap="md">
-        <Field
-          label="Email"
-          value={email}
-          onChangeText={setEmail}
-          autoCapitalize="none"
-          autoCorrect={false}
-          keyboardType="email-address"
-          textContentType="username"
-          autoComplete="email"
-          autoFocus={Platform.OS === "web"}
-        />
-        <PasswordField
-          label="Password"
-          value={password}
-          onChangeText={setPassword}
-          shown={shown}
-          onToggleShown={() => setShown((s) => !s)}
-          textContentType="password"
-          onSubmitEditing={() => {
-            void submit();
-          }}
-          error={passwordError}
-        />
-        <Button
-          label="Sign in"
-          loading={loading}
-          disabled={email.trim() === "" || password === "" || counting}
-          onPress={() => {
-            void submit();
-          }}
-        />
+    <Box flex={1} bg="background" justify="center" p="xl">
+      <Box gap="lg" style={styles.form}>
+        <Text variant="title" align="center">
+          {APP_NAME}
+        </Text>
+        <Text align="center" color="textMuted">
+          Sign in with your email and password
+        </Text>
+        <Box gap="md">
+          <Field
+            label="Email"
+            value={email}
+            onChangeText={setEmail}
+            autoCapitalize="none"
+            autoCorrect={false}
+            keyboardType="email-address"
+            textContentType="username"
+            autoComplete="email"
+            autoFocus={Platform.OS === "web"}
+          />
+          <PasswordField
+            label="Password"
+            value={password}
+            onChangeText={setPassword}
+            shown={shown}
+            onToggleShown={() => setShown((s) => !s)}
+            textContentType="password"
+            onSubmitEditing={() => {
+              void submit();
+            }}
+            error={passwordError}
+          />
+          <Button
+            label="Sign in"
+            loading={loading}
+            disabled={email.trim() === "" || password === "" || counting}
+            onPress={() => {
+              void submit();
+            }}
+          />
+        </Box>
       </Box>
     </Box>
   );
 }
+
+const styles = StyleSheet.create({
+  // A sign-in form that stretched to a desktop window would be unreadable.
+  form: { width: "100%", maxWidth: formMaxWidth, alignSelf: "center" },
+});

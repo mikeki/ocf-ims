@@ -1,12 +1,15 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import { ActivityIndicator, Pressable, StyleSheet } from "react-native";
+import { PressFeedback } from "@/design/motion";
 import { Text } from "@/design/primitives/Text";
 import { useTheme } from "@/design/theme";
-import { touchTarget } from "@/design/tokens";
+import { pressRetentionOffset, touchTarget } from "@/design/tokens";
 
 // Button: three variants, a loading state that keeps the width and blocks
-// presses, a disabled state (plan 09l F14).
+// presses, a disabled state (plan 09l F14), and the press feedback the motion
+// budget allows (09o). `secondary` is drawn as an outlined control rather than
+// a filled one — `borderStrong` clears 3:1, so the boundary is real.
 
 export type ButtonVariant = "primary" | "secondary" | "danger";
 
@@ -34,7 +37,7 @@ export function Button(props: ButtonProps) {
       ? theme.colors.primary
       : variant === "danger"
         ? theme.colors.danger
-        : theme.colors.surfaceRaised;
+        : theme.colors.surface;
   const foreground =
     variant === "primary"
       ? "onPrimary"
@@ -47,23 +50,34 @@ export function Button(props: ButtonProps) {
       accessibilityState={{ disabled: inactive, busy: loading }}
       disabled={inactive}
       onPress={onPress}
+      pressRetentionOffset={pressRetentionOffset}
       testID={props.testID}
-      style={({ pressed }) => [
-        styles.base,
-        {
-          backgroundColor: background,
-          borderRadius: theme.radii.md,
-          paddingHorizontal: theme.spacing.lg,
-          opacity: inactive ? 0.6 : pressed ? 0.85 : 1,
-        },
-      ]}
+      style={{ opacity: inactive ? 0.6 : 1 }}
     >
-      {loading ? (
-        <ActivityIndicator color={theme.colors[foreground]} />
-      ) : (
-        <Text variant="label" color={foreground}>
-          {label}
-        </Text>
+      {({ pressed }) => (
+        <PressFeedback
+          pressed={pressed && !inactive}
+          style={[
+            styles.base,
+            {
+              backgroundColor: background,
+              borderColor:
+                variant === "secondary"
+                  ? theme.colors.borderStrong
+                  : background,
+              borderRadius: theme.radii.md,
+              paddingHorizontal: theme.spacing.lg,
+            },
+          ]}
+        >
+          {loading ? (
+            <ActivityIndicator color={theme.colors[foreground]} />
+          ) : (
+            <Text variant="label" color={foreground}>
+              {label}
+            </Text>
+          )}
+        </PressFeedback>
       )}
     </Pressable>
   );
@@ -74,5 +88,6 @@ const styles = StyleSheet.create({
     minHeight: touchTarget,
     alignItems: "center",
     justifyContent: "center",
+    borderWidth: 1,
   },
 });

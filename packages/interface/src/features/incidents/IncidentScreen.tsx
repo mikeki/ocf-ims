@@ -13,6 +13,7 @@ import { toAppError } from "@/api/errors";
 import { Badge } from "@/design/primitives/Badge";
 import { Box } from "@/design/primitives/Box";
 import { Text } from "@/design/primitives/Text";
+import { useTheme } from "@/design/theme";
 import { useEventAccess } from "@/features/events/hooks";
 import {
   useAreas,
@@ -157,33 +158,38 @@ function IncidentDetail(props: IncidentDetailProps) {
         />
       }
     >
-      <Box p="lg" gap="md">
-        <Box row align="center" gap="sm">
-          <Text variant="title">{`#${incident.number}`}</Text>
-          {state ? <Badge label={state.label} tone={state.tone} /> : null}
-          {priority ? (
-            <Badge label={priority.label} tone={priority.tone} />
-          ) : null}
-          {incident.private ? <Badge label="Private" tone="warning" /> : null}
+      <Box p="lg" gap="lg">
+        <Box gap="sm">
+          <Box row align="center" gap="sm">
+            <Text variant="title" testID="incident-number">
+              {`#${incident.number}`}
+            </Text>
+            {state ? <Badge label={state.label} tone={state.tone} /> : null}
+            {priority ? (
+              <Badge label={priority.label} tone={priority.tone} />
+            ) : null}
+            {incident.private ? (
+              <Badge label="Private" tone="restricted" />
+            ) : null}
+          </Box>
+          <Text variant="heading">{incident.summary || "(no summary)"}</Text>
         </Box>
-        <Text variant="heading">{incident.summary || "(no summary)"}</Text>
-        <Text color="textMuted">
-          {`Started ${formatTimestamp(incident.started)}`}
-        </Text>
-        <Text color="textMuted">
-          {`Created ${formatTimestamp(incident.created)} by ${personLabel(incident.createdBy)}`}
-        </Text>
-        <Text color="textMuted">
-          {`Last modified ${formatTimestamp(incident.lastModified)}`}
-        </Text>
-        {incident.closed ? (
-          <Text color="textMuted">
-            {`Closed ${formatTimestamp(incident.closed)}`}
-          </Text>
-        ) : null}
+
+        <Card>
+          <Meta>{`Started ${formatTimestamp(incident.started)}`}</Meta>
+          <Meta>
+            {`Created ${formatTimestamp(incident.created)} by ${personLabel(incident.createdBy)}`}
+          </Meta>
+          <Meta>{`Last modified ${formatTimestamp(incident.lastModified)}`}</Meta>
+          {incident.closed ? (
+            <Meta>{`Closed ${formatTimestamp(incident.closed)}`}</Meta>
+          ) : null}
+        </Card>
 
         <Section title="Location">
-          <Text>{locationText(incident, areas)}</Text>
+          {locationParts(incident, areas).map((part) => (
+            <Text key={part}>{part}</Text>
+          ))}
         </Section>
 
         <Section title="Types">
@@ -211,6 +217,7 @@ function IncidentDetail(props: IncidentDetailProps) {
               <Text
                 key={ref.incidentNumber}
                 accessibilityRole="button"
+                variant="figure"
                 color="primary"
                 onPress={() => onOpenIncident(ref.incidentNumber)}
               >
@@ -229,10 +236,12 @@ function IncidentDetail(props: IncidentDetailProps) {
         ) : null}
 
         <Box gap="sm">
-          <Box row align="center" justify="space-between">
+          <Box row align="center" justify="space-between" gap="md">
             <Text variant="heading">Journal</Text>
             <Box row align="center" gap="sm">
-              <Text>Show system entries</Text>
+              <Text variant="label" color="textMuted">
+                Show system entries
+              </Text>
               <Switch
                 accessibilityLabel="Show system entries"
                 value={showSystemEntries}
@@ -253,16 +262,45 @@ function IncidentDetail(props: IncidentDetailProps) {
   );
 }
 
-function Section(props: { title: string; children: ReactNode }) {
+/** A block of related read-only content: a surface, ruled off the page. */
+function Card(props: { children: ReactNode }) {
+  const theme = useTheme();
   return (
-    <Box gap="xs">
-      <Text variant="heading">{props.title}</Text>
+    <Box
+      bg="surface"
+      radius="lg"
+      p="lg"
+      gap="xs"
+      style={{ borderWidth: 1, borderColor: theme.colors.border }}
+    >
       {props.children}
     </Box>
   );
 }
 
-function locationText(incident: Incident, areas: Area[] | undefined): string {
+/** A timestamp line. Captions are tabular, so the four of them align. */
+function Meta(props: { children: ReactNode }) {
+  return (
+    <Text variant="caption" color="textMuted">
+      {props.children}
+    </Text>
+  );
+}
+
+function Section(props: { title: string; children: ReactNode }) {
+  return (
+    <Box gap="sm">
+      <Text variant="heading">{props.title}</Text>
+      <Card>{props.children}</Card>
+    </Box>
+  );
+}
+
+/** One line per part: an area, a description, a booth — never a dotted string. */
+function locationParts(
+  incident: Incident,
+  areas: Area[] | undefined,
+): string[] {
   const parts: string[] = [];
   const slug = incident.location?.areaSlug;
   if (slug) {
@@ -274,7 +312,7 @@ function locationText(incident: Incident, areas: Area[] | undefined): string {
   if (incident.location?.booth) {
     parts.push(`Booth ${incident.location.booth}`);
   }
-  return parts.length > 0 ? parts.join(" · ") : "No location";
+  return parts.length > 0 ? parts : ["No location"];
 }
 
 function timeOf(ts: Timestamp | undefined): number {

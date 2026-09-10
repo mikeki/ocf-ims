@@ -8,6 +8,9 @@ import { expect, test } from "@playwright/test";
 // Never `page.goto` mid-flow: in the interim mode (a local export talking
 // cross-site to staging) a full page load re-bootstraps with no cookie and
 // lands back on the login screen.
+// The incident detail is asserted by `incident-number`, not by a `#\d+`
+// text match: since 09o every row of the list renders its number as a bare
+// "#123" of its own, and the list stays mounted (hidden) under the detail.
 
 const email = process.env.E2E_EMAIL;
 const password = process.env.E2E_PASSWORD;
@@ -32,11 +35,11 @@ test("login → events → incidents → incident → sign out", async ({ page }
   await expect(incident).toBeVisible();
   await incident.click();
   await expect(page).toHaveURL(/\/incidents\/\d+$/);
-  await expect(page.getByText(/^#\d+$/).first()).toBeVisible();
+  await expect(page.getByTestId("incident-number")).toBeVisible();
   if (hosted) {
     // the web session resumes
     await page.reload();
-    await expect(page.getByText(/^#\d+$/).first()).toBeVisible();
+    await expect(page.getByTestId("incident-number")).toBeVisible();
   }
   await page.getByRole("button", { name: "Incidents" }).click();
   await page.getByRole("button", { name: "Events" }).click();
@@ -76,7 +79,7 @@ test("a signed-out deep link returns to the incident after sign-in; back goes to
   await page.getByLabel("Password").fill(password ?? "");
   await page.getByRole("button", { name: "Sign in" }).click();
   await expect(page).toHaveURL(new RegExp(`${detailPath}$`));
-  await expect(page.getByText(/^#\d+$/).first()).toBeVisible();
+  await expect(page.getByTestId("incident-number")).toBeVisible();
   await page.getByRole("button", { name: "Incidents" }).click();
   await expect(page).toHaveURL(new RegExp(`${listPath}$`));
   await page.getByRole("button", { name: "Events" }).click();
