@@ -85,8 +85,14 @@ log) and binary in production.
   result — `kind`, title, message, `retryable`, protovalidate `violations` per
   field, the `Retry-After` seconds, the request id.
 - **Design** (`src/design/`): `tokens.ts` is the contract with the design system
-  (D0 replaces its values); `useTheme()`; six primitives (`Box`, `Text`, `Button`,
-  `Field`, `ListRow`, `Badge`) styled with `StyleSheet` only.
+  and the only file that may hold a colour, spacing, font-size or duration
+  literal — colour roles for both schemes, spacing, radii, the type scale,
+  `elevation` and the `motion` budget; read them through `useTheme()`. Six
+  primitives (`Box`, `Text`, `Button`, `Field`, `ListRow`, `Badge`) styled with
+  `StyleSheet` only. The direction the values encode — "Dispatch", chosen in D0
+  on 2026-09-10 — its colour language, its motion budget and what it
+  deliberately leaves undone are in [DESIGN.md](DESIGN.md); read that before
+  changing a token.
 - **Tests** (`src/test/`): `createTestRuntime()` builds the real runtime over
   `createRouterTransport` and a programmable fake `ImsService`
   (`createFakeIms()`), so hooks and the session are tested with no server;

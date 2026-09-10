@@ -116,6 +116,15 @@ are deep-imported (`@ocf-ims/protocol-buffers/ocf/ims/…/x_pb`); **no barrel
 files**. `ios/`, `android/`, `.expo/`, `dist/` and `expo-env.d.ts` are generated
 and never committed. See `packages/interface/README.md`.
 
+**Design.** `src/design/tokens.ts` is the only file that may hold a colour,
+spacing, font-size or duration literal; everything else reads them through
+`useTheme()`. The direction those values encode, the state / priority colour
+language and the motion budget (press feedback only — a 0.97 press-in scale over
+120 ms, nothing enters with an animation on a list, reduced motion honoured) are
+in `packages/interface/DESIGN.md`. **Read it before changing a token or adding an
+animation.** Note `border` is a decorative rule and is deliberately below 3:1 —
+`borderStrong` is the role for a boundary that must be perceivable.
+
 Foundations (plan 09l, slice 3a.2): the server address is `EXPO_PUBLIC_API_URL`
 (`packages/interface/.env.example`; unset = same origin on web, the docker stack on
 the Metro host for a native dev build). `src/api/transport.ts` adds the Bearer,

@@ -392,7 +392,7 @@ export, smoke behind `serve.mjs` green).
 - [x] Plan 09 §7 finding (*3a.3 — The first screens*)
 - [x] PR opened; CI green; Miguel merges (#246, 2026-09-10)
 - [x] Tracer run against staging — recorded under *Verification*: interim green (both tests); hosted green through the reload, the back fix awaits the merged image (follow-up PR)
-- [ ] Hosted tracer green on the fixed image (after the follow-up merges + the 10-min pull)
+- [x] Hosted tracer green on the fixed image (after the follow-up merges + the 10-min pull) — **2026-09-10, both tests pass** against `https://ims-staging.maybloom.tech` (2 passed, the smoke skipped), so #249's `dismissTo` fix is confirmed live on the hosted build
 - [ ] 3a gate items that need a device: the flow on iOS / Android against staging (with 09l's hand checks)
 
 ## Build notes
