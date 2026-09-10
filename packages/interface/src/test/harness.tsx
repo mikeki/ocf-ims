@@ -49,6 +49,10 @@ export function createTestQueryClient(): QueryClient {
   return new QueryClient({
     defaultOptions: {
       queries: { retry: false, gcTime: Number.POSITIVE_INFINITY },
+      // An infinite gcTime schedules no garbage-collection timer; a settled
+      // mutation on the default 5 minutes would keep a Jest worker alive
+      // ("A worker process has failed to exit gracefully").
+      mutations: { retry: false, gcTime: Number.POSITIVE_INFINITY },
     },
   });
 }

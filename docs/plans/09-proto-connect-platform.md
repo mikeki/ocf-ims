@@ -1728,6 +1728,44 @@ Caddy. Two things worth carrying:
   access and GitHub holds no deploy key — the same shape the production runbook
   chose, with `pull_policy: always` instead of a pinned SHA.
 
+### 3a.3 — The first screens: gates in layouts, lookups that never block, a tracer gated by environment (2026-09-10)
+
+The tracer screens ([09n](09n-tracer-screens.md)) were the first slice built by a
+builder-tier model from an architect brief, in two sequential Sonnet runs with a
+review between them. What the slice settled, for the maybloom Expo path:
+
+- **Route-group layouts are the session gate, and a gate can replace the stack.**
+  `app/(auth)/_layout.tsx` and `app/(app)/_layout.tsx` switch on the four session
+  states and render a splash, the unreachable retry, a `<Redirect>`, or the stack —
+  so no URL bypasses sign-in and the login screen never navigates (the state flip
+  re-renders the layout). The forced default-password change is the same idea one
+  step further: while `using_default_password` holds, the `(app)` layout renders the
+  change screen *instead of* its `<Stack>`, so there is no route to navigate around.
+  The web return path (`?o=`) is an open-redirect guard that only admits the client's
+  own `/events…` routes; it is the one architect-written file in a builder slice.
+- **A read that tolerates anonymity must not be cached as an answer.** `GetAuthStatus`
+  answers `authenticated: false` instead of `Unauthenticated`, so the transport's
+  refresh-and-retry never engages for it; a per-event access query fired before the
+  session is signed in would have cached "no access" for its whole `staleTime`. The
+  hook now trusts an answer only when it is `authenticated` (a `staleTime` function),
+  and lookups (areas, types) never block a screen — a missing or forbidden lookup
+  falls back to the slug or `Type #id`.
+- **Three test-harness facts that every later screen inherits.** A settled
+  `useMutation` on TanStack's default 5-minute GC timer keeps a Jest worker alive
+  ("worker process has failed to exit gracefully") — the test `QueryClient` gives
+  mutations an infinite `gcTime` too; TanStack's `notifyManager` defers updates by a
+  real `setTimeout(0)`, which lands outside act scopes once queries chain — the setup
+  file makes its scheduler synchronous; and React Native's Jest preset replaces
+  `RefreshControl` with a prop-less stub whose `latestRef` is the only way to fire a
+  pull-to-refresh. A countdown keyed on a number alone never restarts on a repeat of
+  the same number — key it on the error object.
+- **The end-to-end tracer is gated by environment, not by CI.** The Playwright spec
+  runs only with `E2E_EMAIL`/`E2E_PASSWORD`, and `E2E_BASE_URL` selects the hosted
+  build (same origin, the cookie survives a reload) over the local export (cross-site
+  to staging: sign-in and reads only). CI keeps the server-less smoke. Until the
+  staging host is up the tracer is code that has not run — recorded as such, not
+  hidden.
+
 ## 8. Open questions
 
 1. **Does the Go binary keep serving static assets in production**, or does Caddy?

@@ -93,6 +93,40 @@ log) and binary in production.
   `await fireEvent.*(...)` — an unawaited event leaves an act scope open and
   breaks the next render.
 
+## Screens (3a.3, [09n](../../docs/plans/09n-tracer-screens.md))
+
+The first usable flow, read-only on purpose: sign in (email/password, a throttle
+countdown, the forced default-password change) → the events list (newest first,
+remembered event picked up again, sign out) → an event's incidents (rows with
+their state / priority / private badges, pull-to-refresh, 30 s polling) → an
+incident's detail (header, location, types, people, linked incidents, reports,
+and the journal with a "Show system entries" switch). Two route groups —
+`app/(auth)/` and `app/(app)/` — gate on the session state so a URL can never
+bypass sign-in; every `(app)` screen renders its own `ScreenHeader` with the
+`(app)` stack's native header turned off. `src/features/shell/` holds the shared
+Splash / Unreachable / Loading / Empty / Error states every screen composes.
+
+### The Playwright tracer
+
+`e2e/smoke.spec.ts` runs in CI with no server behind the export (the `unreachable`
+state). `e2e/tracer.spec.ts` walks the whole read-only flow against a real
+server and is environment-gated — it skips unless `E2E_EMAIL` and
+`E2E_PASSWORD` are set — so CI never depends on one. Two modes:
+
+```bash
+# Interim (before 09m step 2): the local export talks to staging, no reload-resume
+EXPO_PUBLIC_API_URL=https://<staging host> pnpm -F @ocf-ims/interface export:web
+E2E_EMAIL=miguel@example.com E2E_PASSWORD=Miguel pnpm -F @ocf-ims/interface e2e
+# Hosted (after step 2): the whole flow including the cookie resume
+E2E_BASE_URL=https://<staging host> E2E_EMAIL=… E2E_PASSWORD=… pnpm -F @ocf-ims/interface e2e
+```
+
+`E2E_BASE_URL`, when set, is the page's own origin (the hosted web build on
+staging) and the config starts no local server; unset, the local export is
+served on `:8082` as usual. Only the hosted mode proves the web session resumes
+across a reload — the refresh cookie is `SameSite=Strict`, so the interim mode
+(a local export cross-site to staging) never carries it.
+
 ## Layout and rules (09i §5)
 
 - `app/` holds routes only (Expo Router); logic lives in `src/`. Security-sensitive
