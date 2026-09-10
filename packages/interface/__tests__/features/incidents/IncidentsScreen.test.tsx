@@ -101,7 +101,10 @@ describe("IncidentsScreen", () => {
       "incident-row-2",
       "incident-row-1",
     ]);
-    screen.getByText("#1 First");
+    // The incident number is its own column since 09o, not a prefix on the
+    // summary — the one assertion in the suite that had to follow the design.
+    screen.getByText("#1");
+    screen.getByText("First");
     screen.getByText("High");
     screen.getByText("Closed");
     screen.getByText("Private");

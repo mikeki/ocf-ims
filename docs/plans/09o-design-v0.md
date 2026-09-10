@@ -1,9 +1,11 @@
 # 09o — Design system v0: D0, then applied to the tracer screens (slice 3a.4)
 
-> **Status:** **D0 is done** — route B ran, Miguel chose **Dispatch** (2026-09-10), and its
-> values are in `src/design/tokens.ts` with `DESIGN.md` beside them. What remains of 3a.4 is
-> the builder's re-skin: the primitives, the seven screens, the motion packages and the
-> screenshots (§ *3a.4 acceptance criteria*, § *Build plan* step 4).
+> **Status:** **D0 is done** (route B, **Dispatch**, 2026-09-10) **and the re-skin is
+> built** — primitives, screens, motion packages, brand assets, the contrast table and the
+> web screenshots are in the builder PR. What is left is Miguel's: the
+> `/review-animations` pass (that skill only runs when he invokes it), the iOS / Android
+> screenshots (this laptop has no Xcode, and the Android emulator is deliberately not
+> started on it), and the hosted tracer after the merge.
 > **Parent:** [09i-expo-client.md](09i-expo-client.md) (Phase 3, §6 D0 and the 3a.4 row) under
 > [09-proto-connect-platform.md](09-proto-connect-platform.md) (Phase 3)
 > **Follows:** [09n](09n-tracer-screens.md) (3a.3, merged as #246; its staging follow-up #249)
@@ -205,23 +207,44 @@ which is the artefact to argue with if the direction is ever revisited.
       `onRestricted`, `focus`, `overlay` — and the `figure` type step are defined and
       typed; `borderStrong` and `figure` get their first uses in the builder run below,
       and `overlay` / `surfaceSunken` wait for 3b/3c, as `DESIGN.md` records.)*
-- [ ] The six primitives restyled; `Button` and `ListRow` carry the press feedback above;
+- [x] The six primitives restyled; `Button` and `ListRow` carry the press feedback above;
       `Field` has a visible focus state on web (keyboard); `Badge` speaks the colour
-      language; `ScreenHeader` is the toolbar design.
-- [ ] The seven screens re-skinned with **no behavioural change**: every Jest test passes
-      unchanged (no snapshot tests exist; none are added), the smoke passes, and the tracer
-      passes on staging (hosted mode) after the merge.
-- [ ] Dark mode: every screen checked in both schemes; the scheme follows the OS.
-- [ ] Screenshots in the PR: iOS simulator, Android emulator, Chrome — light and dark —
-      for Login, Events, Incidents, Incident (09i 3a.4 row).
-- [ ] Accessibility: a contrast table in the PR (every text/background pair, AA); 44 pt
-      targets; the `accessibilityLabel`s / roles / `testID`s the tests use are unchanged.
-- [x] `packages/interface/DESIGN.md` written *(D0, this PR)*; [ ] `app.json` icon /
-      adaptive icon / splash / favicon replaced with the D0 assets,
-      `adaptiveIcon.backgroundColor` from the tokens *(still Expo's placeholders)*.
-- [ ] `review-animations` pass over the press feedback and the state fades, recorded in
-      § *Build notes*.
-- [ ] 09i §9 protocol green locally and in CI.
+      language; `ScreenHeader` is the toolbar design. *(`ListRow` gained `lead` / `meta`
+      slots — the ledger row; the press feedback is `src/design/motion.tsx`, shared by
+      `Button`, `ListRow` and the header's back control.)*
+- [x] The seven screens re-skinned with **no behavioural change**: the 147 existing Jest
+      tests pass and the smoke passes (three were added for the new `formatShortTime`, so
+      150 in total; no snapshot tests exist and none are added). **One assertion changed**,
+      deliberately: `IncidentsScreen.test.tsx` asserted `"#1 First"` as a single string, and
+      the number is now its own column — it asserts `"#1"` and `"First"`. The tracer's
+      `getByText(/^#\d+$/)` had the same problem for real (every row now renders a bare
+      `#123`, and the list stays mounted under the detail), so the detail's number carries
+      `testID="incident-number"` and the tracer asks for that instead.
+      [ ] The **hosted** tracer on staging waits for the merge — staging serves master's
+      build.
+- [x] Dark mode: every screen checked in both schemes (Chrome, `colorScheme` emulation);
+      the scheme follows the OS.
+- [ ] Screenshots: **Chrome done** — light and dark, at phone width and at 1280 px, for
+      Login, Events, Incidents and Incident (ten shots, handed to Miguel in the session).
+      **iOS and Android are not done here**: this laptop has Command Line Tools but no
+      Xcode (no `simctl`), and the Android emulator is not started on it by standing
+      decision. Both move to the 3a gate's device row.
+- [x] Accessibility: the contrast table in § *Build notes* — 42 pairs generated from
+      `tokens.ts`, every one passing (worst text 4.60:1, worst non-text 3.75:1); 44 pt
+      targets kept (`minHeight`, never a measured height); the `accessibilityLabel`s, roles
+      and `testID`s the tests use are unchanged, and the header's back control pins its
+      accessible name with `accessibilityLabel` so the decorative chevron cannot leak into
+      it.
+- [x] `packages/interface/DESIGN.md` written *(D0)*; [x] the icon, the three Android
+      adaptive layers and the favicon replaced, `adaptiveIcon.backgroundColor` = `primary`
+      `#2457A6`. They are **generated** — `node scripts/brand-assets.mjs` draws the mark
+      from the tokens — so nobody has to open a binary to change them. No splash screen is
+      configured: `expo-splash-screen` is not installed, an inherited gap this run did not
+      widen the PR to close.
+- [ ] `review-animations` pass over the press feedback and the state fades — **Miguel's to
+      run**: that skill is `disable-model-invocation`, so it only runs when he types
+      `/review-animations`. What it has to look at is § *Build notes* below.
+- [x] 09i §9 protocol green locally; CI on the PR.
 
 ## Files
 
@@ -259,9 +282,9 @@ proper (D2); a user-facing scheme preference (OS only for now).
    and verify the CSS transition on web — **still to do, and it belongs with the builder
    run** rather than here: nothing imports Reanimated until the press feedback is written,
    and landing an unused native dependency ahead of it only widens this PR's blast radius.
-4. **Builder (Sonnet, one run under ~500 lines of change, the `emil-design-eng` and
-   `animate-expo` skills loaded):** tokens, primitives, screens, screenshots; then the
-   architect review with `review-animations`; PR → master; Miguel merges.
+4. ~~**Builder:** tokens, primitives, screens, screenshots.~~ **Done** — one run under the
+   `emil-design-eng` and `animate-expo` skills (§ *Build notes — the re-skin*).
+   `review-animations` is Miguel's to invoke; then PR → master, Miguel merges.
 5. Hosted tracer on staging; 09i 3a.4 row → merged; the 3a gate reviewed row by row
    (what still needs a device: the iOS / Android runs with 09l's hand checks).
 
@@ -277,7 +300,7 @@ schemes), the contrast table, and the `review-animations` table — all recorded
 - [x] Route chosen (Miguel): **B**, the in-code picker
 - [x] D0 produced and reviewed — **Dispatch** chosen 2026-09-10
 - [x] Token diff + `DESIGN.md` (architect)
-- [ ] Builder run; architect review incl. `review-animations`; screenshots; PR; CI green; Miguel merges
+- [x] Builder run; Chrome screenshots; PR — [ ] `review-animations` (Miguel), CI green, Miguel merges
 - [ ] Hosted tracer green on staging; 09i 3a.4 row + README row → Merged
 - [ ] Plan 09 §7 finding ("what a design system costs on Expo": tokens on three platforms, elevation, the motion budget)
 
@@ -319,6 +342,123 @@ rendered against the live staging instance in Chrome via
 `EXPO_PUBLIC_API_URL=https://ims-staging.maybloom.tech pnpm -F @ocf-ims/interface start
 --clear` (sign-in → the incidents list on real data). The **hosted** tracer belongs to the
 builder PR, which is the one that changes what the screens render.
+
+
+**The re-skin (3a.4, 2026-09-10).** One run under `emil-design-eng` + `animate-expo`. What
+it changed, and the decisions worth keeping:
+
+- **The row is the whole design.** `ListRow` grew two slots — `lead` (the fixed left
+  column) and `meta` (second-line accessories) — and `IncidentRow` fills them: the number
+  in `figure` (tabular) on the left, the summary on the first line, the area and the marks
+  on the second, the last-modified time in the fixed right column. `caption` became tabular
+  too, since nearly every caption in this app is a timestamp. The events list is the same
+  primitive with `lead` and `meta` left empty, so nothing forked.
+- **Badges are tinted chips.** `tokens.tones` holds an `ink` and a **pre-blended, opaque**
+  `tint` per tone (14% of the ink over the surface in light, 22% in dark). Opaque rather
+  than an alpha for two reasons: the chip then reads identically on a row (`surface`) and
+  on the detail (`background`), and the ink/tint contrast can actually be measured — an
+  alpha over an unknown ground cannot.
+- **Private is `restricted`, not `warning`.** Both the row and the detail had been passing
+  `tone="warning"`, which says "danger" about something that only means "restricted".
+- **The press feedback is two components, not a pattern to copy.** `src/design/motion.tsx`:
+  `PressFeedback` (scale 0.97 plus a 0.92 opacity dip, 120 ms, `cubic-bezier(0.23, 1, 0.32,
+  1)`) and `StateFade` (200 ms opacity — the empty / error / unreachable bodies). Both are
+  **Reanimated CSS transitions**: a state flips a style value and the transition
+  interpolates it on the UI runtime. No shared value, no worklet, no `scheduleOnRN`,
+  nothing re-rendering per frame. Reduced motion drops the scale and keeps the opacity, and
+  ships with the animation rather than after it.
+- **Verified in the built bundle, not asserted.** Pressing a row in the web export computes
+  `matrix(0.97, 0, 0, 0.97, 0, 0)`, `opacity 0.92`, and
+  `transition: opacity, transform 0.12s cubic-bezier(0.23, 1, 0.32, 1)`. The CSS transition
+  renders on web, so step 3's open question is answered and no finding is needed.
+- **Reanimated under Jest needs exactly one line.** jest-expo resolves
+  `react-native-worklets`' `.native` entry, which then reaches for a TurboModule Node does
+  not have. The package ships its own resolver that drops the `.native` extension;
+  `jest.config.js` now points at it. That beats mocking the library away — and
+  `react-native-reanimated/mock` is broken in 4.5.1 anyway (it requires a `./src/mock` the
+  package no longer ships). Cost: the suite went from about 4 s to about 9 s cold.
+- **`Field` rests on `borderStrong`, and focus is a shadow.** A control's boundary has to
+  clear 3:1 and `border` deliberately does not. The ring is
+  `boxShadow: 0 0 0 3px focusRing` plus `outlineWidth: 0` — it cannot shift the layout, and
+  the browser's own outline no longer doubles it. (`outlineStyle: "none"` does not typecheck
+  in RN 0.86: the union is `solid | dotted | dashed`.)
+- **Two middle-dot meta strings went.** The detail's location renders one line per part,
+  and a journal byline is the author with its time pushed right — both were on the brief's
+  list of tells. A journal entry also hangs off a gutter rule now (`borderStrong` for a
+  person's entry, `border` for a system or stricken one), which is what makes it read as a
+  log.
+- **`elevation[1]` is spent on the toolbar** and nowhere else, exactly as `DESIGN.md` said
+  it would be. Rows separate with a rule and tone.
+- **The brand mark is code.** `scripts/brand-assets.mjs` — pure Node, zlib plus a
+  supersampled rounded-rect rasteriser, no image dependency to install or audit — draws a
+  rail and three ragged ledger lines from `primary` / `onPrimary`, and writes the icon, the
+  three Android layers and the favicon. Regenerate it; don't edit the PNGs.
+
+**What is deliberately NOT done.** iOS screenshots are impossible on this machine (Command
+Line Tools, no Xcode, so no `simctl`); the Android emulator exists but the laptop is under
+a standing "no heavy local stacks" rule, so it was not started — both join the 3a gate's
+device row, which already exists for 09l's hand checks. `review-animations` is
+`disable-model-invocation` and waits for Miguel. The hosted tracer waits for the merge,
+since staging serves master's build; the **interim** tracer (this build against staging's
+API) passed both of its tests.
+
+**Contrast table.** Generated by script from `tokens.ts`, over every pair the screens
+actually paint, in both schemes. Worst text pair **4.60:1**; worst non-text **3.75:1**.
+
+| Scheme | What | Pair | Ratio | Needs | |
+| --- | --- | --- | --- | --- | --- |
+| light | Body / heading / title text | `text on background` | 15.89:1 | 4.5:1 | ✅ |
+| light | Body text on a row or card | `text on surface` | 17.51:1 | 4.5:1 | ✅ |
+| light | Supporting meta | `textMuted on background` | 5.64:1 | 4.5:1 | ✅ |
+| light | Supporting meta on a row | `textMuted on surface` | 6.22:1 | 4.5:1 | ✅ |
+| light | A link, the back control | `primary on surface` | 7.03:1 | 4.5:1 | ✅ |
+| light | A link on the page | `primary on background` | 6.38:1 | 4.5:1 | ✅ |
+| light | Primary button label | `onPrimary on primary` | 7.03:1 | 4.5:1 | ✅ |
+| light | Danger button label | `onDanger on danger` | 6.57:1 | 4.5:1 | ✅ |
+| light | Secondary button label | `text on surface` | 17.51:1 | 4.5:1 | ✅ |
+| light | An error title / field error | `danger on background` | 5.97:1 | 4.5:1 | ✅ |
+| light | Field text | `text on surface` | 17.51:1 | 4.5:1 | ✅ |
+| light | Field / control boundary | `borderStrong on surface` | 4.26:1 | 3:1 | ✅ |
+| light | Focus ring | `focus on surface` | 7.03:1 | 3:1 | ✅ |
+| light | Journal gutter (a person's entry) | `borderStrong on background` | 3.86:1 | 3:1 | ✅ |
+| light | Row rule — decorative, by design | `border on surface` | 1.42:1 | — | n/a |
+| light | Badge — neutral | `neutral ink on tint` | 4.60:1 | 4.5:1 | ✅ |
+| light | Badge — info | `info ink on tint` | 5.30:1 | 4.5:1 | ✅ |
+| light | Badge — success | `success ink on tint` | 5.10:1 | 4.5:1 | ✅ |
+| light | Badge — warning | `warning ink on tint` | 4.98:1 | 4.5:1 | ✅ |
+| light | Badge — danger | `danger ink on tint` | 5.20:1 | 4.5:1 | ✅ |
+| light | Badge — restricted | `restricted ink on tint` | 5.64:1 | 4.5:1 | ✅ |
+| dark | Body / heading / title text | `text on background` | 16.02:1 | 4.5:1 | ✅ |
+| dark | Body text on a row or card | `text on surface` | 14.64:1 | 4.5:1 | ✅ |
+| dark | Supporting meta | `textMuted on background` | 7.48:1 | 4.5:1 | ✅ |
+| dark | Supporting meta on a row | `textMuted on surface` | 6.83:1 | 4.5:1 | ✅ |
+| dark | A link, the back control | `primary on surface` | 7.76:1 | 4.5:1 | ✅ |
+| dark | A link on the page | `primary on background` | 8.49:1 | 4.5:1 | ✅ |
+| dark | Primary button label | `onPrimary on primary` | 7.26:1 | 4.5:1 | ✅ |
+| dark | Danger button label | `onDanger on danger` | 7.43:1 | 4.5:1 | ✅ |
+| dark | Secondary button label | `text on surface` | 14.64:1 | 4.5:1 | ✅ |
+| dark | An error title / field error | `danger on background` | 8.36:1 | 4.5:1 | ✅ |
+| dark | Field text | `text on surface` | 14.64:1 | 4.5:1 | ✅ |
+| dark | Field / control boundary | `borderStrong on surface` | 3.75:1 | 3:1 | ✅ |
+| dark | Focus ring | `focus on surface` | 7.76:1 | 3:1 | ✅ |
+| dark | Journal gutter (a person's entry) | `borderStrong on background` | 4.10:1 | 3:1 | ✅ |
+| dark | Row rule — decorative, by design | `border on surface` | 1.33:1 | — | n/a |
+| dark | Badge — neutral | `neutral ink on tint` | 4.60:1 | 4.5:1 | ✅ |
+| dark | Badge — info | `info ink on tint` | 5.99:1 | 4.5:1 | ✅ |
+| dark | Badge — success | `success ink on tint` | 5.83:1 | 4.5:1 | ✅ |
+| dark | Badge — warning | `warning ink on tint` | 5.92:1 | 4.5:1 | ✅ |
+| dark | Badge — danger | `danger ink on tint` | 5.07:1 | 4.5:1 | ✅ |
+| dark | Badge — restricted | `restricted ink on tint` | 5.34:1 | 4.5:1 | ✅ |
+
+`border` on `surface` is 1.42:1 and is listed as "n/a" on purpose: it is a decorative row
+rule, and `borderStrong` is the role for any boundary that carries meaning. `DESIGN.md`
+records the split so a later audit does not "fix" it.
+
+**Verified on this PR.** The 09i §9 protocol from the repo root — `pnpm install`,
+`pnpm generate`, typecheck, `pnpm lint`, `pnpm -F @ocf-ims/interface test` (18 suites, 150
+tests), `export:web --clear`, Playwright: the smoke green against a server-free export and
+both tracer tests green in interim mode against `https://ims-staging.maybloom.tech`. `grep`
+still finds no colour, spacing, font-size or duration literal outside `src/design/`.
 
 ## Findings
 

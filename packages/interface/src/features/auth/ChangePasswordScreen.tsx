@@ -3,10 +3,12 @@
 import { useMutation } from "@connectrpc/connect-query";
 import { ImsService } from "@ocf-ims/protocol-buffers/ocf/ims/service/v1/service_pb";
 import { useState } from "react";
+import { StyleSheet } from "react-native";
 import { type AppError, toAppError } from "@/api/errors";
 import { Box } from "@/design/primitives/Box";
 import { Button } from "@/design/primitives/Button";
 import { Text } from "@/design/primitives/Text";
+import { formMaxWidth } from "@/design/tokens";
 import { PasswordField } from "@/features/auth/PasswordField";
 import { ErrorState } from "@/features/shell/ErrorState";
 import { useSession } from "@/session/provider";
@@ -55,48 +57,55 @@ export function ChangePasswordScreen() {
   };
 
   return (
-    <Box flex={1} bg="background" justify="center" p="xl" gap="lg">
-      <Text variant="heading" align="center">
-        Set your own password
-      </Text>
-      <Text align="center" color="textMuted">
-        You're signed in with the shared default password. Choose a new one
-        before continuing.
-      </Text>
-      <Box gap="md">
-        <PasswordField
-          label="New password"
-          value={password}
-          onChangeText={setPassword}
-          shown={shown}
-          onToggleShown={() => setShown((s) => !s)}
-          textContentType="newPassword"
-          error={fieldError}
-        />
-        <PasswordField
-          label="Confirm password"
-          value={confirm}
-          onChangeText={setConfirm}
-          shown={shown}
-          onToggleShown={() => setShown((s) => !s)}
-          textContentType="newPassword"
-        />
-        {formError ? <ErrorState error={formError} /> : null}
-        <Button
-          label="Save password"
-          loading={mutation.isPending}
-          onPress={() => {
-            void submit();
-          }}
-        />
-        <Button
-          label="Sign out"
-          variant="secondary"
-          onPress={() => {
-            void signOut();
-          }}
-        />
+    <Box flex={1} bg="background" justify="center" p="xl">
+      <Box gap="lg" style={styles.form}>
+        <Text variant="heading" align="center">
+          Set your own password
+        </Text>
+        <Text align="center" color="textMuted">
+          You're signed in with the shared default password. Choose a new one
+          before continuing.
+        </Text>
+        <Box gap="md">
+          <PasswordField
+            label="New password"
+            value={password}
+            onChangeText={setPassword}
+            shown={shown}
+            onToggleShown={() => setShown((s) => !s)}
+            textContentType="newPassword"
+            error={fieldError}
+          />
+          <PasswordField
+            label="Confirm password"
+            value={confirm}
+            onChangeText={setConfirm}
+            shown={shown}
+            onToggleShown={() => setShown((s) => !s)}
+            textContentType="newPassword"
+          />
+          {formError ? <ErrorState error={formError} /> : null}
+          <Button
+            label="Save password"
+            loading={mutation.isPending}
+            onPress={() => {
+              void submit();
+            }}
+          />
+          <Button
+            label="Sign out"
+            variant="secondary"
+            onPress={() => {
+              void signOut();
+            }}
+          />
+        </Box>
       </Box>
     </Box>
   );
 }
+
+const styles = StyleSheet.create({
+  // A sign-in form that stretched to a desktop window would be unreadable.
+  form: { width: "100%", maxWidth: formMaxWidth, alignSelf: "center" },
+});

@@ -8,6 +8,7 @@ import {
   IncidentState,
 } from "@ocf-ims/protocol-buffers/ocf/ims/resources/v1/incident_pb";
 import {
+  formatShortTime,
   formatTimestamp,
   personLabel,
   priorityLabel,
@@ -59,6 +60,32 @@ describe("formatTimestamp", () => {
 
   it("is empty when unset", () => {
     expect(formatTimestamp(undefined)).toBe("");
+  });
+});
+
+describe("formatShortTime", () => {
+  it("is the clock for something that happened today", () => {
+    const now = new Date();
+    const earlier = new Date(now.getTime() - 60_000);
+    expect(formatShortTime(timestampFromDate(earlier))).toBe(
+      earlier.toLocaleTimeString(undefined, {
+        hour: "2-digit",
+        minute: "2-digit",
+      }),
+    );
+  });
+
+  it("is the date for anything older, so the column never shows a year", () => {
+    const old = new Date("2026-01-02T03:04:05.000Z");
+    const shown = formatShortTime(timestampFromDate(old));
+    expect(shown).toBe(
+      old.toLocaleDateString(undefined, { month: "short", day: "numeric" }),
+    );
+    expect(shown).not.toContain("2026");
+  });
+
+  it("is empty when unset", () => {
+    expect(formatShortTime(undefined)).toBe("");
   });
 });
 

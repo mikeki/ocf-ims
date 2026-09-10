@@ -22,6 +22,27 @@ export function formatTimestamp(ts: Timestamp | undefined): string {
   return timestampDate(ts).toLocaleString();
 }
 
+/**
+ * The "when" in an incident row's right-hand column (09o): the clock for
+ * something that happened today, the date for anything older. The column is
+ * narrow and read by glance, so it never spends width on a year — the full
+ * timestamps live on the incident's own screen.
+ */
+export function formatShortTime(ts: Timestamp | undefined): string {
+  if (!ts) {
+    return "";
+  }
+  const at = timestampDate(ts);
+  const now = new Date();
+  const today =
+    at.getFullYear() === now.getFullYear() &&
+    at.getMonth() === now.getMonth() &&
+    at.getDate() === now.getDate();
+  return today
+    ? at.toLocaleTimeString(undefined, { hour: "2-digit", minute: "2-digit" })
+    : at.toLocaleDateString(undefined, { month: "short", day: "numeric" });
+}
+
 export interface Labelled {
   readonly label: string;
   readonly tone: BadgeTone;

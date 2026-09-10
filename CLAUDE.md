@@ -123,7 +123,13 @@ language and the motion budget (press feedback only — a 0.97 press-in scale ov
 120 ms, nothing enters with an animation on a list, reduced motion honoured) are
 in `packages/interface/DESIGN.md`. **Read it before changing a token or adding an
 animation.** Note `border` is a decorative rule and is deliberately below 3:1 —
-`borderStrong` is the role for a boundary that must be perceivable.
+`borderStrong` is the role for a boundary that must be perceivable. The whole
+motion budget is `src/design/motion.tsx` (`PressFeedback`, `StateFade`) on
+`react-native-reanimated` CSS transitions — no shared values, no worklets, and
+nothing else in the app animates. Reanimated needs
+`resolver: react-native-worklets/jest/resolver.js` in `jest.config.js` to run
+under jest-expo. The brand assets are drawn from the tokens by
+`node scripts/brand-assets.mjs`; don't hand-edit the PNGs.
 
 Foundations (plan 09l, slice 3a.2): the server address is `EXPO_PUBLIC_API_URL`
 (`packages/interface/.env.example`; unset = same origin on web, the docker stack on

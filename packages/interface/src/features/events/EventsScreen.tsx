@@ -9,6 +9,7 @@ import { Box } from "@/design/primitives/Box";
 import { Button } from "@/design/primitives/Button";
 import { ListRow } from "@/design/primitives/ListRow";
 import { Text } from "@/design/primitives/Text";
+import { useTheme } from "@/design/theme";
 import { useEvents, useSelectedEvent } from "@/features/events/hooks";
 import { newestEvent, sortEventsNewestFirst } from "@/features/events/newest";
 import { EmptyState } from "@/features/shell/EmptyState";
@@ -26,6 +27,7 @@ export interface EventsScreenProps {
 }
 
 export function EventsScreen(props: EventsScreenProps) {
+  const theme = useTheme();
   const { state, signOut } = useSession();
   const eventsQuery = useEvents();
   const selected = useSelectedEvent();
@@ -36,8 +38,21 @@ export function EventsScreen(props: EventsScreenProps) {
     <Box flex={1} bg="background">
       <ScreenHeader title="Events" />
       {renderBody(eventsQuery, selected, props.onOpenEvent)}
-      <Box row align="center" justify="space-between" p="md" gap="md">
-        <Text color="textMuted">{`Signed in as ${handle}`}</Text>
+      <Box
+        row
+        align="center"
+        justify="space-between"
+        p="md"
+        gap="md"
+        bg="surface"
+        style={{
+          borderTopWidth: 1,
+          borderTopColor: theme.colors.border,
+        }}
+      >
+        <Text variant="label" color="textMuted" numberOfLines={1}>
+          {`Signed in as ${handle}`}
+        </Text>
         <Button
           label="Sign out"
           variant="secondary"
