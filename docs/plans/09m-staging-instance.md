@@ -183,7 +183,7 @@ On the host: § *Bring-up brief* step 5 and the cron no-op are the acceptance ch
 - [x] `docker-compose.staging.yml`, `deploy/.env.staging.example`, `deploy/staging-pull.sh`, Caddy block
 - [x] Runbook section; client README; CLAUDE.md; 09i rows + gate; 09l → Merged; README rows
 - [x] Plan 09 §7 finding
-- [ ] PR opened; CI green; Miguel merges
+- [x] PR opened; CI green; Miguel merges
 - [ ] Bring-up on the home server (the server-side agent session, § *Bring-up brief*); report recorded under *Build notes*
 - [ ] 09l hand check (native) done against staging → tick in 09l
 - [ ] Step 2 PR: web image in CI, `web` service, Caddy path split; 09l hand check (web) against the hosted build

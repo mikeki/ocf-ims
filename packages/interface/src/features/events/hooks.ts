@@ -16,18 +16,27 @@ import { eventAccess } from "@/lib/permissions";
 // Jest by jest.setup.ts), not injected — see selected.ts for the pure
 // load/save this wraps.
 
-/** How readable/writable this event is; empty (all-false) while GetAuthStatus hasn't answered yet. */
+/** How long a per-event access answer is trusted before a mount re-asks. */
 const EVENT_ACCESS_STALE_MS = 5 * 60_000;
 
 export function useEvents() {
   return useQuery(ImsService.method.listEvents, {});
 }
 
+/**
+ * The caller's access to one event (plan 09n T7); all-false until
+ * GetAuthStatus has answered. GetAuthStatus tolerates an anonymous caller
+ * (`authenticated: false`, no error), so such an answer is never trusted for
+ * the five minutes — it goes stale at once and the next mount asks again.
+ */
 export function useEventAccess(eventId: number): AccessForEvent {
   const { data } = useQuery(
     ImsService.method.getAuthStatus,
     { eventId },
-    { staleTime: EVENT_ACCESS_STALE_MS },
+    {
+      staleTime: (query) =>
+        query.state.data?.authenticated ? EVENT_ACCESS_STALE_MS : 0,
+    },
   );
   return eventAccess(data, eventId);
 }

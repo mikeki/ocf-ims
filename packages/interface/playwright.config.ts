@@ -2,13 +2,18 @@
 
 import { defineConfig, devices } from "@playwright/test";
 
-// Web E2E for the Expo client (plan 09i E11). In 3a.1 the target is the static
-// web export (`expo export -p web` → dist/) hosted by `expo serve`; 3a.3 points
-// the suite at the docker dev stack once there are screens that talk to the
-// server. Run `pnpm -F @ocf-ims/interface export:web` before `e2e`.
+// Web E2E for the Expo client (plan 09i E11). `smoke.spec.ts` runs against the
+// static web export (`expo export -p web` → dist/) with nothing behind the
+// Connect routes (CI's mode). `tracer.spec.ts` (plan 09n T11) runs the read-only
+// tracer against a real server: E2E_BASE_URL, when set, is that server's own
+// origin (the staging instance's hosted web build, 09m step 2) and no local
+// server is started; unset, the local export is served on :8082 as today
+// (used for the interim mode — the export built with EXPO_PUBLIC_API_URL
+// pointed at staging). Run `pnpm -F @ocf-ims/interface export:web` first
+// unless E2E_BASE_URL is set.
 const CI = Boolean(process.env.CI);
 const port = 8082;
-const baseURL = `http://localhost:${port}`;
+const baseURL = process.env.E2E_BASE_URL ?? `http://localhost:${port}`;
 
 export default defineConfig({
   testDir: "./e2e",
@@ -25,10 +30,12 @@ export default defineConfig({
       use: { ...devices["Desktop Chrome"] },
     },
   ],
-  webServer: {
-    command: `pnpm exec expo serve --port ${port}`,
-    url: baseURL,
-    reuseExistingServer: !CI,
-    timeout: 60_000,
-  },
+  webServer: process.env.E2E_BASE_URL
+    ? undefined
+    : {
+        command: `pnpm exec expo serve --port ${port}`,
+        url: baseURL,
+        reuseExistingServer: !CI,
+        timeout: 60_000,
+      },
 });

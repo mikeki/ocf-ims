@@ -99,7 +99,11 @@ pnpm -F @ocf-ims/interface e2e         # Playwright (Chromium) against the expor
 pnpm -F @ocf-ims/interface start       # Metro dev server on :8081
 ```
 
-The `Interface` CI job runs the same list. Against the docker stack the dev server
+The `Interface` CI job runs the same list, which includes only the environment-free
+Playwright smoke; the tracer (`e2e/tracer.spec.ts`) walks the full sign-in → events →
+incidents → incident → sign-out flow against the staging instance and runs only when
+`E2E_EMAIL`/`E2E_PASSWORD` (and, for the hosted build, `E2E_BASE_URL`) are set by hand.
+Against the docker stack the dev server
 is cross-origin: set `IMS_CORS_ALLOWED_ORIGINS=http://localhost:8081` (see
 Configuration). **Hand checks run against the staging instance**
 (`docs/deployment.md`, "Staging instance"; `EXPO_PUBLIC_API_URL=https://<staging

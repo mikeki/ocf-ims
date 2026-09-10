@@ -1,6 +1,6 @@
 # 09n — Tracer screens: login, events, incidents, incident, sign out (slice 3a.3)
 
-> **Status:** Brief — builder in progress
+> **Status:** Built — for review (both parts built and reviewed; §9 green; the tracer has not yet run against staging)
 > **Parent:** [09i-expo-client.md](09i-expo-client.md) (Phase 3, slice 3a.3) under
 > [09-proto-connect-platform.md](09-proto-connect-platform.md) (Phase 3)
 > **Follows:** [09l](09l-client-foundations.md) (3a.2, merged as #242) and
@@ -343,30 +343,30 @@ into *Build notes* and the builder continues with what exists (rule 2).
 
 ## Verification
 
-From the repo root (09i §9) — filled in after the build:
+From the repo root (09i §9), 2026-09-10, after the review fixes:
 
 | Step | Result |
 |---|---|
-| `pnpm install --frozen-lockfile` | |
-| `pnpm generate` | |
-| `pnpm -F @ocf-ims/interface typecheck` | |
-| `pnpm lint` | |
-| `pnpm -F @ocf-ims/interface test` | |
-| `pnpm -F @ocf-ims/interface export:web` | |
-| `pnpm -F @ocf-ims/interface e2e` (smoke; the tracer skips) | |
-| Tracer against staging (interim / hosted) | not yet — the host is Miguel's follow-up (09m) |
+| `pnpm install --frozen-lockfile` | ok (no lockfile change — no new dependency) |
+| `pnpm generate` | ok |
+| `pnpm -F @ocf-ims/interface typecheck` | ok, 0 errors |
+| `pnpm lint` | ok, 90 files, 0 diagnostics |
+| `pnpm -F @ocf-ims/interface test` | 18 suites, **147 tests passed**; a second run: no act warning, no worker-exit warning |
+| `pnpm -F @ocf-ims/interface export:web` | ok |
+| `pnpm -F @ocf-ims/interface e2e` (smoke; the tracer skips) | 1 passed, 1 skipped (the tracer, no `E2E_EMAIL`) |
+| Tracer against staging (interim / hosted) | **not yet run** — the host is Miguel's follow-up (09m); interim mode as soon as it answers, hosted mode after 09m step 2 |
 
 ## Checklist
 
 - [x] Brief written (this file) before any builder work
 - [x] `src/lib/returnPath.ts` + test (architect, T3)
-- [ ] Part A built; typecheck / lint / test green
-- [ ] Part B built; §9 green
-- [ ] Architect review (`/code-review`) + fixes
-- [ ] 09i 3a.3 row → this file; README rows (09n, 09m); 09m checklist tick
-- [ ] Plan 09 §7 finding
+- [x] Part A built (Sonnet); typecheck / lint / test green; architect review + fixes (§ *Build notes*)
+- [x] Part B built (Sonnet); §9 green; architect review + fixes
+- [x] 09i 3a.3 row → this file; README rows (09n, 09m); 09m checklist tick
+- [x] Plan 09 §7 finding (*3a.3 — The first screens*)
 - [ ] PR opened; CI green; Miguel merges
 - [ ] Tracer run against staging (interim mode, then hosted after 09m step 2) — recorded under *Verification*
+- [ ] 3a gate items that need a device: the flow on iOS / Android against staging (with 09l's hand checks)
 
 ## Build notes
 
@@ -392,6 +392,35 @@ From the repo root (09i §9) — filled in after the build:
 - `personLabel(undefined)` answers "Unknown" (the brief did not say). No primitive needed a new
   prop. `app/_layout.tsx` needed no change.
 
+**Part B (Sonnet builder, 2026-09-10; 24 new tests, 147 total) + the architect review:**
+
+- **`GetAuthStatus` tolerates an anonymous caller** — it answers `authenticated: false` instead
+  of `Unauthenticated` — so the transport's refresh-and-retry never engages for it, and a
+  `useEventAccess` query fired before the session is signed in would have cached "no access"
+  for the hook's five-minute `staleTime`. The real app cannot hit it (an `(app)` screen mounts
+  only once the layout is `signedIn`), but a Jest test that mounts a screen directly can:
+  the incident suites bootstrap the runtime *before* rendering. The review also made the hook
+  safe by construction: `staleTime` is a function that trusts an answer for five minutes only
+  when it is `authenticated`, and marks an anonymous one stale at once.
+- **TanStack's `notifyManager` defers update notifications by a real `setTimeout(fn, 0)`.**
+  With two chained queries (`useEventAccess` gating `useAreas`) a notification could land after
+  a test's last `await`, outside any act scope — an intermittent "not wrapped in act" warning.
+  TanStack's own remedy, `notifyManager.setScheduler((cb) => cb())`, now lives in
+  `jest.setup.ts` for every suite (the builder had put it in the two incident test files).
+- **`RefreshControl` is a prop-less stub under the React Native Jest preset**, so
+  `fireEvent(…, "refresh")` cannot reach it; the stub records the latest mounted instance on
+  `RefreshControl.latestRef`, and the pull-to-refresh tests call its `onRefresh` inside `act`.
+  The `testID`s on the two `RefreshControl`s are kept for the real platforms.
+- The brief's tracer snippet did not typecheck as written (`test.skip` does not narrow the
+  module-level `string | undefined`); the spec fills `email ?? ""`.
+- `#N` appears twice on the detail (the `ScreenHeader` title and the heading), so the tests
+  anchor on the summary text.
+
 ## Findings
 
-(Plan 09 §7 entry after the build.)
+See plan 09 §7, *3a.3 — The first screens: gates in layouts, lookups that never block, a
+tracer gated by environment*. In one line each: a route-group layout is the session gate
+and can render a gate instead of the stack; a read that tolerates anonymity must not be
+cached as an answer; three Jest-harness facts (mutation GC timer, `notifyManager`
+scheduler, the `RefreshControl` stub) and the countdown key; the tracer is gated by
+environment, and code that has not run is recorded as such.

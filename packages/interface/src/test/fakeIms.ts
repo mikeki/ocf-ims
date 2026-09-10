@@ -4,6 +4,9 @@ import { create } from "@bufbuild/protobuf";
 import { timestampFromDate } from "@bufbuild/protobuf/wkt";
 import type { ConnectRouter, HandlerContext } from "@connectrpc/connect";
 import { Code, ConnectError } from "@connectrpc/connect";
+import type { Area } from "@ocf-ims/protocol-buffers/ocf/ims/resources/v1/area_pb";
+import type { IncidentType } from "@ocf-ims/protocol-buffers/ocf/ims/resources/v1/incident_type_pb";
+import { ListAreasResponseSchema } from "@ocf-ims/protocol-buffers/ocf/ims/service/rpc/v1/area_pb";
 import {
   AccessForEventSchema,
   GetAuthStatusResponseSchema,
@@ -12,6 +15,12 @@ import {
   RefreshTokenResponseSchema,
 } from "@ocf-ims/protocol-buffers/ocf/ims/service/rpc/v1/auth_pb";
 import { ListEventsResponseSchema } from "@ocf-ims/protocol-buffers/ocf/ims/service/rpc/v1/event_pb";
+import {
+  GetIncidentResponseSchema,
+  type IncidentView,
+  ListIncidentsResponseSchema,
+} from "@ocf-ims/protocol-buffers/ocf/ims/service/rpc/v1/incident_pb";
+import { ListIncidentTypesResponseSchema } from "@ocf-ims/protocol-buffers/ocf/ims/service/rpc/v1/incident_type_pb";
 import { ChangeOwnPasswordResponseSchema } from "@ocf-ims/protocol-buffers/ocf/ims/service/rpc/v1/profile_pb";
 import { ImsService } from "@ocf-ims/protocol-buffers/ocf/ims/service/v1/service_pb";
 
@@ -24,6 +33,8 @@ import { ImsService } from "@ocf-ims/protocol-buffers/ocf/ims/service/v1/service
 // failure mode so the transport and session tests can exercise every branch.
 
 export type Behaviour = "ok" | "unauthenticated" | "unavailable";
+/** For the read RPCs that a screen can also see PermissionDenied from. */
+export type ListBehaviour = "ok" | "forbidden" | "unavailable";
 
 export interface FakeUser {
   email: string;
@@ -33,6 +44,8 @@ export interface FakeUser {
   admin: boolean;
   /** Flipped false by a successful ChangeOwnPassword (plan 09n T2/T12). */
   usingDefaultPassword: boolean;
+  /** Drives AccessForEvent.readAreas on GetAuthStatus (plan 09n T12). */
+  readAreas: boolean;
 }
 
 /** The minimal shape ListEvents needs — enough to build an Event via create(). */
@@ -64,10 +77,20 @@ export interface FakeIms {
     logout: "ok" | "unavailable";
     listEvents: Behaviour;
     changeOwnPassword: "ok" | "unavailable";
+    listIncidents: ListBehaviour;
+    getIncident: ListBehaviour;
+    listAreas: ListBehaviour;
+    listIncidentTypes: ListBehaviour;
   };
   user: FakeUser;
   /** Programmable ListEvents data (plan 09n T12); default matches the previous hardcoded response. */
   events: FakeEvent[];
+  /** Programmable ListIncidents/GetIncident data (plan 09n T12): a flat list, filtered by `incident.eventId`. */
+  incidents: IncidentView[];
+  /** Programmable ListAreas data; the fake doesn't scope areas by event (keep it small — one event per test). */
+  areas: Area[];
+  /** Programmable ListIncidentTypes data (a global taxonomy, so no event scoping either). */
+  incidentTypes: IncidentType[];
   /** The refresh "cookie" a web Login set and Logout clears. */
   cookieRefreshToken: string | undefined;
   /** Registers a valid refresh token (as if a Login had issued it) and returns it. */
@@ -97,6 +120,10 @@ export function createFakeIms(options: FakeImsOptions = {}): FakeIms {
       logout: "ok",
       listEvents: "ok",
       changeOwnPassword: "ok",
+      listIncidents: "ok",
+      getIncident: "ok",
+      listAreas: "ok",
+      listIncidentTypes: "ok",
     },
     user: {
       email: "dee@example.org",
@@ -105,9 +132,13 @@ export function createFakeIms(options: FakeImsOptions = {}): FakeIms {
       personId: 42,
       admin: false,
       usingDefaultPassword: false,
+      readAreas: true,
       ...options.user,
     },
     events: [{ id: 1, name: "2026" }],
+    incidents: [],
+    areas: [],
+    incidentTypes: [],
     cookieRefreshToken: undefined,
     issueRefreshToken() {
       counter += 1;
@@ -239,6 +270,75 @@ export function createFakeIms(options: FakeImsOptions = {}): FakeIms {
           fake.user.usingDefaultPassword = false;
           return create(ChangeOwnPasswordResponseSchema);
         },
+        listIncidents(req, ctx) {
+          record("ListIncidents", ctx);
+          if (fake.behaviour.listIncidents === "unavailable") {
+            throw new ConnectError("redeploying", Code.Unavailable);
+          }
+          if (!fake.honours(bearerOf(ctx))) {
+            throw new ConnectError("not signed in", Code.Unauthenticated);
+          }
+          if (fake.behaviour.listIncidents === "forbidden") {
+            throw new ConnectError("not allowed", Code.PermissionDenied);
+          }
+          if (!fake.events.some((e) => e.id === req.eventId)) {
+            throw new ConnectError("no such event", Code.NotFound);
+          }
+          return create(ListIncidentsResponseSchema, {
+            incidents: fake.incidents.filter(
+              (v) => v.incident?.eventId === req.eventId,
+            ),
+          });
+        },
+        getIncident(req, ctx) {
+          record("GetIncident", ctx);
+          if (fake.behaviour.getIncident === "unavailable") {
+            throw new ConnectError("redeploying", Code.Unavailable);
+          }
+          if (!fake.honours(bearerOf(ctx))) {
+            throw new ConnectError("not signed in", Code.Unauthenticated);
+          }
+          if (fake.behaviour.getIncident === "forbidden") {
+            throw new ConnectError("not allowed", Code.PermissionDenied);
+          }
+          const view = fake.incidents.find(
+            (v) =>
+              v.incident?.eventId === req.eventId &&
+              v.incident?.number === req.incidentNumber,
+          );
+          if (!view) {
+            throw new ConnectError("no such incident", Code.NotFound);
+          }
+          return create(GetIncidentResponseSchema, { incident: view });
+        },
+        listAreas(_req, ctx) {
+          record("ListAreas", ctx);
+          if (fake.behaviour.listAreas === "unavailable") {
+            throw new ConnectError("redeploying", Code.Unavailable);
+          }
+          if (!fake.honours(bearerOf(ctx))) {
+            throw new ConnectError("not signed in", Code.Unauthenticated);
+          }
+          if (fake.behaviour.listAreas === "forbidden") {
+            throw new ConnectError("not allowed", Code.PermissionDenied);
+          }
+          return create(ListAreasResponseSchema, { areas: fake.areas });
+        },
+        listIncidentTypes(_req, ctx) {
+          record("ListIncidentTypes", ctx);
+          if (fake.behaviour.listIncidentTypes === "unavailable") {
+            throw new ConnectError("redeploying", Code.Unavailable);
+          }
+          if (!fake.honours(bearerOf(ctx))) {
+            throw new ConnectError("not signed in", Code.Unauthenticated);
+          }
+          if (fake.behaviour.listIncidentTypes === "forbidden") {
+            throw new ConnectError("not allowed", Code.PermissionDenied);
+          }
+          return create(ListIncidentTypesResponseSchema, {
+            incidentTypes: fake.incidentTypes,
+          });
+        },
       });
     },
   };
@@ -259,7 +359,7 @@ export function createFakeIms(options: FakeImsOptions = {}): FakeIms {
       eventId,
       readIncidents: true,
       writeIncidents: fake.user.admin,
-      readAreas: true,
+      readAreas: fake.user.readAreas,
     });
   }
 
