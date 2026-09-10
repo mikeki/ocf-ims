@@ -1656,6 +1656,52 @@ is where the findings come from:
   `EXPO_OFFLINE=1` + `EXPO_NO_TELEMETRY=1` keep the Expo CLI from reaching for
   `api.expo.dev`; `expo serve` hosts the export so the smoke needs no server yet.
 
+### 3a.2 — Putting a session on connect-es (2026-09-09)
+
+The foundations slice ([09l](09l-client-foundations.md)) is the client half of the 3a.0
+contract: the Bearer/refresh transport, the session state machine over the web cookie and
+native SecureStore, connect-query with a persisted read cache, one error mapping. It was
+written and verified against a fake `ImsService` behind `createRouterTransport`, with no
+server in the loop, and that is what most of the findings are about:
+
+- **The refresh classification is one function, and it is the security decision.**
+  Every failure of `RefreshToken` except its own `Unauthenticated` is transient: the
+  cached access token, the stored refresh token and the session stay, and the caller
+  sees the error it would have seen anyway. The templ client learned this as #189 (a
+  redeploy logged the fair out); here it is `classifyRefreshError`, pinned by a test
+  that flips the fake server to `Unavailable` mid-session and expects the session to
+  survive and self-heal on the next call.
+- **Session RPCs must be exempt from the refresh-and-retry path.** `Login` answers
+  `Unauthenticated` for bad credentials; an interceptor that treats every
+  `Unauthenticated` as "expired token" would refresh and retry a failed login. The
+  exemption set (`Login`, `RefreshToken`, `Logout`) is what makes the general rule safe,
+  and `RefreshToken` itself runs on a bare transport so a refresh can never recurse into
+  the interceptor that asked for it.
+- **A persisted TanStack cache cannot hold protobuf-es v2 messages as-is.** Every int64
+  is a `bigint` — `Timestamp.seconds`, so every `created` / `last_modified` — and
+  `JSON.stringify` throws on it; `bytes` is a `Uint8Array` that serialises as an object
+  of indexes. Neither connect-query nor TanStack documents this. The persister tags both
+  (`{"$bigint": …}`, `{"$bytes": base64}`) and reverses it on restore; the first persisted
+  `ListIncidents` would otherwise have thrown at the first cold start.
+- **connect-web v2 dropped the `credentials` option.** The web refresh cookie needs
+  `credentials: "include"` cross-origin in dev, so the transport takes a `fetch`
+  override that sets it on every request. Native never sees a cookie
+  (`return_refresh_token` suppresses it), so the same override is harmless there.
+- **React Native Testing Library 14 is asynchronous end to end**, not only `render`:
+  `fireEvent.press` / `changeText` return promises. An unawaited event leaves an act
+  scope open, React reports "overlapping act() calls", and the *next* render in the
+  file comes back empty — a failure two tests away from its cause. The 3a.1 finding
+  covered `render`; this one covers the rest.
+- **Metro's platform suffixes need a suffix-less file for `tsc`.** 09i sketched
+  `store.web.ts` + `store.native.ts`; with no `store.ts`, `tsc` cannot resolve
+  `@/session/store`. The web implementation is the suffix-less file and Metro picks
+  `store.native.ts` on iOS/Android.
+- **An HTML page where a Connect answer should be is `unknown`, not `Unavailable`.**
+  `expo serve` answers a POST to the Connect route with `index.html`; connect-web maps
+  that to `Code.Unknown`. The session still lands in `unreachable` (transient → retry,
+  never sign-out — the smoke asserts exactly that), but the title is the generic one.
+  A misconfigured `EXPO_PUBLIC_API_URL` will look like this in the field.
+
 ## 8. Open questions
 
 1. **Does the Go binary keep serving static assets in production**, or does Caddy?
