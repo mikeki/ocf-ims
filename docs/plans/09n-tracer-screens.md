@@ -370,7 +370,27 @@ From the repo root (09i §9) — filled in after the build:
 
 ## Build notes
 
-(What the brief got wrong, and what the code taught — filled in by the builders and the review.)
+**Part A (Sonnet builder, 2026-09-09; 37 new tests, 123 total) + the architect review:**
+
+- **`PasswordField` is controlled** (`shown` / `onToggleShown` come from the caller) rather than
+  owning its toggle, so the change-password screen's two fields share one show/hide state (T2)
+  and the login screen passes its own. The brief read as if the field owned it.
+- **The countdown had to be keyed on the error, not just the seconds** (review finding): a second
+  throttled answer carries the same `Retry-After`, and an effect keyed on the number alone never
+  restarted — the button re-enabled at 0 and stayed enabled. `useCountdown(seconds, restartKey)`
+  takes the `AppError` as the key; biome's `useExhaustiveDependencies` needs an explained ignore
+  for a dependency the effect does not read. At 0 the message is now "You can try again now."
+  instead of "Try again in 0 s.".
+- **Remembering the event is best-effort** (review finding): the row press no longer awaits the
+  AsyncStorage write before navigating, and a storage that cannot be read still lets the screen
+  load (`loaded` flips either way).
+- **A settled mutation kept a Jest worker alive.** The harness's test `QueryClient` set an infinite
+  `gcTime` for queries only; the first `useMutation` (`ChangeOwnPassword`) left TanStack's default
+  5-minute mutation GC timer pending, and the full parallel run ended with "A worker process has
+  failed to exit gracefully" (never in-band, never per-suite — bisected by exclusion). Mutations
+  now get the same infinite `gcTime` in `createTestQueryClient`.
+- `personLabel(undefined)` answers "Unknown" (the brief did not say). No primitive needed a new
+  prop. `app/_layout.tsx` needed no change.
 
 ## Findings
 

@@ -12,6 +12,7 @@ import {
   RefreshTokenResponseSchema,
 } from "@ocf-ims/protocol-buffers/ocf/ims/service/rpc/v1/auth_pb";
 import { ListEventsResponseSchema } from "@ocf-ims/protocol-buffers/ocf/ims/service/rpc/v1/event_pb";
+import { ChangeOwnPasswordResponseSchema } from "@ocf-ims/protocol-buffers/ocf/ims/service/rpc/v1/profile_pb";
 import { ImsService } from "@ocf-ims/protocol-buffers/ocf/ims/service/v1/service_pb";
 
 // A programmable in-memory ImsService for createRouterTransport (plan 09l): the
@@ -30,6 +31,14 @@ export interface FakeUser {
   handle: string;
   personId: number;
   admin: boolean;
+  /** Flipped false by a successful ChangeOwnPassword (plan 09n T2/T12). */
+  usingDefaultPassword: boolean;
+}
+
+/** The minimal shape ListEvents needs — enough to build an Event via create(). */
+export interface FakeEvent {
+  id: number;
+  name?: string;
 }
 
 export interface FakeCall {
@@ -54,8 +63,11 @@ export interface FakeIms {
     getAuthStatus: Behaviour;
     logout: "ok" | "unavailable";
     listEvents: Behaviour;
+    changeOwnPassword: "ok" | "unavailable";
   };
   user: FakeUser;
+  /** Programmable ListEvents data (plan 09n T12); default matches the previous hardcoded response. */
+  events: FakeEvent[];
   /** The refresh "cookie" a web Login set and Logout clears. */
   cookieRefreshToken: string | undefined;
   /** Registers a valid refresh token (as if a Login had issued it) and returns it. */
@@ -84,6 +96,7 @@ export function createFakeIms(options: FakeImsOptions = {}): FakeIms {
       getAuthStatus: "ok",
       logout: "ok",
       listEvents: "ok",
+      changeOwnPassword: "ok",
     },
     user: {
       email: "dee@example.org",
@@ -91,8 +104,10 @@ export function createFakeIms(options: FakeImsOptions = {}): FakeIms {
       handle: "Dee",
       personId: 42,
       admin: false,
+      usingDefaultPassword: false,
       ...options.user,
     },
+    events: [{ id: 1, name: "2026" }],
     cookieRefreshToken: undefined,
     issueRefreshToken() {
       counter += 1;
@@ -184,6 +199,7 @@ export function createFakeIms(options: FakeImsOptions = {}): FakeIms {
             admin: fake.user.admin,
             canManagePersonnel: fake.user.admin,
             eventAccess,
+            usingDefaultPassword: fake.user.usingDefaultPassword,
           });
         },
         logout(_req, ctx) {
@@ -203,8 +219,25 @@ export function createFakeIms(options: FakeImsOptions = {}): FakeIms {
             throw new ConnectError("not signed in", Code.Unauthenticated);
           }
           return create(ListEventsResponseSchema, {
-            events: [{ id: 1, name: "2026" }],
+            events: fake.events,
           });
+        },
+        changeOwnPassword(req, ctx) {
+          record("ChangeOwnPassword", ctx);
+          if (fake.behaviour.changeOwnPassword === "unavailable") {
+            throw new ConnectError("redeploying", Code.Unavailable);
+          }
+          if (!fake.honours(bearerOf(ctx))) {
+            throw new ConnectError("not signed in", Code.Unauthenticated);
+          }
+          if (req.password.length < 8) {
+            throw new ConnectError(
+              "password must be at least 8 characters",
+              Code.InvalidArgument,
+            );
+          }
+          fake.user.usingDefaultPassword = false;
+          return create(ChangeOwnPasswordResponseSchema);
         },
       });
     },

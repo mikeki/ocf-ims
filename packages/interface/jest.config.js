@@ -6,4 +6,8 @@ module.exports = {
   moduleNameMapper: {
     "^@/(.*)$": "<rootDir>/src/$1",
   },
+  // AsyncStorage has no native module in Jest; mock it with the library's own
+  // in-memory implementation (src/features/events/hooks.ts and
+  // src/session/appRuntime.ts import the real module directly).
+  setupFiles: ["<rootDir>/jest.setup.ts"],
 };
