@@ -47,3 +47,40 @@ test("login → events → incidents → incident → sign out", async ({ page }
     await expect(page.getByRole("button", { name: "Sign in" })).toBeVisible();
   }
 });
+
+// A signed-out deep link (T3): the login carries `?o=`, sign-in returns to the
+// incident, and "Incidents" from there goes to the list — not to whatever the
+// stack happened to hold beneath a deep-linked screen (the anchor). The
+// incident's URL is discovered first, since the seed's numbers are not fixed.
+test("a signed-out deep link returns to the incident after sign-in; back goes to the list", async ({
+  page,
+}) => {
+  await page.goto("/");
+  await page.getByLabel("Email").fill(email ?? "");
+  await page.getByLabel("Password").fill(password ?? "");
+  await page.getByRole("button", { name: "Sign in" }).click();
+  await expect(page).toHaveURL(/\/events\/\d+\/incidents$/);
+  const incident = page.getByTestId(/^incident-row-/).first();
+  await expect(incident).toBeVisible();
+  await incident.click();
+  await expect(page).toHaveURL(/\/incidents\/\d+$/);
+  const detailPath = new URL(page.url()).pathname;
+  const listPath = detailPath.replace(/\/\d+$/, "");
+
+  // Drop the session (the hosted build's cookie; the interim mode never had
+  // one) and load the incident directly.
+  await page.context().clearCookies();
+  await page.goto(detailPath);
+  await expect(page).toHaveURL(/\/login\?o=/); // the return path rides along (T3)
+  await page.getByLabel("Email").fill(email ?? "");
+  await page.getByLabel("Password").fill(password ?? "");
+  await page.getByRole("button", { name: "Sign in" }).click();
+  await expect(page).toHaveURL(new RegExp(`${detailPath}$`));
+  await expect(page.getByText(/^#\d+$/).first()).toBeVisible();
+  await page.getByRole("button", { name: "Incidents" }).click();
+  await expect(page).toHaveURL(new RegExp(`${listPath}$`));
+  await page.getByRole("button", { name: "Events" }).click();
+  await expect(page).toHaveURL(/\/events$/);
+  await page.getByRole("button", { name: "Sign out" }).click();
+  await expect(page.getByRole("button", { name: "Sign in" })).toBeVisible();
+});

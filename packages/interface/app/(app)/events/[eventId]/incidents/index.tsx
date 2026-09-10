@@ -16,12 +16,10 @@ export default function IncidentsRoute() {
   return (
     <IncidentsScreen
       eventId={eventId}
+      // dismissTo: pop to the events list (the stack's anchor, so it is
+      // always beneath) rather than to whatever the previous screen was.
       onBack={() => {
-        if (router.canGoBack()) {
-          router.back();
-        } else {
-          router.replace("/events");
-        }
+        router.dismissTo("/events");
       }}
       onOpenIncident={(number) => {
         router.push(`/events/${eventId}/incidents/${number}`);

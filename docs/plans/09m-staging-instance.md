@@ -1,7 +1,8 @@
 # 09m — The staging instance (Phase 3, between 3a.2 and 3a.3)
 
-> **Status:** Merged (#244). Bring-up on the host done 2026-09-09 up to the proxy
-> (§ *Build notes*); the vhost + DNS are pending, then step 2 (§ *Step 2*).
+> **Status:** ✅ Merged (#244; the bring-up notes #245; step 2 #247). **Staging is live**
+> since 2026-09-10 — the Go image and the hosted web build behind Caddy at its hostname,
+> following master (§ *Build notes*); the 3a.3 tracer runs against it (09n § *Verification*).
 > **Parent:** [09i-expo-client.md](09i-expo-client.md) (Phase 3; the 3a gate) under
 > [09-proto-connect-platform.md](09-proto-connect-platform.md)
 > **Follows:** [09l](09l-client-foundations.md) (3a.2, merged as #242) and the SPDX header
@@ -134,9 +135,13 @@ destructive outside the `ocf-ims-staging` project.
   wipes SecureStore.
 - **Web from Metro** (`w`): sign-in and reads only, for one access-token lifetime (S5).
   Good enough to look at screens, not to prove the session.
-- **Web for real:** the hosted build after step 2 — open `https://<staging host>/`.
+- **Web for real:** the hosted build (step 2) — open `https://<staging host>/`. It follows
+  master about ten minutes behind CI (the cron), so right after a merge, wait for the pull.
 - **The 3a.3 tracer:** `E2E_BASE_URL=https://<staging host> E2E_EMAIL=… E2E_PASSWORD=…
-  pnpm -F @ocf-ims/interface e2e` once 3a.3 lands (S7).
+  pnpm -F @ocf-ims/interface e2e` (S7); the interim mode (a local export against staging)
+  needs `export:web --clear`, since Metro caches the inlined `EXPO_PUBLIC_API_URL`.
+- **Changing `EXPO_PUBLIC_API_URL`** for `start` or `export:web`: pass `--clear`, or Metro's
+  transform cache ships the previous value.
 
 ## Step 2 — the Expo web export hosted on staging
 
@@ -189,11 +194,11 @@ On the host: § *Bring-up brief* step 5 and the cron no-op are the acceptance ch
 - [x] Runbook section; client README; CLAUDE.md; 09i rows + gate; 09l → Merged; README rows
 - [x] Plan 09 §7 finding
 - [x] PR opened; CI green; Miguel merges
-- [ ] Bring-up on the home server (the server-side agent session, § *Bring-up brief*); report recorded under *Build notes*
+- [x] Bring-up on the home server (the server-side agent session, § *Bring-up brief*); report recorded under *Build notes* (#245); vhost + DNS up 2026-09-10
 - [ ] 09l hand check (native) done against staging → tick in 09l
-- [x] Step 2 PR: web image in CI, `web` service, Caddy path split
-- [ ] 09l hand check (web) against the hosted build
-- [ ] 3a.3 tracer pointed at staging (S7)
+- [x] Step 2 PR: web image in CI, `web` service, Caddy path split (#247)
+- [ ] 09l hand check (web) against the hosted build — reload-resume (the cookie) and sign-out are proven by the hosted tracer (2026-09-10); the shortened-lifetime refresh watch (`IMS_ACCESS_TOKEN_LIFETIME=90`, devtools) is still to do
+- [x] 3a.3 tracer pointed at staging (S7) — 2026-09-10, 09n § *Verification*
 
 ## Build notes
 

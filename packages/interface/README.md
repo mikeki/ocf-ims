@@ -54,6 +54,8 @@ build proves the whole session there (body-carried refresh token). A browser on
 `localhost` is cross-site to staging and the refresh cookie is `SameSite=Strict`, so
 web from Metro proves sign-in and reads only — refresh and reload-resume are checked
 on the hosted web build at `https://<staging host>/` (same origin, 09m step 2).
+Metro inlines the `EXPO_PUBLIC_*` values and caches the result: after changing one,
+pass `--clear` to `start` or `export:web`, or the previous value ships.
 
 Where the server is comes from `EXPO_PUBLIC_API_URL` (see `.env.example`); when it
 is unset, web uses the page's own origin and a native dev build derives
@@ -114,18 +116,24 @@ server and is environment-gated — it skips unless `E2E_EMAIL` and
 `E2E_PASSWORD` are set — so CI never depends on one. Two modes:
 
 ```bash
-# Interim (before 09m step 2): the local export talks to staging, no reload-resume
-EXPO_PUBLIC_API_URL=https://<staging host> pnpm -F @ocf-ims/interface export:web
+# Interim: the local export talks to staging (cross-site: no reload-resume).
+# --clear: Metro caches the inlined EXPO_PUBLIC_* values; a changed value needs it.
+EXPO_PUBLIC_API_URL=https://<staging host> pnpm -F @ocf-ims/interface export:web --clear
 E2E_EMAIL=miguel@example.com E2E_PASSWORD=Miguel pnpm -F @ocf-ims/interface e2e
-# Hosted (after step 2): the whole flow including the cookie resume
+# Hosted: the whole flow on the build staging serves, including the cookie resume
 E2E_BASE_URL=https://<staging host> E2E_EMAIL=… E2E_PASSWORD=… pnpm -F @ocf-ims/interface e2e
 ```
 
 `E2E_BASE_URL`, when set, is the page's own origin (the hosted web build on
-staging) and the config starts no local server; unset, the local export is
-served on `:8082` as usual. Only the hosted mode proves the web session resumes
-across a reload — the refresh cookie is `SameSite=Strict`, so the interim mode
-(a local export cross-site to staging) never carries it.
+staging) and the config starts no local server; unset, `e2e/serve.mjs` serves the
+local export on `:8082` — a small Node static server with the same single-page
+fallback as the hosted Caddy (`expo serve` answers 404 to any path that is not a
+file, so a deep link could never load the app locally). Only the hosted mode
+proves the web session resumes across a reload — the refresh cookie is
+`SameSite=Strict`, so the interim mode (a local export cross-site to staging)
+never carries it. The second tracer test starts from a signed-out deep link (the
+`?o=` return path, then "Incidents" must reach the list) and needs no cookie, so
+it runs in both modes. Staging follows master about ten minutes behind CI.
 
 ## Layout and rules (09i §5)
 

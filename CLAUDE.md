@@ -108,7 +108,9 @@ is cross-origin: set `IMS_CORS_ALLOWED_ORIGINS=http://localhost:8081` (see
 Configuration). **Hand checks run against the staging instance**
 (`docs/deployment.md`, "Staging instance"; `EXPO_PUBLIC_API_URL=https://<staging
 host>`), not a local stack — and web refresh only works on the hosted web build
-there, since the refresh cookie is `SameSite=Strict`. Every `.ts`/`.tsx` file
+there, since the refresh cookie is `SameSite=Strict`. After changing an
+`EXPO_PUBLIC_*` value pass `--clear` to `start` / `export:web`: Metro caches the
+inlined value. Staging follows master about ten minutes behind CI. Every `.ts`/`.tsx` file
 starts with the one-line SPDX license header (see Linting). Imports: `@/x` is `src/x`; generated protos
 are deep-imported (`@ocf-ims/protocol-buffers/ocf/ims/…/x_pb`); **no barrel
 files**. `ios/`, `android/`, `.expo/`, `dist/` and `expo-env.d.ts` are generated
