@@ -15,7 +15,11 @@ set -o errexit -o nounset -o pipefail
 # The repo checkout the stack runs from (this script lives in deploy/).
 cd "$(dirname "$0")/.."
 
-compose=(docker compose -f docker-compose.staging.yml)
+# --progress quiet: Compose v5 prints its pull/up progress ("Image … Pulled",
+# "Container … Running") on stderr even with `pull --quiet` and `up --quiet-pull`,
+# which would put eight lines in the cron log every ten minutes. This is what
+# keeps "prints a line only when the image changed" true.
+compose=(docker compose --progress quiet -f docker-compose.staging.yml)
 
 before="$("${compose[@]}" images --quiet ims-go 2>/dev/null || true)"
 "${compose[@]}" pull --quiet ims-go

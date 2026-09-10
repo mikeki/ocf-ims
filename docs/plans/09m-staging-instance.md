@@ -1,7 +1,7 @@
 # 09m — The staging instance (Phase 3, between 3a.2 and 3a.3)
 
-> **Status:** Built — for review (branch `feat/staging-instance`); the bring-up on the
-> host is the operator's step (§ *Bring-up brief*), then step 2 (§ *Step 2*).
+> **Status:** Merged (#244). Bring-up on the host done 2026-09-09 up to the proxy
+> (§ *Build notes*); the vhost + DNS are pending, then step 2 (§ *Step 2*).
 > **Parent:** [09i-expo-client.md](09i-expo-client.md) (Phase 3; the 3a gate) under
 > [09-proto-connect-platform.md](09-proto-connect-platform.md)
 > **Follows:** [09l](09l-client-foundations.md) (3a.2, merged as #242) and the SPDX header
@@ -191,7 +191,46 @@ On the host: § *Bring-up brief* step 5 and the cron no-op are the acceptance ch
 
 ## Build notes
 
-(What the host taught — filled in after the bring-up.)
+The bring-up ran 2026-09-09 (evening, Pacific) on Miguel's home server (`maybloom`,
+192.168.10.100; Docker 29.8.0, Compose v5.5.1; 11 GiB RAM with ~4 GiB free, 40 GB
+free on `/`). What the host taught, against the brief:
+
+- **No production stack exists on this host yet** — `docker compose -p ocf-ims ps`
+  is empty and there is no `/opt/ocf-ims`. "Beside production" is for later; nothing
+  had to be protected.
+- **No passwordless sudo**, so nothing lives under `/opt` or `/var/log`. The checkout
+  is `~/workspace/ocf-ims-staging` (a shallow clone of master over SSH), and the cron
+  line is in the **user** crontab writing to `~/logs/ims-staging-deploy.log`:
+  ```
+  */10 * * * * /home/maybloom/workspace/ocf-ims-staging/deploy/staging-pull.sh >> /home/maybloom/logs/ims-staging-deploy.log 2>&1
+  ```
+- **The proxy is the maybloom stack's Caddy** (`maybloom-caddy-1`, compose and
+  Caddyfile in `MaybloomTech/maybloom` under `infra/`, not an `ocf-reverse-proxy`
+  repo), and no `web` / `maybloom-proxy` network existed. `docker network create web`
+  was run once, so `PROXY_NETWORK` stays at its default; the Caddy joins it, and gets
+  the vhost, through maybloom PR #67. That Caddyfile is a single-file bind mount, so
+  the deploy there is `docker compose up -d --no-deps --force-recreate caddy`, not a
+  reload.
+- **Hostname:** on one of Miguel's domains, recorded with the vhost in that private
+  repo, not here — a CNAME to the host's DDNS-tracked A record, which Miguel creates
+  at the registrar. The LAN and the tailnet already resolve it to the server through
+  the local resolver's wildcard rewrite.
+- **The pull script was not quiet.** Compose v5.5.1 prints "Image … Pulled" /
+  "Container … Running" on stderr despite `--quiet` / `--quiet-pull`; the cron log
+  would have gained eight lines per run. Fixed with the global `--progress quiet`
+  (this PR). With it, a run right after a fresh pull prints nothing.
+- **First boot**: goose migrated the empty DB to version 28, the demo seed loaded,
+  `ims healthcheck` said OK and `/ims/api/ping` answered `ack` from a sibling
+  container on `web`, all within ~30 s of `up -d`. Running image:
+  `ghcr.io/mikeki/ocf-ims@sha256:706e47d89f8da61eb6530f28c587bdde835e0e5b1bd682b4bada9e412436fa07`
+  (the `:latest` of 2026-09-09 ~22:30 PDT, i.e. #244's master). The image carries no
+  `org.opencontainers.image.revision` label, so the digest is the only way to say
+  which commit is running — worth adding in `docker-publish`.
+- The two named volumes sit in Docker's default root on the system disk. Acceptable
+  for a re-seedable instance; nothing on staging is worth a ZFS dataset.
+
+Brief steps 1–3 and 6 are done; 4 (vhost) lands with maybloom #67 plus the DNS record,
+then 5 (the outside checks) closes the bring-up.
 
 ## Findings
 
