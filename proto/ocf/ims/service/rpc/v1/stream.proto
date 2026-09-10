@@ -1,0 +1,89 @@
+// SPDX-License-Identifier: Apache-2.0
+
+syntax = "proto3";
+
+package ocf.ims.service.rpc.v1;
+
+import "buf/validate/validate.proto";
+import "google/protobuf/timestamp.proto";
+
+option go_package = "github.com/mikeki/ocf-ims/gen/ocf/ims/service/rpc/v1;servicerpcv1";
+
+// Request/response envelopes for the live stream (declared in ../../v1/service.proto).
+//
+// This is the first server-streaming RPC in the contract (plan 09p, slice 3b.0b).
+// It replaces, for Connect clients, the plain-HTTP SSE poke at
+// GET /ims/api/eventsource, which stays for the templ web UI until Phase 4.
+//
+// The difference that matters is not the transport, it is addressing. SSE is a
+// broadcast hub: it cannot tell one subscriber from another, so a private
+// incident's number has to be REDACTED to a number-less "reload everything"
+// poke, and the accepted residual is that any authenticated subscriber can see
+// THAT something changed in an event even when they may not see WHAT. A stream
+// is per-subscriber, so it FILTERS instead: a poke the subscriber may not see is
+// simply never sent, and the residual goes away.
+
+message WatchEventRequest {
+  // The events to watch. Explicit rather than "everything you can read": this is
+  // an authorization surface, and an enumerated list is auditable where an
+  // implicit one is not. The incidents screen passes one id; the dispatch
+  // console (3c) passes the ids it already listed.
+  repeated int32 event_ids = 1 [
+    (buf.validate.field).repeated.min_items = 1,
+    (buf.validate.field).repeated.max_items = 64,
+    (buf.validate.field).repeated.items.int32.gt = 0
+  ];
+}
+
+// What a poke can say. A poke names a thing that changed; it never carries the
+// thing itself.
+enum EventPokeKind {
+  EVENT_POKE_KIND_UNSPECIFIED = 0;
+
+  // The stream is alive and nothing has changed. Sent every 25 s so an idle
+  // connection is not reaped by an intermediary (Caddy and most proxies sit at
+  // 30-60 s). Modelled as a poke rather than a transport-level ping so the
+  // client observes liveness in one place, with everything else.
+  EVENT_POKE_KIND_HEARTBEAT = 1;
+
+  // An incident was created or changed. incident_number is set.
+  EVENT_POKE_KIND_INCIDENT_CHANGED = 2;
+
+  // A field report was created or changed. report_number is set.
+  EVENT_POKE_KIND_REPORT_CHANGED = 3;
+}
+
+// The envelope each streamed message arrives in. It exists because buf's
+// RPC_RESPONSE_STANDARD_NAME rule wants one, and it earns its keep: the envelope
+// can grow — a resume cursor, a backpressure hint — without changing the poke
+// inside it. Same shape as every other response here (GetIncidentResponse wraps
+// an IncidentView).
+message WatchEventResponse {
+  EventPoke poke = 1;
+}
+
+// EventPoke is a poke, not a payload: it says WHAT changed so the client can
+// refetch through the existing access-gated read (GetIncident, GetReport), which
+// the client already has.
+//
+// It deliberately carries no incident content. Putting content here would move
+// authorization onto the publish path and duplicate the read path's privacy
+// logic in a second place — two implementations of "may this person see this",
+// which is exactly how a private incident eventually leaks.
+message EventPoke {
+  EventPokeKind kind = 1;
+
+  // The event the change happened in. Zero on a heartbeat, which belongs to the
+  // whole stream rather than to any one event.
+  int32 event_id = 2;
+
+  // Set when kind is INCIDENT_CHANGED.
+  optional int32 incident_number = 3;
+
+  // Set when kind is REPORT_CHANGED.
+  optional int32 report_number = 4;
+
+  // When the server sent this poke. On a heartbeat it is the only content, and
+  // it is what lets a client notice a stream that is open but stalled.
+  google.protobuf.Timestamp sent = 5;
+}

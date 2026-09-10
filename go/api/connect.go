@@ -62,7 +62,12 @@ type ImsService struct {
 	Notification notification.Service
 	Push         push.Service
 	Metrics      metrics.Service
-	ActionLog    actionlog.Service
+	// Watch is not a domain Service: with WatchPolicy carrying both
+	// authorization questions, the WatchEvent stream is pure mechanics and the
+	// hub is the whole implementation. It is nil in tests that do not exercise
+	// the stream, and the RPC then answers Unimplemented rather than panicking.
+	Watch     *server.WatchHub
+	ActionLog actionlog.Service
 }
 
 // ListEvents is a thin RPC method over the event.ListEvents domain method (plan
@@ -876,6 +881,19 @@ func (s ImsService) UnsubscribePush(
 	return connect.NewResponse(resp), nil
 }
 
+// WatchEvent is the one server-streaming RPC (plan 09p 3b.0b). The delegator
+// shape differs from every other method here — connect hands a *ServerStream to
+// send on instead of taking a response back — so the domain is given a plain
+// send func rather than the connect type, keeping internal/incident free of a
+// transport dependency it has nowhere else.
+func (s ImsService) WatchEvent(
+	ctx context.Context,
+	req *connect.Request[servicerpcv1.WatchEventRequest],
+	stream *connect.ServerStream[servicerpcv1.WatchEventResponse],
+) error {
+	return s.Watch.Stream(ctx, req.Msg, stream.Send)
+}
+
 // GetMetrics is a thin method over metrics.Service (connect.go, plan 09h/1c), retiring REST GET
 // /events/{eventName}/metrics. The domain method authorizes from ctx claims (admin or event writer),
 // serves from the shared per-event MetricsCache, and speaks Connect errors, so this just delegates.
@@ -921,6 +939,7 @@ func AddConnectToMux(
 	actionLogger server.ActionLogger,
 	userStore directory.UserStore,
 	es *server.EventSourcerer,
+	watchHub *server.WatchHub,
 	metricsCache *server.MetricsCache,
 	pushSender pushlib.Sender,
 	s3Client *attachment.S3Client,
@@ -1012,6 +1031,7 @@ func AddConnectToMux(
 			// invalidate — the REST GET .../metrics route was retired with this extraction, so the RPC
 			// is now the sole reader of that cache.
 			Metrics:   metrics.Service{ImsDBQ: imsDBQ, UserStore: userStore, Cache: metricsCache},
+			Watch:     watchHub,
 			ActionLog: actionlog.Service{ImsDBQ: imsDBQ, UserStore: userStore},
 		},
 		connect.WithInterceptors(interceptors...),

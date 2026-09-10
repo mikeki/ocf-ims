@@ -79,6 +79,15 @@ type IncidentPrivacyOracle func(ctx context.Context, eventID, incidentNumber int
 type EventSourcerer struct {
 	Server    *eventsource.Server
 	IdCounter atomic.Int64
+	// Watch is the second publisher (plan 09p 3b.0b): the per-subscriber
+	// WatchEvent hub. It is set here rather than at the ~22 call sites because
+	// the four Notify* methods below are already the single fan-out point every
+	// one of them goes through — so the two transports are fed by one set of
+	// triggers, not two (09p S7), and adding the stream changed no caller.
+	//
+	// Nil means no stream is attached, and every method below is nil-safe, so
+	// every existing test that builds an EventSourcerer alone still works.
+	Watch *WatchHub
 
 	// incidentIsPrivate is consulted before every incident poke. It is required (see
 	// NewEventSourcerer): the constructor takes it explicitly rather than defaulting,
@@ -132,6 +141,7 @@ func (es *EventSourcerer) NotifyReportUpdate(eventID int32, reportNumber int32) 
 			ReportNumber: reportNumber,
 		},
 	})
+	es.Watch.Publish(Poke{EventID: eventID, ReportNumber: reportNumber})
 }
 
 func (es *EventSourcerer) NotifyIncidentUpdate(ctx context.Context, eventID int32, incidentNumber int32) {
@@ -142,6 +152,10 @@ func (es *EventSourcerer) NotifyIncidentUpdate(ctx context.Context, eventID int3
 		EventID:   es.IdCounter.Add(1),
 		EventData: es.incidentEventData(ctx, eventID, incidentNumber),
 	})
+	// The SSE poke above had to be redacted by the privacy oracle because a
+	// broadcast cannot address a subscriber. This one carries the real number:
+	// the stream filters per subscriber instead, at send time.
+	es.Watch.Publish(Poke{EventID: eventID, IncidentNumber: incidentNumber})
 }
 
 func (es *EventSourcerer) NotifyIncidentUpdates(ctx context.Context, eventID int32, incident1, incident2 int32) {
@@ -151,6 +165,10 @@ func (es *EventSourcerer) NotifyIncidentUpdates(ctx context.Context, eventID int
 	}
 }
 
+// NotifyVisitUpdate deliberately publishes NO stream poke. The Visits UI is off
+// for 2026 (#61, re-enabled via visitsEnabled) and the contract has no visit poke
+// kind, so a stream subscriber has nothing to do with one. Add the kind and the
+// Watch.Publish together, or not at all.
 func (es *EventSourcerer) NotifyVisitUpdate(eventID int32, visitNumber int32) {
 	if visitNumber == 0 {
 		return
