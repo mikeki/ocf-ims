@@ -1702,6 +1702,32 @@ server in the loop, and that is what most of the findings are about:
   never sign-out — the smoke asserts exactly that), but the title is the generic one.
   A misconfigured `EXPO_PUBLIC_API_URL` will look like this in the field.
 
+### Staging — a Strict cookie needs a same-site client (2026-09-09)
+
+The laptop cannot run the docker dev stack, so the Phase-3 hand checks and the 3a.3
+tracer move to a deployed staging instance ([09m](09m-staging-instance.md)): the
+production image following master, the demo seed, its own hostname behind the same
+Caddy. Two things worth carrying:
+
+- **A `SameSite=Strict` session cookie rules out "dev server here, API there" on
+  web.** The refresh cookie is `HttpOnly; Secure; SameSite=Strict`, which is the right
+  setting for a same-origin production — and it means a browser on
+  `http://localhost:8081` talking to `https://ims-staging.…` is cross-site: Chrome
+  neither sends nor stores a `Strict` cookie from a cross-site response, so the client
+  signs in, reads for one access-token lifetime, and then cannot refresh or resume a
+  reload. The local docker stack had hidden this: `localhost:8081` → `localhost:8090`
+  is *same-site* (ports do not count), so the cookie flowed and the CORS allow-list
+  looked sufficient. It is sufficient for reads; the web session path is only proven
+  by hosting the web build on the API's origin (09i E9, 09m step 2). The native client
+  carries its refresh token in the body and never meets the problem. For the maybloom
+  Expo path: a cookie-based web session plus a cross-origin dev server is a trap
+  unless the cookie is `Lax` or the dev server is proxied to be same-site.
+- **Staging follows master by pulling a CI-tested tag.** `latest` is only moved by the
+  job that runs after lint, the Go suite and the image test; the host pulls it from
+  cron and restarts only when the image changed. A home server needs no inbound
+  access and GitHub holds no deploy key — the same shape the production runbook
+  chose, with `pull_policy: always` instead of a pinned SHA.
+
 ## 8. Open questions
 
 1. **Does the Go binary keep serving static assets in production**, or does Caddy?

@@ -101,8 +101,11 @@ pnpm -F @ocf-ims/interface start       # Metro dev server on :8081
 
 The `Interface` CI job runs the same list. Against the docker stack the dev server
 is cross-origin: set `IMS_CORS_ALLOWED_ORIGINS=http://localhost:8081` (see
-Configuration). Every `.ts`/`.tsx` file starts with the one-line SPDX license
-header (see Linting). Imports: `@/x` is `src/x`; generated protos
+Configuration). **Hand checks run against the staging instance**
+(`docs/deployment.md`, "Staging instance"; `EXPO_PUBLIC_API_URL=https://<staging
+host>`), not a local stack — and web refresh only works on the hosted web build
+there, since the refresh cookie is `SameSite=Strict`. Every `.ts`/`.tsx` file
+starts with the one-line SPDX license header (see Linting). Imports: `@/x` is `src/x`; generated protos
 are deep-imported (`@ocf-ims/protocol-buffers/ocf/ims/…/x_pb`); **no barrel
 files**. `ios/`, `android/`, `.expo/`, `dist/` and `expo-env.d.ts` are generated
 and never committed. See `packages/interface/README.md`.

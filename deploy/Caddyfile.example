@@ -32,6 +32,19 @@ ims.ocf.example.org {
 	reverse_proxy ocf-ims:80
 }
 
+# ---- The staging instance (plan 09m) --------------------------------------
+# The same image as production, following master, seeded with the public demo
+# logins — so keep it out of search engines and never put real data on it. It
+# is what the Expo client's hand checks and Playwright tracer run against; the
+# web client needs HTTPS here (its refresh cookie is Secure), and this hostname
+# is what EXPO_PUBLIC_API_URL points at. (09m step 2 puts the hosted web build
+# in front: `/ims/*` and the Connect prefix stay on the Go container, everything
+# else goes to the web container.)
+ims-staging.ocf.example.org {
+	header X-Robots-Tag "noindex, nofollow"
+	reverse_proxy ocf-ims-staging:80
+}
+
 # ---- Monitoring (lock these down — they expose logs and metrics) ----------
 # Generate a password hash with:  caddy hash-password
 # Then put real bcrypt hashes below. Protect every monitoring tool.
