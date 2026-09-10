@@ -31,8 +31,8 @@ repos:
       - id: trailing-whitespace
 
   # The Go module lives under go/ (plan 09f). pre-commit runs from the repo root
-  # (where .git is), so every Go check cd's into go/ first — that also makes
-  # `go env GOMOD` resolve to go/go.mod for tools that self-locate (prependlicense).
+  # (where .git is), so every Go check cd's into go/ first. prependlicense walks
+  # the whole work tree (it asks git for the root), not just go/.
   # golangci-lint is a local `go run` at the pinned version (it is not a go tool in
   # go.mod, and the hosted hook cannot target a nested module).
   - repo: local
