@@ -192,7 +192,7 @@ On the host: § *Bring-up brief* step 5 and the cron no-op are the acceptance ch
 - [ ] Bring-up on the home server (the server-side agent session, § *Bring-up brief*); report recorded under *Build notes*
 - [ ] 09l hand check (native) done against staging → tick in 09l
 - [x] Step 2 PR: web image in CI, `web` service, Caddy path split
-- [ ] 09l hand check (web) against the hosted build
+- [x] 09l hand check (web) against the hosted build — 2026-09-10, Miguel: sign in at `/`, reload, still signed in
 - [ ] 3a.3 tracer pointed at staging (S7)
 
 ## Build notes

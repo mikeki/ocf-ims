@@ -236,8 +236,12 @@ Hand checks against the docker stack are recorded under *Findings* as they are d
 - [x] Plan 09 §7 finding
 - [x] §9 protocol green locally
 - [ ] PR opened; CI green; Miguel merges
-- [ ] Hand check: Chrome against the docker stack (cookie refresh, reload resumes, sign-out clears) —
-      **attempted 2026-09-09, blocked by the dev machine, not the client**: (1) the `ocf-ims`
+- [x] Hand check: Chrome (cookie refresh, reload resumes, sign-out clears) — **done
+      2026-09-10 by Miguel against the hosted web build on the staging instance**
+      ([09m](09m-staging-instance.md) step 2: the Expo export at `/` and the Go server at
+      `/ims` + the Connect prefix on one origin, so the `SameSite=Strict` refresh cookie
+      flows): signed in, reloaded, still signed in. The docker-stack attempt is kept below
+      for the record — **attempted 2026-09-09, blocked by the dev machine, not the client**: (1) the `ocf-ims`
       dev container's first `air` build was OOM-killed compiling the buf plugins
       (`protoc-gen-connect-openapi`: `signal: killed`; the generators run in parallel and
       Docker Desktop had 7.7 GiB); (2) running the server locally against the compose
