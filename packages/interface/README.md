@@ -41,6 +41,20 @@ is a different origin, so start the stack with the CORS allow-list from 3a.0:
 IMS_CORS_ALLOWED_ORIGINS=http://localhost:8081 docker compose -f docker-compose.dev.yml up
 ```
 
+Against the **staging instance** — the deployed testing server, plan
+[09m](../../docs/plans/09m-staging-instance.md), whose `.env` lists the laptop's
+`http://localhost:8081` and `:8082` in `IMS_CORS_ALLOWED_ORIGINS`:
+
+```bash
+EXPO_PUBLIC_API_URL=https://ims-staging.example.org pnpm -F @ocf-ims/interface start
+```
+
+Sign in as a seeded demo user (`miguel@example.com` / `Miguel`). The iOS / Android
+build proves the whole session there (body-carried refresh token). A browser on
+`localhost` is cross-site to staging and the refresh cookie is `SameSite=Strict`, so
+web from Metro proves sign-in and reads only — refresh and reload-resume are checked
+on the hosted web build (same origin, 09m step 2).
+
 Where the server is comes from `EXPO_PUBLIC_API_URL` (see `.env.example`); when it
 is unset, web uses the page's own origin and a native dev build derives
 `http://<the machine running Metro>:8090` from the Expo dev server, so the simulator

@@ -200,3 +200,64 @@ docker run --rm -v ocf-ims_ims-attachments:/data -v "$PWD/backups":/out alpine \
   reboot). After editing a compose file, `up -d` to recreate the affected service
   rather than leaving the old container running.
 - **HTTPS is required** for web-push/service-workers — Caddy provides it.
+
+## Staging instance
+
+A second stack for testing (plan [09m](plans/09m-staging-instance.md)): the same
+GHCR image as production, **following master** instead of pinned, **seeded with
+the demo data** instead of empty, at its own hostname behind the same Caddy. The
+Phase-3 client work (the Expo app, plan 09i) is hand-checked against it and its
+Playwright tracer runs against it. Because the demo logins are public knowledge
+(password = handle), **it must never hold real data** — it is not a fallback for
+production.
+
+It runs beside production on the same host, isolated by a distinct compose project
+(`ocf-ims-staging`: its own containers, volumes and default network) and its own
+checkout with its own `.env`:
+
+```bash
+sudo git clone --depth 1 https://github.com/mikeki/ocf-ims /opt/ocf-ims-staging
+cd /opt/ocf-ims-staging
+cp deploy/.env.staging.example .env
+# IMS_JWT_SECRET=$(openssl rand -hex 32)   IMS_DB_PASSWORD=$(openssl rand -hex 24)
+$EDITOR .env
+docker compose -f docker-compose.staging.yml pull
+docker compose -f docker-compose.staging.yml up -d
+docker compose -f docker-compose.staging.yml logs -f ims-go   # migrations, then the seed
+```
+
+Add the `ims-staging.` block from `deploy/Caddyfile.example` to your Caddyfile (it
+proxies `ocf-ims-staging:80` over the shared `web` network — set `PROXY_NETWORK` in
+`.env` if the network has another name) and a DNS record for the hostname. Then:
+
+```bash
+curl -fsS https://ims-staging.ocf.example.org/ims/api/ping     # "ack"
+```
+
+and sign in as `miguel@example.com` / `Miguel` (an admin in the seed).
+
+**Following master.** `IMAGE_TAG=latest` with `pull_policy: always` means every
+`up -d` moves staging to the newest master build that passed CI. To do that on its
+own, run `deploy/staging-pull.sh` from cron — it prints a line only when the image
+changed:
+
+```
+*/10 * * * * /opt/ocf-ims-staging/deploy/staging-pull.sh >> /var/log/ims-staging-deploy.log 2>&1
+```
+
+Pin `IMAGE_TAG=<sha>` in `.env` to freeze it during a test session. Migrations run
+on boot exactly as in production, so a build that adds one migrates staging first —
+which is the point.
+
+**Resetting.** Back to the seed:
+`docker compose -f docker-compose.staging.yml down -v && docker compose -f docker-compose.staging.yml up -d`
+(drops the DB and attachments volumes; the app re-migrates and re-seeds).
+
+**Knobs for the client work** (all in `.env`; see `deploy/.env.staging.example`):
+`IMS_CORS_ALLOWED_ORIGINS` for an Expo dev server on a laptop,
+`IMS_ACCESS_TOKEN_LIFETIME` (seconds) to watch the client refresh without waiting,
+`IMS_DEFAULT_PASSWORD` to exercise the forced password change. Know the limit: the
+web client's refresh cookie is `SameSite=Strict`, so a browser on `localhost`
+talking to staging cross-site can sign in and read but never refreshes or resumes a
+reload. That path is checked on the hosted web build (09m step 2, same origin); the
+native client carries its refresh token in the body and is unaffected.

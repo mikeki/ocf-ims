@@ -1,0 +1,123 @@
+# Staging compose for OCF IMS (plan 09m) — the testing instance the Phase-3
+# client work is checked against.
+#
+#   docker compose -f docker-compose.staging.yml pull
+#   docker compose -f docker-compose.staging.yml up -d
+#
+# It is docker-compose.prod.yml with the knobs a test instance wants, and it is
+# meant to run BESIDE production on the same Docker host: its own compose project,
+# its own checkout directory and .env, its own volumes, its own hostname behind
+# the same Caddy. How it differs from production:
+#
+#   * IMAGE_TAG defaults to `latest` and `pull_policy: always`, so it FOLLOWS
+#     MASTER: every `up -d` (and deploy/staging-pull.sh, from cron) moves it to
+#     the newest master build that passed CI. Production pins a SHA and never
+#     moves on its own. To freeze staging for a test session, set IMAGE_TAG=<sha>
+#     in .env.
+#   * IMS_SEED=demo: a fresh database gets the demo seed — the people, events and
+#     incidents the dev stack has, every login's password = its handle — so a
+#     tester and the Playwright tracer can sign in without anyone creating
+#     accounts. Those logins are public knowledge: this instance must NEVER hold
+#     real data. Reset it to the seed with `down -v`, then `up -d`.
+#   * IMS_DEPLOYMENT=staging; DEBUG logging by default.
+#   * The client-work knobs, all optional and read from .env:
+#     IMS_CORS_ALLOWED_ORIGINS for an Expo dev server on a laptop,
+#     IMS_ACCESS_TOKEN_LIFETIME to watch the refresh path without waiting,
+#     IMS_DEFAULT_PASSWORD to exercise the forced password change.
+#
+# Copy deploy/.env.staging.example to ./.env in this stack's OWN checkout (e.g.
+# /opt/ocf-ims-staging) and fill in the secrets; see docs/deployment.md, "Staging
+# instance".
+
+# A project name distinct from production's (`ocf-ims`) keeps the two stacks'
+# containers, networks and volumes apart (ocf-ims-staging_ims-db-data, …) and
+# makes a `--remove-orphans` on one unable to touch the other.
+name: ocf-ims-staging
+
+services:
+
+  ims-go:
+    image: "ghcr.io/mikeki/ocf-ims:${IMAGE_TAG:-latest}"
+    # `always`: every `up -d` re-pulls the tag, so staging follows master — the
+    # opposite of production's `missing`.
+    pull_policy: always
+    container_name: "ocf-ims-staging"
+    restart: unless-stopped
+    env_file:
+      - .env
+    environment:
+      IMS_DEPLOYMENT: "staging"
+      IMS_LOG_LEVEL: "${IMS_LOG_LEVEL:-DEBUG}"
+      IMS_DB_STORE_TYPE: "mariadb"
+      IMS_DB_HOST_NAME: "ims-db"
+      # The app reads IMS_DB_HOST_PORT (not IMS_DB_PORT — that key is ignored).
+      IMS_DB_HOST_PORT: "3306"
+      IMS_DB_DATABASE: "${IMS_DB_DATABASE:-ims}"
+      IMS_DB_USER_NAME: "${IMS_DB_USER_NAME:-ims}"
+      IMS_DB_PASSWORD: "${IMS_DB_PASSWORD:?set IMS_DB_PASSWORD in .env}"
+      # Stable signing key — a non-dev deployment refuses to start without one,
+      # and changing it logs every tester out.
+      IMS_JWT_SECRET: "${IMS_JWT_SECRET:?set IMS_JWT_SECRET in .env}"
+      # Refresh-token lifetime = the felt session length (7 days).
+      IMS_TOKEN_LIFETIME: "${IMS_TOKEN_LIFETIME:-604800}"
+      # Access-token lifetime in seconds (15 min). Shorten it (e.g. 90) to watch
+      # the Expo client's proactive refresh, which fires 60 s before expiry.
+      IMS_ACCESS_TOKEN_LIFETIME: "${IMS_ACCESS_TOKEN_LIFETIME:-900}"
+      # Local attachments on the named volume mounted below (writable by daemon,
+      # see Dockerfile).
+      IMS_ATTACHMENTS_STORE: "${IMS_ATTACHMENTS_STORE:-local}"
+      IMS_ATTACHMENTS_LOCAL_DIR: "/opt/ims/attachments"
+      # The demo seed, loaded into an EMPTY database on boot (idempotent; store.Seed).
+      IMS_SEED: "${IMS_SEED:-demo}"
+      # Expo dev-server origins allowed to call this instance cross-origin with
+      # credentials (plan 09j). Empty = CORS off.
+      IMS_CORS_ALLOWED_ORIGINS: "${IMS_CORS_ALLOWED_ORIGINS:-}"
+      # The shared onboarding password; a user still signed in with it is asked to
+      # choose their own. Empty = the feature is off.
+      IMS_DEFAULT_PASSWORD: "${IMS_DEFAULT_PASSWORD:-}"
+    volumes:
+      - ims-attachments:/opt/ims/attachments
+    networks:
+      - default
+      - web
+    depends_on:
+      ims-db:
+        condition: service_healthy
+    healthcheck:
+      test: [ "CMD", "/opt/ims/bin/ims", "healthcheck", "--server_url", "http://localhost:80" ]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      # First boot runs the goose migrations and the seed before serving.
+      start_period: 40s
+
+  ims-db:
+    image: "mariadb:10.5.27"
+    container_name: "ocf-ims-staging-db"
+    restart: unless-stopped
+    environment:
+      MARIADB_DATABASE: "${IMS_DB_DATABASE:-ims}"
+      MARIADB_USER: "${IMS_DB_USER_NAME:-ims}"
+      MARIADB_PASSWORD: "${IMS_DB_PASSWORD:?set IMS_DB_PASSWORD in .env}"
+      MARIADB_RANDOM_ROOT_PASSWORD: "yes"
+    volumes:
+      - ims-db-data:/var/lib/mysql
+    # No host port published — only ims-go (same default network) talks to it.
+    healthcheck:
+      test: [ "CMD", "healthcheck.sh", "--connect", "--innodb_initialized" ]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+volumes:
+  ims-db-data:
+  ims-attachments:
+
+networks:
+  # The reverse proxy's shared network: `web` on the production host (see
+  # docs/deployment.md). PROXY_NETWORK in .env overrides the name for a host that
+  # calls it something else (the demo host's `maybloom-proxy`).
+  web:
+    external: true
+    name: "${PROXY_NETWORK:-web}"
+  default:

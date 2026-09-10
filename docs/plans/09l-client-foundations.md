@@ -1,6 +1,6 @@
 # 09l — Client foundations: transport, session, data layer (slice 3a.2)
 
-> **Status:** Built — for review (branch `feat/3a2-foundations`); §9 client protocol green locally (68 Jest tests, Playwright smoke)
+> **Status:** ✅ Merged (PR #242, 2026-09-09); §9 client protocol green (68 Jest tests, Playwright smoke). The hand checks wait for the staging instance ([09m](09m-staging-instance.md)).
 > **Parent:** [09i-expo-client.md](09i-expo-client.md) (Phase 3, slice 3a.2) under
 > [09-proto-connect-platform.md](09-proto-connect-platform.md) (Phase 3)
 > **Follows:** [09k](09k-interface-scaffold.md) (3a.1, merged as #241) and
