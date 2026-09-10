@@ -250,6 +250,10 @@ Hand checks against the docker stack are recorded under *Findings* as they are d
       maps to `unavailable`, unlike the `expo serve` HTML case). Also noted: `.env.example`
       still documents an `IMS_DB_STORE_TYPE="fake"` that the server no longer accepts.
 - [ ] Hand check: iOS simulator against the docker stack (SecureStore resume after relaunch, sign-out wipes) — not attempted (same stack)
+- **Decision (Miguel, 2026-09-09): the laptop cannot run the full stack; both hand checks
+  are deferred to a deployed testing instance.** They stay on this list and on the 3a gate
+  (09i §8) rather than blocking the merge; 3a.3's Playwright tracer runs against that
+  instance too, once it exists.
 
 ## Findings
 
