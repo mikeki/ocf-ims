@@ -96,6 +96,16 @@ The whole budget, from `tokens.motion`:
 - Dynamic type is respected: no measured or hard-coded heights on text.
 - Colour is never the sole carrier of meaning.
 
+## Not built yet
+
+This file describes the system D0 settled, and `tokens.ts` already holds its
+values — but **the primitives have not been restyled to match**. Until the 3a.4
+builder run lands (plan 09o § *Build plan* step 4), the app renders Dispatch's
+palette, type, spacing and radii through the 09l primitives: the incident number
+is still a title prefix rather than a column, badges are still solid fills rather
+than tinted chips, and nothing carries the press feedback. Read the two together
+— this file is the target, the primitives are the current state.
+
 ## Deliberately not done
 
 - **No custom typeface.** The system font is right until something proves it is
