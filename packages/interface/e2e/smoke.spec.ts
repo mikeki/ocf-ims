@@ -4,14 +4,14 @@ import { expect, test } from "@playwright/test";
 
 // The 3a.2 smoke: the web export boots in a real browser, the root layout
 // mounts the providers, and the session bootstraps — which, with nothing
-// answering the Connect routes behind `expo serve` (it serves index.html back),
+// answering the Connect routes behind `e2e/serve.mjs` (a 404 to any POST),
 // must end in the `unreachable` state (a Retry), never in a sign-out: the
 // transport treats everything but an Unauthenticated from RefreshToken as
 // transient (09l F4). Since 09n the app boots into the `(app)` route group's
 // layout (T1), which renders `Unreachable` directly for that state — Retry
 // visible, no "Connecting…", no "Sign in" — there is no login screen to show
 // "OCF IMS" on. This test skips whenever a real server might answer instead
-// of `expo serve`'s index.html fallback (E2E_EMAIL, or E2E_BASE_URL pointing
+// of the local static server (E2E_EMAIL, or E2E_BASE_URL pointing
 // `e2e/tracer.spec.ts` at one) — its "nothing answers the RPCs" premise would
 // be false. `tracer.spec.ts` is the suite that walks the full flow against a
 // server.

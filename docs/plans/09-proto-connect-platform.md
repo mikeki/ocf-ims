@@ -1766,6 +1766,32 @@ review between them. What the slice settled, for the maybloom Expo path:
   staging host is up the tracer is code that has not run — recorded as such, not
   hidden.
 
+### 3a.3 on staging — what the hosted tracer caught (2026-09-10)
+
+The staging host came up the day #246 merged, and the tracer ran against the hosted
+build the same afternoon. The flow was green through the cookie reload-resume; what
+it caught, and what the interim mode taught on the way ([09n](09n-tracer-screens.md)
+§ *Build notes*):
+
+- **"Back" is `dismissTo`, not `canGoBack() ? back() : replace()`.** With a stack
+  anchor (`unstable_settings.anchor`), a screen reached by a deep link, a reload or
+  the `?o=` return path has the *anchor* beneath it, not its parent — so
+  `canGoBack()` is true and `back()` pops to the wrong screen. Expo Router's
+  `dismissTo(href)` has the semantics a back button means: pop to the href when it
+  is in the stack, replace the current screen with it when it is not. Jest cannot
+  see this (routes are untested by design); only a real navigation stack can, which
+  is what the hosted run and the second tracer test (a signed-out deep link) are for.
+- **Metro caches inlined `EXPO_PUBLIC_*` values across exports.** An export run after
+  another with a different `EXPO_PUBLIC_API_URL` ships the earlier value; `--clear`
+  drops the transform cache. The symptom is silent — the app talks to the wrong
+  origin — so the documented commands now carry the flag.
+- **`expo serve` cannot serve a single-page app's deep link** (404 for any path that
+  is not a file), unlike Metro and the hosted Caddy. A twenty-line Node static server
+  with the `try_files` fallback replaced it behind Playwright; the CI smoke's premise
+  (nothing answers the RPCs) is kept by answering 404 to everything else.
+- **A pull-based staging lags CI by its cron interval** (ten minutes here). The first
+  hosted run hit the previous image; the lag is now written down where the tracer is.
+
 ## 8. Open questions
 
 1. **Does the Go binary keep serving static assets in production**, or does Caddy?

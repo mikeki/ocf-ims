@@ -1,6 +1,6 @@
 # 09n — Tracer screens: login, events, incidents, incident, sign out (slice 3a.3)
 
-> **Status:** Built — for review (both parts built and reviewed; §9 green; the tracer has not yet run against staging)
+> **Status:** ✅ Merged (#246, 2026-09-10). Run against staging the same day (§ *Verification*): the hosted flow is green through the reload-resume; the two things it caught — back after a deep link, the interim mode's export cache — are fixed in the follow-up PR, with a second tracer test.
 > **Parent:** [09i-expo-client.md](09i-expo-client.md) (Phase 3, slice 3a.3) under
 > [09-proto-connect-platform.md](09-proto-connect-platform.md) (Phase 3)
 > **Follows:** [09l](09l-client-foundations.md) (3a.2, merged as #242) and
@@ -34,7 +34,7 @@ the right state — and every one of those states is a Jest test that runs with 
 | T2 | **The forced password change is a gate, not a route.** While `state.auth.usingDefaultPassword` is true the `(app)` layout renders `ChangePasswordScreen` *instead of* its `<Stack>`. Success → `ChangeOwnPassword` then `await refreshAuthStatus()`; the flag flips and the stack mounts at whatever URL was requested. The screen also offers Sign out. | Mirrors the templ's non-dismissable modal (`ims.ts`, `showChangeDefaultPasswordModal`) without a route that could be navigated around. |
 | T3 | **The login return path (`?o=`) is web-only and in-app-only.** `safeReturnPath(o)` accepts only a string that starts with `/events` and matches `^[A-Za-z0-9_\-/]+$` (no scheme, no `//`, no query, no dot); anything else → `undefined` → `/`. The `(app)` layout writes it from `usePathname()` only when `Platform.OS === "web"`; the `(auth)` layout reads it with `useGlobalSearchParams()`. Native never writes it (a cold-start deep link is not resumed in this slice). **Architect-written** (`src/lib/returnPath.ts` + its test) — an open-redirect guard is security code (09i §7 rule 3). | The templ rule ported (`web/typescript/login.ts`: `internalDest` + `looksSafe`, code-scanning #4/#6), narrowed to the client's own routes. |
 | T4 | **The default event = the remembered one, else the newest.** `app/(app)/index.tsx` loads `ListEvents` and redirects to `/events/<id>/incidents` for the remembered event id (AsyncStorage key `ocf-ims/selectedEventId`) when it is in the list, else the newest event; with no events it goes to `/events` (the list shows its empty state). `newestEvent()` = the highest *numeric* name, else the highest id. Opening an event from the list remembers it. The remembered id is **not** cleared on sign-out. | "What people rely on": login lands on the current fair (templ `activeEventDestination`, #80). Ids do not track years — a later-seeded older year has a higher id — hence name-first (`ims.ts` `newestEvent`). A device at the fair keeps its event across sign-outs; nothing sensitive is stored. |
-| T5 | **Headers are ours; the events list is the stack's anchor.** The `(app)` group's `<Stack>` runs with `headerShown: false` and every screen renders `ScreenHeader({ title, back? })` — a themed row with an optional back button labelled with the parent screen's name ("Events" on the incidents screen, "Incidents" on the detail). Back = `router.back()` when `router.canGoBack()`, else `router.replace(<parent href>)`. `(app)/_layout.tsx` exports `unstable_settings = { anchor: "events/index" }` so a screen reached by redirect or deep link has the list beneath it. | One header on all three platforms, fully covered by Jest and reachable by the tracer (`getByRole("button", { name: "Events" })`); no react-navigation header quirks on web. The anchor keeps the native back gesture sane. 3b.1 replaces all of it with tabs/sidebar from D1. |
+| T5 | **Headers are ours; the events list is the stack's anchor.** The `(app)` group's `<Stack>` runs with `headerShown: false` and every screen renders `ScreenHeader({ title, back? })` — a themed row with an optional back button labelled with the parent screen's name ("Events" on the incidents screen, "Incidents" on the detail). Back = `router.dismissTo(<parent href>)`: it pops to the parent when the parent is in the stack and replaces the current screen with it when it is not. (The first cut was `router.back()` when `router.canGoBack()`, else `replace` — which after a deep link or a reload pops to whatever is beneath, and that is the anchor, not the parent; the hosted tracer caught it, § *Build notes*.) `(app)/_layout.tsx` exports `unstable_settings = { anchor: "events/index" }` so a screen reached by redirect or deep link has the events list beneath it. | One header on all three platforms, fully covered by Jest and reachable by the tracer (`getByRole("button", { name: "Events" })`); no react-navigation header quirks on web. The anchor keeps the native back gesture sane. 3b.1 replaces all of it with tabs/sidebar from D1. |
 | T6 | **Hooks per domain, screens as components, routes thin.** `src/features/events/hooks.ts`, `src/features/incidents/hooks.ts`; every screen is a component under `src/features/<domain>/` that takes its ids and navigation callbacks as props (`onOpenEvent`, `onOpenIncident`, `onBack`); the `app/` route file reads params (`useLocalSearchParams`), parses them, and wires `router`. | 09i §5. Screens test under `renderWithProviders` with `jest.fn()` callbacks — no router in Jest. The layouts and route files stay thin and untested; the tracer covers them. |
 | T7 | **Reads are plain connect-query `useQuery` calls** with the 09l defaults, plus: the incidents list polls (`refetchInterval: 30_000`) and pulls to refresh (`RefreshControl`); the detail pulls to refresh. `ListIncidentTypes` and `ListAreas` are lookups that **never block a screen** — a failed or absent lookup falls back (type → `Type #<id>`, area → the slug). `ListAreas` is asked only when `useEventAccess(eventId).readAreas` — a `GetAuthStatus{ event_id }` query with a 5-minute `staleTime`. | E6 (poll until the stream, 3b.6). The 09i permissions rule: `event_access` gates affordances; asking once per event is cheaper than catching a `PermissionDenied` per screen, and 3b needs the same hook for `writeIncidents`. |
 | T8 | **Errors render through `toAppError`, one component.** `ErrorState({ error, onRetry? })` shows `title` + `message` and a Retry button when `error.retryable && onRetry`; on the detail, `notFound` is the **empty state** ("There's no incident #N here.", never "private"); on the list, `forbidden` is a plain message with no Retry. | 09i §5 privacy rule: the client never distinguishes "private" from "missing". |
@@ -308,13 +308,25 @@ test("login → events → incidents → incident → sign out", async ({ page }
 Never `page.goto` mid-flow: in the interim mode (local export, cross-site to staging) a full
 page load re-bootstraps without a cookie and lands on the login screen. `playwright.config.ts`:
 `baseURL = process.env.E2E_BASE_URL ?? "http://localhost:8082"`, `webServer` only when
-`E2E_BASE_URL` is unset. The two modes, for the README:
+`E2E_BASE_URL` is unset — and that server is `e2e/serve.mjs` (Node, no dependency), not
+`expo serve`: it has the single-page fallback the hosted Caddy has, so a deep link loads the
+app locally too (`expo serve` answers 404 to any path that is not a file), and answers 404 to
+everything else so the smoke's "nothing behind the RPCs" premise holds.
+
+A **second test** (added after the staging run) starts from a signed-out deep link: it
+discovers an incident's URL by walking the flow, drops the session (`clearCookies`), loads
+the incident directly → `/login?o=…` → signs in → lands on the incident (T3) → "Incidents"
+must reach the list (`dismissTo`, T5) → "Events" → sign out. It runs in both modes, since it
+needs no cookie, and is the regression test for the back-after-deep-link bug.
+
+The two modes, for the README:
 
 ```bash
-# Interim (before 09m step 2): the local export talks to staging, no reload-resume
-EXPO_PUBLIC_API_URL=https://<staging host> pnpm -F @ocf-ims/interface export:web
+# Interim: the local export talks to staging (cross-site: no reload-resume). --clear matters:
+# Metro caches the inlined EXPO_PUBLIC_* values, so a changed value needs the cache dropped.
+EXPO_PUBLIC_API_URL=https://<staging host> pnpm -F @ocf-ims/interface export:web --clear
 E2E_EMAIL=miguel@example.com E2E_PASSWORD=Miguel pnpm -F @ocf-ims/interface e2e
-# Hosted (after step 2): the whole flow including the cookie resume
+# Hosted: the whole flow on the build staging serves, including the cookie resume
 E2E_BASE_URL=https://<staging host> E2E_EMAIL=… E2E_PASSWORD=… pnpm -F @ocf-ims/interface e2e
 ```
 
@@ -354,7 +366,21 @@ From the repo root (09i §9), 2026-09-10, after the review fixes:
 | `pnpm -F @ocf-ims/interface test` | 18 suites, **147 tests passed**; a second run: no act warning, no worker-exit warning |
 | `pnpm -F @ocf-ims/interface export:web` | ok |
 | `pnpm -F @ocf-ims/interface e2e` (smoke; the tracer skips) | 1 passed, 1 skipped (the tracer, no `E2E_EMAIL`) |
-| Tracer against staging (interim / hosted) | **not yet run** — the host is Miguel's follow-up (09m); interim mode as soon as it answers, hosted mode after 09m step 2 |
+| Tracer against staging (interim / hosted) | run 2026-09-10 once the host answered — the table below |
+
+**Against staging (2026-09-10, `ims-staging.maybloom.tech`, after #246 merged; the host
+runs the `latest` images and pulls every 10 min):**
+
+| Run | Result |
+|---|---|
+| Hosted, first attempt | failed right after sign-in — CI had pushed the 3a.3 web image one minute earlier and the cron had not pulled it yet, so the page was the 3a.2 build (the 09l home screen). Not a bug; the follow lag is now written down |
+| Hosted, on the 3a.3 image | sign-in ✓, `/` → the newest event's incidents ✓, Events ✓, incident rows ✓, detail ✓, **reload-resume ✓ (the cookie)**; then "Incidents" landed on *Events* ✗ — the back-after-deep-link bug, fixed in the follow-up PR (`dismissTo`) |
+| Interim, as documented | the login form never appeared: the export had ignored `EXPO_PUBLIC_API_URL` (Metro's transform cache kept the config module transformed for the unset value) and the app talked to the static server — "Something went wrong" |
+| Interim, `--clear` + `e2e/serve.mjs` | **both tests pass** (the flow 1.3 s; the deep link 1.5 s) with the fix |
+| Hosted, with the fix | pending — after the follow-up merges and staging pulls the web image |
+
+The follow-up PR reran the §9 steps (typecheck 0, lint 91 files 0, 18 suites / 147 tests,
+export, smoke behind `serve.mjs` green).
 
 ## Checklist
 
@@ -364,8 +390,9 @@ From the repo root (09i §9), 2026-09-10, after the review fixes:
 - [x] Part B built (Sonnet); §9 green; architect review + fixes
 - [x] 09i 3a.3 row → this file; README rows (09n, 09m); 09m checklist tick
 - [x] Plan 09 §7 finding (*3a.3 — The first screens*)
-- [ ] PR opened; CI green; Miguel merges
-- [ ] Tracer run against staging (interim mode, then hosted after 09m step 2) — recorded under *Verification*
+- [x] PR opened; CI green; Miguel merges (#246, 2026-09-10)
+- [x] Tracer run against staging — recorded under *Verification*: interim green (both tests); hosted green through the reload, the back fix awaits the merged image (follow-up PR)
+- [ ] Hosted tracer green on the fixed image (after the follow-up merges + the 10-min pull)
 - [ ] 3a gate items that need a device: the flow on iOS / Android against staging (with 09l's hand checks)
 
 ## Build notes
@@ -421,6 +448,33 @@ From the repo root (09i §9), 2026-09-10, after the review fixes:
   the generated protos lands on the first test); locally the suite runs in about a second.
   `jest.config.js` now sets `testTimeout: 20_000`.
 
+**On staging (2026-09-10, the follow-up PR after #246 merged and the host came up):**
+
+- **Back after a deep link went to the wrong screen.** The `(app)` stack's anchor is
+  `events/index`, so a detail reached by a reload or a deep link (or the `?o=` return path)
+  has the *events list* beneath it, not the incidents list. `router.canGoBack()` was true
+  and `router.back()` popped to the anchor. The routes now call `router.dismissTo(parent)`
+  — pop to the parent when it is in the stack, replace the current screen with it when it
+  is not — which is the semantics "back" meant all along. Not reachable in Jest (routes are
+  untested, T6); the hosted tracer's reload found it, and the new second tracer test
+  reproduces it with no cookie via the return path.
+- **Metro caches inlined `EXPO_PUBLIC_*` values.** The interim mode's export, run after a
+  plain export, shipped the config module transformed with `EXPO_PUBLIC_API_URL` unset, so
+  the app talked to the static server and showed "Something went wrong". Pass `--clear` to
+  `export:web` (and to `start`) after changing such a value. README, 09m and `CLAUDE.md`
+  now say so.
+- **`expo serve` has no single-page fallback**: `/login` or `/events/1/incidents/202`
+  answer 404, so a deep link cannot load the app locally. `e2e/serve.mjs` (Node's `http`,
+  no dependency) mirrors the Caddy `try_files {path} /index.html` and keeps 404 for
+  everything else, so the CI smoke's premise is unchanged. Metro's dev server never had the
+  problem.
+- **Staging follows master about ten minutes behind CI.** The first hosted run hit the
+  previous image; a run right after a merge must wait for `staging-pull.sh`.
+- A curl gotcha, not a bug: rs/cors 1.11 refuses a preflight whose
+  `Access-Control-Request-Headers` is not lowercase, sorted and unique (`cors.go` says so);
+  a hand probe listing `content-type,connect-protocol-version` reads as a CORS failure a
+  browser never sees.
+
 ## Findings
 
 See plan 09 §7, *3a.3 — The first screens: gates in layouts, lookups that never block, a
@@ -428,4 +482,6 @@ tracer gated by environment*. In one line each: a route-group layout is the sess
 and can render a gate instead of the stack; a read that tolerates anonymity must not be
 cached as an answer; three Jest-harness facts (mutation GC timer, `notifyManager`
 scheduler, the `RefreshControl` stub) and the countdown key; the tracer is gated by
-environment, and code that has not run is recorded as such.
+environment, and code that has not run is recorded as such. And *3a.3 on staging — what
+the hosted tracer caught*: back after a deep link is `dismissTo`, not `back()`; Metro
+caches inlined env values; `expo serve` cannot serve a deep link.

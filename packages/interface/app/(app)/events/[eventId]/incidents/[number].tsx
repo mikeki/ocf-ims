@@ -26,12 +26,12 @@ export default function IncidentRoute() {
     <IncidentScreen
       eventId={eventId}
       number={number}
+      // Back means "the incidents list", not "whatever is beneath": after a
+      // deep link or a reload the stack is [events (the anchor), this], and
+      // router.back() would skip the list. dismissTo pops to the list when it
+      // is in the stack and replaces this screen with it when it is not.
       onBack={() => {
-        if (router.canGoBack()) {
-          router.back();
-        } else {
-          router.replace(`/events/${eventId}/incidents`);
-        }
+        router.dismissTo(`/events/${eventId}/incidents`);
       }}
       onOpenIncident={(n) => {
         router.push(`/events/${eventId}/incidents/${n}`);
