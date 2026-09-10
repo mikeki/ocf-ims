@@ -1,0 +1,4 @@
+# Only the export and the file server's config go into the image.
+*
+!dist
+!Caddyfile

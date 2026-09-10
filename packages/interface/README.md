@@ -53,7 +53,7 @@ Sign in as a seeded demo user (`miguel@example.com` / `Miguel`). The iOS / Andro
 build proves the whole session there (body-carried refresh token). A browser on
 `localhost` is cross-site to staging and the refresh cookie is `SameSite=Strict`, so
 web from Metro proves sign-in and reads only — refresh and reload-resume are checked
-on the hosted web build (same origin, 09m step 2).
+on the hosted web build at `https://<staging host>/` (same origin, 09m step 2).
 
 Where the server is comes from `EXPO_PUBLIC_API_URL` (see `.env.example`); when it
 is unset, web uses the page's own origin and a native dev build derives

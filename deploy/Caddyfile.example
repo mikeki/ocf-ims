@@ -37,12 +37,23 @@ ims.ocf.example.org {
 # logins — so keep it out of search engines and never put real data on it. It
 # is what the Expo client's hand checks and Playwright tracer run against; the
 # web client needs HTTPS here (its refresh cookie is Secure), and this hostname
-# is what EXPO_PUBLIC_API_URL points at. (09m step 2 puts the hosted web build
-# in front: `/ims/*` and the Connect prefix stay on the Go container, everything
-# else goes to the web container.)
+# is what a native build's EXPO_PUBLIC_API_URL points at.
+#
+# Two containers behind one origin (09m step 2, 09i E9): the Go server owns
+# `/ims/*` (API, the templ UI at /ims/app, static, auth) and the Connect prefix;
+# the hosted Expo web build (ocf-ims-staging-web) owns everything else, `/`
+# included. Same origin is what lets the SameSite=Strict refresh cookie flow.
 ims-staging.ocf.example.org {
 	header X-Robots-Tag "noindex, nofollow"
-	reverse_proxy ocf-ims-staging:80
+
+	@server path /ims /ims/* /ocf.ims.service.v1.ImsService/*
+	handle @server {
+		reverse_proxy ocf-ims-staging:80
+	}
+
+	handle {
+		reverse_proxy ocf-ims-staging-web:80
+	}
 }
 
 # ---- Monitoring (lock these down — they expose logs and metrics) ----------

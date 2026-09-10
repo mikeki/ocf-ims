@@ -91,6 +91,26 @@ services:
       # First boot runs the goose migrations and the seed before serving.
       start_period: 40s
 
+  # The hosted Expo web build (plan 09m step 2 / 09i E9): the `expo export`
+  # behind a Caddy file server, built and pushed by cicd.yml's interface-publish
+  # job on every master merge. The front Caddy sends /ims/* and the Connect
+  # prefix to ims-go and everything else here, so the web app and the API share
+  # one origin — which is what lets the SameSite=Strict refresh cookie work.
+  web:
+    image: "ghcr.io/mikeki/ocf-ims-web:${WEB_IMAGE_TAG:-latest}"
+    pull_policy: always
+    container_name: "ocf-ims-staging-web"
+    restart: unless-stopped
+    # Only the proxy talks to it; it talks to nothing (the browser calls the API
+    # through the front Caddy, same origin).
+    networks:
+      - web
+    healthcheck:
+      test: [ "CMD", "wget", "--spider", "-q", "http://localhost:80/" ]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+
   ims-db:
     image: "mariadb:10.5.27"
     container_name: "ocf-ims-staging-db"

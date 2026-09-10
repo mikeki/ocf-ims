@@ -1,0 +1,25 @@
+# The web export's file server (plan 09m step 2 / 09i E9). Expo Router on web is
+# a single-page app (app.json `web.output: single`), so every path that is not a
+# file falls back to index.html and the router takes it from there. This Caddy
+# only serves files; TLS and the /ims + Connect routing to the Go container are
+# the front proxy's job (deploy/Caddyfile.example, the staging block).
+{
+	admin off
+	auto_https off
+}
+
+:80 {
+	root * /srv
+	encode zstd gzip
+
+	# index.html (and anything else) is revalidated on every load, so a new build
+	# is picked up on the next reload; the content-hashed bundles under
+	# /_expo/static/ are immutable and can be cached for a year.
+	@hashed path /_expo/static/*
+	@rest not path /_expo/static/*
+	header @hashed Cache-Control "public, max-age=31536000, immutable"
+	header @rest Cache-Control "no-cache"
+
+	try_files {path} /index.html
+	file_server
+}

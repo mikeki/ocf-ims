@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 #
 # staging-pull.sh moves the staging stack (docker-compose.staging.yml, plan 09m)
-# onto the newest image for its IMAGE_TAG — `latest` = the newest master build
-# that passed CI — and prints a line only when the running image changed. Meant
+# onto the newest images for its IMAGE_TAG / WEB_IMAGE_TAG — `latest` = the newest
+# master build that passed CI — and prints a line only when a running image changed. Meant
 # for cron on the staging host, e.g. every 10 minutes:
 #
 #   */10 * * * * /opt/ocf-ims-staging/deploy/staging-pull.sh >> /var/log/ims-staging-deploy.log 2>&1
@@ -21,11 +21,18 @@ cd "$(dirname "$0")/.."
 # keeps "prints a line only when the image changed" true.
 compose=(docker compose --progress quiet -f docker-compose.staging.yml)
 
-before="$("${compose[@]}" images --quiet ims-go 2>/dev/null || true)"
-"${compose[@]}" pull --quiet ims-go
+# Both images follow their `latest`: the Go server (ims-go) and the hosted web
+# build (web, ghcr.io/mikeki/ocf-ims-web). Pinning WEB_IMAGE_TAG works like IMAGE_TAG.
+before_go="$("${compose[@]}" images --quiet ims-go 2>/dev/null || true)"
+before_web="$("${compose[@]}" images --quiet web 2>/dev/null || true)"
+"${compose[@]}" pull --quiet ims-go web
 "${compose[@]}" up --detach --quiet-pull
-after="$("${compose[@]}" images --quiet ims-go 2>/dev/null || true)"
+after_go="$("${compose[@]}" images --quiet ims-go 2>/dev/null || true)"
+after_web="$("${compose[@]}" images --quiet web 2>/dev/null || true)"
 
-if [ "${before}" != "${after}" ]; then
-    echo "$(date -Is) staging moved to image ${after:-?} (was ${before:-none})"
+if [ "${before_go}" != "${after_go}" ]; then
+    echo "$(date -Is) staging moved to image ${after_go:-?} (was ${before_go:-none})"
+fi
+if [ "${before_web}" != "${after_web}" ]; then
+    echo "$(date -Is) staging web moved to image ${after_web:-?} (was ${before_web:-none})"
 fi

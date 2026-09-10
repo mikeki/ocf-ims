@@ -259,5 +259,16 @@ which is the point.
 `IMS_DEFAULT_PASSWORD` to exercise the forced password change. Know the limit: the
 web client's refresh cookie is `SameSite=Strict`, so a browser on `localhost`
 talking to staging cross-site can sign in and read but never refreshes or resumes a
-reload. That path is checked on the hosted web build (09m step 2, same origin); the
+reload. That path is checked on the hosted web build (below, same origin); the
 native client carries its refresh token in the body and is unaffected.
+
+**The hosted web build.** The stack's `web` service runs
+`ghcr.io/mikeki/ocf-ims-web` — the Expo `expo export -p web` output behind a Caddy
+file server, built and pushed by the `interface-publish` job on every master merge
+(after the `Interface` job's typecheck, lint, tests and web smoke). The front Caddy
+splits one hostname between the two containers (see the staging block in
+`deploy/Caddyfile.example`): `/ims/*` and `/ocf.ims.service.v1.ImsService/*` go to
+`ocf-ims-staging`, everything else — `/` included — to `ocf-ims-staging-web`. Same
+origin, so the web app needs no `EXPO_PUBLIC_API_URL` and no CORS, and the refresh
+cookie flows. `deploy/staging-pull.sh` follows both images; `WEB_IMAGE_TAG` in `.env`
+pins the web one.
