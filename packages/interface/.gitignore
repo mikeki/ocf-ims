@@ -30,8 +30,10 @@ yarn-error.*
 .DS_Store
 *.pem
 
-# local env files
-.env*.local
+# local env files (EXPO_PUBLIC_API_URL for a LAN device); .env.example is the template
+.env
+.env.*
+!.env.example
 
 # typescript
 *.tsbuildinfo

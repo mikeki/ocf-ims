@@ -107,6 +107,17 @@ are deep-imported (`@ocf-ims/protocol-buffers/ocf/ims/…/x_pb`); **no barrel
 files**. `ios/`, `android/`, `.expo/`, `dist/` and `expo-env.d.ts` are generated
 and never committed. See `packages/interface/README.md`.
 
+Foundations (plan 09l, slice 3a.2): the server address is `EXPO_PUBLIC_API_URL`
+(`packages/interface/.env.example`; unset = same origin on web, the docker stack on
+the Metro host for a native dev build). `src/api/transport.ts` adds the Bearer,
+refreshes single-flight and **signs out only on an `Unauthenticated` from
+`RefreshToken`**; `src/session/` is the state machine (web cookie / native
+`expo-secure-store`, refresh token only); screens read `useSession()` and
+connect-query hooks, and render errors through `toAppError`. Those files are
+architect-tier (09i §7 rule 3). Jest runs the real runtime over
+`createRouterTransport` + `createFakeIms()` (`src/test/`); RNTL 14 is async —
+`await render(...)` **and** `await fireEvent.*(...)`.
+
 ### Code Generation
 
 The build script runs all code generators, but you can run them individually (from `go/`):

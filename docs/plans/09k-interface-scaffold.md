@@ -1,6 +1,6 @@
 # 09k — `packages/interface` scaffold (slice 3a.1)
 
-> **Status:** Built — for review (PR #241, `feat/3a1-interface-scaffold`); `Interface` CI job green on its first run (2m23s)
+> **Status:** ✅ Merged (PR #241, 2026-09-09) — continues in [09l](09l-client-foundations.md) (3a.2)
 > **Parent:** [09i-expo-client.md](09i-expo-client.md) (Phase 3, slice 3a.1) under
 > [09-proto-connect-platform.md](09-proto-connect-platform.md) (Phase 3)
 > **Follows:** [09j](09j-session-contract-cors.md) (3a.0, merged as #240) — master is the

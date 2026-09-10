@@ -41,12 +41,49 @@ is a different origin, so start the stack with the CORS allow-list from 3a.0:
 IMS_CORS_ALLOWED_ORIGINS=http://localhost:8081 docker compose -f docker-compose.dev.yml up
 ```
 
-The client's API base URL (`EXPO_PUBLIC_API_URL`) and the transport arrive with
-slice 3a.2; until then the one route only proves the codegen wiring.
+Where the server is comes from `EXPO_PUBLIC_API_URL` (see `.env.example`); when it
+is unset, web uses the page's own origin and a native dev build derives
+`http://<the machine running Metro>:8090` from the Expo dev server, so the simulator
+against the docker stack needs nothing configured. A production native build must
+set it. The wire format is JSON in development (readable in devtools and the server
+log) and binary in production.
+
+## How the client talks to the server (slice 3a.2, [09l](../../docs/plans/09l-client-foundations.md))
+
+- **Transport** (`src/api/transport.ts`): connect-web with one interceptor that adds
+  `Authorization: Bearer` from an in-memory token cache, refreshes the access token
+  60 s before it expires, and on an `Unauthenticated` answer refreshes once
+  (single-flight) and retries the call once. `RefreshToken` itself goes through a
+  bare transport. **Only an `Unauthenticated` from `RefreshToken` ends the session**
+  — a server that cannot be reached keeps it (the templ client's #189 lesson).
+- **Session** (`src/session/`): `unknown → unreachable | signedOut | signedIn`,
+  read with `useSession()`. Web keeps the refresh token in the HttpOnly cookie the
+  server sets; native asks `Login` for it in the body and keeps only that token in
+  `expo-secure-store` (`store.native.ts`; `store.ts` is the web no-op). Sign-out is
+  local-first and never fails; `Logout` is told best-effort.
+- **Data** (`src/api/query.ts`, `persist.ts`, `providers.tsx`): TanStack Query v5 +
+  connect-query hooks (`useQuery(ImsService.method.x, input)`), the read cache
+  persisted to AsyncStorage with a serializer that survives protobuf `bigint` and
+  `bytes` values; sign-out clears both caches.
+- **Errors** (`src/api/errors.ts`): every failure a screen sees is a `toAppError`
+  result — `kind`, title, message, `retryable`, protovalidate `violations` per
+  field, the `Retry-After` seconds, the request id.
+- **Design** (`src/design/`): `tokens.ts` is the contract with the design system
+  (D0 replaces its values); `useTheme()`; six primitives (`Box`, `Text`, `Button`,
+  `Field`, `ListRow`, `Badge`) styled with `StyleSheet` only.
+- **Tests** (`src/test/`): `createTestRuntime()` builds the real runtime over
+  `createRouterTransport` and a programmable fake `ImsService`
+  (`createFakeIms()`), so hooks and the session are tested with no server;
+  `renderWithProviders()` mounts the same providers the root layout does.
+  React Native Testing Library 14 is async: `await render(...)` **and**
+  `await fireEvent.*(...)` — an unawaited event leaves an act scope open and
+  breaks the next render.
 
 ## Layout and rules (09i §5)
 
-- `app/` holds routes only (Expo Router); logic lives in `src/` from 3a.2 on.
+- `app/` holds routes only (Expo Router); logic lives in `src/`. Security-sensitive
+  code — `src/api/transport.ts`, `refresh.ts`, `src/session/*`, `src/lib/permissions.ts`
+  — is architect-tier (09i §7 rule 3).
 - Imports: `@/x` is `src/x` (tsconfig `paths`, mirrored in `jest.config.js`);
   generated protos are deep-imported
   (`@ocf-ims/protocol-buffers/ocf/ims/…/x_pb`); no barrel files.
