@@ -2,6 +2,7 @@
 
 import { Stack } from "expo-router";
 import { ApiProvider } from "@/api/providers";
+import { useScreenAnimation } from "@/design/motion";
 import { ThemeProvider } from "@/design/theme";
 import { createAppRuntime } from "@/session/appRuntime";
 import { SessionProvider } from "@/session/provider";
@@ -13,6 +14,7 @@ import { SessionProvider } from "@/session/provider";
 const runtime = createAppRuntime();
 
 export default function RootLayout() {
+  const animation = useScreenAnimation();
   return (
     <ThemeProvider>
       <ApiProvider
@@ -22,7 +24,7 @@ export default function RootLayout() {
         buster={runtime.buster}
       >
         <SessionProvider session={runtime.session}>
-          <Stack screenOptions={{ headerShown: false }} />
+          <Stack screenOptions={{ headerShown: false, animation }} />
         </SessionProvider>
       </ApiProvider>
     </ThemeProvider>

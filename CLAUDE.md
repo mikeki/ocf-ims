@@ -124,9 +124,11 @@ language and the motion budget (press feedback only — a 0.97 press-in scale ov
 in `packages/interface/DESIGN.md`. **Read it before changing a token or adding an
 animation.** Note `border` is a decorative rule and is deliberately below 3:1 —
 `borderStrong` is the role for a boundary that must be perceivable. The whole
-motion budget is `src/design/motion.tsx` (`PressFeedback`, `StateFade`) on
-`react-native-reanimated` CSS transitions — no shared values, no worklets, and
-nothing else in the app animates. Reanimated needs
+motion budget is `src/design/motion.tsx` (`PressFeedback`, `StateFade`,
+`useScreenAnimation`) on `react-native-reanimated` CSS transitions — no shared
+values, no worklets, and nothing else in the app animates. Anything pressable
+gets press feedback: use the `TextButton` primitive for a pressable word rather
+than putting `onPress` on a `Text`. Reanimated needs
 `resolver: react-native-worklets/jest/resolver.js` in `jest.config.js` to run
 under jest-expo. The brand assets are drawn from the tokens by
 `node scripts/brand-assets.mjs`; don't hand-edit the PNGs.

@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import { Redirect, Stack, useGlobalSearchParams } from "expo-router";
+import { useScreenAnimation } from "@/design/motion";
 import { Splash } from "@/features/shell/Splash";
 import { Unreachable } from "@/features/shell/Unreachable";
 import { safeReturnPath } from "@/lib/returnPath";
@@ -14,6 +15,7 @@ import { useSession } from "@/session/provider";
 export default function AuthLayout() {
   const { state, retry } = useSession();
   const params = useGlobalSearchParams();
+  const animation = useScreenAnimation();
 
   switch (state.status) {
     case "unknown":
@@ -30,6 +32,6 @@ export default function AuthLayout() {
     case "signedIn":
       return <Redirect href={safeReturnPath(params.o) ?? "/"} />;
     case "signedOut":
-      return <Stack screenOptions={{ headerShown: false }} />;
+      return <Stack screenOptions={{ headerShown: false, animation }} />;
   }
 }
