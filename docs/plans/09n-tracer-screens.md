@@ -415,6 +415,11 @@ From the repo root (09i §9), 2026-09-10, after the review fixes:
   module-level `string | undefined`); the spec fills `email ?? ""`.
 - `#N` appears twice on the detail (the `ScreenHeader` title and the heading), so the tests
   anchor on the summary text.
+- **CI's runner is slow enough to trip Jest's 5 s per-test default on a first render.** The
+  first CI run of PR #246 failed one test — the IncidentScreen suite's first case — at
+  5 000 ms while the whole file took 9.8 s (the cold transform of jest-expo, react-native and
+  the generated protos lands on the first test); locally the suite runs in about a second.
+  `jest.config.js` now sets `testTimeout: 20_000`.
 
 ## Findings
 
