@@ -171,6 +171,15 @@ jobs:
       - name: Export the web build (expo export)
         run: pnpm -F @ocf-ims/interface export:web
 
+      - name: Upload the web export
+        # interface-publish (master only) packages this export into the
+        # ocf-ims-web image — the same bytes the smoke below ran against.
+        uses: actions/upload-artifact@v7
+        with:
+          name: web-export
+          path: packages/interface/dist
+          if-no-files-found: error
+
       - name: Install Playwright's Chromium
         # The runner image already carries Chromium's shared libraries, so no
         # `--with-deps` (which would need apt egress).
@@ -396,5 +405,66 @@ jobs:
         run: |
           docker tag "ocf-ims:${SHA}" "${IMAGE}:${SHA}"
           docker tag "ocf-ims:${SHA}" "${IMAGE}:latest"
+          docker push "${IMAGE}:${SHA}"
+          docker push "${IMAGE}:latest"
+
+
+  interface-publish:
+
+    name: Publish web image to GHCR
+
+    # The hosted web build (plan 09m step 2 / 09i E9): the export the Interface
+    # job produced and smoke-tested, packaged behind a Caddy file server
+    # (packages/interface/Dockerfile). Master pushes only, like docker-publish.
+    needs: [interface]
+    if: ${{ github.event_name == 'push' && github.ref == 'refs/heads/master' }}
+
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    permissions:
+      contents: read
+      packages: write
+
+    steps:
+
+      - name: Harden Runner
+        uses: step-security/harden-runner@v2.19.4
+        with:
+          egress-policy: block
+          allowed-endpoints: >
+            *.docker.com:443
+            *.docker.io:443
+            ghcr.io:443
+            github.com:443
+            pkg-containers.githubusercontent.com:443
+
+      - name: Checkout source code
+        # For packages/interface/Dockerfile + Caddyfile only.
+        uses: actions/checkout@v6
+
+      - name: Download the web export
+        uses: actions/download-artifact@v8
+        with:
+          name: web-export
+          path: packages/interface/dist
+
+      - name: Build the web image
+        env:
+          SHA: ${{ github.sha }}
+        run: docker build --build-arg "GIT_SHA=${SHA}" --tag "ocf-ims-web:${SHA}" packages/interface
+
+      - name: Log in to GHCR
+        env:
+          GHCR_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: echo "$GHCR_TOKEN" | docker login ghcr.io -u "$GITHUB_ACTOR" --password-stdin
+
+      - name: Tag and push the web image
+        env:
+          IMAGE: "ghcr.io/${{ github.repository }}-web"
+          SHA: ${{ github.sha }}
+        run: |
+          docker tag "ocf-ims-web:${SHA}" "${IMAGE}:${SHA}"
+          docker tag "ocf-ims-web:${SHA}" "${IMAGE}:latest"
           docker push "${IMAGE}:${SHA}"
           docker push "${IMAGE}:latest"

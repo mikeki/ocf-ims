@@ -138,7 +138,12 @@ destructive outside the `ocf-ims-staging` project.
 - **The 3a.3 tracer:** `E2E_BASE_URL=https://<staging host> E2E_EMAIL=… E2E_PASSWORD=…
   pnpm -F @ocf-ims/interface e2e` once 3a.3 lands (S7).
 
-## Step 2 — the Expo web export hosted on staging (next PR)
+## Step 2 — the Expo web export hosted on staging
+
+> Built 2026-09-10 (this PR): items 1–4 below are in the tree; 5 is the hand check on
+> the host once CI has pushed `ocf-ims-web:latest` and the front Caddy has the split.
+> `WEB_IMAGE_TAG` pins the web image the way `IMAGE_TAG` pins the server.
+
 
 1. `packages/interface/Dockerfile`: `FROM caddy:2-alpine`, `COPY dist/ /srv`, a
    `Caddyfile` with `root * /srv`, `try_files {path} /index.html` (Expo Router on web
@@ -186,7 +191,8 @@ On the host: § *Bring-up brief* step 5 and the cron no-op are the acceptance ch
 - [ ] PR opened; CI green; Miguel merges
 - [ ] Bring-up on the home server (the server-side agent session, § *Bring-up brief*); report recorded under *Build notes*
 - [ ] 09l hand check (native) done against staging → tick in 09l
-- [ ] Step 2 PR: web image in CI, `web` service, Caddy path split; 09l hand check (web) against the hosted build
+- [x] Step 2 PR: web image in CI, `web` service, Caddy path split
+- [ ] 09l hand check (web) against the hosted build
 - [ ] 3a.3 tracer pointed at staging (S7)
 
 ## Build notes
