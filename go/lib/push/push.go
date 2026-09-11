@@ -1,15 +1,10 @@
 // SPDX-License-Identifier: Apache-2.0
 
-// Package push is the push-delivery seam (plan 84; extended for native devices
-// in 09p slice 3b.0c). It defines the thin Sender interface that the
-// notification fan-out (84c) calls, a no-op backend used when push is
-// unconfigured and in tests, and two real backends: WebPushSender (VAPID,
-// browsers) and ExpoPushSender (the Expo Push Service, iOS and Android).
-//
-// A device's Kind decides which backend delivers to it, and Router is what makes
-// that a routing decision rather than a branch in the fan-out: the fan-out still
-// holds one Sender and calls Send once per device, exactly as it did when web
-// push was the only backend.
+// Package push is the push-delivery seam (plan 84; native devices in 09p
+// 3b.0c): the Sender interface the notification fan-out calls, a no-op backend,
+// WebPushSender (VAPID, browsers), ExpoPushSender (Expo, iOS and Android), and
+// the Router that picks a backend by a device's Kind so the fan-out still holds
+// one Sender.
 package push
 
 import (
@@ -31,15 +26,9 @@ const (
 )
 
 // Subscription is a single device's push endpoint and, for a browser, the client
-// keys needed to encrypt a payload to it. It mirrors the browser's
-// PushSubscription and the stored PUSH_SUBSCRIPTION row, decoupling senders from
-// the store package.
-//
-// Endpoint is the device's identity for both kinds — a push-service URL for web,
-// an ExponentPushToken for Expo — which is why the unique key on it, the
-// upsert-on-endpoint behaviour and the prune path all survived adding native
-// devices unchanged. P256dh and Auth are empty for KindExpo; the columns are
-// nullable for exactly that reason (09p S4).
+// keys needed to encrypt a payload to it. Endpoint is the device's identity for
+// both kinds (a push-service URL, or an ExponentPushToken); P256dh and Auth are
+// empty for KindExpo.
 type Subscription struct {
 	Kind     Kind
 	Endpoint string
@@ -83,26 +72,20 @@ func (NoopSender) Enabled() bool { return false }
 // Ensure NoopSender satisfies Sender.
 var _ Sender = NoopSender{}
 
-// Router delivers each Subscription through the backend that owns its Kind.
-//
-// It exists so the fan-out never learns that there is more than one push
-// service. Pusher still holds a single Sender and calls Send once per device;
-// adding native push moved zero decisions into it. A device whose Kind has no
-// backend configured is skipped silently rather than erroring — an unconfigured
-// backend is not a delivery failure, and it must not look like one to the prune
-// path, which would otherwise delete a perfectly good subscription.
+// Router delivers each Subscription through the backend that owns its Kind, so
+// the fan-out never learns there is more than one push service. A Kind with no
+// enabled backend is skipped without error: an unconfigured backend is not a
+// delivery failure, and the prune path must not see one.
 type Router struct {
 	backends map[Kind]Sender
 }
 
-// NewRouter builds a Router over the given backends. Kinds absent from the map
-// are simply not delivered to.
+// NewRouter builds a Router over the given backends.
 func NewRouter(backends map[Kind]Sender) *Router {
 	return &Router{backends: backends}
 }
 
-// Send routes to the backend owning sub.Kind. An unrouted or unconfigured kind
-// is a no-op, NOT an error: see the type comment.
+// Send routes to the backend owning sub.Kind; an unconfigured kind is a no-op.
 func (r *Router) Send(ctx context.Context, sub Subscription, msg Message) error {
 	backend, ok := r.backends[sub.Kind]
 	if !ok || !backend.Enabled() {
@@ -111,8 +94,7 @@ func (r *Router) Send(ctx context.Context, sub Subscription, msg Message) error 
 	return backend.Send(ctx, sub, msg)
 }
 
-// Enabled reports whether any backend can deliver, so a deployment with neither
-// web nor native push configured still skips the fan-out entirely.
+// Enabled reports whether any backend can deliver.
 func (r *Router) Enabled() bool {
 	for _, backend := range r.backends {
 		if backend.Enabled() {

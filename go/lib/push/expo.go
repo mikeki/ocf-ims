@@ -13,58 +13,31 @@ import (
 	"time"
 )
 
-// The Expo Push Service backend (plan 09p, slice 3b.0c). Expo fronts APNs and
-// FCM, so a native build's device identity is an ExponentPushToken and there are
-// no VAPID keys, no crypto keys and no per-device endpoint URL.
+// The Expo Push Service backend (plan 09p 3b.0c). Expo fronts APNs and FCM: a
+// device is an ExponentPushToken, with no VAPID or per-device crypto keys.
 //
-// # Why this is not just "web push with a different URL"
-//
-// Expo delivery is asynchronous in TWO steps, and the second one is the one that
-// matters (09p S5):
-//
-//  1. The send call returns a TICKET, not a delivery. A ticket says Expo accepted
-//     the message, not that a phone got it.
-//  2. The errors worth acting on — above all DeviceNotRegistered, which is the
-//     Expo analogue of Web Push's 404/410 — usually appear only later, in a
-//     RECEIPT fetched by ticket id.
-//
-// A sender that ignores receipts never learns a token is dead and will fan out
-// to it forever, growing the fan-out's cost with every uninstalled app. So this
-// backend checks receipts and prunes, which is what makes it a real Sender
-// rather than a fire-and-forget POST.
-//
-// # What that costs, stated honestly
-//
-// Receipts are not available immediately (Expo asks for a delay, and keeps them
-// for 24 h), so pending tickets are held IN MEMORY and checked later. A restart
-// loses whatever was pending, and the dead token those tickets would have pruned
-// survives until it produces a ticket-level error or a later receipt catches it.
-// The alternative is a tickets table and a migration to go with it, which is not
-// worth it for a prune that is a cost optimisation, not a correctness property:
-// sending to a dead token is harmless, it is just wasted.
+// Delivery is asynchronous in two steps (S5): a send returns a TICKET, and the
+// error that matters — DeviceNotRegistered, the analogue of Web Push's 404/410 —
+// usually arrives later in a RECEIPT fetched by ticket id. So accepted tickets
+// are held in memory and swept for receipts, and a dead token is pruned through
+// a callback. A restart loses the pending tickets; that costs a prune, not a
+// delivery, which is why there is no tickets table.
 
 const (
 	expoSendURL     = "https://exp.host/--/api/v2/push/send"
 	expoReceiptsURL = "https://exp.host/--/api/v2/push/getReceipts"
 
-	// deviceNotRegistered is Expo's name for a token that will never work again:
-	// the app was uninstalled, or the token was reissued. The one error that
-	// means "prune", exactly as 404/410 does on the web path.
+	// deviceNotRegistered is the one receipt error that means "prune".
 	deviceNotRegistered = "DeviceNotRegistered"
 
-	// receiptDelay is how long a ticket waits before its receipt is worth
-	// asking for. Expo's guidance is on the order of fifteen minutes; asking
-	// sooner mostly returns "not ready yet" and wastes a round trip.
+	// Expo asks for about fifteen minutes before a receipt is worth fetching.
 	receiptDelay = 15 * time.Minute
-	// receiptSweep is how often the pending tickets are swept for ones that have
-	// come of age.
 	receiptSweep = 5 * time.Minute
 	// receiptBatch is Expo's maximum ids per getReceipts call.
 	receiptBatch = 100
 
-	// pendingLimit bounds the in-memory ticket queue. Past this, tickets are
-	// dropped with a warning rather than allowed to grow without limit — losing
-	// a prune is survivable; an unbounded queue in a long-running server is not.
+	// pendingLimit bounds the in-memory ticket queue; past it tickets are
+	// dropped (a lost prune) rather than growing without limit.
 	pendingLimit = 4096
 )
 
@@ -74,13 +47,11 @@ type ExpoPushSender struct {
 	sendURL    string
 	receiptURL string
 
-	// prune removes a subscription whose token Expo has told us is permanently
-	// dead. It is a callback for the same reason the rest of this package takes
-	// no store dependency: lib/push knows about push services, not about tables.
+	// prune removes a subscription whose token Expo reports as dead. A
+	// callback, so lib/push takes no store dependency.
 	prune func(ctx context.Context, endpoint string)
 
-	// now, delay and sweep are injectable so the receipt path is testable in
-	// milliseconds rather than in quarter-hours.
+	// Injectable so the receipt path is testable in milliseconds.
 	now   func() time.Time
 	delay time.Duration
 	sweep time.Duration
@@ -101,17 +72,11 @@ type pendingTicket struct {
 	at       time.Time
 }
 
-// NewExpoPushSender builds the backend and starts its receipt sweeper. Close it
-// on shutdown, or the sweeper goroutine outlives the server.
-//
-// base is the sweeper's root context — the process's, not any request's, since
-// the sweeper outlives every request by design (actionlog.NewLogger takes one
-// for the same reason). prune may be nil, which disables pruning but leaves
-// delivery working: useful in a test, never in production.
+// NewExpoPushSender builds the backend and starts its receipt sweeper; Close it
+// on shutdown. base is the process context, not a request's, since the sweeper
+// outlives every request. A nil prune disables pruning: for tests only.
 func NewExpoPushSender(base context.Context, prune func(ctx context.Context, endpoint string)) *ExpoPushSender {
 	s := &ExpoPushSender{
-		// A bounded client so a slow or hung push service cannot pin a
-		// goroutine, matching WebPushSender.
 		httpClient: &http.Client{Timeout: 30 * time.Second},
 		sendURL:    expoSendURL,
 		receiptURL: expoReceiptsURL,
@@ -126,9 +91,8 @@ func NewExpoPushSender(base context.Context, prune func(ctx context.Context, end
 	return s
 }
 
-// Enabled reports true: a constructed Expo sender always attempts delivery. The
-// off switch is IMS_EXPO_PUSH_ENABLED, which decides whether one is built at all
-// (09p S6), exactly as the VAPID keys decide for web push.
+// Enabled reports true: the off switch is IMS_EXPO_PUSH_ENABLED, which decides
+// whether one is built at all (09p S6).
 func (s *ExpoPushSender) Enabled() bool { return true }
 
 // Close stops the receipt sweeper. Safe to call more than once.
@@ -137,10 +101,8 @@ func (s *ExpoPushSender) Close() {
 	<-s.done
 }
 
-// expoSendRequest is one message in an Expo send batch. The content is
-// deliberately minimal (09p S8, unchanged from 84c): a title, one line, and a
-// deep link — never incident text. A native notification is MORE exposed on a
-// lock screen than a browser one, not less.
+// expoSendRequest is one message in an Expo send batch. Content stays minimal
+// (09p S8): a title, one line and a deep link, never incident text.
 type expoSendRequest struct {
 	To       string            `json:"to"`
 	Title    string            `json:"title,omitempty"`
@@ -163,20 +125,15 @@ type expoTicketEnvelope struct {
 	} `json:"errors"`
 }
 
-// Send posts one message and inspects the ticket it gets back.
-//
-// A ticket-level DeviceNotRegistered returns ErrSubscriptionGone so the caller
-// prunes immediately, exactly as a 404/410 does on the web path. An accepted
-// ticket is queued for a receipt check, because that is where the same verdict
-// usually arrives instead.
+// Send posts one message and inspects the ticket. A ticket-level
+// DeviceNotRegistered returns ErrSubscriptionGone so the caller prunes now; an
+// accepted ticket is queued for its receipt.
 func (s *ExpoPushSender) Send(ctx context.Context, sub Subscription, msg Message) error {
 	body, err := json.Marshal([]expoSendRequest{{
-		To:    sub.Endpoint,
-		Title: msg.Title,
-		Body:  msg.Body,
-		Data:  map[string]string{"url": msg.URL},
-		// These notifications are all "something needs a person now"; the Fair
-		// is the whole reason the app exists.
+		To:       sub.Endpoint,
+		Title:    msg.Title,
+		Body:     msg.Body,
+		Data:     map[string]string{"url": msg.URL},
 		Priority: "high",
 	}})
 	if err != nil {
@@ -235,8 +192,6 @@ func (s *ExpoPushSender) sweepReceipts(base context.Context) {
 		case <-s.stop:
 			return
 		case <-ticker.C:
-			// A budget of one sweep interval, off the process context: this runs
-			// off every request path, so no caller's deadline applies to it.
 			ctx, cancel := context.WithTimeout(base, s.sweep)
 			s.checkDueReceipts(ctx)
 			cancel()
@@ -293,9 +248,7 @@ func (s *ExpoPushSender) checkDueReceipts(ctx context.Context) {
 		var envelope expoReceiptEnvelope
 		err = s.postJSON(ctx, s.receiptURL, body, &envelope)
 		if err != nil {
-			// The tickets are already off the queue. Losing them costs a prune,
-			// not a delivery — see the package-level note on what this backend
-			// deliberately does not persist.
+			// The tickets are already off the queue; losing them costs a prune.
 			slog.Warn("expo push: receipt fetch failed", "err", err, "tickets", len(ids))
 			continue
 		}
@@ -342,9 +295,8 @@ func (s *ExpoPushSender) postJSON(ctx context.Context, url string, body []byte, 
 	return nil
 }
 
-// redactToken keeps a token out of the logs while leaving enough to correlate
-// one. A push token identifies a person's device; it is not a secret in the
-// password sense, but it does not belong in a log line either.
+// redactToken keeps a device token out of the logs while leaving enough to
+// correlate one.
 func redactToken(endpoint string) string {
 	if len(endpoint) <= 12 {
 		return "…"

@@ -120,13 +120,9 @@ func mustStartServer(ctx context.Context, unvalidatedCfg *conf.IMSConfig, printC
 	var userStore directory.UserStore = directory.NewLocalUserStore(imsDBQ, imsCfg.Directory.InMemoryCacheTTL)
 	actionLogger := actionlog.NewLogger(ctx, imsDBQ, imsCfg.Core.ActionLogEnabled, false)
 
-	// Web-push send backend (plan 84c): a real VAPID-signing sender when push is
-	// configured, else a no-op so the fan-out does nothing.
-	// Two push backends behind one Sender (plan 09p slice 3b.0c). The fan-out
-	// still holds a single push.Sender and calls Send once per device; the
-	// Router picks the backend from the row's KIND, so adding native push moved
-	// no decisions into internal/server. Each backend is built only when it is
-	// configured, and a kind with no backend is skipped rather than erroring.
+	// Two push backends behind one Sender (plan 84c web, 09p 3b.0c native): the
+	// Router picks the backend from the row's KIND, so the fan-out still holds
+	// one Sender. Each backend is built only when configured.
 	var webSender push.Sender = push.NoopSender{}
 	if imsCfg.Push.Enabled() {
 		slog.Info("Web push enabled")
@@ -136,19 +132,15 @@ func mustStartServer(ctx context.Context, unvalidatedCfg *conf.IMSConfig, printC
 	var expoPushSender *push.ExpoPushSender
 	if imsCfg.Core.ExpoPushEnabled {
 		slog.Info("Expo (native) push enabled")
-		// The prune callback is how lib/push stays free of any store
-		// dependency: it knows about push services, not about tables. This is
-		// the deferred half of the receipt path — a token Expo reports as
-		// unregistered is deleted here, exactly as a 404/410 is on the web path.
+		// Pruning goes through a callback so lib/push takes no store dependency.
 		expo := push.NewExpoPushSender(ctx, func(ctx context.Context, endpoint string) {
 			err := imsDBQ.DeletePushSubscriptionByEndpoint(ctx, imsDBQ, endpoint)
 			if err != nil {
 				slog.Error("Failed to prune an unregistered Expo device", "err", err)
 			}
 		})
-		// Closed on shutdown, not here: mustStartServer RETURNS while the server
-		// runs, so a deferred Close would stop the receipt sweeper the instant
-		// the process finished booting.
+		// Closed on the shutdown hook, not deferred: mustStartServer returns
+		// while the server runs.
 		expoPushSender = expo
 		expoSender = expo
 	}

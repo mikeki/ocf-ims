@@ -133,12 +133,8 @@ func (p *Pusher) deliver(reqCtx context.Context, recipients []int32, msg push.Me
 			continue
 		}
 		for _, row := range subs {
-			// KIND decides which backend delivers this row (09p S4/3b.0c) and
-			// is the only thing the fan-out learned about native push: the
-			// routing happens inside the Sender, so this loop is otherwise
-			// unchanged. The crypto keys are null for an Expo device, and
-			// String on a null NullString is "" — which is exactly what the
-			// Expo backend wants, since it uses neither.
+			// KIND picks the backend inside the Sender (09p S4). The keys are
+			// null for an Expo device, and String on a null NullString is "".
 			sendErr := p.sender.Send(ctx, push.Subscription{
 				Kind:     push.Kind(row.Kind),
 				Endpoint: row.Endpoint,

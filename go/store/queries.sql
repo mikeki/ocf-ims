@@ -473,10 +473,8 @@ where RECIPIENT_PERSON_ID = ? and READ_AT is null;
 -- Push subscriptions (plan 84 web, plan 09p native). A device's ENDPOINT is its
 -- identity, so the subscribe path reads by endpoint and then inserts or updates
 -- — rather than an ODKU upsert — matching how the rest of the store handles
--- unique-key upserts. KIND tells the two device families apart: for 'web' the
--- ENDPOINT is a browser push-service URL and P256DH/AUTH hold the Web Push
--- crypto keys; for 'expo' the ENDPOINT is an ExponentPushToken[...] string and
--- P256DH/AUTH are null, since Expo's push service needs no per-device key.
+-- unique-key upserts. KIND is 'web' (ENDPOINT a push-service URL, P256DH/AUTH
+-- the Web Push keys) or 'expo' (ENDPOINT an ExponentPushToken, keys null).
 
 -- name: PushSubscriptionByEndpoint :one
 select ID, PERSON_ID, ENDPOINT, KIND, P256DH, AUTH, USER_AGENT, CREATED
@@ -492,8 +490,6 @@ values (?, ?, ?, ?, ?, ?, ?);
 -- too so a device that changes hands re-homes to the current caller. CREATED is
 -- intentionally left untouched: the client re-subscribes on every page load, so
 -- bumping it would turn it into a last-seen time and reshuffle the device list.
--- KIND is set here too, though in practice an endpoint's kind can't change: the
--- two device families never share an endpoint format.
 update PUSH_SUBSCRIPTION
 set PERSON_ID = ?, KIND = ?, P256DH = ?, AUTH = ?, USER_AGENT = ?
 where ENDPOINT = ?;

@@ -15,10 +15,8 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// The Expo backend (plan 09p slice 3b.0c). The claims worth testing are the two
-// that make it a real Sender rather than a fire-and-forget POST: a dead token is
-// pruned, and it is pruned from the RECEIPT — which is where Expo actually
-// reports it — not only from the ticket.
+// The Expo backend (plan 09p 3b.0c): a dead token is pruned, and from the
+// receipt, which is where Expo usually reports it, not only from the ticket.
 
 // expoStub is a stand-in Expo Push Service: it records what was posted and
 // answers with whatever the test set up.
@@ -99,8 +97,7 @@ func (s *expoStub) sent() []map[string]any {
 	return append([]map[string]any(nil), s.sendBodies...)
 }
 
-// An Expo device id. Not a credential — it is a routing address the push
-// service mints per install and the client hands us in the clear.
+// An Expo device id: a routing address, not a credential.
 const expoDeviceID = "ExponentPushToken[xxxxxxxxxxxxxxxxxxxxxx]"
 
 func TestExpoSendPostsMinimalContent(t *testing.T) {

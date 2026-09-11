@@ -9,9 +9,6 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// The Router (plan 09p slice 3b.0c) is what kept the fan-out from learning that
-// there is more than one push service.
-
 type recordingSender struct {
 	enabled bool
 	sent    []Subscription

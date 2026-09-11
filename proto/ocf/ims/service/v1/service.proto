@@ -197,9 +197,8 @@ service ImsService {
   rpc UnsubscribePush(rpc.v1.UnsubscribePushRequest) returns (rpc.v1.UnsubscribePushResponse);
 
   // --- Native push (Expo) ---
-  // Mutations, left un-annotated so the action-log interceptor records them:
-  // registering a device is a change to where a person's notifications go, and
-  // that is exactly the kind of thing an audit log is for.
+  // Mutations, un-annotated so the action log records where a person's
+  // notifications go.
   rpc RegisterPushDevice(rpc.v1.RegisterPushDeviceRequest) returns (rpc.v1.RegisterPushDeviceResponse);
   rpc UnregisterPushDevice(rpc.v1.UnregisterPushDeviceRequest) returns (rpc.v1.UnregisterPushDeviceResponse);
 
