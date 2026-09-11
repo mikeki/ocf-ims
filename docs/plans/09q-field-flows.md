@@ -2,17 +2,17 @@
 
 # 09q — D1 and slice 3b.1: "My work", the field app's first screen
 
-> **Status:** Brief — **the shape question is open and belongs to Miguel.** The
-> `/prototype` skill runs only when he invokes it (never on its own), so the picker round
+> **Status:** Brief — **the shape question is open and belongs to the maintainer.** The
+> `/prototype` skill runs only when they invoke it (never on its own), so the picker round
 > in § *The prototype round* is the next action, not something a builder starts.
 > **Parent:** [09i-expo-client.md](09i-expo-client.md) (Phase 3, §6 **D1** and the 3b.1 row)
 > under [09-proto-connect-platform.md](09-proto-connect-platform.md)
 > **Follows:** [09p](09p-stream-and-push.md) (3b.0 — the server half of the field app:
 > `WatchEvent` and native push). 3b.0 built the plumbing; **nothing in the client consumes
 > it yet** — that is 3b.6, four slices away.
-> **Owner:** Design (the picker round, Miguel) → Architect (this brief, the classification
-> and watermark rules, review) → Builder (Sonnet, the screen).
-> **The skills:** Emil Kowalski's skills govern all UI work here (Miguel's rule,
+> **Owner:** Design (the picker round, run by the maintainer) → Architect (this brief,
+> the classification and watermark rules, review) → Builder (Sonnet, the screen).
+> **The skills:** Emil Kowalski's skills govern all UI work here (the maintainer's rule,
 > 2026-09-10) — `prototype` for the round below, `animate-expo` for anything that moves,
 > `review-animations` before the PR is called done.
 > **Last updated:** 2026-09-10
@@ -78,7 +78,7 @@ Two consequences the design has to absorb rather than paper over:
    summary moves nothing a client can see, so such an edit will not mark the row unread.
    Say so in the UI's terms or accept it silently — but know it.
 
-## The prototype round (this is Miguel's to run)
+## The prototype round (the maintainer's to run)
 
 The design direction is settled — **Dispatch**, chosen in D0
 ([09o](09o-design-v0.md)), values in `src/design/tokens.ts`, reasoning in
@@ -202,14 +202,14 @@ pnpm -F @ocf-ims/interface export:web
 pnpm -F @ocf-ims/interface e2e
 ```
 
-Hand checks go against **staging** (`https://ims-staging.maybloom.tech`), never a local
-docker stack. The seeded demo data has to actually contain items that are Miguel's by each
+Hand checks go against **staging** (the host in `docs/deployment.md`), never a local
+docker stack. The seeded demo data has to actually contain items that are the tester's by each
 of the three rules — **check that before trusting a green screen**; an empty "My work" and
 a broken "My work" look identical.
 
 ## Checklist
 
-- [ ] Miguel runs `/prototype` with the invocation above and picks a shape
+- [ ] The maintainer runs `/prototype` with the invocation above and picks a shape
 - [ ] The pick and its reasoning are recorded in this file (a table like 09o's), and in
       `DESIGN.md` if it changes how a primitive is used
 - [ ] `changedAt`, `isMine` and the watermark land with their tests
