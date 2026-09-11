@@ -2039,6 +2039,59 @@ broadcast poke for Connect clients (SSE stays for the templ UI until Phase 4).
   in plaintext behind Caddy with no h2c and streams fine. A *bidi* stream would
   need HTTP/2 and does not have it — worth knowing before someone designs one.
 
+### 3b.0c — Two push services behind one seam (2026-09-10)
+
+Native (Expo) push beside the existing Web Push, closing slice 3b.0.
+
+- **A second backend is a routing problem, not a branching problem.** The
+  obvious move is to give the fan-out two senders and switch on the device's
+  kind. Making the router itself a `Sender` instead meant the fan-out kept
+  holding exactly one, and the only line that changed in it passes the kind
+  through. The seam that was built for one backend absorbed a second without
+  learning that a second exists — which is the test of whether it was a real
+  seam or just an interface.
+- **An unconfigured backend must not report a delivery failure.** The router
+  skips a kind it has no backend for and returns nil. Returning an error there
+  would have reached the fan-out's prune path, which deletes subscriptions on
+  certain failures — so "native push is switched off" could have quietly deleted
+  every native device. Error semantics on a fan-out path are load-bearing in a
+  way they are not elsewhere.
+- **Asynchronous delivery does not fit a synchronous `Sender`, and pretending
+  otherwise silently breaks pruning.** Expo's send returns a *ticket*; the error
+  that means "this token is dead forever" (`DeviceNotRegistered`) normally
+  arrives only later, in a *receipt* fetched by ticket id. A backend that stops
+  at the ticket looks correct, passes its tests, and fans out to dead tokens
+  forever. Handling it needs state that outlives the call — here, aged tickets
+  swept in the background, pruning through a callback so the push package keeps
+  its independence from the store. The state is in memory and a restart drops it,
+  which costs a prune rather than a delivery; that trade is worth writing down
+  rather than discovering.
+- **Two identities that are both "a string" still want two messages.** A browser
+  subscription is an endpoint URL plus two crypto keys; an Expo device is one
+  opaque token. One message with a kind discriminator would make three of four
+  fields conditional, and every protovalidate rule with them. Separate messages
+  let the native one pin the `ExponentPushToken[` prefix, so a client that sends
+  a raw APNs or FCM token is rejected at the edge instead of being accepted and
+  then never delivering — a failure that would otherwise be invisible from both
+  ends.
+- **Nullable columns are a statement, not a convenience.** `P256DH`/`AUTH` went
+  nullable rather than defaulting to empty strings so an Expo row says "there are
+  no keys" instead of storing two empty values that look like data. And the
+  native token went into the existing `ENDPOINT` column rather than a new one,
+  which is why the unique key, the upsert-on-endpoint behaviour and the fan-out
+  index all survived the change untouched.
+- **One logical change can still be two migrations.** Adding `KIND` and relaxing
+  the two key columns is one idea and two `ALTER`s. MariaDB DDL is not
+  transactional, so half-applied leaves goose having recorded nothing and a retry
+  that dies on a duplicate column. The existing "one logical DDL change per
+  migration" rule is really "one statement's worth of blast radius".
+- **A constructor that starts a goroutine needs the process's context.** Wiring
+  it with `defer Close()` inside the boot function would have stopped the receipt
+  sweeper the moment booting finished, because that function returns while the
+  server runs. Lifecycle belongs on the shutdown hook; the linter's
+  `contextcheck` was what surfaced the shape, and taking a base context matches
+  what the action logger already does.
+
 ## 8. Open questions
 
 1. **Does the Go binary keep serving static assets in production**, or does Caddy?

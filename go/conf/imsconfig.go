@@ -309,6 +309,13 @@ type ConfigCore struct {
 	// hammer the auth endpoint from a shared address disable it.
 	LoginRateLimitEnabled bool
 
+	// ExpoPushEnabled toggles native push delivery to Expo push tokens (plan
+	// 09p, slice 3b.0c). Unlike Web Push (Push.Enabled, gated on configured
+	// VAPID keys), Expo's push service needs no per-deployment secret, so this
+	// flag is the only gate: false by default, a deployment opts in explicitly
+	// via IMS_EXPO_PUSH_ENABLED once ready to send.
+	ExpoPushEnabled bool
+
 	// Seed selects which seed dataset (if any) is loaded into an empty database
 	// on boot. Defaults to SeedNone; "demo" loads the dev fixture. The load is
 	// idempotent — see store.Seed.

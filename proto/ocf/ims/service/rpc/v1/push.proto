@@ -27,3 +27,41 @@ message UnsubscribePushRequest {
 }
 
 message UnsubscribePushResponse {}
+
+// Native (Expo) devices — plan 09p slice 3b.0c.
+//
+// These are separate RPCs from the Subscribe/Unsubscribe pair above rather than
+// an extra field on them, because the two identities have nothing in common
+// beyond being strings: a browser subscription is an endpoint URL plus two
+// crypto keys, and an Expo device is a single opaque token with Expo owning all
+// the APNs/FCM plumbing behind it. Folding them into one message would make
+// three of its four fields conditional on a kind discriminator, and every
+// validation rule would have to become conditional with them.
+//
+// They share the storage, though: an Expo token is written to
+// PUSH_SUBSCRIPTION.ENDPOINT with KIND='expo', so it stays the device's unique
+// identity and the upsert-on-endpoint behaviour and the fan-out index both work
+// unchanged.
+
+message RegisterPushDeviceRequest {
+  // The ExponentPushToken[...] issued to this install by the Expo push service.
+  string expo_push_token = 1 [
+    (buf.validate.field).string.min_len = 1,
+    (buf.validate.field).string.max_len = 512,
+    // Expo's own token format. Pinning it here means a client that sends a raw
+    // APNs or FCM token — which would be accepted and then silently never
+    // deliver — is rejected at the edge with a useful message instead.
+    (buf.validate.field).string.prefix = "ExponentPushToken["
+  ];
+}
+
+message RegisterPushDeviceResponse {}
+
+message UnregisterPushDeviceRequest {
+  string expo_push_token = 1 [
+    (buf.validate.field).string.min_len = 1,
+    (buf.validate.field).string.max_len = 512
+  ];
+}
+
+message UnregisterPushDeviceResponse {}

@@ -33,7 +33,7 @@ func pushSubByEndpoint(ctx context.Context, t *testing.T, personID int32, endpoi
 	require.NoError(t, err)
 	for _, r := range rows {
 		if r.Endpoint == endpoint {
-			return r.P256dh, r.Auth, true
+			return r.P256dh.String, r.Auth.String, true
 		}
 	}
 	return "", "", false
@@ -227,10 +227,13 @@ func TestPushFanoutDelivery(t *testing.T) {
 	// device is the one we seed here — keeping the spy's view clean.
 	endpoint := "https://push.test/" + rand.NonCryptoText()
 	require.NoError(t, shared.imsDBQ.InsertPushSubscription(ctx, shared.imsDBQ, imsdb.InsertPushSubscriptionParams{
-		PersonID:  userBobPersonID,
-		Endpoint:  endpoint,
-		P256dh:    "p256dh-bob",
-		Auth:      "auth-bob",
+		PersonID: userBobPersonID,
+		Endpoint: endpoint,
+		// A browser subscription, which is what this fan-out test exercises;
+		// the KIND column (09p S4) is what routes it to the web backend.
+		Kind:      string(push.KindWeb),
+		P256dh:    sql.NullString{String: "p256dh-bob", Valid: true},
+		Auth:      sql.NullString{String: "auth-bob", Valid: true},
 		UserAgent: sql.NullString{},
 		Created:   1,
 	}))

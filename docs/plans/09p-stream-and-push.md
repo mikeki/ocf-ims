@@ -6,9 +6,10 @@ The first slice of Phase 3b, and the first **server** slice since Phase 1 closed
 Master plan [09i](09i-expo-client.md) § *3b*; the platform findings go to plan
 [09](09-proto-connect-platform.md) §7.
 
-> **Status, 2026-09-10:** **3b.0a and 3b.0b are done** (the streaming-safe
-> interceptor spine, and `WatchEvent`). 3b.0c has **not started**. The device
-> half of the verification is still owed: the 3a gate is held
+> **Status, 2026-09-10:** **all three slices are built** — 3b.0a (streaming-safe
+> interceptor spine), 3b.0b (`WatchEvent`), 3b.0c (native push). The **device and
+> two-client halves of the verification are still owed**, and they are the ones
+> that matter most here: the 3a gate is held
 > open by a device session (see 09i § *Gate status*), and a live stream is only
 > observable on a real client — the iOS/Android runs are exactly what would catch
 > a stream that works in Chromium and not on a phone.
@@ -65,11 +66,11 @@ an Expo build, whose device identity is an `ExponentPushToken[…]` and which ha
 | **S1** ✅ | **The interceptor spine is unary-only.** *(Fixed in 3b.0a.)* All five hand-written interceptors (`NewRecoveryInterceptor`, `NewRequestIDInterceptor`, `NewAuthInterceptor`, `NewSlogInterceptor`, `NewActionLogInterceptor`) are `connect.UnaryInterceptorFunc`. | This is the single biggest thing to get right, and connect-go makes it **silent**: `UnaryInterceptorFunc`'s `WrapStreamingHandler` is a pass-through, so a streaming handler compiles, serves, and runs with **no auth claims in its context, no panic recovery, no request id and no log line**. A `WatchEvent` that reads `ClaimsFromContext(ctx)` would find nothing and — depending on how it is written — either fail closed or serve an anonymous caller. **Do not add a streaming RPC before this is fixed.** The fix is to promote the spine to real `connect.Interceptor` implementations with a `WrapStreamingHandler` that mirrors the unary one; that is a slice of its own (3b.0a below), it is security code, and it is architect-tier. |
 | **S2** ✅ | **The stream is per-subscriber, so it must filter rather than redact.** *(Done in 3b.0b.)* | This is the whole point of replacing SSE. `mayViewIncident` (`internal/incident/incident.go`) already encodes the rule; the stream applies it per connected subscriber and simply **omits** a poke the subscriber may not see. That retires the "some activity is observable" residual — update `CLAUDE.md` when it lands, and not before. |
 | **S3** ✅ | **Access is re-checked on every poke, not once at subscribe.** *(Done in 3b.0b.)* | A stream can outlive a permission change: someone's event access is revoked, or an incident is *marked* private while they are watching it. Checking only at subscribe time turns a long-lived connection into a permission cache with no invalidation. The re-check is a `mayViewIncident` call per poke per subscriber — cheap, and it must not be optimised away. |
-| **S4** | **A native device identity is not a web subscription.** | `PUSH_SUBSCRIPTION.P256DH` and `AUTH` are `not null` and meaningless for Expo. Add a `KIND` column (`web` / `expo`) and make the two key columns nullable, with the existing rows backfilled to `web`. `ENDPOINT` carries the `ExponentPushToken[…]` for an Expo row and stays the device's unique identity, so the upsert-on-endpoint behaviour and the `PUSH_SUBSCRIPTION_BY_PERSON` fan-out index both survive unchanged. |
-| **S5** | **Expo push is asynchronous in two steps.** | The send call returns a *ticket*, not a delivery. Errors that matter (`DeviceNotRegistered`) only appear later in a **receipt**, fetched by ticket id. A sender that ignores receipts never prunes a dead token and will fan out to it forever. `ExpoPushSender` has to check receipts and prune on `DeviceNotRegistered`, which is the Expo analogue of the web path's 404/410 pruning. |
-| **S6** | **Push stays off unless configured.** | `IMS_EXPO_PUSH_ENABLED`, defaulting off, following the `Enabled()` pattern `NoopSender` already establishes — a disabled backend short-circuits the fan-out *before* it touches the database. |
+| **S4** ✅ | **A native device identity is not a web subscription.** *(Done in 3b.0c.)* | `PUSH_SUBSCRIPTION.P256DH` and `AUTH` are `not null` and meaningless for Expo. Add a `KIND` column (`web` / `expo`) and make the two key columns nullable, with the existing rows backfilled to `web`. `ENDPOINT` carries the `ExponentPushToken[…]` for an Expo row and stays the device's unique identity, so the upsert-on-endpoint behaviour and the `PUSH_SUBSCRIPTION_BY_PERSON` fan-out index both survive unchanged. |
+| **S5** ✅ | **Expo push is asynchronous in two steps.** *(Done in 3b.0c.)* | The send call returns a *ticket*, not a delivery. Errors that matter (`DeviceNotRegistered`) only appear later in a **receipt**, fetched by ticket id. A sender that ignores receipts never prunes a dead token and will fan out to it forever. `ExpoPushSender` has to check receipts and prune on `DeviceNotRegistered`, which is the Expo analogue of the web path's 404/410 pruning. |
+| **S6** ✅ | **Push stays off unless configured.** *(Done in 3b.0c: `IMS_EXPO_PUSH_ENABLED`.)* | `IMS_EXPO_PUSH_ENABLED`, defaulting off, following the `Enabled()` pattern `NoopSender` already establishes — a disabled backend short-circuits the fan-out *before* it touches the database. |
 | **S7** ✅ | **SSE does not get deleted here.** *(Held in 3b.0b: the hub hangs off `EventSourcerer`'s four `Notify*` methods, which were already the single point all ~22 publish sites funnel through — so both publishers run off one set of triggers and **no call site changed**.)* | The templ web UI is still the production client and still consumes `GET /ims/api/eventsource`. Both live side by side until the Expo client replaces it (Phase 4). Two publishers off one set of triggers, not a migration. |
-| **S8** | **Content stays minimal.** | The lock-screen rule from 84c is unchanged and applies to Expo identically: a body like "You were mentioned in incident #12" and a deep link, never incident text. A native notification is *more* exposed than a browser one, not less. |
+| **S8** ✅ | **Content stays minimal.** *(Held in 3b.0c, unchanged from 84c.)* | The lock-screen rule from 84c is unchanged and applies to Expo identically: a body like "You were mentioned in incident #12" and a deep link, never incident text. A native notification is *more* exposed than a browser one, not less. |
 
 ## The contract
 
@@ -97,7 +98,7 @@ Each is one PR to `master`. **3b.0a is a prerequisite, not an optional first ste
 |---|---|---|
 | **3b.0a** ✅ | **Streaming-safe interceptors** | **Done 2026-09-10.** The five unary interceptor funcs are now named types implementing `connect.Interceptor`, each with `WrapUnary` and `WrapStreamingHandler` calling one shared body so the two halves cannot drift. Tests cover a streaming handler seeing claims, an anonymous stream carrying none, a panic mid-stream becoming `Internal`, the request id being echoed *before* the handler can send, the whole `Interceptors()` chain applied to a streaming handler, and a pin on connect-go's pass-through so the hazard is executable. Action log: answered by the contract (below). No new RPC. |
 | **3b.0b** ✅ | **`WatchEvent`** | **Done 2026-09-10.** `stream.proto` (the first `stream` in the contract), `WatchHub` + `Stream` in `internal/server`, and `WatchPolicy` implemented in `internal/incident` from the *same* primitives the read path uses (`mayViewIncident`, the 52f grant query, `EventPermissions`; a report poke follows `GetReport`'s all / own / crew scoping, and a report-reader may subscribe). Per-subscriber filter (S2), re-checked per poke (S3), 25 s heartbeat **plus an establishing beat**, expiry ends the stream, clean teardown. Tested both as units and end-to-end through the **generated client** over real HTTP. |
-| **3b.0c** | **Native push** | `KIND` migration + nullable `P256DH`/`AUTH` with a `web` backfill (S4); `RegisterPushDevice` / `UnregisterPushDevice`; `ExpoPushSender` implementing `push.Sender` with receipt checking and `DeviceNotRegistered` pruning (S5); `IMS_EXPO_PUSH_ENABLED` (S6); wired into the existing `Pusher` fan-out so one notification reaches web and native devices alike. |
+| **3b.0c** ✅ | **Native push** | **Done 2026-09-10.** Two migrations, not one (see below); `RegisterPushDevice` / `UnregisterPushDevice`; `ExpoPushSender` with ticket **and** receipt handling and `DeviceNotRegistered` pruning (S5); `IMS_EXPO_PUSH_ENABLED` (S6); and a `push.Router` that dispatches on `KIND`, so the fan-out still holds one `Sender` and learned nothing about there being two push services. |
 
 ## Verification
 
@@ -120,7 +121,7 @@ staging check with two browser sessions, and it is the acceptance test for S2/S3
 - [ ] 3a gate closed (device session) — **this slice does not start before it**
 - [x] 3b.0a: streaming-safe interceptor spine, with tests, merged
 - [x] 3b.0b: `WatchEvent` — per-subscriber filter, per-poke re-check, heartbeat, cancellation
-- [ ] 3b.0c: `KIND` migration, device RPCs, `ExpoPushSender` with receipts, `IMS_EXPO_PUSH_ENABLED`
+- [x] 3b.0c: `KIND` migration, device RPCs, `ExpoPushSender` with receipts, `IMS_EXPO_PUSH_ENABLED`
 - [ ] Two-client privacy check on staging (a writer must never observe a private incident's pokes)
 - [ ] `CLAUDE.md` § *Private incidents* updated — the SSE residual is retired **only** for stream subscribers
 - [x] Plan 09 §7 finding written (connect-go streaming) — *3b.0a — A unary interceptor spine cannot be extended to streaming*
@@ -162,6 +163,39 @@ staging check with two browser sessions, and it is the acceptance test for S2/S3
    `Unauthenticated` so the client reconnects with a fresh one. It costs nothing
    extra — the re-check was already mandatory — and it means the S3 re-check is
    load-bearing for two separate reasons rather than one.
+
+## What 3b.0c cost that the brief did not predict
+
+- **The `KIND` change is two migrations, not one.** Adding the column and
+  relaxing `P256DH`/`AUTH` are one logical change but two `ALTER`s, and MariaDB
+  DDL is not transactional: half-applied, goose records nothing, and the retry
+  dies on a duplicate column with no way forward but by hand. `CLAUDE.md` says
+  one logical DDL change per migration for exactly this reason.
+- **Routing beat branching.** The obvious move is to give `Pusher` two senders
+  and switch on the row's kind. A `push.Router` that *is* a `Sender` keeps the
+  fan-out holding exactly one, so `internal/server` learned nothing about there
+  being two push services — the only line that changed there passes `KIND`
+  through. An unconfigured kind is a no-op rather than an error, which matters:
+  an error would reach the prune path and could delete a working device.
+- **Receipts do not fit a synchronous `Sender`, and that is the real work in
+  S5.** `Send` returns a *ticket*; `DeviceNotRegistered` usually arrives only in
+  a *receipt* fetched later. So the backend keeps aged tickets and sweeps them,
+  pruning through a callback — `lib/push` still takes no store dependency, the
+  same seam idiom as `IncidentPrivacyOracle` and `PokeVisibility`. The honest
+  cost: pending tickets are in memory and a restart loses them. That costs a
+  prune, not a delivery, which is why it did not earn a tickets table.
+- **The device RPCs are separate, not a flag on the web pair.** A browser
+  subscription is an endpoint URL plus two crypto keys; an Expo device is one
+  opaque token. Folded together, three of four fields become conditional on a
+  discriminator and every validation rule with them. Separate messages let
+  `RegisterPushDeviceRequest` pin the `ExponentPushToken[` prefix in
+  protovalidate, so a client that sends a raw APNs or FCM token — which would be
+  accepted and then silently never deliver — is rejected at the edge.
+- **A constructor that starts a goroutine needs the process context, not a
+  deferred `Close`.** The first wiring put `defer expo.Close()` in
+  `mustStartServer`, which *returns* while the server runs — the receipt sweeper
+  would have stopped the instant the process finished booting. It belongs on the
+  existing shutdown hook beside the SSE hub's close.
 
 ## What 3b.0b cost that the brief did not predict
 

@@ -470,26 +470,32 @@ where ID = ? and RECIPIENT_PERSON_ID = ? and READ_AT is null;
 update NOTIFICATION set READ_AT = ?
 where RECIPIENT_PERSON_ID = ? and READ_AT is null;
 
--- Web push subscriptions (plan 84). A device's ENDPOINT is its identity, so the
--- subscribe path reads by endpoint and then inserts or updates — rather than an
--- ODKU upsert — matching how the rest of the store handles unique-key upserts.
+-- Push subscriptions (plan 84 web, plan 09p native). A device's ENDPOINT is its
+-- identity, so the subscribe path reads by endpoint and then inserts or updates
+-- — rather than an ODKU upsert — matching how the rest of the store handles
+-- unique-key upserts. KIND tells the two device families apart: for 'web' the
+-- ENDPOINT is a browser push-service URL and P256DH/AUTH hold the Web Push
+-- crypto keys; for 'expo' the ENDPOINT is an ExponentPushToken[...] string and
+-- P256DH/AUTH are null, since Expo's push service needs no per-device key.
 
 -- name: PushSubscriptionByEndpoint :one
-select ID, PERSON_ID, ENDPOINT, P256DH, AUTH, USER_AGENT, CREATED
+select ID, PERSON_ID, ENDPOINT, KIND, P256DH, AUTH, USER_AGENT, CREATED
 from PUSH_SUBSCRIPTION
 where ENDPOINT = ?;
 
 -- name: InsertPushSubscription :exec
-insert into PUSH_SUBSCRIPTION (PERSON_ID, ENDPOINT, P256DH, AUTH, USER_AGENT, CREATED)
-values (?, ?, ?, ?, ?, ?);
+insert into PUSH_SUBSCRIPTION (PERSON_ID, ENDPOINT, KIND, P256DH, AUTH, USER_AGENT, CREATED)
+values (?, ?, ?, ?, ?, ?, ?);
 
 -- name: UpdatePushSubscriptionByEndpoint :exec
 -- A re-subscribe of the same device refreshes its keys/owner; PERSON_ID is set
 -- too so a device that changes hands re-homes to the current caller. CREATED is
 -- intentionally left untouched: the client re-subscribes on every page load, so
 -- bumping it would turn it into a last-seen time and reshuffle the device list.
+-- KIND is set here too, though in practice an endpoint's kind can't change: the
+-- two device families never share an endpoint format.
 update PUSH_SUBSCRIPTION
-set PERSON_ID = ?, P256DH = ?, AUTH = ?, USER_AGENT = ?
+set PERSON_ID = ?, KIND = ?, P256DH = ?, AUTH = ?, USER_AGENT = ?
 where ENDPOINT = ?;
 
 -- name: DeletePushSubscription :exec
@@ -504,9 +510,9 @@ delete from PUSH_SUBSCRIPTION
 where ENDPOINT = ?;
 
 -- name: PushSubscriptionsForPerson :many
--- Every device a person has subscribed (newest first). Backs the send fan-out
--- (84c) and a future "your devices" list (84d).
-select ID, PERSON_ID, ENDPOINT, P256DH, AUTH, USER_AGENT, CREATED
+-- Every device a person has subscribed (newest first), web and native alike.
+-- Backs the send fan-out (84c/09p) and a future "your devices" list (84d).
+select ID, PERSON_ID, ENDPOINT, KIND, P256DH, AUTH, USER_AGENT, CREATED
 from PUSH_SUBSCRIPTION
 where PERSON_ID = ?
 order by CREATED desc;

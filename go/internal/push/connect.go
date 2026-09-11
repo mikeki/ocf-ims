@@ -14,6 +14,7 @@ import (
 	"github.com/mikeki/ocf-ims/internal/person"
 	"github.com/mikeki/ocf-ims/internal/server"
 	"github.com/mikeki/ocf-ims/lib/conv"
+	push "github.com/mikeki/ocf-ims/lib/push"
 	"github.com/mikeki/ocf-ims/store"
 	"github.com/mikeki/ocf-ims/store/imsdb"
 )
@@ -66,8 +67,9 @@ func (s Service) SubscribePush(
 		// orders stably despite per-page-load re-subscribes.
 		err = s.ImsDBQ.UpdatePushSubscriptionByEndpoint(ctx, s.ImsDBQ, imsdb.UpdatePushSubscriptionByEndpointParams{
 			PersonID:  personID,
-			P256dh:    req.GetP256Dh(),
-			Auth:      req.GetAuth(),
+			Kind:      string(push.KindWeb),
+			P256dh:    conv.StringToSql(new(req.GetP256Dh()), 255),
+			Auth:      conv.StringToSql(new(req.GetAuth()), 255),
 			UserAgent: ua,
 			Endpoint:  endpoint,
 		})
@@ -78,8 +80,9 @@ func (s Service) SubscribePush(
 		err = s.ImsDBQ.InsertPushSubscription(ctx, s.ImsDBQ, imsdb.InsertPushSubscriptionParams{
 			PersonID:  personID,
 			Endpoint:  endpoint,
-			P256dh:    req.GetP256Dh(),
-			Auth:      req.GetAuth(),
+			Kind:      string(push.KindWeb),
+			P256dh:    conv.StringToSql(new(req.GetP256Dh()), 255),
+			Auth:      conv.StringToSql(new(req.GetAuth()), 255),
 			UserAgent: ua,
 			Created:   now,
 		})
