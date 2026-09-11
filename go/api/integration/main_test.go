@@ -13,6 +13,7 @@ import (
 	"github.com/mikeki/ocf-ims/api"
 	"github.com/mikeki/ocf-ims/conf"
 	"github.com/mikeki/ocf-ims/directory"
+	"github.com/mikeki/ocf-ims/internal/incident"
 	"github.com/mikeki/ocf-ims/internal/server"
 	_ "github.com/mikeki/ocf-ims/lib/noopdb"
 	"github.com/mikeki/ocf-ims/lib/rand"
@@ -36,6 +37,7 @@ var shared struct {
 	imsDBQ       *store.DBQ
 	userStore    directory.UserStore
 	es           *server.EventSourcerer
+	watchHub     *server.WatchHub
 	metricsCache *server.MetricsCache
 	testServer   *httptest.Server
 	serverURL    *url.URL
@@ -200,6 +202,10 @@ func setup(ctx context.Context, tempDir string) {
 	_, err = db.ExecContext(ctx, imsPeopleTestSeed)
 	must(err)
 	shared.imsDBQ = store.NewDBQ(db, imsdb.New())
+	// Built here, after shared.imsDBQ exists: NewWatchPolicy captures the DBQ
+	// by value, where the SSE oracle above reads it lazily.
+	shared.watchHub = server.NewWatchHub(incident.NewWatchPolicy(shared.imsDBQ))
+	shared.es.Watch = shared.watchHub
 	shared.userStore = directory.NewLocalUserStore(shared.imsDBQ, shared.cfg.Directory.InMemoryCacheTTL)
 
 	shared.actionLogger = actionlog.NewLogger(ctx, shared.imsDBQ, shared.cfg.Core.ActionLogEnabled, true)
@@ -212,7 +218,7 @@ func setup(ctx context.Context, tempDir string) {
 	// the generated Connect client instead (e.g. TestGetAndEditEvent's ListEvents).
 	// It shares es + metricsCache so an extracted write fans out SSE and invalidates the
 	// dashboard exactly as the REST path did; nil push sender → the no-op backend.
-	api.AddConnectToMux(mux, shared.cfg, shared.imsDBQ, shared.actionLogger, shared.userStore, shared.es, shared.metricsCache, nil, nil)
+	api.AddConnectToMux(mux, shared.cfg, shared.imsDBQ, shared.actionLogger, shared.userStore, shared.es, shared.watchHub, shared.metricsCache, nil, nil)
 	shared.testServer = httptest.NewServer(mux)
 	shared.serverURL, err = url.Parse(shared.testServer.URL)
 	must(err)

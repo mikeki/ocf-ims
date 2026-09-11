@@ -43,7 +43,7 @@ func newCORSTestServer(t *testing.T, allowedOrigins []string) string {
 	t.Cleanup(es.Server.Close)
 
 	mux := api.AddToMux(http.NewServeMux(), es, cfg, nil, nil, nil, logger)
-	api.AddConnectToMux(mux, cfg, nil, logger, nil, nil, nil, nil, nil)
+	api.AddConnectToMux(mux, cfg, nil, logger, nil, nil, nil, nil, nil, nil)
 	srv := httptest.NewServer(mux)
 	t.Cleanup(srv.Close)
 	return srv.URL

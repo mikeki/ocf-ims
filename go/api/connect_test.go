@@ -71,7 +71,7 @@ func newTestConnectClientWithLogger(t *testing.T, logger server.ActionLogger) (s
 	// same reason — only the incident-mutation RPCs touch them, and those are exercised in
 	// api/integration, not here. (Every RPC is now implemented, so the "valid request reaches the
 	// handler" probe uses a separate bare handler — see newBareUnimplementedConnectClient.)
-	mux := api.AddConnectToMux(http.NewServeMux(), cfg, nil, logger, nil, nil, nil, nil, nil)
+	mux := api.AddConnectToMux(http.NewServeMux(), cfg, nil, logger, nil, nil, nil, nil, nil, nil)
 
 	srv := httptest.NewServer(mux)
 	t.Cleanup(srv.Close)

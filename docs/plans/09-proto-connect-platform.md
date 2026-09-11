@@ -1978,6 +1978,67 @@ The first server slice since Phase 1, and it exists only because writing
   belt-and-braces: it is the only thing that notices a permission revoked while
   someone is watching.
 
+### 3b.0b — The first stream: what an addressed transport changes (2026-09-10)
+
+`WatchEvent`, the first server-streaming RPC in the contract, replacing the SSE
+broadcast poke for Connect clients (SSE stays for the templ UI until Phase 4).
+
+- **Broadcast transports force redaction; addressed transports allow filtering.**
+  The SSE hub's privacy compromise — a private incident's number replaced by a
+  number-less "reload everything" poke, leaving the residual that any subscriber
+  can see *that* something changed — was never a policy decision. It was a
+  transport consequence. A broadcast cannot tell one subscriber from another, so
+  it has no filter available; redaction is the only tool it has. The fix was not
+  "redact more carefully", it was "change the transport". Worth stating wherever
+  server-push is discussed, because the same mistake is available in every
+  system that grows a fan-out before it grows identities.
+- **A Connect server stream does not exist until it sends something.** Response
+  headers are not written until the first message, so the *client's* call blocks
+  until the server sends. A stream whose only output is a 25 s heartbeat blocks
+  its client for 25 s before it returns, and the client cannot distinguish
+  "connecting" from "connected and idle". The answer is an establishing beat sent
+  immediately on subscribe — which the SSE hub already did (`ReplayAll` plus an
+  `InitialEvent` on attach) and which was missed on the way past. Neither the
+  connect-go docs nor the streaming examples say this; the end-to-end tests said
+  it, by each taking exactly 25.0 s.
+- **A reverse proxy special-cases SSE and nothing else.** Caddy flushes
+  immediately for `text/event-stream`, which is why the SSE poke has worked in
+  production for a year with no configuration. A Connect stream is
+  `application/connect+json` and gets no such case, so it needs an explicit
+  `flush_interval -1`. This is a deployment failure that passes every server-side
+  test, works against the server directly, and stalls only through the proxy —
+  the worst shape a bug can have. Any "we added streaming" checklist owes a line
+  about the proxy.
+- **Put the authorization behind a seam and the stream becomes testable.** The
+  first cut had the subscribe gate querying the database inline, which would have
+  made the stream provable only in the testcontainer suite. Moving *both*
+  authorization questions — may this person watch this event, and may they be
+  told about this poke — behind one injected `WatchPolicy` left the handler as
+  pure mechanics: subscribe, filter, beat, expire, tear down. The whole thing now
+  runs through the generated client against `httptest` with no MariaDB, and the
+  policy is implemented beside the read path's own privacy rule so there is
+  exactly one interpretation of it.
+- **The filter must fail closed, and it must fail *silently*.** Two separate
+  properties, and the second is easy to miss: a withheld poke cannot produce an
+  error, a gap, or a differently-timed response, because any of those tells the
+  subscriber that something they may not see just changed — which is precisely
+  what the filter exists to hide. The test asserts both: nothing delivered, and
+  the stream continues normally.
+- **A long-lived stream is a permission cache with no invalidation unless you
+  make it one.** Checking access at subscribe would be the obvious design and it
+  is wrong: streams outlive permission changes. The re-check runs per poke, per
+  subscriber, on the subscriber's own goroutine — never on the publisher's, or a
+  write RPC would pay one database query per connected watcher in its own
+  latency.
+- **`buf` will not let a stream return a bare domain message.** Its
+  `RPC_RESPONSE_STANDARD_NAME` rule wants `WatchEventResponse`. The envelope it
+  forces is an improvement — it can grow a resume cursor without touching the
+  poke — but it is a surprise if you have designed the message first.
+- **Server streaming needs nothing from HTTP/2.** Over the Connect protocol it is
+  one request and a chunked response, which HTTP/1.1 carries; this server listens
+  in plaintext behind Caddy with no h2c and streams fine. A *bidi* stream would
+  need HTTP/2 and does not have it — worth knowing before someone designs one.
+
 ## 8. Open questions
 
 1. **Does the Go binary keep serving static assets in production**, or does Caddy?

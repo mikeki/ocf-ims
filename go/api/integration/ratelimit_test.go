@@ -35,7 +35,7 @@ func TestLoginRateLimit(t *testing.T) {
 	cfg := *shared.cfg
 	cfg.Core.LoginRateLimitEnabled = true
 	srv := httptest.NewServer(
-		api.AddConnectToMux(nil, &cfg, shared.imsDBQ, shared.actionLogger, shared.userStore, shared.es, shared.metricsCache, nil, nil),
+		api.AddConnectToMux(nil, &cfg, shared.imsDBQ, shared.actionLogger, shared.userStore, shared.es, shared.watchHub, shared.metricsCache, nil, nil),
 	)
 	defer srv.Close()
 	srvURL, err := url.Parse(srv.URL)

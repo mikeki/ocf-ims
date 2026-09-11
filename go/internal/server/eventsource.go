@@ -79,6 +79,10 @@ type IncidentPrivacyOracle func(ctx context.Context, eventID, incidentNumber int
 type EventSourcerer struct {
 	Server    *eventsource.Server
 	IdCounter atomic.Int64
+	// Watch is the second publisher (plan 09p 3b.0b), fed from the Notify*
+	// methods below so no call site changed (S7). Nil means no stream is
+	// attached; every Publish is nil-safe.
+	Watch *WatchHub
 
 	// incidentIsPrivate is consulted before every incident poke. It is required (see
 	// NewEventSourcerer): the constructor takes it explicitly rather than defaulting,
@@ -132,6 +136,7 @@ func (es *EventSourcerer) NotifyReportUpdate(eventID int32, reportNumber int32) 
 			ReportNumber: reportNumber,
 		},
 	})
+	es.Watch.Publish(Poke{EventID: eventID, ReportNumber: reportNumber})
 }
 
 func (es *EventSourcerer) NotifyIncidentUpdate(ctx context.Context, eventID int32, incidentNumber int32) {
@@ -142,6 +147,8 @@ func (es *EventSourcerer) NotifyIncidentUpdate(ctx context.Context, eventID int3
 		EventID:   es.IdCounter.Add(1),
 		EventData: es.incidentEventData(ctx, eventID, incidentNumber),
 	})
+	// Unredacted: the stream filters per subscriber at send time.
+	es.Watch.Publish(Poke{EventID: eventID, IncidentNumber: incidentNumber})
 }
 
 func (es *EventSourcerer) NotifyIncidentUpdates(ctx context.Context, eventID int32, incident1, incident2 int32) {
@@ -151,6 +158,8 @@ func (es *EventSourcerer) NotifyIncidentUpdates(ctx context.Context, eventID int
 	}
 }
 
+// NotifyVisitUpdate publishes no stream poke: the contract has no visit poke
+// kind (Visits are off, #61). Add the kind and the Publish together.
 func (es *EventSourcerer) NotifyVisitUpdate(eventID int32, visitNumber int32) {
 	if visitNumber == 0 {
 		return

@@ -18,6 +18,7 @@ import "ocf/ims/service/rpc/v1/person.proto";
 import "ocf/ims/service/rpc/v1/profile.proto";
 import "ocf/ims/service/rpc/v1/push.proto";
 import "ocf/ims/service/rpc/v1/report.proto";
+import "ocf/ims/service/rpc/v1/stream.proto";
 
 option go_package = "github.com/mikeki/ocf-ims/gen/ocf/ims/service/v1;servicev1";
 
@@ -29,10 +30,12 @@ option go_package = "github.com/mikeki/ocf-ims/gen/ocf/ims/service/v1;servicev1"
 // exceptions and the deliberately-excluded visits subsystem) lives in
 // docs/plans/09e-service-surface.md.
 //
-// All RPCs are unary. SSE (GET /ims/api/eventsource) stays plain HTTP for now (M8),
-// a candidate for Connect server-streaming later. Blob upload/download (attachments,
-// profile pictures) and the liveness/readiness/debug endpoints are the other
-// plain-HTTP exceptions.
+// Every RPC is unary except WatchEvent, which is server-streaming (plan 09p
+// 3b.0b). SSE (GET /ims/api/eventsource) stays for the templ web UI until Phase 4.
+// Blob upload/download (attachments, profile pictures) and the
+// liveness/readiness/debug endpoints remain plain-HTTP exceptions (M8). A server
+// stream needs no HTTP/2 (one request, a chunked response); a bidi stream would,
+// and the server has no h2c.
 service ImsService {
   // --- Auth & session ---
   // Login is a mutation for audit purposes (it mints a new session) and is left
@@ -192,4 +195,11 @@ service ImsService {
   // --- Web push ---
   rpc SubscribePush(rpc.v1.SubscribePushRequest) returns (rpc.v1.SubscribePushResponse);
   rpc UnsubscribePush(rpc.v1.UnsubscribePushRequest) returns (rpc.v1.UnsubscribePushResponse);
+
+  // --- Live stream ---
+  // Server-streaming (plan 09p 3b.0b). NO_SIDE_EFFECTS also keeps it out of the
+  // action log: one audit row per poke would be telemetry, not audit data.
+  rpc WatchEvent(rpc.v1.WatchEventRequest) returns (stream rpc.v1.WatchEventResponse) {
+    option idempotency_level = NO_SIDE_EFFECTS;
+  }
 }

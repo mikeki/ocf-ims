@@ -48,7 +48,14 @@ ims-staging.ocf.example.org {
 
 	@server path /ims /ims/* /ocf.ims.service.v1.ImsService/*
 	handle @server {
-		reverse_proxy ocf-ims-staging:80
+		reverse_proxy ocf-ims-staging:80 {
+			# WatchEvent (09p 3b.0b) is a Connect server stream. Caddy flushes
+			# text/event-stream on its own (why SSE has always worked here) but
+			# buffers application/connect+json, so the stream stalls behind the
+			# proxy without this. -1 = flush every write; the unary RPCs on this
+			# prefix are single writes and pay nothing.
+			flush_interval -1
+		}
 	}
 
 	handle {

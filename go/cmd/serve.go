@@ -19,6 +19,7 @@ import (
 	"github.com/mikeki/ocf-ims/api"
 	"github.com/mikeki/ocf-ims/conf"
 	"github.com/mikeki/ocf-ims/directory"
+	"github.com/mikeki/ocf-ims/internal/incident"
 	"github.com/mikeki/ocf-ims/internal/server"
 	"github.com/mikeki/ocf-ims/lib/attachment"
 	"github.com/mikeki/ocf-ims/lib/conv"
@@ -140,6 +141,10 @@ func mustStartServer(ctx context.Context, unvalidatedCfg *conf.IMSConfig, printC
 			return row.Incident.Private, nil
 		},
 	)
+	// The WatchEvent hub (plan 09p 3b.0b) hangs off the SSE hub so both
+	// publishers are fed by the same Notify* triggers (S7).
+	watchHub := server.NewWatchHub(incident.NewWatchPolicy(imsDBQ))
+	eventSource.Watch = watchHub
 	// The dashboard-aggregate cache is shared state (a per-event map guarded by a mutex):
 	// the metrics dashboard read now lives on Connect (ImsService.GetMetrics) alongside the
 	// incident/area/type writes that invalidate it, so the cache is threaded into AddConnectToMux
@@ -155,7 +160,7 @@ func mustStartServer(ctx context.Context, unvalidatedCfg *conf.IMSConfig, printC
 	// protovalidate, …). REST routes are retired one resource at a time as they are
 	// extracted onto Connect (the aggressive migration path, plan 09 §6). It shares the
 	// same eventSource / metricsCache / push sender so extracted writes fan out identically.
-	api.AddConnectToMux(mux, imsCfg, imsDBQ, actionLogger, userStore, eventSource, metricsCache, pushSender, s3Client)
+	api.AddConnectToMux(mux, imsCfg, imsDBQ, actionLogger, userStore, eventSource, watchHub, metricsCache, pushSender, s3Client)
 	web.AddToMux(mux, imsCfg)
 
 	s := &http.Server{
@@ -172,6 +177,8 @@ func mustStartServer(ctx context.Context, unvalidatedCfg *conf.IMSConfig, printC
 	s.RegisterOnShutdown(func() {
 		actionLogger.Close()
 		eventSource.Server.Close()
+		// Or a subscriber holds the drain open for the whole grace period.
+		watchHub.Close()
 	})
 
 	listener, err := net.Listen("tcp", net.JoinHostPort(imsCfg.Core.Host, conv.FormatInt(imsCfg.Core.Port)))
