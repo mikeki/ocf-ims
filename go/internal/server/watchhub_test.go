@@ -30,12 +30,9 @@ func allowAll() WatchPolicy {
 	}
 }
 
-// testClaims builds the claims the auth interceptor would have produced.
-//
-// An expired token is minted valid and then aged, because AuthenticateJWT
-// refuses to parse an expired one — which is itself the point of the test it
-// serves: the stream holds claims that were valid when it opened and go stale
-// underneath it, exactly as a real long-lived stream does.
+// testClaims builds the claims the auth interceptor would have produced. An
+// expired token is minted valid and then aged: AuthenticateJWT refuses to parse
+// an expired one, and a real stream's claims go stale the same way.
 func testClaims(t *testing.T, handle string, expiresIn time.Duration) *authz.IMSClaims {
 	t.Helper()
 	jwter := authz.JWTer{SecretKey: "unit-test-secret"}
@@ -290,10 +287,8 @@ func TestWatchStreamRequiresAuthentication(t *testing.T) {
 	require.Zero(t, h.Subscribers())
 }
 
-// Every stream opens with a heartbeat, and that is load-bearing: a Connect
-// server stream writes no response headers until its first message, so without
-// it connect-go's client call blocks until something is published. Found the
-// hard way — the end-to-end tests in api/ took 25 s each until this existed.
+// The opening heartbeat is what establishes the stream: without it the client
+// call blocks until something is published.
 func TestWatchStreamOpensWithAHeartbeat(t *testing.T) {
 	t.Parallel()
 	h := NewWatchHub(allowAll())
@@ -326,10 +321,8 @@ func TestWatchStreamRefusesAnAlreadyExpiredToken(t *testing.T) {
 	require.Zero(t, h.Subscribers())
 }
 
-// Open question 4, the case that actually happens: a stream authenticates ONCE
-// from the headers it opened with, and with a 15-minute access token against a
-// 30-minute WriteTimeout it outlives its own token. Here the claims the handler
-// is holding go stale underneath it, exactly as they do in production.
+// Open question 4: a stream authenticates once and outlives its token; the
+// claims the handler holds go stale underneath it.
 func TestWatchStreamEndsWhenTheTokenExpiresMidStream(t *testing.T) {
 	t.Parallel()
 	h := NewWatchHub(allowAll())

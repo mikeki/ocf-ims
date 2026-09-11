@@ -202,10 +202,8 @@ func setup(ctx context.Context, tempDir string) {
 	_, err = db.ExecContext(ctx, imsPeopleTestSeed)
 	must(err)
 	shared.imsDBQ = store.NewDBQ(db, imsdb.New())
-	// The stream's hub, hung off the SSE hub exactly as serve.go does it, so a
-	// test's write fans out to both publishers off one trigger. Built HERE and
-	// not beside the SSE oracle above: NewWatchPolicy captures the DBQ by value,
-	// where the oracle closure reads shared.imsDBQ lazily on each call.
+	// Built here, after shared.imsDBQ exists: NewWatchPolicy captures the DBQ
+	// by value, where the SSE oracle above reads it lazily.
 	shared.watchHub = server.NewWatchHub(incident.NewWatchPolicy(shared.imsDBQ))
 	shared.es.Watch = shared.watchHub
 	shared.userStore = directory.NewLocalUserStore(shared.imsDBQ, shared.cfg.Directory.InMemoryCacheTTL)

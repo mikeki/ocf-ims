@@ -4,6 +4,7 @@ package api
 
 import (
 	"context"
+	"errors"
 	"net/http"
 
 	"connectrpc.com/connect"
@@ -62,10 +63,9 @@ type ImsService struct {
 	Notification notification.Service
 	Push         push.Service
 	Metrics      metrics.Service
-	// Watch is not a domain Service: with WatchPolicy carrying both
-	// authorization questions, the WatchEvent stream is pure mechanics and the
-	// hub is the whole implementation. It is nil in tests that do not exercise
-	// the stream, and the RPC then answers Unimplemented rather than panicking.
+	// Watch is the WatchEvent hub, not a domain Service: WatchPolicy carries
+	// the authorization, so the hub is the whole implementation. Nil in tests
+	// that do not exercise the stream; the RPC then answers Unimplemented.
 	Watch     *server.WatchHub
 	ActionLog actionlog.Service
 }
@@ -881,16 +881,17 @@ func (s ImsService) UnsubscribePush(
 	return connect.NewResponse(resp), nil
 }
 
-// WatchEvent is the one server-streaming RPC (plan 09p 3b.0b). The delegator
-// shape differs from every other method here — connect hands a *ServerStream to
-// send on instead of taking a response back — so the domain is given a plain
-// send func rather than the connect type, keeping internal/incident free of a
-// transport dependency it has nowhere else.
+// WatchEvent is the one server-streaming RPC (plan 09p 3b.0b). The hub takes a
+// plain send func rather than the *ServerStream so internal/server stays free
+// of the connect stream type.
 func (s ImsService) WatchEvent(
 	ctx context.Context,
 	req *connect.Request[servicerpcv1.WatchEventRequest],
 	stream *connect.ServerStream[servicerpcv1.WatchEventResponse],
 ) error {
+	if s.Watch == nil {
+		return connect.NewError(connect.CodeUnimplemented, errors.New("the live stream is not configured"))
+	}
 	return s.Watch.Stream(ctx, req.Msg, stream.Send)
 }
 

@@ -21,16 +21,10 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// WatchEvent end to end (plan 09p slice 3b.0b): the real handler, behind the real
-// interceptor chain, over a real HTTP connection, driven by the GENERATED client.
-//
-// This is the test 3b.0a existed to make possible. Before the interceptor spine
-// was promoted to real connect.Interceptors, everything below would still have
-// connected and streamed — and the handler would have found no claims in its
-// context, because UnaryInterceptorFunc's WrapStreamingHandler is a pass-through.
-// The stream would have answered Unauthenticated to a properly authenticated
-// caller, or worse, served an anonymous one. No database is involved: WatchPolicy
-// is the seam that keeps authorization out of the stream mechanics.
+// WatchEvent end to end (plan 09p 3b.0b): the real handler behind the real
+// interceptor chain, over HTTP, driven by the generated client. Before 3b.0a
+// this would have streamed with no claims in the handler's context. No
+// database: the test supplies the WatchPolicy.
 
 // newWatchTestClient stands up AddConnectToMux with a real WatchHub whose policy
 // is supplied by the test, and returns the generated client plus the hub to

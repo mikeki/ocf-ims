@@ -141,12 +141,8 @@ func mustStartServer(ctx context.Context, unvalidatedCfg *conf.IMSConfig, printC
 			return row.Incident.Private, nil
 		},
 	)
-	// The second publisher (plan 09p 3b.0b): the per-subscriber WatchEvent hub.
-	// It hangs off the SSE hub because EventSourcerer's four Notify* methods are
-	// already the single point every write's poke passes through — so both
-	// transports are fed by one set of triggers (09p S7) and no call site
-	// changed. The visibility rule is built from the same primitives the read
-	// path uses (internal/incident), not a second interpretation of it.
+	// The WatchEvent hub (plan 09p 3b.0b) hangs off the SSE hub so both
+	// publishers are fed by the same Notify* triggers (S7).
 	watchHub := server.NewWatchHub(incident.NewWatchPolicy(imsDBQ))
 	eventSource.Watch = watchHub
 	// The dashboard-aggregate cache is shared state (a per-event map guarded by a mutex):
@@ -181,8 +177,7 @@ func mustStartServer(ctx context.Context, unvalidatedCfg *conf.IMSConfig, printC
 	s.RegisterOnShutdown(func() {
 		actionLogger.Close()
 		eventSource.Server.Close()
-		// End the live streams too, or a subscriber holds the drain open for the
-		// whole grace period doing nothing.
+		// Or a subscriber holds the drain open for the whole grace period.
 		watchHub.Close()
 	})
 

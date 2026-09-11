@@ -49,17 +49,11 @@ ims-staging.ocf.example.org {
 	@server path /ims /ims/* /ocf.ims.service.v1.ImsService/*
 	handle @server {
 		reverse_proxy ocf-ims-staging:80 {
-			# WatchEvent (09p 3b.0b) is a Connect SERVER STREAM, and a poke is
-			# useless if it is sitting in a proxy buffer. Caddy flushes
-			# immediately on its own for `text/event-stream` — which is why the
-			# templ UI's SSE poke has always worked through here — but a Connect
-			# stream is `application/connect+json`, which gets no such special
-			# case. Without this the stream passes every Go test, works against
-			# the server directly, and stalls on staging.
-			#
-			# -1 means "flush every write, do not buffer". It applies to the
-			# unary RPCs on this same prefix too, and costs them nothing: their
-			# responses are a single write.
+			# WatchEvent (09p 3b.0b) is a Connect server stream. Caddy flushes
+			# text/event-stream on its own (why SSE has always worked here) but
+			# buffers application/connect+json, so the stream stalls behind the
+			# proxy without this. -1 = flush every write; the unary RPCs on this
+			# prefix are single writes and pay nothing.
 			flush_interval -1
 		}
 	}

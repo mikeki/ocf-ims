@@ -6,6 +6,7 @@ import (
 	"context"
 	"database/sql"
 	"errors"
+	"net/http"
 
 	"connectrpc.com/connect"
 	"github.com/mikeki/ocf-ims/internal/server"
@@ -14,16 +15,13 @@ import (
 	"github.com/mikeki/ocf-ims/store/imsdb"
 )
 
-// The authorization half of the WatchEvent stream (plan 09p, slice 3b.0b). The
-// stream mechanics live in internal/server; what lives here is the only thing
-// that needs the database and the privacy rule — and it is built from the same
-// primitives GetIncident and ListIncidents use (mayViewIncident, the 52f grant
-// query, EventPermissions) rather than a second interpretation of them. Two
-// implementations of "may this person see this" is how a private incident
-// eventually leaks.
+// The authorization half of WatchEvent (plan 09p 3b.0b), built from the same
+// primitives the read path uses so there is one interpretation of "may this
+// person see this". The stream mechanics live in internal/server.
 
-// NewWatchPolicy builds the subscribe gate and the per-poke visibility rule the
-// hub consults.
+const anyReportRead = authz.EventReadAllReports | authz.EventReadOwnReports | authz.EventReadCrewReports
+
+// NewWatchPolicy builds the subscribe gate and the per-poke visibility rule.
 func NewWatchPolicy(imsDBQ *store.DBQ) server.WatchPolicy {
 	return server.WatchPolicy{
 		MayWatch: mayWatchEvent(imsDBQ),
@@ -31,10 +29,9 @@ func NewWatchPolicy(imsDBQ *store.DBQ) server.WatchPolicy {
 	}
 }
 
-// mayWatchEvent is the subscribe-time gate: the event must exist, and the caller
-// must either be able to read incidents in it or hold at least one per-incident
-// grant there (the 52f case — a reporter with no event-wide read who was granted
-// one incident still has a reason to watch).
+// mayWatchEvent admits a caller who can read something in the event: incidents,
+// reports (any of the three report-read bits), or at least one granted incident
+// (52f).
 func mayWatchEvent(imsDBQ *store.DBQ) func(context.Context, *authz.IMSClaims, int32) error {
 	return func(ctx context.Context, claims *authz.IMSClaims, eventID int32) error {
 		if claims == nil {
@@ -54,7 +51,7 @@ func mayWatchEvent(imsDBQ *store.DBQ) func(context.Context, *authz.IMSClaims, in
 		if err != nil {
 			return server.InternalError("failed to compute permissions", err)
 		}
-		if eventPerms[eventID]&authz.EventReadIncidents != 0 {
+		if eventPerms[eventID]&(authz.EventReadIncidents|anyReportRead) != 0 {
 			return nil
 		}
 		granted, err := imsDBQ.GrantedIncidentNumbersForPerson(ctx, imsDBQ,
@@ -66,15 +63,14 @@ func mayWatchEvent(imsDBQ *store.DBQ) func(context.Context, *authz.IMSClaims, in
 			return nil
 		}
 		return connect.NewError(connect.CodePermissionDenied,
-			errors.New("the requestor does not have EventReadIncidents permission"))
+			errors.New("the requestor may not read incidents or reports in this event"))
 	}
 }
 
-// pokeVisible answers, for one subscriber and one poke, whether they may be told.
-//
-// It re-reads the incident row on every call on purpose. That is the whole point
-// of S3: an incident marked private, or an access revoked, while someone is
-// watching has to take effect on the next poke — not on the next reconnect.
+// pokeVisible re-reads permissions and the row on every poke (09p S3), so an
+// incident marked private or an access revoked mid-stream takes effect on the
+// next poke. It applies the read path's own rules: mayViewIncident for an
+// incident, GetReport's all / own / crew scoping for a report.
 func pokeVisible(imsDBQ *store.DBQ) server.PokeVisibility {
 	return func(ctx context.Context, claims *authz.IMSClaims, poke server.Poke) (bool, error) {
 		if claims == nil {
@@ -84,39 +80,72 @@ func pokeVisible(imsDBQ *store.DBQ) server.PokeVisibility {
 		if err != nil {
 			return false, err
 		}
-		hasEventRead := eventPerms[poke.EventID]&authz.EventReadIncidents != 0
-		viewerPersonID := claims.PersonID()
-		viewerIsAdmin := claims.PersonAdmin()
-
-		if poke.IncidentNumber == 0 {
-			// A report poke. Reports carry no per-resource privacy flag of their
-			// own, so event-wide read is the gate, exactly as on the read path.
-			// A caller who is in this event only by a per-incident grant has no
-			// business being told a report changed, so a grant does not open it.
-			return viewerIsAdmin || hasEventRead, nil
+		perms := eventPerms[poke.EventID]
+		if poke.IncidentNumber != 0 {
+			return incidentPokeVisible(ctx, imsDBQ, claims, perms, poke)
 		}
+		return reportPokeVisible(ctx, imsDBQ, claims, perms, poke)
+	}
+}
 
-		row, err := imsDBQ.Incident(ctx, imsDBQ, imsdb.IncidentParams{
-			Event: poke.EventID, Number: poke.IncidentNumber,
+func incidentPokeVisible(
+	ctx context.Context, imsDBQ *store.DBQ, claims *authz.IMSClaims, perms authz.EventPermissionMask, poke server.Poke,
+) (bool, error) {
+	row, err := imsDBQ.Incident(ctx, imsDBQ, imsdb.IncidentParams{
+		Event: poke.EventID, Number: poke.IncidentNumber,
+	})
+	if errors.Is(err, sql.ErrNoRows) {
+		// Gone between the publish and this check; nothing to tell.
+		return false, nil
+	}
+	if err != nil {
+		return false, err
+	}
+	viewerPersonID := claims.PersonID()
+	viewerIsAdmin := claims.PersonAdmin()
+	hasGrant := false
+	if !viewerIsAdmin {
+		hasGrant, err = imsDBQ.IncidentPersonHasGrant(ctx, imsDBQ, imsdb.IncidentPersonHasGrantParams{
+			Event: poke.EventID, IncidentNumber: poke.IncidentNumber, PersonID: viewerPersonID,
 		})
-		if errors.Is(err, sql.ErrNoRows) {
-			// It went away between the publish and this check. There is nothing
-			// to tell anyone about.
-			return false, nil
-		}
 		if err != nil {
 			return false, err
 		}
-		hasGrant := false
-		if !viewerIsAdmin {
-			hasGrant, err = imsDBQ.IncidentPersonHasGrant(ctx, imsDBQ, imsdb.IncidentPersonHasGrantParams{
-				Event: poke.EventID, IncidentNumber: poke.IncidentNumber, PersonID: viewerPersonID,
-			})
-			if err != nil {
-				return false, err
-			}
-		}
-		return mayViewIncident(row.Incident.Private, row.Incident.CreatedBy,
-			viewerPersonID, viewerIsAdmin, hasEventRead, hasGrant), nil
 	}
+	hasEventRead := perms&authz.EventReadIncidents != 0
+	return mayViewIncident(row.Incident.Private, row.Incident.CreatedBy,
+		viewerPersonID, viewerIsAdmin, hasEventRead, hasGrant), nil
+}
+
+// reportPokeVisible mirrors GetReport: "all" sees every report; otherwise the
+// caller must own it (own) or lead its author's crew (crew). A caller admitted
+// to the stream by incident read alone gets no report pokes.
+func reportPokeVisible(
+	ctx context.Context, imsDBQ *store.DBQ, claims *authz.IMSClaims, perms authz.EventPermissionMask, poke server.Poke,
+) (bool, error) {
+	if perms&authz.EventReadAllReports != 0 {
+		return true, nil
+	}
+	if perms&(authz.EventReadOwnReports|authz.EventReadCrewReports) == 0 {
+		return false, nil
+	}
+	report, entries, errHTTP := fetchReport(ctx, imsDBQ, poke.EventID, poke.ReportNumber, false)
+	if errHTTP != nil {
+		if errHTTP.Code == http.StatusNotFound {
+			return false, nil
+		}
+		return false, errHTTP
+	}
+	if perms&authz.EventReadOwnReports != 0 &&
+		ownsReport(report.Report, entries, claims.PersonID(), claims.PersonHandle()) {
+		return true, nil
+	}
+	if perms&authz.EventReadCrewReports != 0 {
+		crew, errHTTP := crewReportNumberSet(ctx, imsDBQ, poke.EventID, claims.PersonID())
+		if errHTTP != nil {
+			return false, errHTTP
+		}
+		return crew[poke.ReportNumber], nil
+	}
+	return false, nil
 }

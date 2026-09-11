@@ -13,20 +13,16 @@ import (
 	"google.golang.org/protobuf/types/known/timestamppb"
 )
 
-// The WatchEvent stream handler (plan 09p, slice 3b.0b). It lives here rather
-// than in a domain package because, with WatchPolicy carrying both authorization
-// questions, what is left is pure stream mechanics: subscribe, filter, beat,
-// expire, tear down. No database, no domain types.
+// The WatchEvent stream handler (plan 09p 3b.0b): subscribe, filter, beat,
+// expire, tear down. No database — WatchPolicy carries the authorization.
 
-// heartbeatInterval is how often an otherwise-silent stream says it is alive.
-// Caddy and most proxies reap an idle connection at 30-60 s, so this sits under
-// the shortest of those with room to spare. It is modelled as a poke rather than
-// a transport-level ping so a client observes liveness in the same place it
-// observes everything else.
+// heartbeatInterval sits under the 30-60 s at which Caddy and most proxies reap
+// an idle connection. It is a poke rather than a transport ping so the client
+// observes liveness where it observes everything else.
 const heartbeatInterval = 25 * time.Second
 
-// Stream serves one WatchEvent subscriber until the client goes away, the access
-// token expires, or the server shuts down.
+// Stream serves one subscriber until the client goes away, the access token
+// expires, or the server shuts down.
 func (h *WatchHub) Stream(
 	ctx context.Context,
 	req *rpcv1.WatchEventRequest,
@@ -36,10 +32,8 @@ func (h *WatchHub) Stream(
 	if !ok {
 		return connect.NewError(connect.CodeUnauthenticated, errors.New("authentication required"))
 	}
-	// An already-expired token never establishes a stream in the first place.
-	// The two checks inside the loop below catch a token that expires while the
-	// stream runs; this one catches the client that reconnected without
-	// refreshing first.
+	// Catches a client that reconnected without refreshing; the loop below
+	// catches a token that expires while the stream runs.
 	err := expired(claims)
 	if err != nil {
 		return err
@@ -54,20 +48,9 @@ func (h *WatchHub) Stream(
 	session := h.Subscribe(claims, req.GetEventIds())
 	defer session.Close()
 
-	// Beat once, immediately, before waiting for anything.
-	//
-	// This is not politeness — it is what establishes the stream. A Connect
-	// server stream writes no response headers until its first message, so
-	// connect-go's client call does not return until the server sends
-	// something: without this, WatchEvent would block a client for up to 25
-	// seconds on a quiet event and it could not tell "connecting" from
-	// "connected and idle". Any proxy with a response-header timeout shorter
-	// than the heartbeat would kill the connection before it ever produced a
-	// byte, too.
-	//
-	// The SSE hub already solved this and it is worth naming: EventSourcerer
-	// sets ReplayAll and hands every new subscriber an InitialEvent the moment
-	// it attaches. Same problem, same answer.
+	// The first beat is what establishes the stream: a Connect server stream
+	// writes no response headers until its first message, so without it the
+	// client call would block for up to heartbeatInterval on a quiet event.
 	err = send(heartbeat())
 	if err != nil {
 		return err
@@ -79,24 +62,18 @@ func (h *WatchHub) Stream(
 	for {
 		select {
 		case <-ctx.Done():
-			// The client went away, or the request was cancelled. The deferred
-			// Close detaches the subscriber, so nothing is left behind.
 			return nil
 
 		case poke, open := <-session.Pokes():
 			if !open {
-				// The hub ended this stream — it fell behind, or the server is
-				// shutting down. Either way the client reconnects and refetches,
-				// which is what it would have to do after any gap anyway.
 				return session.Reason()
 			}
 			err = expired(claims)
 			if err != nil {
 				return err
 			}
-			// The per-poke re-check (09p S2/S3). Failing it is silence, not an
-			// error: a subscriber must not be able to learn that a poke was
-			// withheld, or the filter leaks exactly what it exists to hide.
+			// Withholding is silent (S2): an error would tell the subscriber
+			// that something they may not see just changed.
 			if !session.Visible(ctx, poke) {
 				continue
 			}
@@ -106,9 +83,7 @@ func (h *WatchHub) Stream(
 			}
 
 		case <-ticker.C:
-			// An idle stream expires too, which is why the check is here as well
-			// as on the poke path — a subscriber told nothing for an hour would
-			// otherwise hold an expired token indefinitely.
+			// An idle stream expires too.
 			err = expired(claims)
 			if err != nil {
 				return err
@@ -121,12 +96,11 @@ func (h *WatchHub) Stream(
 	}
 }
 
-// expired ends the stream when the access token it opened with has run out (09p
-// open question 4). A stream authenticates ONCE, from the headers it opened with
-// (see AuthInterceptor) — and with a 15-minute access token against the
-// 30-minute WriteTimeout in cmd/serve.go, a stream that runs its full life would
-// spend half of it holding an expired token. Unauthenticated is the code the
-// client's transport already knows how to answer: refresh, then reconnect.
+// expired ends the stream once the token it opened with has run out (09p open
+// question 4): a stream authenticates once, and a 15-minute token against the
+// 30-minute WriteTimeout would otherwise spend half its life expired.
+// Unauthenticated is what the client transport already answers with a refresh
+// and a reconnect.
 func expired(claims *authz.IMSClaims) error {
 	if claims.ExpiresAt == nil || time.Now().Before(claims.ExpiresAt.Time) {
 		return nil

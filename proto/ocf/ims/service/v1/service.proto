@@ -30,17 +30,12 @@ option go_package = "github.com/mikeki/ocf-ims/gen/ocf/ims/service/v1;servicev1"
 // exceptions and the deliberately-excluded visits subsystem) lives in
 // docs/plans/09e-service-surface.md.
 //
-// Every RPC is unary except WatchEvent, which is server-streaming (plan 09p slice
-// 3b.0b — the first stream in the contract). SSE (GET /ims/api/eventsource) is NOT
-// retired by it: the templ web UI still consumes SSE and will until Phase 4, so the
-// two publishers run side by side off the same triggers (09p S7). Blob
-// upload/download (attachments, profile pictures) and the liveness/readiness/debug
-// endpoints remain plain-HTTP exceptions (M8).
-//
-// A server stream needs nothing from HTTP/2: over the Connect protocol it is one
-// request and a chunked response, which HTTP/1.1 carries. That matters here because
-// the server listens in plaintext behind Caddy with no h2c — a BIDI stream would
-// need HTTP/2 and does not currently have it. We do not need one.
+// Every RPC is unary except WatchEvent, which is server-streaming (plan 09p
+// 3b.0b). SSE (GET /ims/api/eventsource) stays for the templ web UI until Phase 4.
+// Blob upload/download (attachments, profile pictures) and the
+// liveness/readiness/debug endpoints remain plain-HTTP exceptions (M8). A server
+// stream needs no HTTP/2 (one request, a chunked response); a bidi stream would,
+// and the server has no h2c.
 service ImsService {
   // --- Auth & session ---
   // Login is a mutation for audit purposes (it mints a new session) and is left
@@ -202,11 +197,8 @@ service ImsService {
   rpc UnsubscribePush(rpc.v1.UnsubscribePushRequest) returns (rpc.v1.UnsubscribePushResponse);
 
   // --- Live stream ---
-  // The one server-streaming RPC (plan 09p slice 3b.0b). A read: it mutates
-  // nothing, so NO_SIDE_EFFECTS, which is also what tells the action-log
-  // interceptor not to audit it — the alternative would be one audit row per
-  // poke, which is telemetry, not audit data (09p open question 1, answered in
-  // 3b.0a).
+  // Server-streaming (plan 09p 3b.0b). NO_SIDE_EFFECTS also keeps it out of the
+  // action log: one audit row per poke would be telemetry, not audit data.
   rpc WatchEvent(rpc.v1.WatchEventRequest) returns (stream rpc.v1.WatchEventResponse) {
     option idempotency_level = NO_SIDE_EFFECTS;
   }
