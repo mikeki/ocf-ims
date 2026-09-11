@@ -111,6 +111,76 @@ mine-by-mention, at least two unread rows and several read ones, both an inciden
 report, a private incident, and the empty state ("nothing is yours yet" is a *good* state
 at the start of a shift, not an error).
 
+### What happened — the round, 2026-09-10
+
+Three variants were built on a throwaway surface (`src/prototypes/d1/` + a dev-only
+`app/(dev)/mywork.tsx`), each applied to the same fixture event and sharing one row
+component, so the comparison was about shape and not about three row designs. The
+classification and the watermark ran for real, not as mock output.
+
+| Variant | Axis | Outcome |
+|---|---|---|
+| Two lists | Separation — a place you go | Never reconciles the asymmetry, but splits "what is waiting for me" across two headings, and leans on the section header to say what a row is |
+| **Segmented** | **Filter — a view of the event** | **Leaning (pending confirmation).** No new destination; each segment counts only what it lists |
+| Inbox | Queue — a list needing attention | Best single answer to "what next", at the price of sorting `last_modified` directly against a report's newest entry |
+
+Two defects were found by running it rather than by reading it: the Segmented badge
+counted unread *reports* while the segment listed only incidents (a count pointing at
+rows the filter removes), and the unread dot carried colour as its only signal with no
+accessible name. Both fixed in the surface.
+
+### Decisions taken in the round
+
+1. **Incidents keep `#214`; reports become `R-38`.** An incident and a report can both
+   be 214 in the same event, so something has to disambiguate them — but only one of the
+   two needs to carry the mark. (`I-214` / `R-38` was tried first and rejected: it taxes
+   the common case and forces a sweep of every shipped screen and of the tracer, to buy
+   clarity in the one place the pair actually collide.) Incidents are the record the fair
+   runs on and the one the app and the radio already call `#214`; marking only reports
+   buys the same clarity for a fraction of the change — `IncidentRow`, `IncidentScreen`
+   and the linked-incident buttons are untouched.
+   **The cost is an asymmetry that quietly takes a side on open question 5.** Giving
+   reports their own namespace entrenches them as a different KIND of record. If they
+   turn out to be a later PHASE of an incident, this is the notation that has to be
+   undone — cheap now, less so once it is in people's mouths.
+2. **The screen is a "Board", not "My work"** — and the word is the header's title, with
+   the event on the back control: `‹ 2026   Board`.
+   **One consequence to accept or fix.** 09n's convention is that back is labelled with
+   the *parent screen's* name, and the parent is the events list, not the event — so this
+   back button reads "2026" and navigates to Events. The Playwright tracer finds back by
+   that accessible name, so the tracer's selector changes with it. Deliberate, not an
+   oversight; the alternative (title "2026", "Board" naming only the destination in the
+   3b.5 tab bar) stays available at no cost until the tab bar exists.
+3. **"All" marks the rows that are yours.** A 3 px rule down the leading edge in
+   `primary`, plus the "why" line ("You filed", "You're on it") that everyone else's row
+   does not spend. Without it, at 185 rows a *read* row of yours is indistinguishable
+   from a stranger's, and the segments become the only place ownership is legible. The
+   rule is deliberately not another chip: it survives a fast scroll, costs the row no
+   height, and cannot be mistaken for the badges, which are all about the incident rather
+   than about you. It shows only where a list mixes — never in Mine, where every row
+   would wear it.
+
+### What the round found about scale
+
+The first fixture set had eight incidents, which flattered every variant. Rebuilt with
+**185** — a fair-scale Saturday evening — two things appeared that a small list hides:
+
+1. **The list must be virtualized.** A `ScrollView` of every incident in the event is
+   not viable; the surface now uses `FlatList`. Worth knowing for 3c as well: on the web
+   build, React Native Web's virtualization is weak — 156 of 185 rows were in the DOM —
+   so the dispatch table cannot assume `FlatList` alone solves this.
+2. **"All" cannot tell you which rows are yours.** At eight rows it does not matter; at
+   185 the only thing marking a mine-row in All is its unread dot, and a read one of
+   yours is indistinguishable from everyone else's. Either All carries a mine marker, or
+   the segments are the only place "mine" is legible — a decision the slice owes.
+
+And it sharpens the payload question the plan deferred. The client-side filter downloads
+**every incident in the event with its journal entries** to find the handful that are
+yours. At 185 incidents on fair connectivity that is no longer obviously "acceptable at
+fair scale, a server slice when it isn't" — it may already be the latter. Measure the
+real response against staging before building, and if it is bad, a server-side filter is
+a 3b.1 prerequisite rather than a follow-up.
+
 ## The rules the winner inherits (shape-independent)
 
 Whatever is picked, these are the same, and they are the architect-tier part of the slice.
@@ -231,7 +301,18 @@ a broken "My work" look identical.
    ignore it. **Assumption: ignore it; classify over whatever entries the response holds.**
 3. **Is an unread marker per item, or a count per section?** Shape-dependent; the picker
    answers it.
-4. **Should a report's summary edit mark it unread?** It cannot be detected client-side
+4. **Are a Report and an Incident the same kind of thing at different times?** Raised by
+   Miguel's sponsors, 2026-09-10, and explicitly deferred by him — recorded here so it is
+   not lost. Two readings are in play: a Report as *somebody's report of an incident*
+   (what the data model does today — `Report.incident` links one to an incident, and a
+   report can exist with none), versus a Report as *a responder's write-up after the
+   fact* (a phase of an incident, not a sibling of one). If the second is right, the two
+   are one record with a lifecycle and the split in the schema is an accident of history;
+   the app would grow a way to move between the phases rather than two parallel lists.
+   This decides more than a screen — it decides whether "My work"/"Board" is one list or
+   two, which is the question this very picker was asking. **It needs its own plan doc and
+   a conversation with the sponsors before 3b.3 (Reports) is briefed.**
+5. **Should a report's summary edit mark it unread?** It cannot be detected client-side
    (see the asymmetry above). Either accept the gap or add `last_modified` to `Report` — a
    proto change, a migration, and a server slice, so **not** in 3b.1. Recorded here so the
    choice is deliberate.
