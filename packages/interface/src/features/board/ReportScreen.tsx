@@ -17,14 +17,9 @@ import { LoadingState } from "@/features/shell/LoadingState";
 import { ScreenHeader } from "@/features/shell/ScreenHeader";
 import { formatTimestamp, personLabel } from "@/lib/format";
 
-// A report, read-only (plan 09q, slice 3b.1).
-//
-// This exists because the Board lists reports, and a row you cannot open is a
-// row whose unread mark can never be cleared — the watermark is written on
-// OPEN. It is deliberately the smallest thing that makes the Board coherent:
-// the header, who filed it and when, whether it is attached to an incident,
-// and the journal. **Writing** a report — filing, appending, linking, the
-// may_edit_summary / may_add_journal_entry gating — is 3b.3.
+// A report, read-only (plan 09q, slice 3b.1). It exists because the Board's
+// unread mark is cleared on open, so a report row needs somewhere to open to.
+// Writing a report is 3b.3.
 
 export interface ReportScreenProps {
   eventId: number;

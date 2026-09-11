@@ -5,9 +5,7 @@ import { BoardScreen } from "@/features/board/BoardScreen";
 import { EmptyState } from "@/features/shell/EmptyState";
 
 // The Board (plan 09q, slice 3b.1). The path stays `/incidents`: it is the
-// event's stack anchor, the `?o=` return path and the tracer's deep link all
-// point at it, and renaming the URL would buy a tidier word at the cost of
-// every link anyone has already saved.
+// event's stack anchor and every saved link and the tracer point at it.
 
 export default function BoardRoute() {
   const router = useRouter();

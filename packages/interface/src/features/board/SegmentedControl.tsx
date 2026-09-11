@@ -6,14 +6,8 @@ import { Text } from "@/design/primitives/Text";
 import { useTheme } from "@/design/theme";
 import { pressRetentionOffset } from "@/design/tokens";
 
-// The Board's segment picker (plan 09q, D1 → "Segmented"). Not a design-system
-// primitive yet: it exists in exactly one place, and D0's rule is that a
-// primitive earns its way in by being needed twice. If 3c's console wants one
-// too, it moves to src/design/primitives then.
-//
-// A count rides on a segment only when that segment has something new, and it
-// counts ONLY what that segment would list — a badge pointing at rows the
-// filter removes sends you to a screen to look for them.
+// The Board's segment picker (plan 09q). Not a design-system primitive until a
+// second screen needs one. A segment's count covers only what it would list.
 
 export interface Segment<K extends string> {
   key: K;
@@ -82,10 +76,8 @@ function SegmentButton<K extends string>(props: SegmentButtonProps<K>) {
   return (
     <Pressable
       accessibilityRole="tab"
-      // Both: `accessibilityState` is what React Native reads on a device, and
-      // `aria-selected` is what the web build needs — RN Web does not map the
-      // former to the latter for a tab, so without this a screen reader on the
-      // web cannot tell which segment is the current one.
+      // Both: RN Web does not derive aria-selected from accessibilityState for
+      // a tab, and a web screen reader needs it.
       accessibilityState={{ selected: active }}
       aria-selected={active}
       accessibilityLabel={

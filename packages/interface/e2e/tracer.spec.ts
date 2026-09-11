@@ -32,15 +32,9 @@ test("login → events → incidents → incident → sign out", async ({ page }
   await expect(events.first()).toBeVisible();
   await events.first().click(); // the newest ("Current")
   await expect(page).toHaveURL(/\/events\/\d+\/incidents$/);
-  // The Board's segments (3b.1): "Mine" is what it opens on, "All" is the
-  // whole event. Proving the control responds to a real click matters more
-  // than it looks — a segmented control is the one thing on this screen that
-  // is neither a row nor a header.
+  // The Board's segments (3b.1). aria-selected is asserted here because only a
+  // real browser proves RN Web's DOM mapping.
   await expect(page.getByTestId("board-segment-mine")).toBeVisible();
-  // RN Web does not derive aria-selected from accessibilityState for a tab, so
-  // the control sets it itself; without it a screen reader on the web cannot
-  // tell which segment is current. Asserted here because only the real browser
-  // proves the DOM mapping.
   await expect(page.getByTestId("board-segment-mine")).toHaveAttribute(
     "aria-selected",
     "true",

@@ -10,14 +10,8 @@ import type { JournalEntry } from "@ocf-ims/protocol-buffers/ocf/ims/resources/v
 import type { IncidentView } from "@ocf-ims/protocol-buffers/ocf/ims/service/rpc/v1/incident_pb";
 import type { ReportView } from "@ocf-ims/protocol-buffers/ocf/ims/service/rpc/v1/report_pb";
 
-// The Board's domain logic (plan 09q, slice 3b.1): who an item belongs to,
-// when it last changed, and what it is called. All pure — the screen decides
-// how to arrange these, the watermark (seen.ts) decides which are unread.
-//
-// "Mine" is computed on the client, deliberately (09i §8, 3b.1: "client-side;
-// a server filter is a noted follow-up"): the cost is that the response
-// carries every incident in the event with its journal, and the phone throws
-// most of it away.
+// The Board's domain logic (plan 09q, slice 3b.1): whose an item is, when it
+// last changed, what it is called. Pure; seen.ts decides what is unread.
 
 /** One row on the Board: an incident or a report, flattened. */
 export interface WorkItem {
@@ -47,14 +41,8 @@ export const whyLabel: Readonly<Record<MineReason, string>> = {
 };
 
 /**
- * How a record is written down and called out loud: `#214` for an incident,
- * `R-38` for a report.
- *
- * An incident and a report can both be 214 in the same event, so something has
- * to separate them — but only one of the two needs to carry the mark.
- * Incidents are the record the fair runs on, and the one the app and the radio
- * already call `#214`; marking only reports buys the same clarity without
- * asking anyone to relearn the common case.
+ * `#214` for an incident, `R-38` for a report: the two share a number space,
+ * and only the rarer one carries the mark (09q decision 1).
  */
 export function label(item: Pick<WorkItem, "kind" | "number">): string {
   return item.kind === "incident" ? `#${item.number}` : `R-${item.number}`;
@@ -64,21 +52,14 @@ function time(ts: Timestamp | undefined): number {
   return ts ? timestampDate(ts).getTime() : 0;
 }
 
-/**
- * When an incident last changed. The server keeps this for us.
- */
+/** When an incident last changed. */
 export function changedAtIncident(view: IncidentView): number {
   return time(view.incident?.lastModified);
 }
 
 /**
- * When a report last changed — as far as a client can tell.
- *
- * `Report` has no `last_modified`: it carries `created` and its journal and
- * nothing else temporal. So this is the newest thing on it, and it follows
- * that **a report's summary edit is invisible here** and will not mark the row
- * unread. Closing that gap means adding `last_modified` to the resource — a
- * proto change, a migration and a server slice (09q, open question 5).
+ * When a report last changed, as far as a client can tell: `Report` has no
+ * `last_modified`, so a summary edit is invisible here (09q open question 5).
  */
 export function changedAtReport(view: ReportView): number {
   const report = view.report;
@@ -92,12 +73,8 @@ export function changedAtReport(view: ReportView): number {
 }
 
 /**
- * Why this incident is mine, or undefined when it is not.
- *
- * `me === 0` classifies NOTHING. A proto3 scalar defaults to 0 and so does
- * `GetAuthStatus.person_id` for an unauthenticated caller, so a zero matching
- * an absent `created_by` would quietly make every unattributed incident
- * everyone's.
+ * Why this incident is mine, or undefined. `me === 0` classifies nothing: a
+ * proto3 scalar defaults to 0, and so would an absent `created_by`.
  */
 export function whyMineIncident(
   view: IncidentView,
@@ -119,7 +96,7 @@ export function whyMineIncident(
   return undefined;
 }
 
-/** As above, minus "attached" — a report has no `people`. */
+/** As above, minus "attached": a report has no `people`. */
 export function whyMineReport(
   view: ReportView,
   me: number,

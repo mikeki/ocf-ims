@@ -17,12 +17,8 @@ import {
 import { createTestRuntime, renderWithProviders } from "@/test/harness";
 import { createMemoryRefreshTokenStore } from "@/test/storage";
 
-// The Board against the real runtime (plan 09q, slice 3b.1), following
-// IncidentScreen.test.tsx: sign in with a stored refresh token so the screen
-// mounts already authenticated, and bootstrap BEFORE mounting — useEventAccess
-// reads GetAuthStatus, which answers 200 `authenticated: false` for an
-// anonymous caller rather than throwing, so a call fired before bootstrap
-// finishes would cache "no access" for its 5-minute staleTime.
+// The Board against the real runtime (plan 09q, slice 3b.1). Bootstrap before
+// mounting, for the reason IncidentScreen.test.tsx gives.
 
 const ME = 42; // the fake user's personId
 const OTHER = 3;
@@ -141,8 +137,7 @@ describe("BoardScreen", () => {
     });
     expect(screen.getByTestId("incident-row-209")).toBeTruthy();
     expect(screen.getByTestId("incident-row-198")).toBeTruthy();
-    // Not mine by any rule, and the newest in the event — so its absence is
-    // the filter working rather than the ordering hiding it.
+    // Not mine by any rule, and the newest, so the filter and not the order hid it.
     expect(screen.queryByTestId("incident-row-221")).toBeNull();
   });
 
@@ -222,8 +217,6 @@ describe("BoardScreen", () => {
     await waitFor(() => {
       expect(screen.getByTestId("incident-row-214")).toBeTruthy();
     });
-    // There is no read-reports flag on AccessForEvent to ask beforehand, so
-    // the segment can only go away once the call has answered (09q).
     await waitFor(() => {
       expect(screen.queryByTestId("board-segment-reports")).toBeNull();
     });

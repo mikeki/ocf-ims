@@ -3,19 +3,10 @@
 import type { AsyncStorageLike } from "@/api/persist";
 import type { WorkItem } from "@/features/board/work";
 
-// The unread watermark (plan 09q, slice 3b.1). There is no server-side "read"
-// state and none is being added: this is what THIS DEVICE has looked at.
-//
-// Pure functions over an AsyncStorageLike, following
-// features/events/selected.ts — the hook wires the real module, so tests need
-// nothing beyond src/test/storage.ts.
-//
-// One key per event holding a map, not a key per row: a Board with two hundred
-// incidents would otherwise be two hundred reads on mount.
-//
-// NOT cleared on sign-out, same as the remembered event: a shared device at
-// the fair keeps what it has seen. It holds numbers and timestamps — nothing
-// about the incidents themselves, and nothing that identifies a person.
+// The unread watermark (plan 09q, slice 3b.1): what THIS DEVICE has opened, as
+// pure functions over an AsyncStorageLike (like features/events/selected.ts).
+// One key per event holding a map, not a key per row. Not cleared on sign-out;
+// it holds numbers and timestamps only.
 
 export type SeenMarks = Readonly<Record<string, number>>;
 
@@ -39,12 +30,7 @@ export async function loadSeen(
   return parseSeen(raw);
 }
 
-/**
- * Tolerates anything: a half-written value, a key from a future version, a
- * browser that returned junk. A watermark that cannot be read means rows look
- * unread, which is the safe direction to fail — it shows too much, never too
- * little.
- */
+/** Tolerates junk: an unreadable watermark shows too much, never too little. */
 export function parseSeen(raw: string): SeenMarks {
   let parsed: unknown;
   try {
@@ -73,10 +59,8 @@ export async function saveSeen(
 }
 
 /**
- * Whether a row has changed since this device last opened it.
- *
- * No mark at all means it has never been opened — unread, UNLESS I am the one
- * who filed it, because I have already seen what I just made.
+ * Whether a row changed since this device last opened it. Never opened counts
+ * as unread, unless I filed it myself.
  */
 export function isUnread(item: WorkItem, marks: SeenMarks): boolean {
   if (!item.mine) {
@@ -89,11 +73,7 @@ export function isUnread(item: WorkItem, marks: SeenMarks): boolean {
   return item.changedAt > mark;
 }
 
-/**
- * The marks after opening a row. Written on OPEN — a row scrolling past is not
- * a read — and never moved backwards, so an older cached `changedAt` arriving
- * after a newer one cannot resurrect a row you have already read.
- */
+/** The marks after opening a row. Never moves a mark backwards. */
 export function withSeen(marks: SeenMarks, item: WorkItem): SeenMarks {
   const key = markOf(item);
   const mark = marks[key];

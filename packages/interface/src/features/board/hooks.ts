@@ -12,22 +12,15 @@ import {
 } from "@/features/board/seen";
 import type { WorkItem } from "@/features/board/work";
 
-// Domain hooks for the Board (plan 09q, slice 3b.1). Screens read these;
-// routes stay thin.
+// Domain hooks for the Board (plan 09q, slice 3b.1).
 
 /** How often the Board re-polls while mounted. Matches the 3a.3 list. */
 const BOARD_POLL_MS = 30_000;
 
 /**
- * The event's reports.
- *
- * `AccessForEvent` has no read-reports flag, though the server gates
- * `ListReports` on three separate read permissions (all / own / crew) — so
- * unlike `useAreas`, this one CANNOT be pre-gated and has to ask. A caller
- * with none of them gets `permission_denied`, and the Board hides the segment
- * rather than offering a tab that answers an error. A field on
- * `AccessForEvent` would let the client know beforehand; that is a server
- * change, noted in 09q.
+ * The event's reports. Unlike `useAreas` this cannot be pre-gated: `AccessForEvent`
+ * has no read-reports flag, so a caller without one gets `permission_denied`
+ * and the Board hides the segment (09q).
  */
 export function useReports(eventId: number) {
   return useQuery(
@@ -61,11 +54,8 @@ export interface Seen {
 }
 
 /**
- * This device's unread watermarks for one event.
- *
- * Until the first read finishes, `marks` is empty — which would make every
- * row of mine look unread — so `loaded` is exposed and the screen holds the
- * markers back rather than flashing them on and off.
+ * This device's unread watermarks for one event. `loaded` lets the screen hold
+ * the markers back until the first read finishes.
  */
 export function useSeen(eventId: number): Seen {
   const [marks, setMarks] = useState<SeenMarks>({});
@@ -74,7 +64,6 @@ export function useSeen(eventId: number): Seen {
   useEffect(() => {
     let cancelled = false;
     setLoaded(false);
-    // A storage that cannot be read remembers nothing; the Board still loads.
     void loadSeen(AsyncStorage, eventId)
       .catch(() => ({}) as SeenMarks)
       .then((stored) => {
@@ -93,7 +82,6 @@ export function useSeen(eventId: number): Seen {
       setMarks((previous) => {
         const next = withSeen(previous, item);
         if (next !== previous) {
-          // Best-effort: the row is marked read in this session either way.
           void saveSeen(AsyncStorage, eventId, next).catch(() => undefined);
         }
         return next;

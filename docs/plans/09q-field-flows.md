@@ -2,9 +2,8 @@
 
 # 09q — D1 and slice 3b.1: "My work", the field app's first screen
 
-> **Status:** Brief — **the shape question is open and belongs to the maintainer.** The
-> `/prototype` skill runs only when they invoke it (never on its own), so the picker round
-> in § *The prototype round* is the next action, not something a builder starts.
+> **Status:** **Built** — the picker round ran and chose Segmented (2026-09-11); slice
+> 3b.1 shipped in #256. Open: `/review-animations`, and a hand check on a real phone.
 > **Parent:** [09i-expo-client.md](09i-expo-client.md) (Phase 3, §6 **D1** and the 3b.1 row)
 > under [09-proto-connect-platform.md](09-proto-connect-platform.md)
 > **Follows:** [09p](09p-stream-and-push.md) (3b.0 — the server half of the field app:
@@ -15,7 +14,7 @@
 > **The skills:** Emil Kowalski's skills govern all UI work here (the maintainer's rule,
 > 2026-09-10) — `prototype` for the round below, `animate-expo` for anything that moves,
 > `review-animations` before the PR is called done.
-> **Last updated:** 2026-09-10
+> **Last updated:** 2026-09-11
 
 ## Objective
 
@@ -143,14 +142,12 @@ accessible name. Both fixed in the surface.
    reports their own namespace entrenches them as a different KIND of record. If they
    turn out to be a later PHASE of an incident, this is the notation that has to be
    undone — cheap now, less so once it is in people's mouths.
-2. **The screen is a "Board", not "My work"** — and the word is the header's title, with
-   the event on the back control: `‹ 2026   Board`.
-   **One consequence to accept or fix.** 09n's convention is that back is labelled with
-   the *parent screen's* name, and the parent is the events list, not the event — so this
-   back button reads "2026" and navigates to Events. The Playwright tracer finds back by
-   that accessible name, so the tracer's selector changes with it. Deliberate, not an
-   oversight; the alternative (title "2026", "Board" naming only the destination in the
-   3b.5 tab bar) stays available at no cost until the tab bar exists.
+2. **The screen is a "Board", not "My work"** — the word is the header's title. The
+   picker preview put the event on the back control (`‹ 2026   Board`); what shipped
+   keeps 09n's convention that back is labelled with the *parent screen* (`Events`,
+   which is also what the tracer selects on) and shows the event's name in the header's
+   right slot: `‹ Events   Board   2026`. Swapping to the preview's form is a one-line
+   change in `BoardScreen.tsx` if it reads better on a phone.
 3. **"All" marks the rows that are yours.** A 3 px rule down the leading edge in
    `primary`, plus the "why" line ("You filed", "You're on it") that everyone else's row
    does not spend. Without it, at 185 rows a *read* row of yours is indistinguishable
@@ -336,8 +333,8 @@ a broken "My work" look identical.
 3. **Is an unread marker per item, or a count per section?** Shape-dependent; the picker
    answers it.
 4. **Are a Report and an Incident the same kind of thing at different times?** Raised by
-   Miguel's sponsors, 2026-09-10, and explicitly deferred by him — recorded here so it is
-   not lost. Two readings are in play: a Report as *somebody's report of an incident*
+   the project's sponsors, 2026-09-10, and explicitly deferred by the maintainer — recorded
+   here so it is not lost. Two readings are in play: a Report as *somebody's report of an incident*
    (what the data model does today — `Report.incident` links one to an incident, and a
    report can exist with none), versus a Report as *a responder's write-up after the
    fact* (a phase of an incident, not a sibling of one). If the second is right, the two

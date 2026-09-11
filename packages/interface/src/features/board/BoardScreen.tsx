@@ -29,18 +29,9 @@ import { LoadingState } from "@/features/shell/LoadingState";
 import { ScreenHeader } from "@/features/shell/ScreenHeader";
 import { useSession } from "@/session/provider";
 
-// The Board (plan 09q, slice 3b.1) — the field app's front door, and the
-// screen that replaces the read-only 3a.3 incidents list.
-//
-// Shape chosen in the D1 picker round: a VIEW OF THE EVENT rather than a new
-// destination. The event stays in the header, and a segment says which slice
-// of it you are looking at. "Mine" is the default, because that is what a
-// volunteer opens the app for.
-//
-// "Mine" is computed here from the list responses (09i §8) — the server has no
-// filter for it yet. At fair scale that means downloading every incident in the
-// event with its journal to find the handful that are yours; whether that is
-// still acceptable is the measurement 09q asks for before 3b.2.
+// The Board (plan 09q, slice 3b.1): the event's incidents and reports behind an
+// All / Mine / Reports segment, opening on Mine. "Mine" is computed client-side
+// from the list responses; a server filter is a noted follow-up (09i §8).
 
 type SegmentKey = "all" | "mine" | "reports";
 
@@ -83,13 +74,11 @@ export function BoardScreen(props: BoardScreenProps) {
     [reportsQuery.data, me],
   );
 
-  // Held back until the watermarks have been read, or every row of mine would
-  // flash unread and then settle.
+  // Held back until the watermarks are read, or every mine-row flashes unread.
   const unread = (item: WorkItem) => seen.loaded && isUnread(item, seen.marks);
 
-  // A caller with none of the three report-read permissions gets
-  // permission_denied — there is no flag on AccessForEvent to ask beforehand
-  // (09q) — so the segment goes away rather than offering a tab that errors.
+  // AccessForEvent has no read-reports flag, so the segment can only go away
+  // once ListReports answers permission_denied (09q).
   const reportsForbidden =
     Boolean(reportsQuery.error) &&
     toAppError(reportsQuery.error).kind === "forbidden";
@@ -210,8 +199,7 @@ function renderBody(args: BodyArgs): ReactNode {
   }
 
   return (
-    // Virtualized: "All" is every incident in the event, which by the Saturday
-    // of a fair is hundreds of rows.
+    // Virtualized: "All" is hundreds of rows by the Saturday of a fair.
     <FlatList
       style={{ flex: 1 }}
       data={items}
@@ -246,7 +234,6 @@ function emptyFor(segment: SegmentKey): { title: string; message: string } {
   if (segment === "mine") {
     return {
       title: "Nothing is yours yet",
-      // A good state at the start of a shift, not an error.
       message:
         "Incidents you file, get attached to, or get mentioned in show up here.",
     };

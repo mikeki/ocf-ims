@@ -8,31 +8,17 @@ import { useTheme } from "@/design/theme";
 import { label, type WorkItem, whyLabel } from "@/features/board/work";
 import { formatShortTimeAt } from "@/lib/format";
 
-// One row of the Board (plan 09q, slice 3b.1), on the ledger row D0 built:
-// the identifier is a COLUMN, the summary owns the first line, and the time is
-// the fixed right column.
-//
-// Two marks this row adds to the 3a.3 incident row, each earning its place:
-//
-//   - UNREAD: a dot before the identifier, in the column that is already a
-//     fixed width, so an unread row and a read row still line up. Colour is
-//     never the only carrier — the dot is labelled, so the row's accessible
-//     name begins "Unread", and the identifier goes from muted to full ink,
-//     which survives a greyscale screen and direct sun.
-//   - YOURS: a rule down the leading edge, shown only in a list that MIXES
-//     (the All segment). Without it, at fair scale a read row of yours is
-//     indistinguishable from a stranger's. It is deliberately not another
-//     chip: it survives a fast scroll, costs the row no height, and cannot be
-//     mistaken for the badges, which are all about the incident rather than
-//     about you.
+// One row of the Board (plan 09q) on the D0 ledger row, with two marks: UNREAD
+// (a labelled dot plus the identifier in full ink, so colour is never the only
+// carrier) and YOURS (a rule down the leading edge, shown only where the list
+// mixes yours with everyone's).
 
 export interface WorkRowProps {
   item: WorkItem;
   unread: boolean;
-  /** True in a list that mixes yours and everyone's — i.e. All. */
+  /** True in a list that mixes yours and everyone's, i.e. All. */
   showOwnership?: boolean;
-  /** Absent = the row is not openable. Reports have no detail before 3b.3. */
-  onPress?: () => void;
+  onPress: () => void;
 }
 
 export function WorkRow(props: WorkRowProps) {
@@ -99,11 +85,7 @@ export function WorkRow(props: WorkRowProps) {
   );
 }
 
-/**
- * In a mixed list only your own rows spend the extra words: the rule down the
- * edge says "yours", this says on what grounds. Everyone else's row stays as
- * short as it can be, which is most of what keeps hundreds of them scannable.
- */
+/** In a mixed list only your own rows spend the words on why they are yours. */
 function subtitle(item: WorkItem, mixed: boolean): string {
   const where = item.where ?? "Report";
   if (mixed && !item.mine) {

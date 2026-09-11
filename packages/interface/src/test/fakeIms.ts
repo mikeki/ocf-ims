@@ -94,11 +94,7 @@ export interface FakeIms {
   events: FakeEvent[];
   /** Programmable ListIncidents/GetIncident data (plan 09n T12): a flat list, filtered by `incident.eventId`. */
   incidents: IncidentView[];
-  /**
-   * Programmable ListReports/GetReport data. NOT scoped by event: the Report
-   * resource carries the event's NAME and no id, so the fake cannot filter the
-   * way ListIncidents does — keep it to one event per test, as with areas.
-   */
+  /** Programmable ListReports/GetReport data; not scoped by event (a Report carries no event id), so one event per test. */
   reports: ReportView[];
   /** Programmable ListAreas data; the fake doesn't scope areas by event (keep it small — one event per test). */
   areas: Area[];
