@@ -110,7 +110,7 @@ func TestSlogInterceptorLogsFailures(t *testing.T) { //nolint:paralleltest // sw
 	failing := func(context.Context, connect.AnyRequest) (connect.AnyResponse, error) {
 		return nil, InternalError("failed to fetch incident", cause)
 	}
-	_, err := NewSlogInterceptor()(failing)(context.Background(), unaryReq())
+	_, err := NewSlogInterceptor().WrapUnary(failing)(context.Background(), unaryReq())
 	require.Error(t, err)
 	require.Len(t, rec.records, 1)
 	require.Equal(t, slog.LevelError, rec.records[0].Level)
@@ -123,14 +123,14 @@ func TestSlogInterceptorLogsFailures(t *testing.T) { //nolint:paralleltest // sw
 	denied := func(context.Context, connect.AnyRequest) (connect.AnyResponse, error) {
 		return nil, connect.NewError(connect.CodePermissionDenied, errors.New("nope"))
 	}
-	_, err = NewSlogInterceptor()(denied)(context.Background(), unaryReq())
+	_, err = NewSlogInterceptor().WrapUnary(denied)(context.Background(), unaryReq())
 	require.Error(t, err)
 	require.Len(t, rec.records, 1)
 	require.Equal(t, slog.LevelWarn, rec.records[0].Level)
 	require.NotContains(t, attrsOf(rec.records[0]), "cause")
 
 	rec.records = nil
-	_, err = NewSlogInterceptor()(okUnary(nil))(context.Background(), unaryReq())
+	_, err = NewSlogInterceptor().WrapUnary(okUnary(nil))(context.Background(), unaryReq())
 	require.NoError(t, err)
 	require.Len(t, rec.records, 1)
 	require.Equal(t, slog.LevelDebug, rec.records[0].Level)

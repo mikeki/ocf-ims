@@ -1925,6 +1925,59 @@ blueprint does not tell you:
   installed to build a *TypeScript* package — a cross-tier dependency worth stating
   wherever the rule is given.
 
+### 3b.0a — A unary interceptor spine cannot be extended to streaming (2026-09-10)
+
+The first server slice since Phase 1, and it exists only because writing
+`WatchEvent` would have been a security bug.
+
+- **`connect.UnaryInterceptorFunc` satisfies `connect.Interceptor`, and its
+  `WrapStreamingHandler` is a pass-through.** All five hand-written interceptors —
+  recovery, request id, auth, slog, action log — were `UnaryInterceptorFunc`, which
+  is the shape every connect-go example uses and the shape a unary-only service
+  never notices is wrong. Add one streaming RPC to that service and it compiles,
+  serves and runs with **no claims in its context, no panic recovery, no request id
+  and no log line**. Nothing fails to compile; nothing warns. The first streaming
+  handler we intend to write reads `ClaimsFromContext`, so the hole was an
+  authorization bypass waiting to be authored. `internal/server/interceptors_test.go`
+  now pins the pass-through behaviour in a test, so the hazard is executable rather
+  than only written down.
+- **This is the sharper case against finding #3's "unary-only" rule.** The earlier
+  form of that finding was that the rule removed a capability we wanted. The stronger
+  form is this: a rule that says "no streaming" lets an entire cross-cutting spine be
+  written in a shape that *cannot* be extended, and the cost is not paid when the rule
+  is adopted — it is paid, silently, by whoever adds the first stream years later.
+  A blueprint that says "add interceptors" and later says "add streaming" owes this
+  sentence.
+- **The fix is types, and the discipline is a shared body.** Each interceptor is now
+  a named struct implementing `connect.Interceptor`, with `WrapUnary` and
+  `WrapStreamingHandler` calling one shared function — `recoverRPC`, `withRequestID`,
+  `authenticate`, `logRPC`, `record`. Two independent bodies would drift; one body
+  cannot. A small embedded `serverInterceptor` supplies the `WrapStreamingClient`
+  pass-through once instead of five times.
+- **Streaming forces the ordering question the unary path hides.** A unary
+  interceptor can decorate the response after the handler returns. A stream flushes
+  its response headers with the *first message*, so the request-id echo has to happen
+  **before** the handler runs or it never reaches the wire at all. Same interceptor,
+  same header, opposite position in the function.
+- **A per-request audit log has no obvious meaning on a subscription — and the
+  contract answers it anyway.** The action log's read/write split is driven by
+  `idempotency_level = NO_SIDE_EFFECTS`, so a read-only stream is skipped exactly as
+  `GetIncident` is: there is no row per poke because there is no row. Only a
+  *mutating* stream needed a decision, and it gets two rows (open, close) rather than
+  the unary shape of one on completion — a subscription can live for hours, and a
+  single row at teardown means the audit log holds no record of a connection that is
+  currently open, and none at all if the process dies while it is.
+- **Panic recovery does not follow a stream's goroutines.** `recover()` covers the
+  goroutine the handler runs on. A stream handler that fans work out — which the
+  per-subscriber hub in 3b.0b will — has to recover inside those goroutines itself.
+  The interceptor cannot reach them, and the fact that recovery is "handled centrally"
+  makes that easy to forget.
+- **A stream authenticates once, from the headers it opened with.** It is a token
+  snapshot that outlives the token. Nothing in the interceptor chain can fix that,
+  which is why the per-poke access re-check (09p S3) is load-bearing rather than
+  belt-and-braces: it is the only thing that notices a permission revoked while
+  someone is watching.
+
 ## 8. Open questions
 
 1. **Does the Go binary keep serving static assets in production**, or does Caddy?

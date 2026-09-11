@@ -6,11 +6,16 @@ The first slice of Phase 3b, and the first **server** slice since Phase 1 closed
 Master plan [09i](09i-expo-client.md) § *3b*; the platform findings go to plan
 [09](09-proto-connect-platform.md) §7.
 
-> **Status:** brief written 2026-09-10, **not started**. Its gate — the 3a gate —
-> is held open by a device session (see 09i § *Gate status*). Nothing here should
-> be built until that closes: a live stream is only observable on a real client,
-> and the iOS/Android runs are exactly what would catch a stream that works in
-> Chromium and not on a phone.
+> **Status, 2026-09-10:** **3b.0a is done** (streaming-safe interceptor spine).
+> 3b.0b and 3b.0c have **not started** and are still gated: the 3a gate is held
+> open by a device session (see 09i § *Gate status*), and a live stream is only
+> observable on a real client — the iOS/Android runs are exactly what would catch
+> a stream that works in Chromium and not on a phone.
+>
+> 3b.0a was taken ahead of that gate deliberately. It adds no RPC and nothing a
+> device could observe; it is a latent authorization hole in code that already
+> ships, and it is provable entirely in Go tests. Everything a device *is* needed
+> for is still behind the gate.
 
 ## The goal
 
@@ -53,7 +58,7 @@ an Expo build, whose device identity is an `ExponentPushToken[…]` and which ha
 
 | | Constraint | Why, and what it costs |
 |---|---|---|
-| **S1** | **The interceptor spine is unary-only.** All five hand-written interceptors (`NewRecoveryInterceptor`, `NewRequestIDInterceptor`, `NewAuthInterceptor`, `NewSlogInterceptor`, `NewActionLogInterceptor`) are `connect.UnaryInterceptorFunc`. | This is the single biggest thing to get right, and connect-go makes it **silent**: `UnaryInterceptorFunc`'s `WrapStreamingHandler` is a pass-through, so a streaming handler compiles, serves, and runs with **no auth claims in its context, no panic recovery, no request id and no log line**. A `WatchEvent` that reads `ClaimsFromContext(ctx)` would find nothing and — depending on how it is written — either fail closed or serve an anonymous caller. **Do not add a streaming RPC before this is fixed.** The fix is to promote the spine to real `connect.Interceptor` implementations with a `WrapStreamingHandler` that mirrors the unary one; that is a slice of its own (3b.0a below), it is security code, and it is architect-tier. |
+| **S1** ✅ | **The interceptor spine is unary-only.** *(Fixed in 3b.0a.)* All five hand-written interceptors (`NewRecoveryInterceptor`, `NewRequestIDInterceptor`, `NewAuthInterceptor`, `NewSlogInterceptor`, `NewActionLogInterceptor`) are `connect.UnaryInterceptorFunc`. | This is the single biggest thing to get right, and connect-go makes it **silent**: `UnaryInterceptorFunc`'s `WrapStreamingHandler` is a pass-through, so a streaming handler compiles, serves, and runs with **no auth claims in its context, no panic recovery, no request id and no log line**. A `WatchEvent` that reads `ClaimsFromContext(ctx)` would find nothing and — depending on how it is written — either fail closed or serve an anonymous caller. **Do not add a streaming RPC before this is fixed.** The fix is to promote the spine to real `connect.Interceptor` implementations with a `WrapStreamingHandler` that mirrors the unary one; that is a slice of its own (3b.0a below), it is security code, and it is architect-tier. |
 | **S2** | **The stream is per-subscriber, so it must filter rather than redact.** | This is the whole point of replacing SSE. `mayViewIncident` (`internal/incident/incident.go`) already encodes the rule; the stream applies it per connected subscriber and simply **omits** a poke the subscriber may not see. That retires the "some activity is observable" residual — update `CLAUDE.md` when it lands, and not before. |
 | **S3** | **Access is re-checked on every poke, not once at subscribe.** | A stream can outlive a permission change: someone's event access is revoked, or an incident is *marked* private while they are watching it. Checking only at subscribe time turns a long-lived connection into a permission cache with no invalidation. The re-check is a `mayViewIncident` call per poke per subscriber — cheap, and it must not be optimised away. |
 | **S4** | **A native device identity is not a web subscription.** | `PUSH_SUBSCRIPTION.P256DH` and `AUTH` are `not null` and meaningless for Expo. Add a `KIND` column (`web` / `expo`) and make the two key columns nullable, with the existing rows backfilled to `web`. `ENDPOINT` carries the `ExponentPushToken[…]` for an Expo row and stays the device's unique identity, so the upsert-on-endpoint behaviour and the `PUSH_SUBSCRIPTION_BY_PERSON` fan-out index both survive unchanged. |
@@ -86,7 +91,7 @@ Each is one PR to `master`. **3b.0a is a prerequisite, not an optional first ste
 
 | | Slice | Deliverable |
 |---|---|---|
-| **3b.0a** | **Streaming-safe interceptors** | Promote the five unary interceptor funcs to real `connect.Interceptor`s with `WrapStreamingHandler`. Auth, recovery, request id and slog behave identically on both. The action log needs a decision (below) — a long-lived stream is not a "mutating request", and logging one line per poke is not audit data. Tests: a streaming handler sees claims; a panic mid-stream becomes `Internal`; an anonymous streaming call has no claims. **Security code, architect-tier.** No new RPC in this PR. |
+| **3b.0a** ✅ | **Streaming-safe interceptors** | **Done 2026-09-10.** The five unary interceptor funcs are now named types implementing `connect.Interceptor`, each with `WrapUnary` and `WrapStreamingHandler` calling one shared body so the two halves cannot drift. Tests cover a streaming handler seeing claims, an anonymous stream carrying none, a panic mid-stream becoming `Internal`, the request id being echoed *before* the handler can send, the whole `Interceptors()` chain applied to a streaming handler, and a pin on connect-go's pass-through so the hazard is executable. Action log: answered by the contract (below). No new RPC. |
 | **3b.0b** | **`WatchEvent`** | The proto, the handler, and a per-subscriber hub beside `EventSourcerer` fed by the same notify triggers. Per-subscriber `mayViewIncident` filter (S2), re-checked per poke (S3), 25 s heartbeat, clean cancellation when the client goes away. Tests through the **generated client** against an `httptest` server, including: a private incident pokes its creator and not a writer; revoking access mid-stream stops the pokes; a cancelled context tears the subscriber down and leaks no goroutine. |
 | **3b.0c** | **Native push** | `KIND` migration + nullable `P256DH`/`AUTH` with a `web` backfill (S4); `RegisterPushDevice` / `UnregisterPushDevice`; `ExpoPushSender` implementing `push.Sender` with receipt checking and `DeviceNotRegistered` pruning (S5); `IMS_EXPO_PUSH_ENABLED` (S6); wired into the existing `Pusher` fan-out so one notification reaches web and native devices alike. |
 
@@ -98,6 +103,10 @@ The full Go protocol from `go/` for every slice — `go build ./...`, `go vet ./
 `go test ./store/integration` for 3b.0c (a migration is only proven against a real
 MariaDB, which is what that suite is for).
 
+3b.0a is verified: `go build`, `go vet`, `gofmt -l`, golangci@v2.12.2 and `go test
+./...` all clean (the testcontainer suites run in CI, not on the laptop), `buf lint`
+clean, `go mod tidy` a no-op.
+
 The stream needs one thing the unit tests cannot give: **two clients at once**, with
 different access, watching the same event while a third mutates it. That is a
 staging check with two browser sessions, and it is the acceptance test for S2/S3.
@@ -105,19 +114,23 @@ staging check with two browser sessions, and it is the acceptance test for S2/S3
 ## Checklist
 
 - [ ] 3a gate closed (device session) — **this slice does not start before it**
-- [ ] 3b.0a: streaming-safe interceptor spine, with tests, merged
+- [x] 3b.0a: streaming-safe interceptor spine, with tests, merged
 - [ ] 3b.0b: `WatchEvent` — per-subscriber filter, per-poke re-check, heartbeat, cancellation
 - [ ] 3b.0c: `KIND` migration, device RPCs, `ExpoPushSender` with receipts, `IMS_EXPO_PUSH_ENABLED`
 - [ ] Two-client privacy check on staging (a writer must never observe a private incident's pokes)
 - [ ] `CLAUDE.md` § *Private incidents* updated — the SSE residual is retired **only** for stream subscribers
-- [ ] Plan 09 §7 finding written (connect-go streaming)
+- [x] Plan 09 §7 finding written (connect-go streaming) — *3b.0a — A unary interceptor spine cannot be extended to streaming*
 
 ## Open questions
 
-1. **Does the action log belong on a stream at all?** It exists to audit *mutating*
-   requests. A subscription mutates nothing, and one row per poke would swamp it.
-   Leaning: log the **subscribe** and the **teardown**, nothing in between — but it
-   is a decision to make in 3b.0a rather than to discover in 3b.0b.
+1. ~~**Does the action log belong on a stream at all?**~~ **Answered in 3b.0a.**
+   The contract already decides it: the read/write split is driven by
+   `idempotency_level = NO_SIDE_EFFECTS`, so `WatchEvent` — which mutates nothing —
+   is skipped exactly as `GetIncident` is. There is no row per poke because there is
+   no row. A *mutating* stream, if one is ever added, gets two rows (open, close)
+   rather than the unary shape of one on completion: a subscription can live for
+   hours, so the audit log records the connection when it opens rather than only when
+   it ends, and still has the open row if the process dies mid-stream.
 2. **Does `expo/fetch` carry a Connect server stream on both native platforms?**
    Finding #3 says streaming has worked since SDK 52 and the client half of it is
    3b.2's problem, but if it does not hold on one platform the whole shape changes,
@@ -134,7 +147,13 @@ staging check with two browser sessions, and it is the acceptance test for S2/S3
 
 ## Findings queued for plan 09 §7
 
-- **The interceptor spine is unary-only, and connect-go does not say so.** A
+- ~~**The interceptor spine is unary-only, and connect-go does not say so.**~~
+  **Written 2026-09-10** as plan 09 §7 *"3b.0a — A unary interceptor spine cannot be
+  extended to streaming"*, with four things this brief had not yet found: the
+  header-ordering asymmetry a stream forces, the fact that `recover()` does not reach
+  a handler's own goroutines, that a stream authenticates once from the headers it
+  opened with, and the contract-driven answer to the action-log question. Original
+  note: a
   `connect.UnaryInterceptorFunc` satisfies `connect.Interceptor` with a pass-through
   `WrapStreamingHandler`, so adding the first streaming RPC to a mature unary service
   silently drops authentication, panic recovery, request ids and logging on that one
