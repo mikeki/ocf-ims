@@ -57,7 +57,7 @@ export function IncidentScreen(props: IncidentScreenProps) {
     <Box flex={1} bg="background">
       <ScreenHeader
         title={`#${number}`}
-        back={{ label: "Incidents", onPress: onBack }}
+        back={{ label: "Board", onPress: onBack }}
       />
       {renderBody(
         incidentQuery,

@@ -121,7 +121,7 @@ classification and the watermark ran for real, not as mock output.
 | Variant | Axis | Outcome |
 |---|---|---|
 | Two lists | Separation — a place you go | Never reconciles the asymmetry, but splits "what is waiting for me" across two headings, and leans on the section header to say what a row is |
-| **Segmented** | **Filter — a view of the event** | **Leaning (pending confirmation).** No new destination; each segment counts only what it lists |
+| **Segmented** | **Filter — a view of the event** | **CHOSEN, 2026-09-11.** No new destination; each segment counts only what it lists |
 | Inbox | Queue — a list needing attention | Best single answer to "what next", at the price of sorting `last_modified` directly against a report's newest entry |
 
 Two defects were found by running it rather than by reading it: the Segmented badge
@@ -248,6 +248,40 @@ by grant, it is mine.
    file to edit.
 9. The verification list in 09i §9 passes: `typecheck`, `lint`, `test`, `export:web`, `e2e`.
 
+## What 3b.1 cost that the brief did not predict
+
+**A read-only report screen had to come with it.** The Board lists reports, the watermark
+is written on OPEN, and there was no report detail to open — so a report row's unread mark
+could never have been cleared. `src/features/board/ReportScreen.tsx` is the smallest thing
+that makes the picked shape coherent: header, who filed it and when, whether it is attached
+to an incident, and the journal. **Writing** a report is still 3b.3.
+
+**The Reports segment cannot be pre-gated.** The server gates `ListReports` on three
+separate read permissions (all / own / crew), and **`AccessForEvent` carries no
+read-reports flag** — unlike `read_areas`, which is exactly how `useAreas` is gated. So the
+client cannot know beforehand and has to ask: the Board issues the call, and hides the
+segment if it comes back `permission_denied`, rather than offering a tab that answers an
+error. A field on `AccessForEvent` would fix this properly; that is a server change, not
+this slice.
+
+**`aria-selected` is not derived from `accessibilityState` on the web.** React Native Web
+does not map `accessibilityState={{ selected }}` to `aria-selected` for `role="tab"`, so a
+screen reader on the web build could not tell which segment was current. The control now
+sets both, and the tracer asserts the DOM attribute — only a real browser proves that
+mapping, so a Jest test would not have caught it and did not.
+
+**The tracer was already broken before this slice touched it.** `getByLabel("Password")`
+became a strict-mode violation when 3a.4's `PasswordField` added a "Show password" button,
+whose label also contains the word. It has been failing since that merge and nobody had
+re-run it (09n's "hosted tracer green" box is still open). Fixed here with
+`{ exact: true }`, because it was blocking this slice's verification.
+
+**A warning for whoever automates against this UI:** the MCP Playwright browser's
+synthesised clicks do not drive React Native Web's press responder at all — not the
+segments, not the rows. The project's own Playwright runner does, and the tracer proves it.
+Do not conclude a control is broken from that tool alone; drive it with the real runner or
+dispatch a full pointer + mouse sequence.
+
 ## Out of scope
 
 - **Filing anything.** 3b.1 is read-only, like 3a.3 before it. The composer, the new-
@@ -279,13 +313,13 @@ a broken "My work" look identical.
 
 ## Checklist
 
-- [ ] The maintainer runs `/prototype` with the invocation above and picks a shape
-- [ ] The pick and its reasoning are recorded in this file (a table like 09o's), and in
+- [x] The maintainer runs `/prototype` with the invocation above and picks a shape — **Segmented, 2026-09-11**
+- [x] The pick and its reasoning are recorded in this file (a table like 09o's), and in
       `DESIGN.md` if it changes how a primitive is used
-- [ ] `changedAt`, `isMine` and the watermark land with their tests
-- [ ] The screen is built against the picked shape
+- [x] `changedAt`, `isMine` and the watermark land with their tests
+- [x] The screen is built against the picked shape
 - [ ] `/review-animations` run and clean
-- [ ] The prototype surface is deleted (the skill's cleanup rule)
+- [x] The prototype surface is deleted (the skill's cleanup rule)
 - [ ] Staging hand check on a real phone, with data that exercises all three "mine" rules
 
 ## Open questions

@@ -23,7 +23,8 @@ test.skip(
 test("login → events → incidents → incident → sign out", async ({ page }) => {
   await page.goto("/"); // signed out → /login
   await page.getByLabel("Email").fill(email ?? "");
-  await page.getByLabel("Password").fill(password ?? "");
+  // exact: the PasswordField's reveal button is also labelled "…Password".
+  await page.getByLabel("Password", { exact: true }).fill(password ?? "");
   await page.getByRole("button", { name: "Sign in" }).click();
   await expect(page).toHaveURL(/\/events\/\d+\/incidents$/); // T4
   await page.getByRole("button", { name: "Events" }).click(); // ScreenHeader back
@@ -31,6 +32,27 @@ test("login → events → incidents → incident → sign out", async ({ page }
   await expect(events.first()).toBeVisible();
   await events.first().click(); // the newest ("Current")
   await expect(page).toHaveURL(/\/events\/\d+\/incidents$/);
+  // The Board's segments (3b.1): "Mine" is what it opens on, "All" is the
+  // whole event. Proving the control responds to a real click matters more
+  // than it looks — a segmented control is the one thing on this screen that
+  // is neither a row nor a header.
+  await expect(page.getByTestId("board-segment-mine")).toBeVisible();
+  // RN Web does not derive aria-selected from accessibilityState for a tab, so
+  // the control sets it itself; without it a screen reader on the web cannot
+  // tell which segment is current. Asserted here because only the real browser
+  // proves the DOM mapping.
+  await expect(page.getByTestId("board-segment-mine")).toHaveAttribute(
+    "aria-selected",
+    "true",
+  );
+  await page.getByTestId("board-segment-all").click();
+  await expect(page.getByTestId("board-segment-all")).toHaveAttribute(
+    "aria-selected",
+    "true",
+  );
+  await expect(page.getByTestId(/^incident-row-/).first()).toBeVisible();
+  await page.getByTestId("board-segment-mine").click();
+
   const incident = page.getByTestId(/^incident-row-/).first();
   await expect(incident).toBeVisible();
   await incident.click();
@@ -41,7 +63,7 @@ test("login → events → incidents → incident → sign out", async ({ page }
     await page.reload();
     await expect(page.getByTestId("incident-number")).toBeVisible();
   }
-  await page.getByRole("button", { name: "Incidents" }).click();
+  await page.getByRole("button", { name: "Board" }).click();
   await page.getByRole("button", { name: "Events" }).click();
   await page.getByRole("button", { name: "Sign out" }).click();
   await expect(page.getByRole("button", { name: "Sign in" })).toBeVisible();
@@ -52,7 +74,7 @@ test("login → events → incidents → incident → sign out", async ({ page }
 });
 
 // A signed-out deep link (T3): the login carries `?o=`, sign-in returns to the
-// incident, and "Incidents" from there goes to the list — not to whatever the
+// incident, and "Board" from there goes to the list — not to whatever the
 // stack happened to hold beneath a deep-linked screen (the anchor). The
 // incident's URL is discovered first, since the seed's numbers are not fixed.
 test("a signed-out deep link returns to the incident after sign-in; back goes to the list", async ({
@@ -60,7 +82,8 @@ test("a signed-out deep link returns to the incident after sign-in; back goes to
 }) => {
   await page.goto("/");
   await page.getByLabel("Email").fill(email ?? "");
-  await page.getByLabel("Password").fill(password ?? "");
+  // exact: the PasswordField's reveal button is also labelled "…Password".
+  await page.getByLabel("Password", { exact: true }).fill(password ?? "");
   await page.getByRole("button", { name: "Sign in" }).click();
   await expect(page).toHaveURL(/\/events\/\d+\/incidents$/);
   const incident = page.getByTestId(/^incident-row-/).first();
@@ -76,11 +99,12 @@ test("a signed-out deep link returns to the incident after sign-in; back goes to
   await page.goto(detailPath);
   await expect(page).toHaveURL(/\/login\?o=/); // the return path rides along (T3)
   await page.getByLabel("Email").fill(email ?? "");
-  await page.getByLabel("Password").fill(password ?? "");
+  // exact: the PasswordField's reveal button is also labelled "…Password".
+  await page.getByLabel("Password", { exact: true }).fill(password ?? "");
   await page.getByRole("button", { name: "Sign in" }).click();
   await expect(page).toHaveURL(new RegExp(`${detailPath}$`));
   await expect(page.getByTestId("incident-number")).toBeVisible();
-  await page.getByRole("button", { name: "Incidents" }).click();
+  await page.getByRole("button", { name: "Board" }).click();
   await expect(page).toHaveURL(new RegExp(`${listPath}$`));
   await page.getByRole("button", { name: "Events" }).click();
   await expect(page).toHaveURL(/\/events$/);

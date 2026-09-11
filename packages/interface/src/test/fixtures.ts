@@ -15,8 +15,12 @@ import type { IncidentType } from "@ocf-ims/protocol-buffers/ocf/ims/resources/v
 import { IncidentTypeSchema } from "@ocf-ims/protocol-buffers/ocf/ims/resources/v1/incident_type_pb";
 import type { JournalEntry } from "@ocf-ims/protocol-buffers/ocf/ims/resources/v1/journal_entry_pb";
 import { JournalEntrySchema } from "@ocf-ims/protocol-buffers/ocf/ims/resources/v1/journal_entry_pb";
+import type { Report } from "@ocf-ims/protocol-buffers/ocf/ims/resources/v1/report_pb";
+import { ReportSchema } from "@ocf-ims/protocol-buffers/ocf/ims/resources/v1/report_pb";
 import type { IncidentView } from "@ocf-ims/protocol-buffers/ocf/ims/service/rpc/v1/incident_pb";
 import { IncidentViewSchema } from "@ocf-ims/protocol-buffers/ocf/ims/service/rpc/v1/incident_pb";
+import type { ReportView } from "@ocf-ims/protocol-buffers/ocf/ims/service/rpc/v1/report_pb";
+import { ReportViewSchema } from "@ocf-ims/protocol-buffers/ocf/ims/service/rpc/v1/report_pb";
 
 // Fixture builders for the incidents feature's tests (plan 09n T12):
 // create(...Schema, …) over sensible defaults, so a test states only the
@@ -81,6 +85,28 @@ export function makeIncidentType(
     id: 1,
     name: "Medical",
     approved: true,
+    ...overrides,
+  });
+}
+
+export function makeReport(
+  overrides: MessageInitShape<typeof ReportSchema> = {},
+): Report {
+  return create(ReportSchema, {
+    event: "2026",
+    number: 1,
+    created: DEFAULT_TIMESTAMP,
+    ...overrides,
+  });
+}
+
+export function makeReportView(
+  overrides: MessageInitShape<typeof ReportViewSchema> = {},
+): ReportView {
+  return create(ReportViewSchema, {
+    report: makeReport(),
+    mayEditSummary: false,
+    mayAddJournalEntry: false,
     ...overrides,
   });
 }

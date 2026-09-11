@@ -32,7 +32,16 @@ export function formatShortTime(ts: Timestamp | undefined): string {
   if (!ts) {
     return "";
   }
-  const at = timestampDate(ts);
+  return formatShortTimeAt(timestampDate(ts).getTime());
+}
+
+/**
+ * The same rule, from epoch milliseconds — what the Board carries, since it
+ * compares an incident's `last_modified` against a report's newest journal
+ * entry and needs one comparable number rather than two Timestamps.
+ */
+export function formatShortTimeAt(ms: number): string {
+  const at = new Date(ms);
   const now = new Date();
   const today =
     at.getFullYear() === now.getFullYear() &&
