@@ -130,6 +130,8 @@ func notificationTypeToProto(t string) resourcesv1.NotificationType {
 		return resourcesv1.NotificationType_NOTIFICATION_TYPE_MENTIONED
 	case imsdb.NotificationTypeAddedToIncident:
 		return resourcesv1.NotificationType_NOTIFICATION_TYPE_ADDED_TO_INCIDENT
+	case imsdb.NotificationTypeReportRequested:
+		return resourcesv1.NotificationType_NOTIFICATION_TYPE_REPORT_REQUESTED
 	default:
 		return resourcesv1.NotificationType_NOTIFICATION_TYPE_UNSPECIFIED
 	}

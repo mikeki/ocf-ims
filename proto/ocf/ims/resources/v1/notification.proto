@@ -16,6 +16,8 @@ enum NotificationType {
   NOTIFICATION_TYPE_UNSPECIFIED = 0;
   NOTIFICATION_TYPE_MENTIONED = 1;
   NOTIFICATION_TYPE_ADDED_TO_INCIDENT = 2;
+  // Someone asked you for your report on incident_number (plan 09t).
+  NOTIFICATION_TYPE_REPORT_REQUESTED = 3;
 }
 
 // Notification is one in-app notification for the current user (plan 82), enriched for

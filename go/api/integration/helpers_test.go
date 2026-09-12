@@ -1025,6 +1025,22 @@ func (a ApiHelper) attachPersonToVisit(ctx context.Context, eventName string, vi
 // The REST DELETE .../incidents/{n}/people/{personId} endpoint was retired when
 // DetachPersonFromIncident was extracted (plan 09h/1c). The retired endpoint returned 204 No Content
 // on success, mirrored by the synthesized *http.Response (else connectStatus(err)).
+// requestReport asks a person for their report on an incident through the RequestReport RPC
+// (plan 09t); the status is the mapped Connect code, 204 on success.
+func (a ApiHelper) requestReport(ctx context.Context, eventName string, incident int32, personID int64) *http.Response {
+	a.t.Helper()
+	eventID := a.resolveEventIDOrSentinel(ctx, eventName)
+	client := servicev1connect.NewImsServiceClient(http.DefaultClient, a.serverURL.String())
+	rpcReq := connect.NewRequest(&servicerpcv1.RequestReportRequest{
+		EventId:        eventID,
+		IncidentNumber: incident,
+		PersonId:       int32(personID),
+	})
+	a.authorizeRPC(rpcReq)
+	_, err := client.RequestReport(ctx, rpcReq)
+	return writeRPCStatus(err)
+}
+
 func (a ApiHelper) detachPersonFromIncident(ctx context.Context, eventName string, incident int32, personID int64) *http.Response {
 	a.t.Helper()
 	eventID := a.resolveEventID(ctx, eventName)

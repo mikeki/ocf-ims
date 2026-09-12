@@ -931,6 +931,8 @@ function notificationText(n: Notification): string {
                 : `${who} mentioned you`;
         case "added_to_incident":
             return `${who} added you to an incident`;
+        case "report_requested":
+            return `${who} asked for your report on an incident`;
         default:
             return `${who} notified you`;
     }

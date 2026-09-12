@@ -76,6 +76,20 @@ func (p *Pusher) NotifyAddedToIncident(ctx context.Context, eventName string, in
 	})
 }
 
+// NotifyReportRequested pushes to a person just asked for their report on an
+// incident (plan 09t). The link opens the new-report form with the incident set.
+func (p *Pusher) NotifyReportRequested(ctx context.Context, eventName string, incidentNumber, recipientPersonID, actorPersonID int32, actorHandle string) {
+	who := actorHandle
+	if who == "" {
+		who = "Someone"
+	}
+	p.fanOut(ctx, []int32{recipientPersonID}, actorPersonID, push.Message{
+		Title: pushTitle,
+		Body:  fmt.Sprintf("%s asked for your report on incident #%d", who, incidentNumber),
+		URL:   newReportAppURL(eventName, incidentNumber),
+	})
+}
+
 // fanOut filters recipients (dropping the actor, non-positive IDs, and dupes) and,
 // if any remain and the backend can actually deliver, hands off to a background
 // goroutine. It never blocks the caller.
@@ -166,4 +180,8 @@ func incidentAppURL(eventName string, incidentNumber int32) string {
 
 func reportAppURL(eventName string, reportNumber int32) string {
 	return fmt.Sprintf("/ims/app/events/%s/reports/%d", url.PathEscape(eventName), reportNumber)
+}
+
+func newReportAppURL(eventName string, incidentNumber int32) string {
+	return fmt.Sprintf("/ims/app/events/%s/reports/new?incident=%d", url.PathEscape(eventName), incidentNumber)
 }

@@ -5,7 +5,8 @@ package json
 import "time"
 
 // Notification is one in-app notification for the current user (plan 82),
-// enriched for display. Type is the trigger ("mentioned", "added_to_incident").
+// enriched for display. Type is the trigger ("mentioned", "added_to_incident",
+// "report_requested").
 type Notification struct {
 	ID              int32     `json:"id"`
 	Type            string    `json:"type"`

@@ -91,6 +91,7 @@ service ImsService {
   rpc UpdateIncident(rpc.v1.UpdateIncidentRequest) returns (rpc.v1.UpdateIncidentResponse);
   rpc AttachPersonToIncident(rpc.v1.AttachPersonToIncidentRequest) returns (rpc.v1.AttachPersonToIncidentResponse);
   rpc DetachPersonFromIncident(rpc.v1.DetachPersonFromIncidentRequest) returns (rpc.v1.DetachPersonFromIncidentResponse);
+  rpc RequestReport(rpc.v1.RequestReportRequest) returns (rpc.v1.RequestReportResponse);
   rpc UpdateIncidentJournalEntry(rpc.v1.UpdateIncidentJournalEntryRequest) returns (rpc.v1.UpdateIncidentJournalEntryResponse);
 
   // --- Field reports ---

@@ -138,9 +138,13 @@ func (s Service) GetIncident(
 	if err != nil {
 		return nil, server.InternalError("failed to fetch people", err)
 	}
+	delivered, err := deliveredReports(ctx, s.ImsDBQ, event.ID)
+	if err != nil {
+		return nil, server.InternalError("failed to fetch linked reports", err)
+	}
 	people := make([]imsjson.IncidentPerson, len(peopleRows))
 	for i, row := range peopleRows {
-		people[i] = imsjson.IncidentPerson{PersonID: int64(row.IncidentPerson.PersonID), Handle: row.Handle.String, Name: row.Name.String, Involvement: conv.SqlToString(row.IncidentPerson.Involvement), GrantedAccess: row.IncidentPerson.GrantedAccess, HasEventAccess: row.HasEventAccess.Bool}
+		people[i] = incidentPersonFromRow(row.IncidentPerson, row.Handle, row.Name, row.HasEventAccess, delivered)
 	}
 
 	linkedIncidents, err := s.ImsDBQ.Incident_LinkedIncidents(ctx, s.ImsDBQ, imsdb.Incident_LinkedIncidentsParams{
@@ -272,9 +276,13 @@ func (s Service) ListIncidents(
 		if err != nil {
 			return server.InternalError("failed to fetch people", err)
 		}
+		delivered, err := deliveredReports(groupCtx, s.ImsDBQ, event.ID)
+		if err != nil {
+			return server.InternalError("failed to fetch linked reports", err)
+		}
 		for _, row := range peopleRows {
 			peopleByIncident[row.IncidentPerson.IncidentNumber] = append(peopleByIncident[row.IncidentPerson.IncidentNumber],
-				imsjson.IncidentPerson{PersonID: int64(row.IncidentPerson.PersonID), Handle: row.Handle.String, Name: row.Name.String, Involvement: conv.SqlToString(row.IncidentPerson.Involvement), GrantedAccess: row.IncidentPerson.GrantedAccess, HasEventAccess: row.HasEventAccess.Bool})
+				incidentPersonFromRow(row.IncidentPerson, row.Handle, row.Name, row.HasEventAccess, delivered))
 		}
 		return nil
 	})
@@ -528,6 +536,7 @@ func (s Service) AttachPersonToIncident(
 		// distinguishes a genuine new add (which alone fires "added_to_incident", plan 82) from
 		// an edit, and its old involvement/grant let the journal record what actually changed.
 		var oldInvolvement sql.NullString
+		var oldReportRequested sql.NullFloat64
 		var oldGranted, alreadyAttached bool
 		existingPeople, txErr := s.ImsDBQ.Incident_People(ctx, txn, imsdb.Incident_PeopleParams{
 			Event:          event.ID,
@@ -541,6 +550,7 @@ func (s Service) AttachPersonToIncident(
 				alreadyAttached = true
 				oldInvolvement = row.IncidentPerson.Involvement
 				oldGranted = row.IncidentPerson.GrantedAccess
+				oldReportRequested = row.IncidentPerson.ReportRequested
 				break
 			}
 		}
@@ -564,6 +574,8 @@ func (s Service) AttachPersonToIncident(
 			Involvement:    newInvolvement,
 			// 52f: per-incident access grant for an involved reporter (writer-gated here).
 			GrantedAccess: grantedAccess,
+			// An involvement edit keeps the ask (plan 09t).
+			ReportRequested: oldReportRequested,
 		})
 		if txErr != nil {
 			return herr.InternalServerError("Failed to attach person to Incident", txErr).From("[AttachPersonToIncident]")
@@ -603,6 +615,98 @@ func (s Service) AttachPersonToIncident(
 	}
 
 	return &rpcv1.AttachPersonToIncidentResponse{}, nil
+}
+
+// RequestReport is the domain method behind the RequestReport RPC (plan 09t, 3b.3a): a writer
+// asks a person for their report on an incident. The ask is stamped on the involvement row
+// (attaching the person first if needed) with a per-incident grant, so they can read what they
+// are asked to write about; a system entry records it; the person gets a "report_requested"
+// notification and a push. A repeat request re-stamps and re-notifies — that is the reminder.
+func (s Service) RequestReport(
+	ctx context.Context,
+	req *rpcv1.RequestReportRequest,
+) (*rpcv1.RequestReportResponse, error) {
+	claims, ok := server.ClaimsFromContext(ctx)
+	if !ok {
+		return nil, connect.NewError(connect.CodeUnauthenticated, errors.New("authentication required"))
+	}
+
+	event, errConn := s.incidentWriteContext(ctx, req.GetEventId(), req.GetIncidentNumber(), *claims)
+	if errConn != nil {
+		return nil, errConn
+	}
+
+	incidentNumber := req.GetIncidentNumber()
+	person, errHTTP := server.PersonByID(ctx, s.ImsDBQ, req.GetPersonId())
+	if errHTTP != nil {
+		return nil, server.HerrToConnect(errHTTP)
+	}
+	personID := person.ID
+	actorPersonID := claims.PersonID()
+	requestedAt := sql.NullFloat64{Float64: conv.TimeToFloat(time.Now()), Valid: true}
+
+	runErr := s.ImsDBQ.RunInTx(ctx, func(txn *sql.Tx) error {
+		existingPeople, txErr := s.ImsDBQ.Incident_People(ctx, txn, imsdb.Incident_PeopleParams{
+			Event:          event.ID,
+			IncidentNumber: incidentNumber,
+		})
+		if txErr != nil {
+			return herr.InternalServerError("Failed to fetch incident people", txErr).From("[Incident_People]")
+		}
+		attached := false
+		for _, row := range existingPeople {
+			if row.IncidentPerson.PersonID == personID {
+				attached = true
+				break
+			}
+		}
+		name := server.PersonDisplayName(person)
+		lines := []string{}
+		if attached {
+			txErr = s.ImsDBQ.RequestReportFromPerson(ctx, txn, imsdb.RequestReportFromPersonParams{
+				ReportRequested: requestedAt,
+				Event:           event.ID,
+				IncidentNumber:  incidentNumber,
+				PersonID:        personID,
+			})
+			if txErr != nil {
+				return herr.InternalServerError("Failed to request report", txErr).From("[RequestReportFromPerson]")
+			}
+		} else {
+			txErr = s.ImsDBQ.AttachPersonToIncident(ctx, txn, imsdb.AttachPersonToIncidentParams{
+				Event:           event.ID,
+				IncidentNumber:  incidentNumber,
+				PersonID:        personID,
+				GrantedAccess:   true,
+				ReportRequested: requestedAt,
+			})
+			if txErr != nil {
+				return herr.InternalServerError("Failed to attach person to Incident", txErr).From("[AttachPersonToIncident]")
+			}
+			lines = append(lines, fmt.Sprintf("Added person: %v", name))
+		}
+		lines = append(lines, fmt.Sprintf("Report requested from %v", name))
+		_, errJournal := addIncidentJournalEntry(
+			ctx, s.ImsDBQ, txn, event.ID, incidentNumber,
+			actorPersonID, strings.Join(lines, "\n"),
+			true, "", "", "",
+		)
+		if errJournal != nil {
+			return errJournal.From("[addIncidentJournalEntry]")
+		}
+		errNotify := notification.GenerateReportRequestedNotification(ctx, s.ImsDBQ, txn, event.ID, incidentNumber, personID, actorPersonID)
+		if errNotify != nil {
+			return errNotify.From("[notification.GenerateReportRequestedNotification]")
+		}
+		return nil
+	})
+	if runErr != nil {
+		return nil, server.HerrToConnect(herr.AsHTTPError(runErr))
+	}
+	s.Es.NotifyIncidentUpdate(ctx, event.ID, incidentNumber)
+	s.Pusher.NotifyReportRequested(ctx, event.Name, incidentNumber, personID, actorPersonID, claims.PersonHandle())
+
+	return &rpcv1.RequestReportResponse{}, nil
 }
 
 // DetachPersonFromIncident is the domain method behind the DetachPersonFromIncident RPC (plan
@@ -1697,10 +1801,19 @@ func incidentPersonToProto(p imsjson.IncidentPerson) *resourcesv1.IncidentPerson
 			Handle:   strPtrIfNonEmpty(p.Handle),
 			Name:     strPtrIfNonEmpty(p.Name),
 		},
-		Involvement:    p.Involvement,
-		GrantedAccess:  p.GrantedAccess,
-		HasEventAccess: p.HasEventAccess,
+		Involvement:     p.Involvement,
+		GrantedAccess:   p.GrantedAccess,
+		HasEventAccess:  p.HasEventAccess,
+		ReportRequested: timestampOrNil(p.ReportRequested),
+		ReportNumber:    p.ReportNumber,
 	}
+}
+
+func timestampOrNil(t *time.Time) *timestamppb.Timestamp {
+	if t == nil {
+		return nil
+	}
+	return timestamppb.New(*t)
 }
 
 func mentionToPersonRef(m *imsjson.Mention) *commonv1.PersonRef {
