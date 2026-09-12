@@ -78,6 +78,15 @@ jobs:
         working-directory: go
         run: go tool buf lint ../proto
 
+      - name: Check protobuf compatibility (buf breaking)
+        # The field-number freeze (09i E14, slice 3b.7): a shipped native build
+        # reads the contract as it was, so no change may break the wire against
+        # master. Compared against the public repo's master over https, which the
+        # egress policy already allows — the checkout is a PR merge ref with no
+        # local master to point at.
+        working-directory: go
+        run: go tool buf breaking ../proto --against 'https://github.com/mikeki/ocf-ims.git#branch=master,subdir=proto'
+
       - name: Install Python
         uses: actions/setup-python@v6
         with:

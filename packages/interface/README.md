@@ -162,3 +162,21 @@ it runs in both modes. Staging follows master about ten minutes behind CI.
 - Every `.ts` / `.tsx` file starts with `// SPDX-License-Identifier: Apache-2.0`
   (the repo's `prepend-license` hook stamps and enforces it).
 - No hand-written fetch: the proto contract is the only API the client knows.
+
+## Building for phones (3b.7, [09w](../../docs/plans/09w-store-readiness.md))
+
+Native builds go through EAS (`eas.json`: `development` is a dev client for a
+connected Metro, `preview` an internal-distribution build against staging,
+`production` the store build). Before the first build, one-time setup by the
+maintainer: an Expo account and `eas init` (writes `extra.eas.projectId`, which push
+needs), the Apple team and the Play console for `submit`. Then:
+
+```bash
+cd packages/interface
+eas build --profile preview --platform ios      # or android; TestFlight / internal testing
+eas build --profile production --platform all && eas submit --platform all
+```
+
+`ios/` and `android/` are generated on the build server (CNG) and never committed.
+The first build a non-developer installs freezes the proto field numbers (09i E14);
+`buf breaking` guards CI from then on.

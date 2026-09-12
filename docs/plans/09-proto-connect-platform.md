@@ -322,7 +322,10 @@ already works.
   against live data proves the whole path on web, iOS and Android.
 - **3b — The field app.** My incidents, file and append a report, attach a photo,
   notifications. Ship to both app stores; native push replaces the iOS PWA
-  home-screen-install requirement. **Field numbers freeze here** (Phase 0).
+  home-screen-install requirement. **Field numbers freeze here** (Phase 0) — at the
+  first build a non-developer installs; `buf breaking --against master` guards CI
+  from 3b.7 (2026-09-12) onward, and the freeze date is recorded here when that
+  build ships.
 - **3c — Dispatch on web.** The incident and report surfaces the dispatch tent
   actually lives in — the hardest UI in the system and the reason the replacement
   is a redesign rather than a port.
