@@ -5,6 +5,7 @@ package server_test
 import (
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 
 	"github.com/mikeki/ocf-ims/internal/server"
@@ -78,8 +79,9 @@ func TestCORSPolicy(t *testing.T) {
 	require.Equal(t, http.StatusTeapot, rec.Code, "the wrapped handler's status is untouched")
 	require.Equal(t, origin, rec.Header().Get("Access-Control-Allow-Origin"))
 	exposed := rec.Header().Get("Access-Control-Expose-Headers")
-	for _, want := range []string{"Grpc-Status", "X-Request-Id", "Retry-After", "Content-Disposition"} {
-		require.Contains(t, exposed, want)
+	// rs/cors canonicalises the names; a browser's getResponseHeader is case-insensitive.
+	for _, want := range []string{"Grpc-Status", "X-Request-Id", "Retry-After", "Content-Disposition", "IMS-Journal-Entry-Number"} {
+		require.Contains(t, strings.ToLower(exposed), strings.ToLower(want))
 	}
 
 	rec = httptest.NewRecorder()

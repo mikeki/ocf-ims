@@ -4,11 +4,17 @@ import { createRouterTransport } from "@connectrpc/connect";
 import { QueryClient } from "@tanstack/react-query";
 import { render } from "@testing-library/react-native";
 import type { ReactElement } from "react";
+import type { Blobs } from "@/api/blobs";
 import { ApiProvider } from "@/api/providers";
 import { ThemeProvider } from "@/design/theme";
+import {
+  type PhotoPicker,
+  PhotoPickerProvider,
+} from "@/features/compose/photo";
 import { SessionProvider } from "@/session/provider";
 import { createRuntime, type Runtime } from "@/session/runtime";
 import type { RefreshTokenStore, SessionPlatform } from "@/session/types";
+import { createFakeBlobs } from "@/test/fakeBlobs";
 import { createFakeIms, type FakeIms } from "@/test/fakeIms";
 import { createMemoryRefreshTokenStore } from "@/test/storage";
 
@@ -22,6 +28,8 @@ export interface TestRuntimeOptions {
   store?: RefreshTokenStore;
   clock?: () => number;
   onSignedOut?: () => void;
+  /** The blob helper the screens see (09s); a fresh FakeBlobs unless given. */
+  blobs?: Blobs;
 }
 
 export interface TestRuntime extends Runtime {
@@ -41,6 +49,7 @@ export function createTestRuntime(
     platform: options.platform ?? "native",
     onSignedOut: options.onSignedOut,
     clock: options.clock,
+    makeBlobs: () => options.blobs ?? createFakeBlobs(),
   });
   return { ...runtime, fake, store };
 }
@@ -62,11 +71,23 @@ export function renderWithProviders(
   ui: ReactElement,
   runtime: Runtime,
   queryClient: QueryClient = createTestQueryClient(),
+  picker?: PhotoPicker,
 ) {
+  const inner = (
+    <SessionProvider session={runtime.session}>{ui}</SessionProvider>
+  );
   return render(
     <ThemeProvider scheme="light">
-      <ApiProvider transport={runtime.transport} queryClient={queryClient}>
-        <SessionProvider session={runtime.session}>{ui}</SessionProvider>
+      <ApiProvider
+        transport={runtime.transport}
+        queryClient={queryClient}
+        blobs={runtime.blobs}
+      >
+        {picker ? (
+          <PhotoPickerProvider picker={picker}>{inner}</PhotoPickerProvider>
+        ) : (
+          inner
+        )}
       </ApiProvider>
     </ThemeProvider>,
   );

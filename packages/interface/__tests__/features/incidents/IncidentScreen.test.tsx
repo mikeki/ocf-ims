@@ -91,6 +91,7 @@ describe("IncidentScreen", () => {
         onOpenIncident={jest.fn()}
         onOpenReport={() => undefined}
         onFileReport={() => undefined}
+        onOpenAttachment={() => undefined}
       />,
       runtime,
     );
@@ -135,6 +136,7 @@ describe("IncidentScreen", () => {
         onOpenIncident={jest.fn()}
         onOpenReport={() => undefined}
         onFileReport={() => undefined}
+        onOpenAttachment={() => undefined}
       />,
       runtime,
     );
@@ -181,6 +183,7 @@ describe("IncidentScreen", () => {
         onOpenIncident={jest.fn()}
         onOpenReport={() => undefined}
         onFileReport={() => undefined}
+        onOpenAttachment={() => undefined}
       />,
       runtime,
     );
@@ -221,6 +224,7 @@ describe("IncidentScreen", () => {
         onOpenIncident={jest.fn()}
         onOpenReport={() => undefined}
         onFileReport={() => undefined}
+        onOpenAttachment={() => undefined}
       />,
       runtime,
     );
@@ -258,6 +262,7 @@ describe("IncidentScreen", () => {
         onOpenIncident={jest.fn()}
         onOpenReport={() => undefined}
         onFileReport={() => undefined}
+        onOpenAttachment={() => undefined}
       />,
       runtime,
     );
@@ -295,6 +300,7 @@ describe("IncidentScreen", () => {
         onOpenIncident={onOpenIncident}
         onOpenReport={() => undefined}
         onFileReport={() => undefined}
+        onOpenAttachment={() => undefined}
       />,
       runtime,
     );
@@ -318,6 +324,7 @@ describe("IncidentScreen", () => {
         onOpenIncident={jest.fn()}
         onOpenReport={() => undefined}
         onFileReport={() => undefined}
+        onOpenAttachment={() => undefined}
       />,
       runtime,
     );
@@ -344,6 +351,7 @@ describe("IncidentScreen", () => {
         onOpenIncident={jest.fn()}
         onOpenReport={() => undefined}
         onFileReport={() => undefined}
+        onOpenAttachment={() => undefined}
       />,
       runtime,
     );

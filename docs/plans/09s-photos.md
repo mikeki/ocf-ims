@@ -2,8 +2,10 @@
 
 # 09s — slice 3b.4: photos
 
-> **Status:** **Brief** — written 2026-09-12; the server half (3b.4a) is in hand, the
-> client half (3b.4b) waits on the maintainer's answer to the open questions below.
+> **Status:** **Built** — brief 2026-09-12; 3b.4a (server) merged the same day, 3b.4b
+> (client) built 2026-09-12 on the brief's recommendations for the open questions below
+> (no prototype round; the form carries a photo; the small modal kept). The phone hand
+> check is owed.
 > **Parent:** [09i-expo-client.md](09i-expo-client.md) (Phase 3, the 3b.4 row)
 > under [09-proto-connect-platform.md](09-proto-connect-platform.md)
 > **Follows:** [09r](09r-file-and-append.md) (3b.2 — file and append). A photo rides on a
@@ -231,14 +233,14 @@ E2E_EMAIL=<seed email> E2E_PASSWORD=<seed password> pnpm -F @ocf-ims/interface e
 
 ## Checklist
 
-- [ ] 3b.4a: upload gate mirrors `UpdateIncident` (grant path; privacy `404`); tests
-- [ ] 3b.4a: `Attachment.media_type`; the `id` comment corrected; `buf breaking` clean
-- [ ] `src/api/blobs.ts` + runtime wiring; `blobs.test.ts`
-- [ ] Picker seam, shrink, permissions at the tap
-- [ ] Composer control, chip, bar, retry; form control with file-then-upload
-- [ ] Journal image / file row; the full-width modal
-- [ ] `app.json` plugin + permission strings; packages via `expo install`
-- [ ] Tracer step; interim mode green against staging
+- [x] 3b.4a: upload gate mirrors `UpdateIncident` (grant path; privacy `404`); tests
+- [x] 3b.4a: `Attachment.media_type`; the `id` comment corrected; `buf breaking` clean
+- [x] `src/api/blobs.ts` + runtime wiring; `blobs.test.ts`
+- [x] Picker seam, shrink, permissions at the tap
+- [x] Composer control, chip, bar, retry; form control with file-then-upload
+- [x] Journal image / file row; the full-width modal
+- [x] `app.json` plugin + permission strings; packages via `expo install`
+- [x] Tracer step; interim mode green against staging
 - [ ] `/review-animations` Approve
 - [ ] A hand check on a real phone: camera, library, a denied permission, a 4G upload
 

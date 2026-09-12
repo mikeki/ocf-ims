@@ -89,6 +89,8 @@ export interface FakeUser {
   writeIncidents: boolean;
   /** Drives AccessForEvent.writeReports and the report writes' gate (09t); a writer has it too. */
   writeReports: boolean;
+  /** Drives AccessForEvent.attachFiles (09s); a writer has it too. */
+  attachFiles: boolean;
 }
 
 /** The minimal shape ListEvents needs — enough to build an Event via create(). */
@@ -208,6 +210,7 @@ export function createFakeIms(options: FakeImsOptions = {}): FakeIms {
       readAreas: true,
       writeIncidents: false,
       writeReports: false,
+      attachFiles: false,
       ...options.user,
     },
     events: [{ id: 1, name: "2026" }],
@@ -938,6 +941,8 @@ export function createFakeIms(options: FakeImsOptions = {}): FakeIms {
       writeReports:
         fake.user.admin || fake.user.writeIncidents || fake.user.writeReports,
       readAreas: fake.user.readAreas,
+      attachFiles:
+        fake.user.admin || fake.user.writeIncidents || fake.user.attachFiles,
     });
   }
 

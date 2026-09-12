@@ -25,9 +25,11 @@ import {
   useProposeType,
 } from "@/features/compose/hooks";
 import { mentionedIds, type Picked } from "@/features/compose/mentions";
+import { PhotoAttach } from "@/features/compose/PhotoAttach";
 import { fileRequest } from "@/features/compose/payload";
 import { TypeChooser } from "@/features/compose/TypeChooser";
-import { useEventAccess } from "@/features/events/hooks";
+import { usePhotoUpload } from "@/features/compose/usePhotoUpload";
+import { useEventAccess, useEventName } from "@/features/events/hooks";
 import { useAreas, useIncidentTypes } from "@/features/incidents/hooks";
 import { ErrorState } from "@/features/shell/ErrorState";
 import { ScreenHeader } from "@/features/shell/ScreenHeader";
@@ -54,6 +56,7 @@ export function NewIncidentScreen(props: NewIncidentScreenProps) {
   const { eventId, onCancel, onFiled, reportNumber } = props;
   const theme = useTheme();
   const access = useEventAccess(eventId);
+  const eventName = useEventName(eventId);
   const typesQuery = useIncidentTypes();
   const areasQuery = useAreas(eventId, access.readAreas);
   const proposeType = useProposeType(eventId);
@@ -72,6 +75,12 @@ export function NewIncidentScreen(props: NewIncidentScreenProps) {
   const [picked, setPicked] = useState<Picked[]>([]);
   const [summaryError, setSummaryError] = useState<string | undefined>();
   const [formError, setFormError] = useState<AppError | undefined>();
+  const photo = usePhotoUpload(eventId, eventName);
+  // Filed, but the photo did not land: the form stays with two ways out (09s).
+  const [filedWithoutPhoto, setFiledWithoutPhoto] = useState<
+    number | undefined
+  >();
+  const [uploading, setUploading] = useState(false);
 
   const summary = draft.draft.summary ?? "";
   const text = draft.draft.text;
@@ -118,7 +127,29 @@ export function NewIncidentScreen(props: NewIncidentScreenProps) {
       return;
     }
     draft.clear();
+    // The templ rule (09i §8): the incident exists first, then the photo goes to its number.
+    if (photo.pending) {
+      setUploading(true);
+      const landed = await photo.upload(number);
+      setUploading(false);
+      if (!landed) {
+        setFiledWithoutPhoto(number);
+        return;
+      }
+    }
     onFiled(number);
+  };
+
+  const retryPhoto = async () => {
+    if (filedWithoutPhoto === undefined) {
+      return;
+    }
+    setUploading(true);
+    const landed = await photo.upload(filedWithoutPhoto);
+    setUploading(false);
+    if (landed) {
+      onFiled(filedWithoutPhoto);
+    }
   };
 
   return (
@@ -209,7 +240,31 @@ export function NewIncidentScreen(props: NewIncidentScreenProps) {
                 placeholder="What you saw. @ to mention."
                 testID="first-entry"
               />
+              {access.attachFiles && access.writeIncidents && eventName ? (
+                <PhotoAttach
+                  pending={photo.pending}
+                  onPicked={photo.pick}
+                  onClear={photo.clear}
+                  onRetry={() => {
+                    void retryPhoto();
+                  }}
+                  busy={mutation.isPending || uploading}
+                />
+              ) : null}
             </Section>
+            {filedWithoutPhoto !== undefined ? (
+              <Box gap="sm" testID="filed-without-photo">
+                <Text accessibilityRole="alert">
+                  {`Incident #${filedWithoutPhoto} is filed; the photo did not upload.`}
+                </Text>
+                <Button
+                  label="Continue without it"
+                  variant="secondary"
+                  onPress={() => onFiled(filedWithoutPhoto)}
+                  testID="continue-without-photo"
+                />
+              </Box>
+            ) : null}
             {reportNumber ? (
               <Text variant="caption" color="textMuted" testID="links-report">
                 {`Report R-${reportNumber} will be attached.`}
@@ -229,8 +284,9 @@ export function NewIncidentScreen(props: NewIncidentScreenProps) {
           ]}
         >
           <Button
-            label="File incident"
-            loading={mutation.isPending}
+            label={uploading ? "Uploading photo…" : "File incident"}
+            loading={mutation.isPending || uploading}
+            disabled={filedWithoutPhoto !== undefined}
             onPress={() => {
               void file();
             }}

@@ -31,6 +31,8 @@ export type AppErrorKind =
   | "unavailable"
   /** The call was cancelled by the caller (an unmounted query). Never shown. */
   | "canceled"
+  /** A blob route refused the upload's size (413); `message` is the server's. */
+  | "tooLarge"
   /** Everything else: generic, with the request id when the server echoed one. */
   | "unknown";
 
@@ -180,6 +182,73 @@ export function toAppError(err: unknown): AppError {
       if (isNetworkFailure(err)) {
         return unavailable(base);
       }
+      return brand({
+        ...base,
+        kind: "unknown",
+        title: "Something went wrong",
+        message: requestId
+          ? `Something went wrong. Request id ${requestId}.`
+          : "Something went wrong.",
+        retryable: false,
+      });
+  }
+}
+
+/**
+ * The mapping for the plain-HTTP blob routes (plan 09s), which answer with a
+ * status and a text body rather than a Connect error. `status` 0 is a
+ * transport failure (no network, an abort).
+ */
+export function httpStatusError(
+  status: number,
+  message: string,
+  requestId?: string,
+): AppError {
+  const base = {
+    code: undefined,
+    violations: [],
+    requestId,
+    cause: new Error(message || `HTTP ${status}`),
+  } as const;
+  switch (status) {
+    case 401:
+      return brand({
+        ...base,
+        kind: "unauthenticated",
+        title: "Signed out",
+        message: "Your session has ended. Sign in again.",
+        retryable: false,
+      });
+    case 403:
+      return brand({
+        ...base,
+        kind: "forbidden",
+        title: "Not allowed",
+        message: "You can't do that here.",
+        retryable: false,
+      });
+    case 404:
+      return brand({
+        ...base,
+        kind: "notFound",
+        title: "Not found",
+        message: message || "There's nothing here.",
+        retryable: false,
+      });
+    case 413:
+      return brand({
+        ...base,
+        kind: "tooLarge",
+        title: "Too large",
+        message: message || "That file is too large.",
+        retryable: false,
+      });
+    case 0:
+    case 502:
+    case 503:
+    case 504:
+      return unavailable(base);
+    default:
       return brand({
         ...base,
         kind: "unknown",

@@ -24,7 +24,8 @@ const corsPreflightMaxAge = 10 * time.Minute
 // Access-Control-Allow-Credentials, the two methods Connect and the blob routes use,
 // the request headers Connect needs plus Authorization and X-Request-Id, and the
 // response headers a client must be able to read — Connect's own, the request id,
-// Retry-After (the login throttle) and Content-Disposition (attachment downloads).
+// Retry-After (the login throttle), Content-Disposition (attachment downloads) and
+// IMS-Journal-Entry-Number (the entry an upload made).
 //
 // An EMPTY allow-list returns the identity adapter: no Access-Control-* header is
 // ever emitted and no preflight is answered, so a production server — same-origin by
@@ -51,7 +52,7 @@ func CORS(allowedOrigins []string) Adapter {
 		AllowCredentials: true,
 		AllowedMethods:   connectcors.AllowedMethods(), // GET + POST: Connect, and what the blob routes use
 		AllowedHeaders:   append(connectcors.AllowedHeaders(), "Authorization", requestIDHeader),
-		ExposedHeaders:   append(connectcors.ExposedHeaders(), requestIDHeader, "Retry-After", "Content-Disposition"),
+		ExposedHeaders:   append(connectcors.ExposedHeaders(), requestIDHeader, "Retry-After", "Content-Disposition", "IMS-Journal-Entry-Number"),
 		MaxAge:           int(corsPreflightMaxAge.Seconds()),
 	})
 	return c.Handler

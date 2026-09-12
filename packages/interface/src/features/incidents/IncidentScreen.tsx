@@ -26,7 +26,7 @@ import { TextButton } from "@/design/primitives/TextButton";
 import { useTheme } from "@/design/theme";
 import { owesReport } from "@/features/board/work";
 import { AppendComposer } from "@/features/compose/AppendComposer";
-import { useEventAccess } from "@/features/events/hooks";
+import { useEventAccess, useEventName } from "@/features/events/hooks";
 import {
   useAreas,
   useIncident,
@@ -61,6 +61,8 @@ export interface IncidentScreenProps {
   onOpenReport: (number: number) => void;
   /** Open the report form with this incident set (09t). */
   onFileReport: () => void;
+  /** Open an entry's image full-width (09s). */
+  onOpenAttachment: (entryId: number) => void;
 }
 
 export function IncidentScreen(props: IncidentScreenProps) {
@@ -71,9 +73,11 @@ export function IncidentScreen(props: IncidentScreenProps) {
     onOpenIncident,
     onOpenReport,
     onFileReport,
+    onOpenAttachment,
   } = props;
   const theme = useTheme();
   const access = useEventAccess(eventId);
+  const eventName = useEventName(eventId);
   const { state } = useSession();
   const incidentQuery = useIncident(eventId, number);
   const areasQuery = useAreas(eventId, access.readAreas);
@@ -99,11 +103,13 @@ export function IncidentScreen(props: IncidentScreenProps) {
           areas: areasQuery.data?.areas,
           types: typesQuery.data?.incidentTypes,
           eventId,
+          eventName,
           number,
           mayAsk: access.writeIncidents,
           onBack,
           onOpenIncident,
           onOpenReport,
+          onOpenAttachment,
         })}
         {owed ? (
           <View
@@ -124,7 +130,13 @@ export function IncidentScreen(props: IncidentScreenProps) {
           </View>
         ) : null}
         {mayAppend ? (
-          <AppendComposer eventId={eventId} number={number} author={author} />
+          <AppendComposer
+            eventId={eventId}
+            number={number}
+            author={author}
+            eventName={eventName}
+            attachFiles={access.attachFiles && eventName !== ""}
+          />
         ) : null}
       </Box>
     </KeyboardAvoidingView>
@@ -141,11 +153,13 @@ interface BodyArgs {
   areas: Area[] | undefined;
   types: IncidentType[] | undefined;
   eventId: number;
+  eventName: string;
   number: number;
   mayAsk: boolean;
   onBack: () => void;
   onOpenIncident: (number: number) => void;
   onOpenReport: (number: number) => void;
+  onOpenAttachment: (entryId: number) => void;
 }
 
 function renderBody(args: BodyArgs): ReactNode {
@@ -183,9 +197,11 @@ function renderBody(args: BodyArgs): ReactNode {
       areas={areas}
       types={types}
       eventId={args.eventId}
+      eventName={args.eventName}
       mayAsk={args.mayAsk}
       onOpenIncident={args.onOpenIncident}
       onOpenReport={args.onOpenReport}
+      onOpenAttachment={args.onOpenAttachment}
       refreshing={incidentQuery.isRefetching && !incidentQuery.isLoading}
       onRefresh={() => {
         void incidentQuery.refetch();
@@ -199,9 +215,11 @@ interface IncidentDetailProps {
   areas: Area[] | undefined;
   types: IncidentType[] | undefined;
   eventId: number;
+  eventName: string;
   mayAsk: boolean;
   onOpenIncident: (number: number) => void;
   onOpenReport: (number: number) => void;
+  onOpenAttachment: (entryId: number) => void;
   refreshing: boolean;
   onRefresh: () => void;
 }
@@ -212,9 +230,11 @@ function IncidentDetail(props: IncidentDetailProps) {
     areas,
     types,
     eventId,
+    eventName,
     mayAsk,
     onOpenIncident,
     onOpenReport,
+    onOpenAttachment,
     refreshing,
     onRefresh,
   } = props;
@@ -339,7 +359,12 @@ function IncidentDetail(props: IncidentDetailProps) {
             <Text color="textMuted">No entries yet.</Text>
           ) : (
             entries.map((entry) => (
-              <JournalEntryRow key={entry.id} entry={entry} />
+              <JournalEntryRow
+                key={entry.id}
+                entry={entry}
+                attachmentOn={{ eventName, incidentNumber: incident.number }}
+                onOpenAttachment={onOpenAttachment}
+              />
             ))
           )}
         </Box>

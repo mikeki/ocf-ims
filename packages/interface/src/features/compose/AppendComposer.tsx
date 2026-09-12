@@ -10,6 +10,8 @@ import { useTheme } from "@/design/theme";
 import { Composer } from "@/features/compose/Composer";
 import { useAppendEntry, useDraft } from "@/features/compose/hooks";
 import { mentionedIds, type Picked } from "@/features/compose/mentions";
+import { PhotoAttach } from "@/features/compose/PhotoAttach";
+import { usePhotoUpload } from "@/features/compose/usePhotoUpload";
 
 // The incident's docked composer (plan 09r, the D2 pick — Radio's bar): there
 // whenever the caller may add to the journal. An entry lands optimistically;
@@ -20,34 +22,50 @@ export interface AppendComposerProps {
   number: number;
   /** The caller's handle, for the optimistic entry. */
   author: string;
+  /** The event's name, for the attachment route (09s); with `attachFiles`, shows the photo control. */
+  eventName?: string;
+  attachFiles?: boolean;
 }
 
 export function AppendComposer(props: AppendComposerProps) {
-  const { eventId, number, author } = props;
+  const { eventId, number, author, eventName = "", attachFiles } = props;
   const theme = useTheme();
   const draft = useDraft(eventId, number);
   const [picked, setPicked] = useState<Picked[]>([]);
   const [error, setError] = useState<AppError | undefined>(undefined);
+  const [sending, setSending] = useState(false);
   const { append, isPending } = useAppendEntry(eventId, number, author);
+  const photo = usePhotoUpload(eventId, eventName);
   const text = draft.draft.text;
+  const canSend = text.trim().length > 0 || photo.pending !== undefined;
 
+  // The text posts first (if any), then the photo; a failed photo keeps its
+  // chip and Retry — the text, already posted, is not resent.
   const send = async () => {
     const trimmed = text.trim();
-    if (!trimmed) {
+    if (!trimmed && !photo.pending) {
       return;
     }
     setError(undefined);
+    setSending(true);
     try {
-      await append({
-        text: trimmed,
-        mentionIds: mentionedIds(trimmed, picked),
-      });
-    } catch (e) {
-      setError(toAppError(e));
-      return;
+      if (trimmed) {
+        try {
+          await append({
+            text: trimmed,
+            mentionIds: mentionedIds(trimmed, picked),
+          });
+        } catch (e) {
+          setError(toAppError(e));
+          return;
+        }
+        setPicked([]);
+        draft.clear();
+      }
+      await photo.upload(number);
+    } finally {
+      setSending(false);
     }
-    setPicked([]);
-    draft.clear();
   };
 
   return (
@@ -63,6 +81,17 @@ export function AppendComposer(props: AppendComposerProps) {
         },
       ]}
     >
+      {attachFiles ? (
+        <PhotoAttach
+          pending={photo.pending}
+          onPicked={photo.pick}
+          onClear={photo.clear}
+          onRetry={() => {
+            void photo.upload(number);
+          }}
+          busy={sending}
+        />
+      ) : null}
       <Composer
         eventId={eventId}
         label="Add to the journal"
@@ -83,8 +112,8 @@ export function AppendComposer(props: AppendComposerProps) {
         <View style={styles.button}>
           <Button
             label="Send"
-            loading={isPending}
-            disabled={text.trim().length === 0}
+            loading={isPending || sending}
+            disabled={!canSend}
             onPress={() => {
               void send();
             }}
