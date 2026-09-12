@@ -61,13 +61,12 @@ describe("NewIncidentScreen", () => {
     await renderWithProviders(
       <NewIncidentScreen
         eventId={1}
-        initialSummary="Pump leaking"
         onCancel={() => undefined}
         onFiled={onFiled}
       />,
       runtime,
     );
-    expect(screen.getByTestId("summary").props.value).toBe("Pump leaking");
+    await fireEvent.changeText(screen.getByTestId("summary"), "Pump leaking");
     await waitFor(() => expect(screen.getByTestId("type-1")).toBeTruthy());
     expect(screen.queryByTestId("type-9")).toBeNull(); // hidden
 
@@ -160,12 +159,12 @@ describe("NewIncidentScreen", () => {
     await renderWithProviders(
       <NewIncidentScreen
         eventId={1}
-        initialSummary="Keep me"
         onCancel={() => undefined}
         onFiled={onFiled}
       />,
       runtime,
     );
+    await fireEvent.changeText(screen.getByTestId("summary"), "Keep me");
     await fireEvent.press(screen.getByTestId("file-incident"));
     await waitFor(() =>
       expect(screen.getByText("Can't reach the server")).toBeTruthy(),

@@ -48,8 +48,8 @@ export interface BoardScreenProps {
   onBack: () => void;
   onOpenIncident: (number: number) => void;
   onOpenReport: (number: number) => void;
-  /** Opens the filing form with the bar's text as the summary (09r). */
-  onFile: (summary: string) => void;
+  /** Opens the filing form (09r). */
+  onFile: () => void;
 }
 
 export function BoardScreen(props: BoardScreenProps) {

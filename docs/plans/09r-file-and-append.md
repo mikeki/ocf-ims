@@ -141,12 +141,15 @@ when it is made, in a table like 09q's.
 | Walk | Sequence — one question per screen | Not chosen — the most taps, for pickers that fit on one form |
 
 **CHOSEN, 2026-09-12: a hybrid.** The maintainer's words: "Radio as an affordance to open
-/ pull up the intake form". So the Board carries Radio's "What's happening?" bar, and
-using it **pulls up the Intake form** with the bar's text already in the summary; the form
-asks for the rest and files. On an incident the composer is Radio's docked bar, there
+/ pull up the intake form". So the Board carries Radio's "What's happening?" bar, drawn as
+a field but a button: **a tap on it pulls up the Intake form**, whose summary takes focus;
+the form asks for everything and files. (A first cut let the bar take the text and hand it
+to the form behind a File button; the maintainer cut both the same day — the form should
+come up as soon as the field is touched, and a real input there would raise the keyboard
+under the modal.) On an incident the composer is Radio's docked bar, there
 whenever the caller may add to the journal — Intake's "New entry" sheet was the tap the
 pick declined to pay. That also settles open question 1: **the summary is its own field**,
-so Radio's doubling never happens — the bar's text is the summary and only the summary.
+so Radio's doubling never happens — the bar carries no text at all.
 
 Found by running it rather than reading it:
 
@@ -344,9 +347,8 @@ property is animated; nothing enters on a list. **Approve** — no findings.
 ## Open questions
 
 1. **Does the first line of the text become the summary, or is the summary its own field?**
-   **Answered by the pick: its own field.** The bar's text is the summary and nothing
-   else; the form refuses to file without one, so "(no summary)" is unreachable from the
-   phone.
+   **Answered by the pick: its own field**, on the form, and the form refuses to file
+   without one, so "(no summary)" is unreachable from the phone.
 2. **Should a filed incident be marked seen on this device?** The watermark says something
    I created is never unread, so no mark is needed today. If 09q open question 5 (a
    `last_modified` on reports) ever lands for incidents' summaries too, revisit.

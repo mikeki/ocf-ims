@@ -106,8 +106,8 @@ test("a signed-out deep link returns to the incident after sign-in; back goes to
   await expect(page.getByRole("button", { name: "Sign in" })).toBeVisible();
 });
 
-// Filing and appending (plan 09r, slice 3b.2): the Board's bar pulls up the
-// form, the filed incident replaces it, and the docked composer appends an
+// Filing and appending (plan 09r, slice 3b.2): a tap on the Board's bar pulls
+// up the form, the filed incident replaces it, and the docked composer appends an
 // entry that mentions someone from the typeahead. Test content only — the
 // staging seed keeps what this files.
 test("file an incident from the Board's bar, append an entry with a mention", async ({
@@ -121,14 +121,9 @@ test("file an incident from the Board's bar, append an entry with a mention", as
   await expect(page).toHaveURL(/\/events\/\d+\/incidents$/);
 
   const stamp = new Date().toISOString();
-  await page
-    .getByTestId("quick-bar-text")
-    .fill(`Tracer test incident ${stamp}`);
-  await page.getByTestId("quick-bar-file").click();
-  await expect(page).toHaveURL(/\/incidents\/new\?summary=/);
-  await expect(page.getByTestId("summary")).toHaveValue(
-    `Tracer test incident ${stamp}`,
-  );
+  await page.getByTestId("quick-bar").click();
+  await expect(page).toHaveURL(/\/incidents\/new$/);
+  await page.getByTestId("summary").fill(`Tracer test incident ${stamp}`);
   await page.getByTestId("priority-low").click();
   await page.getByTestId("description").fill("Filed by the tracer; ignore.");
   await page.getByTestId("file-incident").click();

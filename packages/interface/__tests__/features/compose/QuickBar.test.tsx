@@ -29,7 +29,7 @@ function boardFake(writeIncidents: boolean) {
 }
 
 describe("QuickBar on the Board", () => {
-  it("hands the typed summary to the form, then empties", async () => {
+  it("pulls up the form on a tap", async () => {
     const fake = boardFake(true);
     const runtime = await signedInRuntime(fake);
     const onFile = jest.fn();
@@ -44,13 +44,8 @@ describe("QuickBar on the Board", () => {
       runtime,
     );
     await waitFor(() => expect(screen.getByTestId("quick-bar")).toBeTruthy());
-    await fireEvent.changeText(
-      screen.getByTestId("quick-bar-text"),
-      " Fence down ",
-    );
-    await fireEvent.press(screen.getByTestId("quick-bar-file"));
-    expect(onFile).toHaveBeenCalledWith("Fence down");
-    expect(screen.getByTestId("quick-bar-text").props.value).toBe("");
+    await fireEvent.press(screen.getByTestId("quick-bar"));
+    expect(onFile).toHaveBeenCalledTimes(1);
   });
 
   it("is absent for a caller without write access", async () => {

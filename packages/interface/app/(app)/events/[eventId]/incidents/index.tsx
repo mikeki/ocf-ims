@@ -30,9 +30,8 @@ export default function BoardRoute() {
       onOpenReport={(number) => {
         router.push(`/events/${eventId}/reports/${number}`);
       }}
-      onFile={(summary) => {
-        const query = summary ? `?summary=${encodeURIComponent(summary)}` : "";
-        router.push(`/events/${eventId}/incidents/new${query}`);
+      onFile={() => {
+        router.push(`/events/${eventId}/incidents/new`);
       }}
     />
   );

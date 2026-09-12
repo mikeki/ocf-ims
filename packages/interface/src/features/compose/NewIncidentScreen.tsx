@@ -32,18 +32,16 @@ import { useAreas, useIncidentTypes } from "@/features/incidents/hooks";
 import { ErrorState } from "@/features/shell/ErrorState";
 import { ScreenHeader } from "@/features/shell/ScreenHeader";
 
-// The filing form (plan 09r, the D2 pick — Intake, pulled up by the Board's
-// bar): summary, priority, types, location, first entry, in the incident's
-// own order; one CreateIncident with the first entry aboard. Navigation is
-// the route's job.
+// The filing form (plan 09r, the D2 pick — Intake, pulled up by a tap on the
+// Board's bar): summary, priority, types, location, first entry, in the
+// incident's own order; one CreateIncident with the first entry aboard. The
+// summary takes focus on open. Navigation is the route's job.
 
 /** Mirrors the proto constraint so the common case never round-trips. */
 const SUMMARY_MAX = 1024;
 
 export interface NewIncidentScreenProps {
   eventId: number;
-  /** From the Board's bar. */
-  initialSummary?: string;
   onCancel: () => void;
   onFiled: (number: number) => void;
 }
@@ -57,10 +55,7 @@ export function NewIncidentScreen(props: NewIncidentScreenProps) {
   const proposeType = useProposeType(eventId);
   const createArea = useCreateArea(eventId);
   const mutation = useFileIncident();
-  const draft = useDraft(eventId, "new", {
-    summary: props.initialSummary ?? "",
-    text: "",
-  });
+  const draft = useDraft(eventId, "new", { summary: "", text: "" });
 
   const [priority, setPriority] = useState(IncidentPriority.NORMAL);
   const [typeIds, setTypeIds] = useState<number[]>([]);
@@ -145,7 +140,7 @@ export function NewIncidentScreen(props: NewIncidentScreenProps) {
               onChangeText={(value) => draft.update({ summary: value })}
               onBlur={draft.flush}
               placeholder="What is it, in one line"
-              autoFocus={!props.initialSummary}
+              autoFocus
               error={summaryError}
               testID="summary"
             />
