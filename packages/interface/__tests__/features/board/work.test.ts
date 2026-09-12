@@ -212,3 +212,52 @@ describe("toIncidentItem", () => {
     expect(item?.where).toBe("No location");
   });
 });
+
+describe("owesReport (09t)", () => {
+  it("is mine, as owed, when my row carries an ask and no report", () => {
+    const view = makeIncidentView({
+      incident: makeIncident({
+        createdBy: other,
+        people: [
+          {
+            person: me,
+            grantedAccess: true,
+            reportRequested: at("2026-08-15T16:00:00Z"),
+          },
+        ],
+      }),
+    });
+    expect(whyMineIncident(view, ME)).toBe("owed");
+    expect(toIncidentItem(view, ME, (s) => s)?.owesReport).toBe(true);
+  });
+
+  it("is merely attached once the report is delivered", () => {
+    const view = makeIncidentView({
+      incident: makeIncident({
+        createdBy: other,
+        people: [
+          {
+            person: me,
+            grantedAccess: true,
+            reportRequested: at("2026-08-15T16:00:00Z"),
+            reportNumber: 38,
+          },
+        ],
+      }),
+    });
+    expect(whyMineIncident(view, ME)).toBe("attached");
+    expect(toIncidentItem(view, ME, (s) => s)?.owesReport).toBe(false);
+  });
+
+  it("is not owed by someone else's ask", () => {
+    const view = makeIncidentView({
+      incident: makeIncident({
+        createdBy: other,
+        people: [
+          { person: other, reportRequested: at("2026-08-15T16:00:00Z") },
+        ],
+      }),
+    });
+    expect(whyMineIncident(view, ME)).toBeUndefined();
+  });
+});

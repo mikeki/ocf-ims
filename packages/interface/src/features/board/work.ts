@@ -28,14 +28,17 @@ export interface WorkItem {
   state?: "open" | "closed";
   priority?: "high" | "normal" | "low";
   private?: boolean;
+  /** Someone asked me for a report on this incident and I have not filed one (09t). */
+  owesReport?: boolean;
   /** The comparison key, and the sort key. See changedAt* below. */
   changedAt: number;
 }
 
-export type MineReason = "created" | "attached" | "mentioned";
+export type MineReason = "created" | "owed" | "attached" | "mentioned";
 
 export const whyLabel: Readonly<Record<MineReason, string>> = {
   created: "You filed",
+  owed: "Report requested",
   attached: "You're on it",
   mentioned: "Mentions you",
 };
@@ -87,6 +90,9 @@ export function whyMineIncident(
   if (incident.createdBy?.personId === me) {
     return "created";
   }
+  if (owesReport(view, me)) {
+    return "owed";
+  }
   if (incident.people.some((p) => p.person?.personId === me)) {
     return "attached";
   }
@@ -94,6 +100,19 @@ export function whyMineIncident(
     return "mentioned";
   }
   return undefined;
+}
+
+/** My involvement row carries an ask and no delivered report (09t). */
+export function owesReport(view: IncidentView, me: number): boolean {
+  if (me === 0) {
+    return false;
+  }
+  const mine = view.incident?.people.find((p) => p.person?.personId === me);
+  return (
+    mine !== undefined &&
+    mine.reportRequested !== undefined &&
+    mine.reportNumber === undefined
+  );
 }
 
 /** As above, minus "attached": a report has no `people`. */
@@ -145,6 +164,7 @@ export function toIncidentItem(
     state: incident.state === IncidentState.CLOSED ? "closed" : "open",
     priority: priorityOf(incident.priority),
     private: incident.private,
+    owesReport: owesReport(view, me),
     changedAt: changedAtIncident(view),
   };
 }

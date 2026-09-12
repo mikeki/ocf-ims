@@ -2,9 +2,13 @@
 
 # 09t — Reports: the model decision, and slice 3b.3
 
-> **Status:** **Decision recorded + brief** — 2026-09-12. The maintainer answered 09q's
-> open question 4 (below); this document turns the answer into a model, a server slice
-> (3b.3a, "request a report") and the client slice (3b.3b). Nothing is built yet.
+> **Status:** **Built** — 2026-09-12. The maintainer answered 09q's open question 4
+> (below); this document turns the answer into a model, a server slice (3b.3a,
+> "request a report") and the client slice (3b.3b). Both are built, as a stack of two
+> PRs (3b.3a first); open questions 2 and 3 were taken on their recommendations
+> (a request always grants; its own RPC), and 1 was answered with screenshots of the
+> built People section rather than a prototype round. What remains is the phone hand
+> check and the maintainer's word on how the People section reads.
 > **Parent:** [09i-expo-client.md](09i-expo-client.md) (Phase 3, the 3b.3 row)
 > under [09-proto-connect-platform.md](09-proto-connect-platform.md)
 > **Follows:** [09q](09q-field-flows.md) (the Board, where reports are a segment and
@@ -15,7 +19,7 @@
 > **The skills:** Emil Kowalski's skills govern all UI work (the maintainer's rule,
 > 2026-09-10) — `animate-expo` for anything that moves, `review-animations` before a PR
 > is called done. Whether 3b.3b gets a `prototype` round is open question 1.
-> **Last updated:** 2026-09-12
+> **Last updated:** 2026-09-12 (built)
 
 ## The decision
 
@@ -162,6 +166,13 @@ row carries `report_requested` and no `report_number` is mine, with an *owes a r
 mark on the row; the Reports segment is unchanged. Nothing here depends on 3b.5 — the
 notification (3b.5) is the tap-through, the Board is the reminder.
 
+**As built (2026-09-12), two details differ from the text above.** The Board gained the
+report bar it needed for a reporter to file at all: the docked bar reads *Something to
+report?* on the Reports segment (and on every segment for someone who can only write
+reports), and *What's happening?* elsewhere for a writer. And "delivered" is derived on
+the server from `REPORT.CREATED_BY` (a typed reports-by-incident query), not from a
+subselect — sqlc could not type the aggregate.
+
 **Photos** on reports come with 3b.4's helper once it exists (the report upload route
 already has the right gate: own-or-all writes plus the ownership floor).
 
@@ -202,16 +213,17 @@ interim mode against staging.
 
 ## Checklist
 
-- [ ] 3b.3a: migrations (`REPORT_REQUESTED`; the enum value); sqlc regenerated
-- [ ] 3b.3a: `RequestReport` RPC, the grant, the system entry, the notification, the push
-- [ ] 3b.3a: `IncidentPerson.report_requested` / `report_number`; `buf breaking` clean
-- [ ] 3b.3a: integration tests as listed
-- [ ] 3b.3b: report form (summary, on-behalf-of sticky, details, incident, instructions)
-- [ ] 3b.3b: report screen composer + link + create-incident-from-report
-- [ ] 3b.3b: incident People states, ask flow, file-your-report
-- [ ] 3b.3b: Board "owes a report" rule
-- [ ] Tracer step; `/review-animations` Approve; phone hand check
-- [ ] 09q Q4 and the 09i 3b.3 row point here (done in this PR)
+- [x] 3b.3a: migrations (`REPORT_REQUESTED`; the enum value); sqlc regenerated
+- [x] 3b.3a: `RequestReport` RPC, the grant, the system entry, the notification, the push
+- [x] 3b.3a: `IncidentPerson.report_requested` / `report_number`; `buf breaking` clean
+- [x] 3b.3a: integration tests as listed
+- [x] 3b.3b: report form (summary, on-behalf-of sticky, details, incident, instructions)
+- [x] 3b.3b: report screen composer + link + create-incident-from-report
+- [x] 3b.3b: incident People states, ask flow, file-your-report
+- [x] 3b.3b: Board "owes a report" rule
+- [x] Tracer step (files a report from the Reports segment, appends); `/review-animations` Approve (nothing new moves: press feedback only, the help section swaps with no animation)
+- [ ] Phone hand check
+- [x] 09q Q4 and the 09i 3b.3 row point here (done in this PR)
 
 ## Open questions
 

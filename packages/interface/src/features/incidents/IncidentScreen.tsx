@@ -15,13 +15,16 @@ import {
   ScrollView,
   StyleSheet,
   Switch,
+  View,
 } from "react-native";
 import { toAppError } from "@/api/errors";
 import { Badge } from "@/design/primitives/Badge";
 import { Box } from "@/design/primitives/Box";
+import { Button } from "@/design/primitives/Button";
 import { Text } from "@/design/primitives/Text";
 import { TextButton } from "@/design/primitives/TextButton";
 import { useTheme } from "@/design/theme";
+import { owesReport } from "@/features/board/work";
 import { AppendComposer } from "@/features/compose/AppendComposer";
 import { useEventAccess } from "@/features/events/hooks";
 import {
@@ -31,6 +34,7 @@ import {
 } from "@/features/incidents/hooks";
 import { JournalEntryRow } from "@/features/incidents/JournalEntryRow";
 import { areaName, typeName } from "@/features/incidents/lookups";
+import { PeopleSection } from "@/features/incidents/PeopleSection";
 import { EmptyState } from "@/features/shell/EmptyState";
 import { ErrorState } from "@/features/shell/ErrorState";
 import { LoadingState } from "@/features/shell/LoadingState";
@@ -54,17 +58,31 @@ export interface IncidentScreenProps {
   number: number;
   onBack: () => void;
   onOpenIncident: (number: number) => void;
+  onOpenReport: (number: number) => void;
+  /** Open the report form with this incident set (09t). */
+  onFileReport: () => void;
 }
 
 export function IncidentScreen(props: IncidentScreenProps) {
-  const { eventId, number, onBack, onOpenIncident } = props;
+  const {
+    eventId,
+    number,
+    onBack,
+    onOpenIncident,
+    onOpenReport,
+    onFileReport,
+  } = props;
+  const theme = useTheme();
   const access = useEventAccess(eventId);
   const { state } = useSession();
   const incidentQuery = useIncident(eventId, number);
   const areasQuery = useAreas(eventId, access.readAreas);
   const typesQuery = useIncidentTypes();
-  const mayAppend = incidentQuery.data?.incident?.viewerMayAddJournal === true;
+  const view = incidentQuery.data?.incident;
+  const mayAppend = view?.viewerMayAddJournal === true;
   const author = state.status === "signedIn" ? state.auth.user : "";
+  const me = state.status === "signedIn" ? state.auth.personId : 0;
+  const owed = view !== undefined && owesReport(view, me);
 
   return (
     <KeyboardAvoidingView
@@ -76,14 +94,35 @@ export function IncidentScreen(props: IncidentScreenProps) {
           title={`#${number}`}
           back={{ label: "Board", onPress: onBack }}
         />
-        {renderBody(
+        {renderBody({
           incidentQuery,
-          areasQuery.data?.areas,
-          typesQuery.data?.incidentTypes,
+          areas: areasQuery.data?.areas,
+          types: typesQuery.data?.incidentTypes,
+          eventId,
           number,
+          mayAsk: access.writeIncidents,
           onBack,
           onOpenIncident,
-        )}
+          onOpenReport,
+        })}
+        {owed ? (
+          <View
+            style={[
+              styles.dock,
+              {
+                backgroundColor: theme.colors.surface,
+                borderTopColor: theme.colors.border,
+                padding: theme.spacing.md,
+              },
+            ]}
+          >
+            <Button
+              label="File your report"
+              onPress={onFileReport}
+              testID="file-your-report"
+            />
+          </View>
+        ) : null}
         {mayAppend ? (
           <AppendComposer eventId={eventId} number={number} author={author} />
         ) : null}
@@ -94,16 +133,23 @@ export function IncidentScreen(props: IncidentScreenProps) {
 
 const styles = StyleSheet.create({
   fill: { flex: 1 },
+  dock: { borderTopWidth: StyleSheet.hairlineWidth },
 });
 
-function renderBody(
-  incidentQuery: ReturnType<typeof useIncident>,
-  areas: Area[] | undefined,
-  types: IncidentType[] | undefined,
-  number: number,
-  onBack: () => void,
-  onOpenIncident: (number: number) => void,
-): ReactNode {
+interface BodyArgs {
+  incidentQuery: ReturnType<typeof useIncident>;
+  areas: Area[] | undefined;
+  types: IncidentType[] | undefined;
+  eventId: number;
+  number: number;
+  mayAsk: boolean;
+  onBack: () => void;
+  onOpenIncident: (number: number) => void;
+  onOpenReport: (number: number) => void;
+}
+
+function renderBody(args: BodyArgs): ReactNode {
+  const { incidentQuery, areas, types, number, onBack } = args;
   if (incidentQuery.isLoading) {
     return <LoadingState />;
   }
@@ -136,7 +182,10 @@ function renderBody(
       view={view}
       areas={areas}
       types={types}
-      onOpenIncident={onOpenIncident}
+      eventId={args.eventId}
+      mayAsk={args.mayAsk}
+      onOpenIncident={args.onOpenIncident}
+      onOpenReport={args.onOpenReport}
       refreshing={incidentQuery.isRefetching && !incidentQuery.isLoading}
       onRefresh={() => {
         void incidentQuery.refetch();
@@ -149,13 +198,26 @@ interface IncidentDetailProps {
   view: IncidentView;
   areas: Area[] | undefined;
   types: IncidentType[] | undefined;
+  eventId: number;
+  mayAsk: boolean;
   onOpenIncident: (number: number) => void;
+  onOpenReport: (number: number) => void;
   refreshing: boolean;
   onRefresh: () => void;
 }
 
 function IncidentDetail(props: IncidentDetailProps) {
-  const { view, areas, types, onOpenIncident, refreshing, onRefresh } = props;
+  const {
+    view,
+    areas,
+    types,
+    eventId,
+    mayAsk,
+    onOpenIncident,
+    onOpenReport,
+    refreshing,
+    onRefresh,
+  } = props;
   const [showSystemEntries, setShowSystemEntries] = useState(false);
   const incident = view.incident;
   if (!incident) {
@@ -176,6 +238,7 @@ function IncidentDetail(props: IncidentDetailProps) {
   return (
     <ScrollView
       style={{ flex: 1 }}
+      keyboardShouldPersistTaps="handled"
       refreshControl={
         <RefreshControl
           testID="incident-refresh-control"
@@ -223,18 +286,13 @@ function IncidentDetail(props: IncidentDetailProps) {
         </Section>
 
         <Section title="People">
-          {incident.people.length === 0 ? (
-            <Text color="textMuted">No one attached</Text>
-          ) : (
-            incident.people.map((p, idx) => (
-              <Text key={p.person?.personId ?? idx}>
-                {personLabel(p.person)}
-                {p.involvement ? (
-                  <Text color="textMuted">{` ${p.involvement}`}</Text>
-                ) : null}
-              </Text>
-            ))
-          )}
+          <PeopleSection
+            eventId={eventId}
+            number={incident.number}
+            people={incident.people}
+            mayAsk={mayAsk}
+            onOpenReport={onOpenReport}
+          />
         </Section>
 
         {incident.linkedIncidents.length > 0 ? (
@@ -253,7 +311,12 @@ function IncidentDetail(props: IncidentDetailProps) {
         {incident.reports.length > 0 ? (
           <Section title="Reports">
             {incident.reports.map((n) => (
-              <Text key={n}>{`Report #${n}`}</Text>
+              <TextButton
+                key={n}
+                label={`Report #${n}`}
+                onPress={() => onOpenReport(n)}
+                testID={`incident-report-${n}`}
+              />
             ))}
           </Section>
         ) : null}

@@ -121,6 +121,7 @@ function renderBoard(runtime: ReturnType<typeof createTestRuntime>) {
       onOpenIncident={() => {}}
       onOpenReport={() => {}}
       onFile={() => {}}
+      onFileReport={() => {}}
     />,
     runtime,
   );
@@ -186,6 +187,7 @@ describe("BoardScreen", () => {
         onOpenIncident={(n) => opened.push(n)}
         onOpenReport={() => {}}
         onFile={() => {}}
+        onFileReport={() => {}}
       />,
       runtime,
     );

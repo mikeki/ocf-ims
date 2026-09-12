@@ -67,6 +67,7 @@ export function WorkRow(props: WorkRowProps) {
             <Badge label="Low" tone="neutral" />
           ) : null}
           {item.private ? <Badge label="Private" tone="restricted" /> : null}
+          {item.owesReport ? <Badge label="Report due" tone="warning" /> : null}
         </View>
       }
     />

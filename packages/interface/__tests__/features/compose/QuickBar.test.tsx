@@ -17,8 +17,8 @@ async function signedInRuntime(fake: FakeIms) {
   return runtime;
 }
 
-function boardFake(writeIncidents: boolean) {
-  const fake = createFakeIms({ user: { writeIncidents } });
+function boardFake(writeIncidents: boolean, writeReports = false) {
+  const fake = createFakeIms({ user: { writeIncidents, writeReports } });
   fake.events = [{ id: 1, name: "2026" }];
   fake.incidents = [
     makeIncidentView({
@@ -40,6 +40,7 @@ describe("QuickBar on the Board", () => {
         onOpenIncident={() => undefined}
         onOpenReport={() => undefined}
         onFile={onFile}
+        onFileReport={() => {}}
       />,
       runtime,
     );
@@ -58,11 +59,57 @@ describe("QuickBar on the Board", () => {
         onOpenIncident={() => undefined}
         onOpenReport={() => undefined}
         onFile={() => undefined}
+        onFileReport={() => {}}
       />,
       runtime,
     );
     await waitFor(() =>
       expect(screen.getByTestId("board-segment-all")).toBeTruthy(),
+    );
+    expect(screen.queryByTestId("quick-bar")).toBeNull();
+  });
+
+  it("offers the report bar to someone who can only write reports, on every segment (09t)", async () => {
+    const fake = boardFake(false, true);
+    const runtime = await signedInRuntime(fake);
+    const onFileReport = jest.fn();
+    await renderWithProviders(
+      <BoardScreen
+        eventId={1}
+        onBack={() => undefined}
+        onOpenIncident={() => undefined}
+        onOpenReport={() => undefined}
+        onFile={() => undefined}
+        onFileReport={onFileReport}
+      />,
+      runtime,
+    );
+    await waitFor(() =>
+      expect(screen.getByTestId("quick-bar-report")).toBeTruthy(),
+    );
+    expect(screen.queryByTestId("quick-bar")).toBeNull();
+    await fireEvent.press(screen.getByTestId("quick-bar-report"));
+    expect(onFileReport).toHaveBeenCalledTimes(1);
+  });
+
+  it("swaps a writer's bar for the report bar on the Reports segment", async () => {
+    const fake = boardFake(true);
+    const runtime = await signedInRuntime(fake);
+    await renderWithProviders(
+      <BoardScreen
+        eventId={1}
+        onBack={() => undefined}
+        onOpenIncident={() => undefined}
+        onOpenReport={() => undefined}
+        onFile={() => undefined}
+        onFileReport={() => undefined}
+      />,
+      runtime,
+    );
+    await waitFor(() => expect(screen.getByTestId("quick-bar")).toBeTruthy());
+    await fireEvent.press(screen.getByTestId("board-segment-reports"));
+    await waitFor(() =>
+      expect(screen.getByTestId("quick-bar-report")).toBeTruthy(),
     );
     expect(screen.queryByTestId("quick-bar")).toBeNull();
   });

@@ -36,6 +36,15 @@ export default function IncidentRoute() {
       onOpenIncident={(n) => {
         router.push(`/events/${eventId}/incidents/${n}`);
       }}
+      onOpenReport={(n) => {
+        router.push(`/events/${eventId}/reports/${n}`);
+      }}
+      onFileReport={() => {
+        router.push({
+          pathname: `/events/${eventId}/reports/new`,
+          params: { incident: String(number) },
+        });
+      }}
     />
   );
 }

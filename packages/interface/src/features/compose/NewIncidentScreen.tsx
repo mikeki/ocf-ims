@@ -42,12 +42,16 @@ const SUMMARY_MAX = 1024;
 
 export interface NewIncidentScreenProps {
   eventId: number;
+  /** "Create an incident from this report" (09t): the report's summary to start from. */
+  initialSummary?: string;
+  /** The report to link on file, in the same CreateIncident. */
+  reportNumber?: number;
   onCancel: () => void;
   onFiled: (number: number) => void;
 }
 
 export function NewIncidentScreen(props: NewIncidentScreenProps) {
-  const { eventId, onCancel, onFiled } = props;
+  const { eventId, onCancel, onFiled, reportNumber } = props;
   const theme = useTheme();
   const access = useEventAccess(eventId);
   const typesQuery = useIncidentTypes();
@@ -55,7 +59,10 @@ export function NewIncidentScreen(props: NewIncidentScreenProps) {
   const proposeType = useProposeType(eventId);
   const createArea = useCreateArea(eventId);
   const mutation = useFileIncident();
-  const draft = useDraft(eventId, "new", { summary: "", text: "" });
+  const draft = useDraft(eventId, "new", {
+    summary: props.initialSummary ?? "",
+    text: "",
+  });
 
   const [priority, setPriority] = useState(IncidentPriority.NORMAL);
   const [typeIds, setTypeIds] = useState<number[]>([]);
@@ -94,6 +101,7 @@ export function NewIncidentScreen(props: NewIncidentScreenProps) {
           description,
           booth,
           entry,
+          reportNumbers: reportNumber ? [reportNumber] : undefined,
         }),
       );
       number = res.incidentNumber;
@@ -202,6 +210,11 @@ export function NewIncidentScreen(props: NewIncidentScreenProps) {
                 testID="first-entry"
               />
             </Section>
+            {reportNumber ? (
+              <Text variant="caption" color="textMuted" testID="links-report">
+                {`Report R-${reportNumber} will be attached.`}
+              </Text>
+            ) : null}
             {formError ? <ErrorState error={formError} /> : null}
           </Box>
         </ScrollView>
