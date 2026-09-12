@@ -22,6 +22,11 @@ import {
 } from "@ocf-ims/protocol-buffers/ocf/ims/service/rpc/v1/incident_pb";
 import { ListIncidentTypesResponseSchema } from "@ocf-ims/protocol-buffers/ocf/ims/service/rpc/v1/incident_type_pb";
 import { ChangeOwnPasswordResponseSchema } from "@ocf-ims/protocol-buffers/ocf/ims/service/rpc/v1/profile_pb";
+import {
+  GetReportResponseSchema,
+  ListReportsResponseSchema,
+  type ReportView,
+} from "@ocf-ims/protocol-buffers/ocf/ims/service/rpc/v1/report_pb";
 import { ImsService } from "@ocf-ims/protocol-buffers/ocf/ims/service/v1/service_pb";
 
 // A programmable in-memory ImsService for createRouterTransport (plan 09l): the
@@ -79,6 +84,8 @@ export interface FakeIms {
     changeOwnPassword: "ok" | "unavailable";
     listIncidents: ListBehaviour;
     getIncident: ListBehaviour;
+    listReports: ListBehaviour;
+    getReport: ListBehaviour;
     listAreas: ListBehaviour;
     listIncidentTypes: ListBehaviour;
   };
@@ -87,6 +94,8 @@ export interface FakeIms {
   events: FakeEvent[];
   /** Programmable ListIncidents/GetIncident data (plan 09n T12): a flat list, filtered by `incident.eventId`. */
   incidents: IncidentView[];
+  /** Programmable ListReports/GetReport data; not scoped by event (a Report carries no event id), so one event per test. */
+  reports: ReportView[];
   /** Programmable ListAreas data; the fake doesn't scope areas by event (keep it small — one event per test). */
   areas: Area[];
   /** Programmable ListIncidentTypes data (a global taxonomy, so no event scoping either). */
@@ -122,6 +131,8 @@ export function createFakeIms(options: FakeImsOptions = {}): FakeIms {
       changeOwnPassword: "ok",
       listIncidents: "ok",
       getIncident: "ok",
+      listReports: "ok",
+      getReport: "ok",
       listAreas: "ok",
       listIncidentTypes: "ok",
     },
@@ -137,6 +148,7 @@ export function createFakeIms(options: FakeImsOptions = {}): FakeIms {
     },
     events: [{ id: 1, name: "2026" }],
     incidents: [],
+    reports: [],
     areas: [],
     incidentTypes: [],
     cookieRefreshToken: undefined,
@@ -310,6 +322,38 @@ export function createFakeIms(options: FakeImsOptions = {}): FakeIms {
             throw new ConnectError("no such incident", Code.NotFound);
           }
           return create(GetIncidentResponseSchema, { incident: view });
+        },
+        listReports(_req, ctx) {
+          record("ListReports", ctx);
+          if (fake.behaviour.listReports === "unavailable") {
+            throw new ConnectError("redeploying", Code.Unavailable);
+          }
+          if (!fake.honours(bearerOf(ctx))) {
+            throw new ConnectError("not signed in", Code.Unauthenticated);
+          }
+          if (fake.behaviour.listReports === "forbidden") {
+            throw new ConnectError("not allowed", Code.PermissionDenied);
+          }
+          return create(ListReportsResponseSchema, { reports: fake.reports });
+        },
+        getReport(req, ctx) {
+          record("GetReport", ctx);
+          if (fake.behaviour.getReport === "unavailable") {
+            throw new ConnectError("redeploying", Code.Unavailable);
+          }
+          if (!fake.honours(bearerOf(ctx))) {
+            throw new ConnectError("not signed in", Code.Unauthenticated);
+          }
+          if (fake.behaviour.getReport === "forbidden") {
+            throw new ConnectError("not allowed", Code.PermissionDenied);
+          }
+          const view = fake.reports.find(
+            (v) => v.report?.number === req.reportNumber,
+          );
+          if (!view) {
+            throw new ConnectError("no such report", Code.NotFound);
+          }
+          return create(GetReportResponseSchema, { report: view });
         },
         listAreas(_req, ctx) {
           record("ListAreas", ctx);

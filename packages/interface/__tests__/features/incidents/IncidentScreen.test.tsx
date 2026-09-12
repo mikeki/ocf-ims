@@ -22,7 +22,7 @@ import { createMemoryRefreshTokenStore } from "@/test/storage";
 // (jest.setup.ts makes TanStack's notifyManager synchronous for every suite;
 // this screen chains dependent queries — useEventAccess gates useAreas.)
 
-// See IncidentsScreen.test.tsx: useEventAccess's GetAuthStatus tolerates an
+// See BoardScreen.test.tsx: useEventAccess's GetAuthStatus tolerates an
 // anonymous caller (200, authenticated: false) rather than throwing, so a
 // call fired before bootstrap finishes would cache "no access" for 5 minutes
 // — bootstrap before mounting the screen, not just before its own effect

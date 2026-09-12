@@ -32,7 +32,12 @@ export function formatShortTime(ts: Timestamp | undefined): string {
   if (!ts) {
     return "";
   }
-  const at = timestampDate(ts);
+  return formatShortTimeAt(timestampDate(ts).getTime());
+}
+
+/** The same rule from epoch milliseconds, which is what the Board carries. */
+export function formatShortTimeAt(ms: number): string {
+  const at = new Date(ms);
   const now = new Date();
   const today =
     at.getFullYear() === now.getFullYear() &&
