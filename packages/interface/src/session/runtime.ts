@@ -28,6 +28,8 @@ export interface RuntimeDeps {
   clock?: () => number;
   /** Builds the blob helper (09s) over the runtime's token cache and refresher. */
   makeBlobs?: (deps: Pick<BlobsDeps, "tokens" | "refresher">) => Blobs;
+  /** Runs before a sign-out reaches the server, with the auth client (push unregistration, 09u). */
+  beforeSignOut?: (client: ImsClient) => Promise<void>;
 }
 
 export interface Runtime {
@@ -66,6 +68,9 @@ export function createRuntime(deps: RuntimeDeps): Runtime {
     store: deps.store,
     platform: deps.platform,
     onSignedOut: deps.onSignedOut,
+    beforeSignOut: deps.beforeSignOut
+      ? () => (deps.beforeSignOut as (c: ImsClient) => Promise<void>)(client)
+      : undefined,
   });
   const blobs = deps.makeBlobs?.({ tokens, refresher });
   return {

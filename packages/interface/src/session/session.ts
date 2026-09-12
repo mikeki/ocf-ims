@@ -34,7 +34,12 @@ export interface SessionDeps {
   platform: SessionPlatform;
   /** Clear the query caches; runs on every sign-out. */
   onSignedOut?: () => Promise<void> | void;
+  /** Runs before the user's sign-out reaches the server, while the Bearer is still good (push unregistration, 09u). Bounded; best-effort. */
+  beforeSignOut?: () => Promise<void>;
 }
+
+/** How long beforeSignOut may hold the sign-out. */
+export const BEFORE_SIGN_OUT_MS = 3_000;
 
 export function createSession(deps: SessionDeps): Session {
   let state: SessionState = { status: "unknown" };
@@ -177,6 +182,16 @@ export function createSession(deps: SessionDeps): Session {
   }
 
   async function signOut(): Promise<void> {
+    if (deps.beforeSignOut) {
+      let timer: ReturnType<typeof setTimeout> | undefined;
+      await Promise.race([
+        deps.beforeSignOut().catch(() => undefined),
+        new Promise<void>((resolve) => {
+          timer = setTimeout(resolve, BEFORE_SIGN_OUT_MS);
+        }),
+      ]);
+      clearTimeout(timer);
+    }
     // Tell the server first, with the Bearer passed explicitly so the audit
     // line carries the handle whatever the interceptor's timing; the promise is
     // awaited last so a slow network never delays the local sign-out.

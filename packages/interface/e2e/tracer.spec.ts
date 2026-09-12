@@ -48,6 +48,13 @@ test("login → events → incidents → incident → sign out", async ({ page }
   );
   await expect(page.getByTestId(/^incident-row-/).first()).toBeVisible();
   await page.getByTestId("board-segment-mine").click();
+  // The alerts (09u): from the header's word, and back to the Board. `last`:
+  // the events list beneath the Board has a bell of its own.
+  await page.getByTestId("alerts-bell").last().click();
+  await expect(page).toHaveURL(/\/alerts$/);
+  await expect(page.getByRole("button", { name: "Back" })).toBeVisible();
+  await page.getByRole("button", { name: "Back" }).click();
+  await expect(page).toHaveURL(/\/events\/\d+\/incidents$/);
 
   const incident = page.getByTestId(/^incident-row-/).first();
   await expect(incident).toBeVisible();

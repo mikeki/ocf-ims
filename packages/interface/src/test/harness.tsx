@@ -11,8 +11,13 @@ import {
   type PhotoPicker,
   PhotoPickerProvider,
 } from "@/features/compose/photo";
+import { PushProvider, type PushService } from "@/push/service";
 import { SessionProvider } from "@/session/provider";
-import { createRuntime, type Runtime } from "@/session/runtime";
+import {
+  createRuntime,
+  type Runtime,
+  type RuntimeDeps,
+} from "@/session/runtime";
 import type { RefreshTokenStore, SessionPlatform } from "@/session/types";
 import { createFakeBlobs } from "@/test/fakeBlobs";
 import { createFakeIms, type FakeIms } from "@/test/fakeIms";
@@ -28,6 +33,7 @@ export interface TestRuntimeOptions {
   store?: RefreshTokenStore;
   clock?: () => number;
   onSignedOut?: () => void;
+  beforeSignOut?: RuntimeDeps["beforeSignOut"];
   /** The blob helper the screens see (09s); a fresh FakeBlobs unless given. */
   blobs?: Blobs;
 }
@@ -50,6 +56,7 @@ export function createTestRuntime(
     onSignedOut: options.onSignedOut,
     clock: options.clock,
     makeBlobs: () => options.blobs ?? createFakeBlobs(),
+    beforeSignOut: options.beforeSignOut,
   });
   return { ...runtime, fake, store };
 }
@@ -72,9 +79,15 @@ export function renderWithProviders(
   runtime: Runtime,
   queryClient: QueryClient = createTestQueryClient(),
   picker?: PhotoPicker,
+  push?: PushService,
 ) {
-  const inner = (
+  const gated = (
     <SessionProvider session={runtime.session}>{ui}</SessionProvider>
+  );
+  const inner = push ? (
+    <PushProvider service={push}>{gated}</PushProvider>
+  ) : (
+    gated
   );
   return render(
     <ThemeProvider scheme="light">

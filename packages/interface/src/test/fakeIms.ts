@@ -15,6 +15,7 @@ import {
 import type { IncidentType } from "@ocf-ims/protocol-buffers/ocf/ims/resources/v1/incident_type_pb";
 import { IncidentTypeSchema } from "@ocf-ims/protocol-buffers/ocf/ims/resources/v1/incident_type_pb";
 import { JournalEntrySchema } from "@ocf-ims/protocol-buffers/ocf/ims/resources/v1/journal_entry_pb";
+import type { Notification } from "@ocf-ims/protocol-buffers/ocf/ims/resources/v1/notification_pb";
 import type { Person } from "@ocf-ims/protocol-buffers/ocf/ims/resources/v1/person_pb";
 import type { Report } from "@ocf-ims/protocol-buffers/ocf/ims/resources/v1/report_pb";
 import { ReportSchema } from "@ocf-ims/protocol-buffers/ocf/ims/resources/v1/report_pb";
@@ -47,8 +48,17 @@ import {
   ListIncidentTypesResponseSchema,
   ProposeIncidentTypeResponseSchema,
 } from "@ocf-ims/protocol-buffers/ocf/ims/service/rpc/v1/incident_type_pb";
+import {
+  ListNotificationsResponseSchema,
+  MarkAllNotificationsReadResponseSchema,
+  MarkNotificationReadResponseSchema,
+} from "@ocf-ims/protocol-buffers/ocf/ims/service/rpc/v1/notification_pb";
 import { ListPersonnelResponseSchema } from "@ocf-ims/protocol-buffers/ocf/ims/service/rpc/v1/person_pb";
 import { ChangeOwnPasswordResponseSchema } from "@ocf-ims/protocol-buffers/ocf/ims/service/rpc/v1/profile_pb";
+import {
+  RegisterPushDeviceResponseSchema,
+  UnregisterPushDeviceResponseSchema,
+} from "@ocf-ims/protocol-buffers/ocf/ims/service/rpc/v1/push_pb";
 import {
   CreateReportResponseSchema,
   GetReportResponseSchema,
@@ -136,8 +146,17 @@ export interface FakeIms {
     createReport: ListBehaviour;
     updateReport: ListBehaviour;
     requestReport: ListBehaviour;
+    listNotifications: ListBehaviour;
+    markNotificationRead: ListBehaviour;
+    markAllNotificationsRead: ListBehaviour;
+    registerPushDevice: ListBehaviour;
+    unregisterPushDevice: ListBehaviour;
   };
   user: FakeUser;
+  /** Programmable ListNotifications data (09u); `read` is flipped by the mark RPCs. */
+  notifications: Notification[];
+  /** The Expo push tokens registered for the user (09u). */
+  pushDevices: string[];
   /** Programmable ListPersonnel{query} data (09r); the typeahead matches handle and name. */
   people: Person[];
   /** Every UpdateIncident request received, for wire-shape assertions (09r). */
@@ -199,7 +218,14 @@ export function createFakeIms(options: FakeImsOptions = {}): FakeIms {
       createReport: "ok",
       updateReport: "ok",
       requestReport: "ok",
+      listNotifications: "ok",
+      markNotificationRead: "ok",
+      markAllNotificationsRead: "ok",
+      registerPushDevice: "ok",
+      unregisterPushDevice: "ok",
     },
+    notifications: [],
+    pushDevices: [],
     user: {
       email: "dee@example.org",
       password: "correct horse",
@@ -781,6 +807,50 @@ export function createFakeIms(options: FakeImsOptions = {}): FakeIms {
           });
           fake.incidents = fake.incidents.map((v) => (v === view ? next : v));
           return create(RequestReportResponseSchema);
+        },
+        listNotifications(_req, ctx) {
+          record("ListNotifications", ctx);
+          guard(fake.behaviour.listNotifications, ctx);
+          return create(ListNotificationsResponseSchema, {
+            notifications: fake.notifications,
+            unread: BigInt(fake.notifications.filter((n) => !n.read).length),
+          });
+        },
+        markNotificationRead(req, ctx) {
+          record("MarkNotificationRead", ctx);
+          guard(fake.behaviour.markNotificationRead, ctx);
+          const target = fake.notifications.find(
+            (n) => n.id === req.notificationId,
+          );
+          if (!target) {
+            throw new ConnectError("notification not found", Code.NotFound);
+          }
+          target.read = true;
+          return create(MarkNotificationReadResponseSchema);
+        },
+        markAllNotificationsRead(_req, ctx) {
+          record("MarkAllNotificationsRead", ctx);
+          guard(fake.behaviour.markAllNotificationsRead, ctx);
+          for (const n of fake.notifications) {
+            n.read = true;
+          }
+          return create(MarkAllNotificationsReadResponseSchema);
+        },
+        registerPushDevice(req, ctx) {
+          record("RegisterPushDevice", ctx);
+          guard(fake.behaviour.registerPushDevice, ctx);
+          if (!fake.pushDevices.includes(req.expoPushToken)) {
+            fake.pushDevices.push(req.expoPushToken);
+          }
+          return create(RegisterPushDeviceResponseSchema);
+        },
+        unregisterPushDevice(req, ctx) {
+          record("UnregisterPushDevice", ctx);
+          guard(fake.behaviour.unregisterPushDevice, ctx);
+          fake.pushDevices = fake.pushDevices.filter(
+            (t) => t !== req.expoPushToken,
+          );
+          return create(UnregisterPushDeviceResponseSchema);
         },
       });
     },

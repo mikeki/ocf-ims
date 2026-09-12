@@ -10,6 +10,7 @@ import { Button } from "@/design/primitives/Button";
 import { ListRow } from "@/design/primitives/ListRow";
 import { Text } from "@/design/primitives/Text";
 import { useTheme } from "@/design/theme";
+import { AlertsBell } from "@/features/alerts/AlertsBell";
 import { useEvents, useSelectedEvent } from "@/features/events/hooks";
 import { newestEvent, sortEventsNewestFirst } from "@/features/events/newest";
 import { EmptyState } from "@/features/shell/EmptyState";
@@ -24,6 +25,8 @@ import { useSession } from "@/session/provider";
 
 export interface EventsScreenProps {
   onOpenEvent: (eventId: number) => void;
+  /** Opens the alerts (09u); absent = no bell. */
+  onOpenAlerts?: () => void;
 }
 
 export function EventsScreen(props: EventsScreenProps) {
@@ -36,7 +39,14 @@ export function EventsScreen(props: EventsScreenProps) {
 
   return (
     <Box flex={1} bg="background">
-      <ScreenHeader title="Events" />
+      <ScreenHeader
+        title="Events"
+        right={
+          props.onOpenAlerts ? (
+            <AlertsBell onPress={props.onOpenAlerts} />
+          ) : null
+        }
+      />
       {renderBody(eventsQuery, selected, props.onOpenEvent)}
       <Box
         row

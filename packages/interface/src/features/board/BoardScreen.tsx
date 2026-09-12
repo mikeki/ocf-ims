@@ -12,6 +12,7 @@ import {
 import { toAppError } from "@/api/errors";
 import { Box } from "@/design/primitives/Box";
 import { Text } from "@/design/primitives/Text";
+import { AlertsBell } from "@/features/alerts/AlertsBell";
 import {
   useIncidentsForBoard,
   useReports,
@@ -52,6 +53,8 @@ export interface BoardScreenProps {
   onFile: () => void;
   /** Opens the report form (09t). */
   onFileReport: () => void;
+  /** Opens the alerts (09u); absent = no bell. */
+  onOpenAlerts?: () => void;
 }
 
 export function BoardScreen(props: BoardScreenProps) {
@@ -136,9 +139,14 @@ export function BoardScreen(props: BoardScreenProps) {
           title="Board"
           back={{ label: "Events", onPress: onBack }}
           right={
-            <Text variant="label" color="textMuted">
-              {eventName}
-            </Text>
+            <Box row align="center" gap="md">
+              <Text variant="label" color="textMuted">
+                {eventName}
+              </Text>
+              {props.onOpenAlerts ? (
+                <AlertsBell onPress={props.onOpenAlerts} />
+              ) : null}
+            </Box>
           }
         />
         <SegmentedControl
