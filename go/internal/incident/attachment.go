@@ -376,14 +376,49 @@ func (action AttachToIncident) attachToIncident(req *http.Request) (int32, *herr
 	if errHTTP != nil {
 		return 0, errHTTP.From("[server.GetEventPermissions]")
 	}
-	if eventPermissions&authz.EventWriteIncidents == 0 {
-		return 0, herr.Forbidden("The requestor does not have EventWriteIncidents permission on this Event", nil)
-	}
 	ctx := req.Context()
 
 	incidentNumber, err := conv.ParseInt32(req.PathValue("incidentNumber"))
 	if err != nil {
 		return 0, herr.BadRequest("Failed to parse incident number", err).From("[ParseInt32]")
+	}
+
+	// The same gate as UpdateIncident (plan 09s): an upload is a journal-only write,
+	// so a 52f grantee may make it without the event write bit; then the privacy
+	// rule, so a private incident the caller may not view answers 404, not a new entry.
+	viewerPersonID := jwtCtx.Claims.PersonID()
+	hasEventWrite := eventPermissions&authz.EventWriteIncidents != 0
+	hasGrant := false
+	if !hasEventWrite {
+		hasGrant, err = action.ImsDBQ.IncidentPersonHasGrant(ctx, action.ImsDBQ, imsdb.IncidentPersonHasGrantParams{
+			Event: event.ID, IncidentNumber: incidentNumber, PersonID: viewerPersonID,
+		})
+		if err != nil {
+			return 0, herr.InternalServerError("Failed to check incident grant", err).From("[IncidentPersonHasGrant]")
+		}
+		if !hasGrant {
+			return 0, herr.Forbidden("The requestor does not have EventWriteIncidents permission on this Event", nil)
+		}
+	}
+	incidentRow, err := action.ImsDBQ.Incident(ctx, action.ImsDBQ, imsdb.IncidentParams{Event: event.ID, Number: incidentNumber})
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return 0, herr.NotFound("Incident not found", nil)
+		}
+		return 0, herr.InternalServerError("Failed to fetch Incident", err).From("[Incident]")
+	}
+	if incidentRow.Incident.Private && !hasGrant && !jwtCtx.Claims.PersonAdmin() &&
+		!(incidentRow.Incident.CreatedBy.Valid && incidentRow.Incident.CreatedBy.Int32 == viewerPersonID) {
+		// A writer without the grant: one lookup decides between creator/admin and 404.
+		hasGrant, err = action.ImsDBQ.IncidentPersonHasGrant(ctx, action.ImsDBQ, imsdb.IncidentPersonHasGrantParams{
+			Event: event.ID, IncidentNumber: incidentNumber, PersonID: viewerPersonID,
+		})
+		if err != nil {
+			return 0, herr.InternalServerError("Failed to check incident grant", err).From("[IncidentPersonHasGrant]")
+		}
+		if !hasGrant {
+			return 0, herr.NotFound("Incident not found", nil)
+		}
 	}
 
 	// this must match the key sent by the client

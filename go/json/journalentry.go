@@ -40,4 +40,6 @@ type Mention struct {
 type Attachment struct {
 	Name        string `json:"name"`
 	Previewable bool   `json:"previewable"`
+	// MediaType is the sniffed type, sanitised as the download serves it (09s).
+	MediaType string `json:"media_type,omitempty"`
 }
