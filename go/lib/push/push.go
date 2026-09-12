@@ -1,10 +1,10 @@
 // SPDX-License-Identifier: Apache-2.0
 
-// Package push is the Web Push delivery seam (plan 84). It defines the thin
-// Sender interface that the notification fan-out (84c) calls, plus a no-op
-// backend used when push is unconfigured and in tests. The real VAPID-signing
-// backend (webpush-go) is wired in 84c; until then every deployment uses the
-// no-op sender, so nothing is pushed even though subscriptions can be stored.
+// Package push is the push-delivery seam (plan 84; native devices in 09p
+// 3b.0c): the Sender interface the notification fan-out calls, a no-op backend,
+// WebPushSender (VAPID, browsers), ExpoPushSender (Expo, iOS and Android), and
+// the Router that picks a backend by a device's Kind so the fan-out still holds
+// one Sender.
 package push
 
 import (
@@ -12,10 +12,25 @@ import (
 	"errors"
 )
 
-// Subscription is a single device's push endpoint and the client keys needed to
-// encrypt a payload to it. It mirrors the browser's PushSubscription and the
-// stored PUSH_SUBSCRIPTION row, decoupling senders from the store package.
+// Kind is which push service owns a device, and therefore which backend can
+// deliver to it. It is stored on the subscription row (PUSH_SUBSCRIPTION.KIND).
+type Kind string
+
+const (
+	// KindWeb is a browser Web Push subscription: Endpoint is the push service's
+	// URL and both crypto keys are present.
+	KindWeb Kind = "web"
+	// KindExpo is a native Expo build: Endpoint is the ExponentPushToken[...]
+	// and there are no crypto keys at all — Expo owns the APNs/FCM plumbing.
+	KindExpo Kind = "expo"
+)
+
+// Subscription is a single device's push endpoint and, for a browser, the client
+// keys needed to encrypt a payload to it. Endpoint is the device's identity for
+// both kinds (a push-service URL, or an ExponentPushToken); P256dh and Auth are
+// empty for KindExpo.
 type Subscription struct {
+	Kind     Kind
 	Endpoint string
 	P256dh   string
 	Auth     string
@@ -56,3 +71,37 @@ func (NoopSender) Enabled() bool { return false }
 
 // Ensure NoopSender satisfies Sender.
 var _ Sender = NoopSender{}
+
+// Router delivers each Subscription through the backend that owns its Kind, so
+// the fan-out never learns there is more than one push service. A Kind with no
+// enabled backend is skipped without error: an unconfigured backend is not a
+// delivery failure, and the prune path must not see one.
+type Router struct {
+	backends map[Kind]Sender
+}
+
+// NewRouter builds a Router over the given backends.
+func NewRouter(backends map[Kind]Sender) *Router {
+	return &Router{backends: backends}
+}
+
+// Send routes to the backend owning sub.Kind; an unconfigured kind is a no-op.
+func (r *Router) Send(ctx context.Context, sub Subscription, msg Message) error {
+	backend, ok := r.backends[sub.Kind]
+	if !ok || !backend.Enabled() {
+		return nil
+	}
+	return backend.Send(ctx, sub, msg)
+}
+
+// Enabled reports whether any backend can deliver.
+func (r *Router) Enabled() bool {
+	for _, backend := range r.backends {
+		if backend.Enabled() {
+			return true
+		}
+	}
+	return false
+}
+
+var _ Sender = (*Router)(nil)

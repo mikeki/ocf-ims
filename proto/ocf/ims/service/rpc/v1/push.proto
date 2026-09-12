@@ -27,3 +27,30 @@ message UnsubscribePushRequest {
 }
 
 message UnsubscribePushResponse {}
+
+// Native (Expo) devices (plan 09p 3b.0c). Separate RPCs from the Subscribe /
+// UnsubscribePush pair: a browser subscription is a URL plus two crypto keys, an
+// Expo device is one opaque token, and one message would make three of its four
+// fields conditional. Both share PUSH_SUBSCRIPTION (ENDPOINT, told apart by KIND).
+
+message RegisterPushDeviceRequest {
+  // The ExponentPushToken[...] Expo issued to this install. The prefix is
+  // pinned so a raw APNs or FCM token is rejected here rather than accepted and
+  // never delivered.
+  string expo_push_token = 1 [
+    (buf.validate.field).string.min_len = 1,
+    (buf.validate.field).string.max_len = 512,
+    (buf.validate.field).string.prefix = "ExponentPushToken["
+  ];
+}
+
+message RegisterPushDeviceResponse {}
+
+message UnregisterPushDeviceRequest {
+  string expo_push_token = 1 [
+    (buf.validate.field).string.min_len = 1,
+    (buf.validate.field).string.max_len = 512
+  ];
+}
+
+message UnregisterPushDeviceResponse {}

@@ -120,13 +120,34 @@ func mustStartServer(ctx context.Context, unvalidatedCfg *conf.IMSConfig, printC
 	var userStore directory.UserStore = directory.NewLocalUserStore(imsDBQ, imsCfg.Directory.InMemoryCacheTTL)
 	actionLogger := actionlog.NewLogger(ctx, imsDBQ, imsCfg.Core.ActionLogEnabled, false)
 
-	// Web-push send backend (plan 84c): a real VAPID-signing sender when push is
-	// configured, else a no-op so the fan-out does nothing.
-	var pushSender push.Sender = push.NoopSender{}
+	// Two push backends behind one Sender (plan 84c web, 09p 3b.0c native): the
+	// Router picks the backend from the row's KIND, so the fan-out still holds
+	// one Sender. Each backend is built only when configured.
+	var webSender push.Sender = push.NoopSender{}
 	if imsCfg.Push.Enabled() {
 		slog.Info("Web push enabled")
-		pushSender = push.NewWebPushSender(imsCfg.Push.VAPIDPublicKey, imsCfg.Push.VAPIDPrivateKey, imsCfg.Push.VAPIDSubject)
+		webSender = push.NewWebPushSender(imsCfg.Push.VAPIDPublicKey, imsCfg.Push.VAPIDPrivateKey, imsCfg.Push.VAPIDSubject)
 	}
+	var expoSender push.Sender = push.NoopSender{}
+	var expoPushSender *push.ExpoPushSender
+	if imsCfg.Core.ExpoPushEnabled {
+		slog.Info("Expo (native) push enabled")
+		// Pruning goes through a callback so lib/push takes no store dependency.
+		expo := push.NewExpoPushSender(ctx, func(ctx context.Context, endpoint string) {
+			err := imsDBQ.DeletePushSubscriptionByEndpoint(ctx, imsDBQ, endpoint)
+			if err != nil {
+				slog.Error("Failed to prune an unregistered Expo device", "err", err)
+			}
+		})
+		// Closed on the shutdown hook, not deferred: mustStartServer returns
+		// while the server runs.
+		expoPushSender = expo
+		expoSender = expo
+	}
+	pushSender := push.NewRouter(map[push.Kind]push.Sender{
+		push.KindWeb:  webSender,
+		push.KindExpo: expoSender,
+	})
 
 	// The SSE hub redacts a private incident's number before broadcasting (plan 09 §6
 	// M8), so it needs to know whether a given incident is private. Inject that as a
@@ -179,6 +200,9 @@ func mustStartServer(ctx context.Context, unvalidatedCfg *conf.IMSConfig, printC
 		eventSource.Server.Close()
 		// Or a subscriber holds the drain open for the whole grace period.
 		watchHub.Close()
+		if expoPushSender != nil {
+			expoPushSender.Close()
+		}
 	})
 
 	listener, err := net.Listen("tcp", net.JoinHostPort(imsCfg.Core.Host, conv.FormatInt(imsCfg.Core.Port)))

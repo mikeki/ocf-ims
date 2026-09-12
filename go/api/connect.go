@@ -881,6 +881,28 @@ func (s ImsService) UnsubscribePush(
 	return connect.NewResponse(resp), nil
 }
 
+func (s ImsService) RegisterPushDevice(
+	ctx context.Context,
+	req *connect.Request[servicerpcv1.RegisterPushDeviceRequest],
+) (*connect.Response[servicerpcv1.RegisterPushDeviceResponse], error) {
+	resp, err := s.Push.RegisterPushDevice(ctx, req.Msg, req.Header().Get("User-Agent"))
+	if err != nil {
+		return nil, err
+	}
+	return connect.NewResponse(resp), nil
+}
+
+func (s ImsService) UnregisterPushDevice(
+	ctx context.Context,
+	req *connect.Request[servicerpcv1.UnregisterPushDeviceRequest],
+) (*connect.Response[servicerpcv1.UnregisterPushDeviceResponse], error) {
+	resp, err := s.Push.UnregisterPushDevice(ctx, req.Msg)
+	if err != nil {
+		return nil, err
+	}
+	return connect.NewResponse(resp), nil
+}
+
 // WatchEvent is the one server-streaming RPC (plan 09p 3b.0b). The hub takes a
 // plain send func rather than the *ServerStream so internal/server stays free
 // of the connect stream type.

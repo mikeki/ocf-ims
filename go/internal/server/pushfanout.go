@@ -133,10 +133,13 @@ func (p *Pusher) deliver(reqCtx context.Context, recipients []int32, msg push.Me
 			continue
 		}
 		for _, row := range subs {
+			// KIND picks the backend inside the Sender (09p S4). The keys are
+			// null for an Expo device, and String on a null NullString is "".
 			sendErr := p.sender.Send(ctx, push.Subscription{
+				Kind:     push.Kind(row.Kind),
 				Endpoint: row.Endpoint,
-				P256dh:   row.P256dh,
-				Auth:     row.Auth,
+				P256dh:   row.P256dh.String,
+				Auth:     row.Auth.String,
 			}, msg)
 			switch {
 			case sendErr == nil:

@@ -87,6 +87,9 @@ func mustApplyEnvConfig(baseCfg *conf.IMSConfig, envFileName string) *conf.IMSCo
 	if v, ok := lookupEnv("IMS_LOGIN_RATE_LIMIT_ENABLED"); ok {
 		baseCfg.Core.LoginRateLimitEnabled = strings.EqualFold(v, "true")
 	}
+	if v, ok := lookupEnv("IMS_EXPO_PUSH_ENABLED"); ok {
+		baseCfg.Core.ExpoPushEnabled = strings.EqualFold(v, "true")
+	}
 	if v, ok := lookupEnv("IMS_SEED"); ok {
 		baseCfg.Core.Seed = conf.SeedProfile(strings.ToLower(v))
 	}

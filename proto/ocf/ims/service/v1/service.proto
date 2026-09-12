@@ -196,6 +196,12 @@ service ImsService {
   rpc SubscribePush(rpc.v1.SubscribePushRequest) returns (rpc.v1.SubscribePushResponse);
   rpc UnsubscribePush(rpc.v1.UnsubscribePushRequest) returns (rpc.v1.UnsubscribePushResponse);
 
+  // --- Native push (Expo) ---
+  // Mutations, un-annotated so the action log records where a person's
+  // notifications go.
+  rpc RegisterPushDevice(rpc.v1.RegisterPushDeviceRequest) returns (rpc.v1.RegisterPushDeviceResponse);
+  rpc UnregisterPushDevice(rpc.v1.UnregisterPushDeviceRequest) returns (rpc.v1.UnregisterPushDeviceResponse);
+
   // --- Live stream ---
   // Server-streaming (plan 09p 3b.0b). NO_SIDE_EFFECTS also keeps it out of the
   // action log: one audit row per poke would be telemetry, not audit data.

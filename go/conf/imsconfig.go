@@ -309,6 +309,11 @@ type ConfigCore struct {
 	// hammer the auth endpoint from a shared address disable it.
 	LoginRateLimitEnabled bool
 
+	// ExpoPushEnabled toggles native push to Expo devices (plan 09p 3b.0c).
+	// Expo needs no per-deployment secret, so this flag is the only gate;
+	// false by default (IMS_EXPO_PUSH_ENABLED).
+	ExpoPushEnabled bool
+
 	// Seed selects which seed dataset (if any) is loaded into an empty database
 	// on boot. Defaults to SeedNone; "demo" loads the dev fixture. The load is
 	// idempotent — see store.Seed.
