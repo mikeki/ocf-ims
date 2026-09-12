@@ -24,6 +24,7 @@ import { useLinkReport } from "@/features/compose/hooks";
 import { ReportComposer } from "@/features/compose/ReportComposer";
 import { useEventAccess } from "@/features/events/hooks";
 import { JournalEntryRow } from "@/features/incidents/JournalEntryRow";
+import { useLiveEvent } from "@/features/live/useLiveEvent";
 import { EmptyState } from "@/features/shell/EmptyState";
 import { ErrorState } from "@/features/shell/ErrorState";
 import { LoadingState } from "@/features/shell/LoadingState";
@@ -48,6 +49,7 @@ export interface ReportScreenProps {
 export function ReportScreen(props: ReportScreenProps) {
   const { eventId, number, onBack } = props;
   const query = useReport(eventId, number);
+  useLiveEvent(eventId);
   const { state } = useSession();
   const author = state.status === "signedIn" ? state.auth.user : "";
   const mayAppend = query.data?.report?.mayAddJournalEntry === true;

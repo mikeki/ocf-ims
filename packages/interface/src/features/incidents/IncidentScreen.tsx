@@ -35,6 +35,7 @@ import {
 import { JournalEntryRow } from "@/features/incidents/JournalEntryRow";
 import { areaName, typeName } from "@/features/incidents/lookups";
 import { PeopleSection } from "@/features/incidents/PeopleSection";
+import { useLiveEvent } from "@/features/live/useLiveEvent";
 import { EmptyState } from "@/features/shell/EmptyState";
 import { ErrorState } from "@/features/shell/ErrorState";
 import { LoadingState } from "@/features/shell/LoadingState";
@@ -80,6 +81,7 @@ export function IncidentScreen(props: IncidentScreenProps) {
   const eventName = useEventName(eventId);
   const { state } = useSession();
   const incidentQuery = useIncident(eventId, number);
+  useLiveEvent(eventId);
   const areasQuery = useAreas(eventId, access.readAreas);
   const typesQuery = useIncidentTypes();
   const view = incidentQuery.data?.incident;

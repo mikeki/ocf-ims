@@ -3,6 +3,7 @@
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import type { QueryClient } from "@tanstack/react-query";
 import type { Persister } from "@tanstack/react-query-persist-client";
+import { fetch as expoFetch } from "expo/fetch";
 import Constants from "expo-constants";
 import { Platform } from "react-native";
 import { createBlobs } from "@/api/blobs";
@@ -34,6 +35,11 @@ export function createAppRuntime(): AppRuntime {
     makeTransport: createConnectTransportFactory({
       baseUrl: apiBaseUrl(),
       useBinaryFormat: binaryWireFormat(),
+      // React Native's fetch cannot stream a response body; Expo's can (09v).
+      fetch:
+        Platform.OS === "web"
+          ? undefined
+          : (expoFetch as unknown as typeof globalThis.fetch),
     }),
     store: refreshTokenStore,
     platform: Platform.OS === "web" ? "web" : "native",
