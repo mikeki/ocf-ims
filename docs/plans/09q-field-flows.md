@@ -343,6 +343,10 @@ a broken "My work" look identical.
    This decides more than a screen — it decides whether "My work"/"Board" is one list or
    two, which is the question this very picker was asking. **It needs its own plan doc and
    a conversation with the sponsors before 3b.3 (Reports) is briefed.**
+   **Answered 2026-09-12 → [09t](09t-reports.md): keep both.** A report stays its own
+   record, filed on its own; an incident collects reports through a *request* (the
+   incident's crew asks a person, who is notified and files a report that lands attached).
+   The Board keeps two kinds of row.
 5. **Should a report's summary edit mark it unread?** It cannot be detected client-side
    (see the asymmetry above). Either accept the gap or add `last_modified` to `Report` — a
    proto change, a migration, and a server slice, so **not** in 3b.1. Recorded here so the

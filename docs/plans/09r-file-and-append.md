@@ -271,7 +271,8 @@ is called done.
 ## Out of scope
 
 - **Reports.** Filing one, appending to one, on-behalf-of — all 3b.3, which also owes the
-  Reports-vs-Incidents conversation (09q open question 4) before it is briefed.
+  Reports-vs-Incidents conversation (09q open question 4) before it is briefed — answered
+  2026-09-12 in [09t](09t-reports.md).
 - **Photos.** 3b.4. The composer leaves room for an attach control; it does not draw one.
 - **Editing an incident** — state, priority after filing, people, links, private. That is
   3c.2's editor. 3b.2 sets fields at filing time only.
