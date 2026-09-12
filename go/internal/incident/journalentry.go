@@ -124,6 +124,7 @@ func journalEntryToJSON(
 	if attachmentsEnabled && re.AttachedFileOriginalName.Valid {
 		attachment.Name = re.AttachedFileOriginalName.String
 		attachment.Previewable = previewableContentType(re.AttachedFileMediaType.String)
+		attachment.MediaType = SafeToPreviewContentType(re.AttachedFileMediaType.String)
 	}
 	return imsjson.JournalEntry{
 		ID:          re.ID,

@@ -138,7 +138,7 @@ func journalEntryProtoToJSON(je *resourcesv1.JournalEntry) imsjson.JournalEntry 
 		OnBehalfOf:  personRefToMention(je.GetOnBehalfOf()),
 	}
 	if att := je.GetAttachment(); att != nil {
-		out.Attachment = imsjson.Attachment{Name: att.GetId(), Previewable: att.GetPreviewable()}
+		out.Attachment = imsjson.Attachment{Name: att.GetId(), Previewable: att.GetPreviewable(), MediaType: att.GetMediaType()}
 	}
 	for _, m := range je.GetMentions() {
 		out.Mentions = append(out.Mentions, imsjson.Mention{

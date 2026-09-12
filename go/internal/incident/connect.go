@@ -1677,6 +1677,7 @@ func journalEntryToProto(je imsjson.JournalEntry) *resourcesv1.JournalEntry {
 		out.Attachment = &resourcesv1.Attachment{
 			Id:          je.Attachment.Name,
 			Previewable: je.Attachment.Previewable,
+			MediaType:   je.Attachment.MediaType,
 		}
 	}
 	for _, m := range je.Mentions {

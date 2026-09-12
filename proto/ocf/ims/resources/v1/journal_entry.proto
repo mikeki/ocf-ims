@@ -37,12 +37,18 @@ message JournalEntry {
   optional ocf.ims.common.v1.PersonRef on_behalf_of = 9;
 }
 
-// Attachment is a file attached to a journal entry. id is the opaque storage key
-// the server generates for the file (a crypto-random token, e.g.
-// "event_00001_incident_00042_<random>.jpg" — collision-resistant, and what the
-// blob-download endpoint is addressed by); previewable indicates the server can
-// render an inline preview. Mirrors json.Attachment (whose field was "name").
+// Attachment is a file attached to a journal entry. Mirrors json.Attachment.
+//
+// id is the file's ORIGINAL name as uploaded (json.Attachment.name) — a label, not
+// an address: the download route is addressed by the journal entry's own id
+// (GET .../incidents/{n}/attachments/{entry id}). The server's storage key never
+// leaves the server. previewable indicates the server serves the file inline
+// (its sniffed type is on the safe-to-preview list); media_type is that sniffed
+// type after the same sanitising the download applies ("application/octet-stream"
+// for anything not on the list), so a client can tell a photo from a PDF before
+// fetching a byte (plan 09s).
 message Attachment {
   string id = 1;
   bool previewable = 2;
+  string media_type = 3;
 }
