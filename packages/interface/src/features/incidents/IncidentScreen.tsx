@@ -8,13 +8,21 @@ import type { IncidentType } from "@ocf-ims/protocol-buffers/ocf/ims/resources/v
 import type { IncidentView } from "@ocf-ims/protocol-buffers/ocf/ims/service/rpc/v1/incident_pb";
 import type { ReactNode } from "react";
 import { useState } from "react";
-import { RefreshControl, ScrollView, Switch } from "react-native";
+import {
+  KeyboardAvoidingView,
+  Platform,
+  RefreshControl,
+  ScrollView,
+  StyleSheet,
+  Switch,
+} from "react-native";
 import { toAppError } from "@/api/errors";
 import { Badge } from "@/design/primitives/Badge";
 import { Box } from "@/design/primitives/Box";
 import { Text } from "@/design/primitives/Text";
 import { TextButton } from "@/design/primitives/TextButton";
 import { useTheme } from "@/design/theme";
+import { AppendComposer } from "@/features/compose/AppendComposer";
 import { useEventAccess } from "@/features/events/hooks";
 import {
   useAreas,
@@ -33,9 +41,11 @@ import {
   priorityLabel,
   stateLabel,
 } from "@/lib/format";
+import { useSession } from "@/session/provider";
 
 // The incident detail (plan 09n): every read-only section from the journal
-// down, pull-to-refresh, and the system-entries toggle. Navigation
+// down, pull-to-refresh, and the system-entries toggle, plus the docked
+// composer when the caller may add to the journal (09r). Navigation
 // (linked-incident presses, back) is the route's job (T6) — this component
 // takes ids and callbacks only.
 
@@ -49,27 +59,42 @@ export interface IncidentScreenProps {
 export function IncidentScreen(props: IncidentScreenProps) {
   const { eventId, number, onBack, onOpenIncident } = props;
   const access = useEventAccess(eventId);
+  const { state } = useSession();
   const incidentQuery = useIncident(eventId, number);
   const areasQuery = useAreas(eventId, access.readAreas);
   const typesQuery = useIncidentTypes();
+  const mayAppend = incidentQuery.data?.incident?.viewerMayAddJournal === true;
+  const author = state.status === "signedIn" ? state.auth.user : "";
 
   return (
-    <Box flex={1} bg="background">
-      <ScreenHeader
-        title={`#${number}`}
-        back={{ label: "Board", onPress: onBack }}
-      />
-      {renderBody(
-        incidentQuery,
-        areasQuery.data?.areas,
-        typesQuery.data?.incidentTypes,
-        number,
-        onBack,
-        onOpenIncident,
-      )}
-    </Box>
+    <KeyboardAvoidingView
+      style={styles.fill}
+      behavior={Platform.OS === "ios" ? "padding" : undefined}
+    >
+      <Box flex={1} bg="background">
+        <ScreenHeader
+          title={`#${number}`}
+          back={{ label: "Board", onPress: onBack }}
+        />
+        {renderBody(
+          incidentQuery,
+          areasQuery.data?.areas,
+          typesQuery.data?.incidentTypes,
+          number,
+          onBack,
+          onOpenIncident,
+        )}
+        {mayAppend ? (
+          <AppendComposer eventId={eventId} number={number} author={author} />
+        ) : null}
+      </Box>
+    </KeyboardAvoidingView>
   );
 }
+
+const styles = StyleSheet.create({
+  fill: { flex: 1 },
+});
 
 function renderBody(
   incidentQuery: ReturnType<typeof useIncident>,
