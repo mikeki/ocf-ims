@@ -2,7 +2,13 @@
 
 import type { ReactNode } from "react";
 import { useMemo, useState } from "react";
-import { FlatList, RefreshControl } from "react-native";
+import {
+  FlatList,
+  KeyboardAvoidingView,
+  Platform,
+  RefreshControl,
+  StyleSheet,
+} from "react-native";
 import { toAppError } from "@/api/errors";
 import { Box } from "@/design/primitives/Box";
 import { Text } from "@/design/primitives/Text";
@@ -20,6 +26,7 @@ import {
   toReportItem,
   type WorkItem,
 } from "@/features/board/work";
+import { QuickBar } from "@/features/compose/QuickBar";
 import { useEventAccess, useEvents } from "@/features/events/hooks";
 import { useAreas } from "@/features/incidents/hooks";
 import { areaName } from "@/features/incidents/lookups";
@@ -31,7 +38,8 @@ import { useSession } from "@/session/provider";
 
 // The Board (plan 09q, slice 3b.1): the event's incidents and reports behind an
 // All / Mine / Reports segment, opening on Mine. "Mine" is computed client-side
-// from the list responses; a server filter is a noted follow-up (09i §8).
+// from the list responses; a server filter is a noted follow-up (09i §8). A
+// writer gets the docked filing bar (09r).
 
 type SegmentKey = "all" | "mine" | "reports";
 
@@ -40,10 +48,12 @@ export interface BoardScreenProps {
   onBack: () => void;
   onOpenIncident: (number: number) => void;
   onOpenReport: (number: number) => void;
+  /** Opens the filing form with the bar's text as the summary (09r). */
+  onFile: (summary: string) => void;
 }
 
 export function BoardScreen(props: BoardScreenProps) {
-  const { eventId, onBack, onOpenIncident, onOpenReport } = props;
+  const { eventId, onBack, onOpenIncident, onOpenReport, onFile } = props;
   const [segment, setSegment] = useState<SegmentKey>("mine");
 
   const { state } = useSession();
@@ -108,41 +118,51 @@ export function BoardScreen(props: BoardScreenProps) {
     `Event ${eventId}`;
 
   return (
-    <Box flex={1} bg="background">
-      <ScreenHeader
-        title="Board"
-        back={{ label: "Events", onPress: onBack }}
-        right={
-          <Text variant="label" color="textMuted">
-            {eventName}
-          </Text>
-        }
-      />
-      <SegmentedControl
-        segments={segments}
-        current={active}
-        onSelect={setSegment}
-      />
-      {renderBody({
-        segment: active,
-        all: incidents,
-        mine,
-        reports,
-        incidentsQuery,
-        reportsQuery,
-        unread,
-        onOpenIncident: (item) => {
-          seen.markSeen(item);
-          onOpenIncident(item.number);
-        },
-        onOpenReport: (item) => {
-          seen.markSeen(item);
-          onOpenReport(item.number);
-        },
-      })}
-    </Box>
+    <KeyboardAvoidingView
+      style={styles.fill}
+      behavior={Platform.OS === "ios" ? "padding" : undefined}
+    >
+      <Box flex={1} bg="background">
+        <ScreenHeader
+          title="Board"
+          back={{ label: "Events", onPress: onBack }}
+          right={
+            <Text variant="label" color="textMuted">
+              {eventName}
+            </Text>
+          }
+        />
+        <SegmentedControl
+          segments={segments}
+          current={active}
+          onSelect={setSegment}
+        />
+        {renderBody({
+          segment: active,
+          all: incidents,
+          mine,
+          reports,
+          incidentsQuery,
+          reportsQuery,
+          unread,
+          onOpenIncident: (item) => {
+            seen.markSeen(item);
+            onOpenIncident(item.number);
+          },
+          onOpenReport: (item) => {
+            seen.markSeen(item);
+            onOpenReport(item.number);
+          },
+        })}
+        {access.writeIncidents ? <QuickBar onFile={onFile} /> : null}
+      </Box>
+    </KeyboardAvoidingView>
   );
 }
+
+const styles = StyleSheet.create({
+  fill: { flex: 1 },
+});
 
 interface BodyArgs {
   segment: SegmentKey;

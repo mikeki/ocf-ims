@@ -9,6 +9,7 @@ import { cacheBuster, createAppPersister } from "@/api/persist";
 import { createAppQueryClient } from "@/api/query";
 import { createConnectTransportFactory } from "@/api/transport";
 import { apiBaseUrl, binaryWireFormat } from "@/config/env";
+import { clearDrafts } from "@/features/compose/drafts";
 import { createRuntime, type Runtime } from "@/session/runtime";
 import { refreshTokenStore } from "@/session/store";
 
@@ -37,6 +38,8 @@ export function createAppRuntime(): AppRuntime {
     onSignedOut: async () => {
       queryClient.clear();
       await persister.removeClient();
+      // Drafts are incident content, like the cache (09r).
+      await clearDrafts(AsyncStorage).catch(() => undefined);
     },
   });
   return { ...runtime, queryClient, persister, buster };

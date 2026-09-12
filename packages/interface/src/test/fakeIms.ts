@@ -1,12 +1,24 @@
 // SPDX-License-Identifier: Apache-2.0
 
-import { create } from "@bufbuild/protobuf";
+import { create, toJson } from "@bufbuild/protobuf";
 import { timestampFromDate } from "@bufbuild/protobuf/wkt";
 import type { ConnectRouter, HandlerContext } from "@connectrpc/connect";
 import { Code, ConnectError } from "@connectrpc/connect";
 import type { Area } from "@ocf-ims/protocol-buffers/ocf/ims/resources/v1/area_pb";
+import { AreaSchema } from "@ocf-ims/protocol-buffers/ocf/ims/resources/v1/area_pb";
+import {
+  IncidentPriority,
+  IncidentSchema,
+  IncidentState,
+} from "@ocf-ims/protocol-buffers/ocf/ims/resources/v1/incident_pb";
 import type { IncidentType } from "@ocf-ims/protocol-buffers/ocf/ims/resources/v1/incident_type_pb";
-import { ListAreasResponseSchema } from "@ocf-ims/protocol-buffers/ocf/ims/service/rpc/v1/area_pb";
+import { IncidentTypeSchema } from "@ocf-ims/protocol-buffers/ocf/ims/resources/v1/incident_type_pb";
+import { JournalEntrySchema } from "@ocf-ims/protocol-buffers/ocf/ims/resources/v1/journal_entry_pb";
+import type { Person } from "@ocf-ims/protocol-buffers/ocf/ims/resources/v1/person_pb";
+import {
+  CreateAreaResponseSchema,
+  ListAreasResponseSchema,
+} from "@ocf-ims/protocol-buffers/ocf/ims/service/rpc/v1/area_pb";
 import {
   AccessForEventSchema,
   GetAuthStatusResponseSchema,
@@ -16,11 +28,21 @@ import {
 } from "@ocf-ims/protocol-buffers/ocf/ims/service/rpc/v1/auth_pb";
 import { ListEventsResponseSchema } from "@ocf-ims/protocol-buffers/ocf/ims/service/rpc/v1/event_pb";
 import {
+  CreateIncidentResponseSchema,
   GetIncidentResponseSchema,
+  type IncidentUpdate,
+  IncidentUpdateSchema,
   type IncidentView,
+  IncidentViewSchema,
   ListIncidentsResponseSchema,
+  type UpdateIncidentRequest,
+  UpdateIncidentResponseSchema,
 } from "@ocf-ims/protocol-buffers/ocf/ims/service/rpc/v1/incident_pb";
-import { ListIncidentTypesResponseSchema } from "@ocf-ims/protocol-buffers/ocf/ims/service/rpc/v1/incident_type_pb";
+import {
+  ListIncidentTypesResponseSchema,
+  ProposeIncidentTypeResponseSchema,
+} from "@ocf-ims/protocol-buffers/ocf/ims/service/rpc/v1/incident_type_pb";
+import { ListPersonnelResponseSchema } from "@ocf-ims/protocol-buffers/ocf/ims/service/rpc/v1/person_pb";
 import { ChangeOwnPasswordResponseSchema } from "@ocf-ims/protocol-buffers/ocf/ims/service/rpc/v1/profile_pb";
 import {
   GetReportResponseSchema,
@@ -33,9 +55,12 @@ import { ImsService } from "@ocf-ims/protocol-buffers/ocf/ims/service/v1/service
 // session RPCs with the server's semantics — Login issues an access token and
 // either a body refresh token or the "cookie" (a field here, since there is no
 // browser), RefreshToken applies body-wins-cookie-fallback, GetAuthStatus
-// tolerates an anonymous caller, Logout clears the cookie — plus ListEvents as
-// the representative authenticated data RPC. Behaviours flip a method into a
-// failure mode so the transport and session tests can exercise every branch.
+// tolerates an anonymous caller, Logout clears the cookie — plus the data RPCs
+// the screens read, and (09r) the five write RPCs with the server's semantics:
+// a granted reporter's update must be journal-only, a proposed type's name
+// collision resolves to the existing id, a writer's area is a proposal, and
+// the personnel typeahead answers nothing under two characters. Behaviours
+// flip a method into a failure mode so every branch can be exercised.
 
 export type Behaviour = "ok" | "unauthenticated" | "unavailable";
 /** For the read RPCs that a screen can also see PermissionDenied from. */
@@ -51,6 +76,8 @@ export interface FakeUser {
   usingDefaultPassword: boolean;
   /** Drives AccessForEvent.readAreas on GetAuthStatus (plan 09n T12). */
   readAreas: boolean;
+  /** Drives AccessForEvent.writeIncidents (an admin always has it), and the write RPCs' gate (09r). */
+  writeIncidents: boolean;
 }
 
 /** The minimal shape ListEvents needs — enough to build an Event via create(). */
@@ -88,8 +115,17 @@ export interface FakeIms {
     getReport: ListBehaviour;
     listAreas: ListBehaviour;
     listIncidentTypes: ListBehaviour;
+    listPersonnel: ListBehaviour;
+    createIncident: ListBehaviour;
+    updateIncident: ListBehaviour;
+    proposeIncidentType: ListBehaviour;
+    createArea: ListBehaviour;
   };
   user: FakeUser;
+  /** Programmable ListPersonnel{query} data (09r); the typeahead matches handle and name. */
+  people: Person[];
+  /** Every UpdateIncident request received, for wire-shape assertions (09r). */
+  updateRequests: UpdateIncidentRequest[];
   /** Programmable ListEvents data (plan 09n T12); default matches the previous hardcoded response. */
   events: FakeEvent[];
   /** Programmable ListIncidents/GetIncident data (plan 09n T12): a flat list, filtered by `incident.eventId`. */
@@ -135,6 +171,11 @@ export function createFakeIms(options: FakeImsOptions = {}): FakeIms {
       getReport: "ok",
       listAreas: "ok",
       listIncidentTypes: "ok",
+      listPersonnel: "ok",
+      createIncident: "ok",
+      updateIncident: "ok",
+      proposeIncidentType: "ok",
+      createArea: "ok",
     },
     user: {
       email: "dee@example.org",
@@ -144,6 +185,7 @@ export function createFakeIms(options: FakeImsOptions = {}): FakeIms {
       admin: false,
       usingDefaultPassword: false,
       readAreas: true,
+      writeIncidents: false,
       ...options.user,
     },
     events: [{ id: 1, name: "2026" }],
@@ -151,6 +193,8 @@ export function createFakeIms(options: FakeImsOptions = {}): FakeIms {
     reports: [],
     areas: [],
     incidentTypes: [],
+    people: [],
+    updateRequests: [],
     cookieRefreshToken: undefined,
     issueRefreshToken() {
       counter += 1;
@@ -383,9 +427,243 @@ export function createFakeIms(options: FakeImsOptions = {}): FakeIms {
             incidentTypes: fake.incidentTypes,
           });
         },
+        listPersonnel(req, ctx) {
+          record("ListPersonnel", ctx);
+          guard(fake.behaviour.listPersonnel, ctx);
+          // The server's typeahead answers nothing below two characters.
+          const q = (req.query ?? "").trim().toLowerCase();
+          if (q.length < 2) {
+            return create(ListPersonnelResponseSchema, { people: [] });
+          }
+          return create(ListPersonnelResponseSchema, {
+            people: fake.people.filter(
+              (p) =>
+                (p.handle ?? "").toLowerCase().includes(q) ||
+                (p.name ?? "").toLowerCase().includes(q),
+            ),
+          });
+        },
+        createIncident(req, ctx) {
+          record("CreateIncident", ctx);
+          guard(fake.behaviour.createIncident, ctx);
+          requireWriter();
+          if (!fake.events.some((e) => e.id === req.eventId)) {
+            throw new ConnectError("event not found", Code.NotFound);
+          }
+          const update = req.incident;
+          if (!update) {
+            throw new ConnectError(
+              "incident is required",
+              Code.InvalidArgument,
+            );
+          }
+          if ((update.summary ?? "").length > 1024) {
+            throw new ConnectError(
+              "incident.summary: value length must be at most 1024 characters",
+              Code.InvalidArgument,
+            );
+          }
+          const number =
+            Math.max(
+              0,
+              ...fake.incidents
+                .filter((v) => v.incident?.eventId === req.eventId)
+                .map((v) => v.incident?.number ?? 0),
+            ) + 1;
+          const now = timestampFromDate(new Date(clock()));
+          const view = create(IncidentViewSchema, {
+            viewerMayAddJournal: true,
+            incident: create(IncidentSchema, {
+              event: fake.events.find((e) => e.id === req.eventId)?.name,
+              eventId: req.eventId,
+              number,
+              created: now,
+              started: now,
+              lastModified: now,
+              state: IncidentState.OPEN,
+              priority:
+                update.priority === IncidentPriority.UNSPECIFIED
+                  ? IncidentPriority.NORMAL
+                  : update.priority,
+              summary: update.summary,
+              createdBy: {
+                personId: fake.user.personId,
+                handle: fake.user.handle,
+              },
+              location: update.location,
+              incidentTypeIds: update.incidentTypeIds?.values ?? [],
+              journalEntries: entriesOf(update, now),
+            }),
+          });
+          fake.incidents = [...fake.incidents, view];
+          return create(CreateIncidentResponseSchema, {
+            incidentNumber: number,
+          });
+        },
+        updateIncident(req, ctx) {
+          record("UpdateIncident", ctx);
+          guard(fake.behaviour.updateIncident, ctx);
+          fake.updateRequests.push(req);
+          const view = fake.incidents.find(
+            (v) =>
+              v.incident?.eventId === req.eventId &&
+              v.incident?.number === req.incidentNumber,
+          );
+          const update = req.update;
+          if (!update) {
+            throw new ConnectError("update is required", Code.InvalidArgument);
+          }
+          // The server's 52f rule: no write bit → a grant AND a journal-only payload.
+          if (!fake.user.admin && !fake.user.writeIncidents) {
+            if (!view?.viewerMayAddJournal) {
+              throw new ConnectError("not allowed", Code.PermissionDenied);
+            }
+            if (!journalOnly(update)) {
+              throw new ConnectError(
+                "a granted reporter may only add journal entries to this incident",
+                Code.PermissionDenied,
+              );
+            }
+          }
+          if (!view?.incident) {
+            throw new ConnectError("incident not found", Code.NotFound);
+          }
+          const now = timestampFromDate(new Date(clock()));
+          const incident = view.incident;
+          const next = create(IncidentViewSchema, {
+            ...view,
+            incident: create(IncidentSchema, {
+              ...incident,
+              lastModified: now,
+              journalEntries: [
+                ...incident.journalEntries,
+                ...entriesOf(update, now),
+              ],
+            }),
+          });
+          fake.incidents = fake.incidents.map((v) => (v === view ? next : v));
+          return create(UpdateIncidentResponseSchema);
+        },
+        proposeIncidentType(req, ctx) {
+          record("ProposeIncidentType", ctx);
+          guard(fake.behaviour.proposeIncidentType, ctx);
+          requireWriter();
+          const name = (req.incidentType?.name ?? "").trim();
+          if (!name) {
+            throw new ConnectError(
+              "incident type name is required",
+              Code.InvalidArgument,
+            );
+          }
+          // A name collision resolves to the existing type.
+          const existing = fake.incidentTypes.find(
+            (t) => (t.name ?? "").trim().toLowerCase() === name.toLowerCase(),
+          );
+          if (existing) {
+            return create(ProposeIncidentTypeResponseSchema, {
+              incidentTypeId: existing.id,
+            });
+          }
+          const id = Math.max(0, ...fake.incidentTypes.map((t) => t.id)) + 1;
+          fake.incidentTypes = [
+            ...fake.incidentTypes,
+            create(IncidentTypeSchema, {
+              id,
+              name,
+              approved: false,
+              proposer: { personId: fake.user.personId },
+            }),
+          ];
+          return create(ProposeIncidentTypeResponseSchema, {
+            incidentTypeId: id,
+          });
+        },
+        createArea(req, ctx) {
+          record("CreateArea", ctx);
+          guard(fake.behaviour.createArea, ctx);
+          requireWriter();
+          const name = (req.area?.name ?? "").trim();
+          if (!name) {
+            throw new ConnectError(
+              "area name is required",
+              Code.InvalidArgument,
+            );
+          }
+          const existing = fake.areas.find(
+            (a) => (a.name ?? "").trim().toLowerCase() === name.toLowerCase(),
+          );
+          if (existing) {
+            throw new ConnectError("area already exists", Code.AlreadyExists);
+          }
+          const slug = name
+            .toLowerCase()
+            .replace(/[^a-z0-9]+/g, "-")
+            .replace(/^-|-$/g, "");
+          fake.areas = [
+            ...fake.areas,
+            create(AreaSchema, {
+              slug,
+              name,
+              approved: fake.user.admin,
+              proposer: { personId: fake.user.personId },
+            }),
+          ];
+          return create(CreateAreaResponseSchema, { areaSlug: slug });
+        },
       });
     },
   };
+
+  /** The read/write RPCs' shared preamble: availability, sign-in, then the forbidden switch. */
+  function guard(behaviour: ListBehaviour, ctx: HandlerContext): void {
+    if (behaviour === "unavailable") {
+      throw new ConnectError("redeploying", Code.Unavailable);
+    }
+    if (!fake.honours(bearerOf(ctx))) {
+      throw new ConnectError("not signed in", Code.Unauthenticated);
+    }
+    if (behaviour === "forbidden") {
+      throw new ConnectError("not allowed", Code.PermissionDenied);
+    }
+  }
+
+  function requireWriter(): void {
+    if (!fake.user.admin && !fake.user.writeIncidents) {
+      throw new ConnectError(
+        "the requestor does not have EventWriteIncidents permission on this Event",
+        Code.PermissionDenied,
+      );
+    }
+  }
+
+  /** The journal entries a write body carries, as the server would echo them. */
+  function entriesOf(
+    update: IncidentUpdate,
+    now: ReturnType<typeof timestampFromDate>,
+  ) {
+    return update.journalEntries.map((e, i) =>
+      create(JournalEntrySchema, {
+        id: 1000 + fake.updateRequests.length * 10 + i,
+        created: now,
+        author: fake.user.handle,
+        text: e.text,
+        mentions: e.mentionedPersonIds.map((personId) => {
+          const p = fake.people.find((person) => person.personId === personId);
+          return { personId, handle: p?.handle, name: p?.name };
+        }),
+      }),
+    );
+  }
+
+  /** Mirrors go/internal/incident/incident.go isJournalOnly. */
+  function journalOnly(update: IncidentUpdate): boolean {
+    const keys = Object.keys(toJson(IncidentUpdateSchema, update));
+    return (
+      update.journalEntries.length > 0 &&
+      keys.length === 1 &&
+      keys[0] === "journalEntries"
+    );
+  }
 
   function issueAccessToken(): {
     token: string;
@@ -402,7 +680,7 @@ export function createFakeIms(options: FakeImsOptions = {}): FakeIms {
     return create(AccessForEventSchema, {
       eventId,
       readIncidents: true,
-      writeIncidents: fake.user.admin,
+      writeIncidents: fake.user.admin || fake.user.writeIncidents,
       readAreas: fake.user.readAreas,
     });
   }

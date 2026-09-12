@@ -105,3 +105,55 @@ test("a signed-out deep link returns to the incident after sign-in; back goes to
   await page.getByRole("button", { name: "Sign out" }).click();
   await expect(page.getByRole("button", { name: "Sign in" })).toBeVisible();
 });
+
+// Filing and appending (plan 09r, slice 3b.2): the Board's bar pulls up the
+// form, the filed incident replaces it, and the docked composer appends an
+// entry that mentions someone from the typeahead. Test content only — the
+// staging seed keeps what this files.
+test("file an incident from the Board's bar, append an entry with a mention", async ({
+  page,
+}) => {
+  await page.goto("/");
+  await page.getByLabel("Email").fill(email ?? "");
+  // exact: the PasswordField's reveal button is also labelled "…Password".
+  await page.getByLabel("Password", { exact: true }).fill(password ?? "");
+  await page.getByRole("button", { name: "Sign in" }).click();
+  await expect(page).toHaveURL(/\/events\/\d+\/incidents$/);
+
+  const stamp = new Date().toISOString();
+  await page
+    .getByTestId("quick-bar-text")
+    .fill(`Tracer test incident ${stamp}`);
+  await page.getByTestId("quick-bar-file").click();
+  await expect(page).toHaveURL(/\/incidents\/new\?summary=/);
+  await expect(page.getByTestId("summary")).toHaveValue(
+    `Tracer test incident ${stamp}`,
+  );
+  await page.getByTestId("priority-low").click();
+  await page.getByTestId("description").fill("Filed by the tracer; ignore.");
+  await page.getByTestId("file-incident").click();
+  await expect(page).toHaveURL(/\/incidents\/\d+$/);
+  await expect(page.getByTestId("incident-number")).toBeVisible();
+  // Scoped: the Board stays mounted beneath the detail, and its rows carry "Low" too.
+  await expect(
+    page.getByTestId("incident-refresh-control").getByText("Low"),
+  ).toBeVisible();
+
+  const composer = page.getByTestId("append-text");
+  await composer.click();
+  await composer.pressSequentially("Tracer entry, hello @sh");
+  const match = page.getByTestId(/^mention-\d+$/).first();
+  await expect(match).toBeVisible();
+  await match.click();
+  await page.getByTestId("append-send").click();
+  await expect(
+    page.getByText(/Tracer entry, hello @\S+/).first(),
+  ).toBeVisible();
+  await expect(page.getByTestId("append-text")).toHaveValue("");
+
+  await page.getByRole("button", { name: "Board" }).click();
+  await expect(page).toHaveURL(/\/events\/\d+\/incidents$/);
+  await page.getByRole("button", { name: "Events" }).click();
+  await page.getByRole("button", { name: "Sign out" }).click();
+  await expect(page.getByRole("button", { name: "Sign in" })).toBeVisible();
+});

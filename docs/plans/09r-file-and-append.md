@@ -2,9 +2,8 @@
 
 # 09r — D2 and slice 3b.2: file an incident, append an entry
 
-> **Status:** **Brief written, prototype round built — waiting on the pick** (2026-09-11).
-> The surface is `app/(dev)/compose.tsx` + `src/prototypes/d2/`, dev-only, deleted after
-> the pick.
+> **Status:** **Built** — the round ran and the maintainer chose a hybrid (2026-09-12);
+> slice 3b.2 shipped with it. Open: a hand check on a real phone.
 > **Parent:** [09i-expo-client.md](09i-expo-client.md) (Phase 3, §6 **D1** and the 3b.2 row)
 > under [09-proto-connect-platform.md](09-proto-connect-platform.md)
 > **Follows:** [09q](09q-field-flows.md) (3b.1 — the Board). The Board is where filing starts
@@ -14,7 +13,7 @@
 > **The skills:** Emil Kowalski's skills govern all UI work (the maintainer's rule,
 > 2026-09-10) — `prototype` for the round below, `animate-expo` for anything that moves,
 > `review-animations` before the PR is called done.
-> **Last updated:** 2026-09-11
+> **Last updated:** 2026-09-12
 
 ## Objective
 
@@ -135,6 +134,20 @@ Playwright runner — file with a proposed type, a created area and a mention; a
 mention; see both in the journal — in light, and loaded in dark. The pick is recorded here
 when it is made, in a table like 09q's.
 
+| Variant | Axis | Outcome |
+|---|---|---|
+| Radio | Speed — filing is sending a message | The **affordance** won: the Board keeps the docked bar, and the incident keeps the always-there composer |
+| Intake | Completeness — filing is a form | The **form** won: what the bar starts, the form finishes |
+| Walk | Sequence — one question per screen | Not chosen — the most taps, for pickers that fit on one form |
+
+**CHOSEN, 2026-09-12: a hybrid.** The maintainer's words: "Radio as an affordance to open
+/ pull up the intake form". So the Board carries Radio's "What's happening?" bar, and
+using it **pulls up the Intake form** with the bar's text already in the summary; the form
+asks for the rest and files. On an incident the composer is Radio's docked bar, there
+whenever the caller may add to the journal — Intake's "New entry" sheet was the tap the
+pick declined to pay. That also settles open question 1: **the summary is its own field**,
+so Radio's doubling never happens — the bar's text is the summary and only the summary.
+
 Found by running it rather than reading it:
 
 1. **Radio doubles the summary.** "First line is the summary, the whole text is the first
@@ -189,8 +202,9 @@ Whatever is picked, these hold, and they are the architect-tier part of the slic
   the real module.
 - Saved on a 400 ms debounce while typing; **flushed on blur and on background**.
 - Restored on open with a visible note ("Restored an unsent entry"), never silently.
-- A `new` draft **migrates onto the assigned number** after a successful file, so a reload a
-  second later still finds it.
+- There is nothing to migrate from `new` onto the assigned number (the templ client did
+  that): here the first entry rides on the create, so a successful file **clears** the
+  `new` draft.
 - Cleared on a successful submit. **Cleared on sign-out**, unlike the watermark and the
   remembered event: a draft is incident content, and the persisted query cache that holds
   incident content is cleared on sign-out for the same reason.
@@ -234,8 +248,8 @@ is called done.
    and with none of the optional ones; the incident opens by its returned number.
 2. Append sends a journal-only `IncidentUpdate`; a test asserts the wire shape.
 3. Mentions: typeahead trigger rules, insertion, and the submit-time filter each have a test.
-4. Drafts: save, restore-with-note, migrate `new` → number, clear-on-submit, and
-   clear-on-sign-out each have a test.
+4. Drafts: save, restore-with-note, clear-on-submit, and clear-on-sign-out each have a
+   test.
 5. "Other" → propose → attached; unmatched area → create → set. Both against the fake
    `ImsService`, which grows `CreateIncident`, `UpdateIncident`, `ProposeIncidentType`,
    `CreateArea` and `ListPersonnel` with the server's semantics (collision → existing id;
@@ -279,25 +293,60 @@ Hand checks go against **staging**, never a local stack. **Staging must never ho
 data** — file test incidents with obviously test content, and expect them to be there for
 the next person.
 
+## What 3b.2 shipped
+
+`src/features/compose/`: `mentions.ts` (trigger, insert, submit-time filter), `drafts.ts`
+(one key for every draft on the device; cleared on sign-out from `appRuntime`), `payload.ts`
+(`fileRequest`, `appendUpdate`, `isJournalOnly`), `hooks.ts` (the four mutations with
+their invalidations, the optimistic append, the mention search, `useDraft`), and the
+pieces — `QuickBar` on the Board, `NewIncidentScreen` behind
+`app/(app)/events/[eventId]/incidents/new.tsx` (a modal that the filed incident
+*replaces*), `AppendComposer` docked on the incident, `Composer`, `TypeChooser`,
+`AreaChooser`, `Chip`. The fake `ImsService` grew the five write RPCs with the server's
+semantics; the tracer grew a file-and-append step.
+
+### What it cost that the brief did not predict
+
+1. **The optimistic entry needs the caller's handle**, which lives on the session
+   (`GetAuthStatus.user`), not on any query — so the composer takes `author` from
+   `useSession()` and the hook stamps it on the pending entry. The server's echo replaces
+   it on settle.
+2. **A proposed type is invisible until the taxonomy refetches.** The chooser shows chips
+   only for types it can name, so the id that `ProposeIncidentType` returns is selected at
+   once but its chip appears when `ListIncidentTypes` has been invalidated and answered —
+   a beat, not a bug, but a visible one on a slow link. Recorded rather than papered over
+   with a client-side placeholder.
+3. **The fake's write path had to enforce the 52f rule** to make the wire-shape test
+   mean anything: the composer's test runs as a granted reporter with no write bit, so a
+   payload with one stray field would fail the test the way it would fail on the server.
+
+### `/review-animations`, 2026-09-12
+
+Reviewed against the ten standards. Nothing new animates: every pressable (chips, the
+typeahead rows, the area rows, the bar's button) is `PressFeedback`; the typeahead's
+result list and the offers appear with no transition (a state change on a frequently
+seen control, so none is warranted); the form is pushed as the platform's own modal, and
+the reduced-motion cross-fade from 09o applies to it as to every screen. No layout
+property is animated; nothing enters on a list. **Approve** — no findings.
+
 ## Checklist
 
-- [ ] The maintainer runs `/prototype` with the invocation above and picks a flow
-- [ ] The pick and its reasoning are recorded in this file
-- [ ] `mentionedIds`, the draft functions and the journal-only payload land with their tests
-- [ ] The fake `ImsService` grows the five write-side RPCs
-- [ ] The screens are built against the picked flow
-- [ ] `/review-animations` run and clean
-- [ ] The prototype surface is deleted (the skill's cleanup rule)
-- [ ] Tracer step added; interim mode green against staging
+- [x] The maintainer runs `/prototype` with the invocation above and picks a flow — **a hybrid, 2026-09-12**
+- [x] The pick and its reasoning are recorded in this file
+- [x] `mentionedIds`, the draft functions and the journal-only payload land with their tests
+- [x] The fake `ImsService` grows the five write-side RPCs
+- [x] The screens are built against the picked flow
+- [x] `/review-animations` run and clean
+- [x] The prototype surface is deleted (the skill's cleanup rule)
+- [x] Tracer step added; interim mode green against staging
 - [ ] Staging hand check on a real phone: file, append with a mention, see it in the journal
 
 ## Open questions
 
 1. **Does the first line of the text become the summary, or is the summary its own field?**
-   Radio says the former; Intake and Walk the latter. The picker answers it. Whichever wins,
-   the server treats `summary` and the first entry as independent, so a summary-less filing
-   is legal and the Board row shows "(no summary)" — a state the picked flow must make hard
-   to reach by accident.
+   **Answered by the pick: its own field.** The bar's text is the summary and nothing
+   else; the form refuses to file without one, so "(no summary)" is unreachable from the
+   phone.
 2. **Should a filed incident be marked seen on this device?** The watermark says something
    I created is never unread, so no mark is needed today. If 09q open question 5 (a
    `last_modified` on reports) ever lands for incidents' summaries too, revisit.
