@@ -322,6 +322,14 @@ where
     and irre.REPORT_NUMBER = ?
 ;
 
+-- name: Reports_LinkedToIncidents :many
+-- Every report in the event that is linked to an incident, with its creator —
+-- the incident read derives each involved person's "delivered" report number
+-- (the newest by that person, plan 09t) from this.
+select NUMBER, INCIDENT_NUMBER, CREATED_BY
+from REPORT
+where EVENT = ? and INCIDENT_NUMBER is not null;
+
 -- name: AttachReportToIncident :exec
 update REPORT
 set INCIDENT_NUMBER = ?
@@ -599,8 +607,17 @@ where ID IN (
 );
 
 -- name: AttachPersonToIncident :exec
-insert into INCIDENT__PERSON (EVENT, INCIDENT_NUMBER, PERSON_ID, INVOLVEMENT, GRANTED_ACCESS)
-values (?, ?, ?, ?, ?);
+-- REPORT_REQUESTED is carried through by the caller: attach is a detach-then-
+-- reattach replace, and an involvement edit must not forget an ask (plan 09t).
+insert into INCIDENT__PERSON (EVENT, INCIDENT_NUMBER, PERSON_ID, INVOLVEMENT, GRANTED_ACCESS, REPORT_REQUESTED)
+values (?, ?, ?, ?, ?, ?);
+
+-- name: RequestReportFromPerson :exec
+-- Stamp (or re-stamp) the ask on an existing involvement row; a request always
+-- grants per-incident access so the person can read what they report on (plan 09t).
+update INCIDENT__PERSON
+set REPORT_REQUESTED = ?, GRANTED_ACCESS = true
+where EVENT = ? and INCIDENT_NUMBER = ? and PERSON_ID = ?;
 
 -- name: DetachPersonFromIncident :exec
 delete from INCIDENT__PERSON

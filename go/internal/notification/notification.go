@@ -120,6 +120,20 @@ func GenerateAddedToIncidentNotification(
 	return nil
 }
 
+// GenerateReportRequestedNotification tells a person someone asked for their
+// report on an incident (plan 09t). No journal entry is associated.
+func GenerateReportRequestedNotification(
+	ctx context.Context, db *store.DBQ, dbtx imsdb.DBTX,
+	eventID, incidentNumber, recipientPersonID, actorPersonID int32,
+) *herr.HTTPError {
+	errHTTP := createNotification(ctx, db, dbtx, recipientPersonID, imsdb.NotificationTypeReportRequested,
+		eventID, nullInt32(incidentNumber), sql.NullInt32{}, sql.NullInt32{}, actorPersonID)
+	if errHTTP != nil {
+		return errHTTP.From("[createNotification]")
+	}
+	return nil
+}
+
 // notificationToJSON maps a stored, enriched row to its API shape. The recipient
 // (callerPersonID / callerIsAdmin) is passed so a private incident's summary can be
 // withheld from a recipient who may no longer view it.

@@ -102,4 +102,10 @@ message IncidentPerson {
   // is a flag about the involved *person*; the caller-relative flag
   // (viewer_may_add_journal) is the one that lives on IncidentView instead.
   bool has_event_access = 4;
+  // report_requested is output-only: when a writer last asked this person for their
+  // report on the incident (RequestReport, plan 09t); unset = never asked.
+  optional google.protobuf.Timestamp report_requested = 5;
+  // report_number is output-only: the newest report this person filed against the
+  // incident — the request's "delivered" state; unset = none yet.
+  optional int32 report_number = 6;
 }

@@ -194,6 +194,50 @@ func addIncidentJournalEntry(
 // grant, while an edit records only the involvement and/or access-grant that
 // actually changed — so re-saving an unchanged person writes nothing. Returns an
 // empty slice when there is nothing to record.
+// deliveredReports maps (incident number, creator) to the newest report that person
+// filed against that incident — the "delivered" side of a report request (plan 09t).
+func deliveredReports(ctx context.Context, imsDBQ *store.DBQ, eventID int32) (map[[2]int32]int32, error) {
+	rows, err := imsDBQ.Reports_LinkedToIncidents(ctx, imsDBQ, eventID)
+	if err != nil {
+		return nil, err
+	}
+	out := make(map[[2]int32]int32, len(rows))
+	for _, r := range rows {
+		if !r.IncidentNumber.Valid || !r.CreatedBy.Valid {
+			continue
+		}
+		key := [2]int32{r.IncidentNumber.Int32, r.CreatedBy.Int32}
+		if r.Number > out[key] {
+			out[key] = r.Number
+		}
+	}
+	return out, nil
+}
+
+// incidentPersonFromRow assembles one involved person for the read side; the two
+// people queries (singular and plural) share the row shape.
+func incidentPersonFromRow(
+	ip imsdb.IncidentPerson, handle, name sql.NullString, hasEventAccess sql.NullBool,
+	delivered map[[2]int32]int32,
+) imsjson.IncidentPerson {
+	out := imsjson.IncidentPerson{
+		PersonID:       int64(ip.PersonID),
+		Handle:         handle.String,
+		Name:           name.String,
+		Involvement:    conv.SqlToString(ip.Involvement),
+		GrantedAccess:  ip.GrantedAccess,
+		HasEventAccess: hasEventAccess.Bool,
+	}
+	if ip.ReportRequested.Valid {
+		t := conv.FloatToTime(ip.ReportRequested.Float64)
+		out.ReportRequested = &t
+	}
+	if n, ok := delivered[[2]int32{ip.IncidentNumber, ip.PersonID}]; ok {
+		out.ReportNumber = &n
+	}
+	return out
+}
+
 func personChangeLog(name string, alreadyAttached bool, oldInvolvement, newInvolvement sql.NullString, oldGranted, newGranted bool) []string {
 	if !alreadyAttached {
 		lines := []string{fmt.Sprintf("Added person: %v", name)}

@@ -75,14 +75,20 @@ func incidentViewToJSON(view *servicerpcv1.IncidentView) imsjson.Incident {
 	people := []imsjson.IncidentPerson{}
 	for _, p := range inc.GetPeople() {
 		person := p.GetPerson()
-		people = append(people, imsjson.IncidentPerson{
+		ip := imsjson.IncidentPerson{
 			PersonID:       int64(person.GetPersonId()),
 			Handle:         person.GetHandle(),
 			Name:           person.GetName(),
 			Involvement:    p.Involvement,
 			GrantedAccess:  p.GetGrantedAccess(),
 			HasEventAccess: p.GetHasEventAccess(),
-		})
+			ReportNumber:   p.ReportNumber,
+		}
+		if p.GetReportRequested() != nil {
+			t := p.GetReportRequested().AsTime()
+			ip.ReportRequested = &t
+		}
+		people = append(people, ip)
 	}
 	out.People = &people
 
@@ -334,6 +340,8 @@ func notificationTypeToString(t resourcesv1.NotificationType) string {
 		return "mentioned"
 	case resourcesv1.NotificationType_NOTIFICATION_TYPE_ADDED_TO_INCIDENT:
 		return "added_to_incident"
+	case resourcesv1.NotificationType_NOTIFICATION_TYPE_REPORT_REQUESTED:
+		return "report_requested"
 	case resourcesv1.NotificationType_NOTIFICATION_TYPE_UNSPECIFIED:
 		return ""
 	default:

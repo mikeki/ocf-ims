@@ -284,6 +284,18 @@ func (s ImsService) DetachPersonFromIncident(
 	return connect.NewResponse(resp), nil
 }
 
+// RequestReport is a thin RPC method over the incident.RequestReport domain method (plan 09t).
+func (s ImsService) RequestReport(
+	ctx context.Context,
+	req *connect.Request[servicerpcv1.RequestReportRequest],
+) (*connect.Response[servicerpcv1.RequestReportResponse], error) {
+	resp, err := s.Incident.RequestReport(ctx, req.Msg)
+	if err != nil {
+		return nil, err
+	}
+	return connect.NewResponse(resp), nil
+}
+
 // UpdateIncidentJournalEntry is a thin RPC method over the incident.UpdateIncidentJournalEntry
 // domain method (plan 09h/1c). Its REST predecessor (POST
 // .../incidents/{n}/journal_entries/{id}) was deleted in the same slice, so this is the only

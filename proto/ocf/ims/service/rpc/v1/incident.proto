@@ -140,6 +140,17 @@ message DetachPersonFromIncidentRequest {
 
 message DetachPersonFromIncidentResponse {}
 
+// RequestReportRequest asks a person for their report on an incident (plan 09t, 3b.3a):
+// attaches them if needed with a per-incident grant, stamps the ask on their involvement
+// row, writes a system entry and notifies them. A repeat request re-stamps and re-notifies.
+message RequestReportRequest {
+  int32 event_id = 1 [(buf.validate.field).int32.gt = 0];
+  int32 incident_number = 2 [(buf.validate.field).int32.gt = 0];
+  int32 person_id = 3 [(buf.validate.field).int32.gt = 0];
+}
+
+message RequestReportResponse {}
+
 // UpdateIncidentJournalEntryRequest edits an existing entry (e.g. strike/unstrike);
 // new entries are added via UpdateIncident. entry carries the mutable fields.
 message UpdateIncidentJournalEntryRequest {

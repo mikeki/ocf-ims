@@ -80,6 +80,12 @@ type IncidentPerson struct {
 	// access (admin or 'writer' role), so a grant is moot. Drives the People editor's
 	// "has access" hint vs the "Grant access" toggle.
 	HasEventAccess bool `json:"has_event_access,omitzero"`
+	// ReportRequested (read-only) is when a writer last asked this person for their
+	// report on the incident (plan 09t); nil = never asked.
+	ReportRequested *time.Time `json:"report_requested,omitempty"`
+	// ReportNumber (read-only) is the newest report this person filed against the
+	// incident — the request's "delivered" state; nil = none yet.
+	ReportNumber *int32 `json:"report_number,omitempty"`
 }
 
 type LinkedIncident struct {
