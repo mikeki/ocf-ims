@@ -3,8 +3,9 @@
 # 09x — D2 and slice 3c.0: Dispatch on a wide screen
 
 > **Status:** **Picked 2026-09-13: Drawer, with the top bar, and the drawer opens the full
-> page.** The surface is on branch `feat/09x-d2-dispatch-round`; the 3c.1 acceptance
-> criteria are the next step (architect), then the surface is deleted.
+> page.** The surface is merged (#272) and stays in the tree until 3c.1 promotes and
+> deletes it; **the 3c.1 acceptance criteria are written below (2026-09-13)** — the next
+> step is the builder, a fresh Sonnet session with that section as the brief.
 > Taken ahead of the 3b gate on the 3b.0 precedent: the gate is held by accounts and
 > hardware, not code, and this slice ships no code — it decides shape.
 > **Parent:** [09i-expo-client.md](09i-expo-client.md) (Phase 3, §6 **D2** and the 3c.0 row)
@@ -293,14 +294,155 @@ screen render exactly as 3b shipped them, the tracer stays green, and nothing in
 `src/features/board` or `src/features/incidents` changes behaviour. The wide layout is a
 sibling, decided once, in one layout component (E15).
 
-## What 3c.1 receives after the pick
+## 3c.1 acceptance criteria (the builder's list, after the pick)
 
-The architect turns the round into the 3c.1 acceptance criteria in this file, in the
-09q form: the pick and its reasons, the shell, the column set with the hide order, the
-filter set, the URL schema above (amended if the round found it wanting), the keyboard
-map, the row component to promote from the throwaway surface, the files to create and
-the tests (Jest for the filter/sort/search reducers and the URL codec; Playwright for
-the keyboard walk against the export; the hosted tracer unchanged).
+Written 2026-09-13, the day of the pick. **The brief for the builder is this section plus
+"The rules the winner inherits" above; the surface is the reference implementation of the
+mechanics (the codec, the reducers, the scroll bookkeeping, the keyboard map) and the
+promotion map below says what of it survives.** The pick: the Drawer with the top bar, and
+a second Enter opens the full page. Reasons: the table stays the workspace without being
+halved; the top bar is what dispatch knows from templ. Rule 2 applies: no contract gap is
+expected (verified above); one found stops the builder and is filed in the slice notes.
+
+### The shape
+
+1. **One decision, one place.** `useLayoutMode()` (`src/features/shell/layoutMode.ts`)
+   returns `"wide"` at a window width ≥ `wideBreakpoint` (a new token, 1024) and
+   `"phone"` below, on every platform. Exactly two routes branch on it: the incidents
+   index renders `DispatchScreen` inside `Shell` when wide and `BoardScreen` otherwise; the
+   `[number]` route renders `IncidentPage` inside `Shell` when wide and `IncidentScreen`
+   otherwise. Below the breakpoint nothing changes: no file under `src/features/board`
+   changes, `IncidentScreen` gains one prop whose default is today's behaviour (criterion
+   8), the phone tracer stays green.
+2. **The shell is the top bar.** Promoted `Shell` keeps its `mode` switch but nothing in
+   the UI sets `"sidebar"`. Items, as data: the event name (→ `/events`), **Incidents**
+   (active), **Alerts** with the unread count (→ `/alerts`), the stream state (nothing while
+   `useLiveEvent` is true, "Reconnecting…" when it is not — the client's first visible
+   stream state; the phone still shows none), the person's name and **Sign out**, and
+   **New incident** (→ `…/incidents/new`, shown only with `writeIncidents`). Reports, Roster and Dashboard are added by 3c.3–3c.5,
+   one item each; a wide window has no reports list until 3c.3 and this is accepted.
+3. **The table.** The surface's columns, labels, widths and order, with the widths moved
+   into a `dispatch` block in `tokens.ts` (the only file that may hold them). One density:
+   the surface's comfortable row, `rowHeight(lineHeight, spacing.md)`; the `Density` prop is
+   dropped (a preference is a 3c.6 line item). The hide order is finding 6's, the summary
+   never under 200 px, number / state / priority / summary never hidden; hidden columns
+   are still searched. Fixed-height rows with `getItemLayout` and the by-hand scroll
+   tracking of finding 5 — no windowed-list dependency. The header row is the sort
+   affordance: a click sorts by `defaultDir`, a second click flips, the direction is
+   visible, the summary header sorts too. The surface's defaults stand: the bare number
+   under a `#` header, Normal an empty cell, the private chip in the State column,
+   started / changed as `formatShortTime` in `src/lib/format.ts` renders them.
+4. **Data.** `useIncidents(eventId)` as it is (the whole event, the 30 s poll), filtered,
+   searched and sorted client-side by the promoted `applyQuery` over `IncidentView[]`;
+   lookups from `useIncidentTypes()` and `useAreas(eventId, readAreas)`; `me` from the
+   session as the Board reads it. **"Mine" is the Board's four rules** —
+   `whyMineIncident(view, me) !== undefined` — not the surface's two. `useLiveEvent(eventId)`
+   is held while the screen is mounted. No new RPC: the person chip's choices are the
+   people who appear on any loaded row, sorted by label.
+5. **The filter bar.** Chips: state (Open / Closed / All), priority, type, area, person,
+   mine, days, and the search field; **Clear** appears when `isFiltered`. The empty result
+   names what is filtered and offers Clear. The search filters as you type; a bare integer
+   matches numbers by prefix and Enter opens that incident when it exists (templ's jump);
+   `/re/` is a regex and a half-typed one matches nothing.
+6. **The URL is the state**, per the schema above plus `open=`; **`full` is not a key** —
+   the full page is the path segment. Every in-place change is `router.setParams` with the
+   absent keys passed as `undefined` (finding 1); only the full page pushes. `open` implies
+   `sel` (a link with `open=214` alone selects 214; a mismatch is normalised in place).
+   The state filter's stored preference: `statePreference.ts`, pure over `AsyncStorageLike`
+   like `features/events/selected.ts`; precedence URL > stored > default (open); the chip
+   writes it, loading never rewrites the URL.
+7. **Selection and the drawer.** A row click selects and opens; `j` / `k` and the arrows
+   move `sel`, and move `open` with it while the drawer is open (the surface's walk). Esc
+   in order: blur a focused input → close the help sheet → close the drawer → clear the
+   selection → clear the search text. The drawer is the surface's panel: 66 % of the
+   content width (a token), the scrim, the `borderStrong` left rule, `elevation[2]`, and a
+   header with **Incidents** (closes), the number, prev / next among the visible rows, and
+   **Full page**.
+8. **The drawer's body is the 3b incident, not a second one.** `IncidentScreen` renders in
+   the drawer without its own `ScreenHeader` — one new prop, default unchanged — with the
+   journal, the people section, the attachments and the append composer exactly as the
+   phone has them (`viewer_may_add_journal` gates the composer as it does there). Its
+   callbacks: open incident → `open` in place; open report, file report, open attachment →
+   push, as the phone's route does. Fields stay read-only; the editor is 3c.2.
+9. **The full page.** Enter in the drawer or **Full page** pushes
+   `/events/:eventId/incidents/:number` with the table's query (minus `sel` / `open`) as
+   its search string. `IncidentPage` is the Shell, a page header (back word, prev / next
+   over the carried query's visible rows in its sort, `j` / `k`) and the `IncidentScreen`
+   body centred at `pageMaxWidth` (a new token, 720). Prev / next update the path segment
+   in place with `setParams`; if that remounts the screen (finding 1 was about `replace`),
+   report it — do not fall back to `replace`. Back is `router.back()` when the router can
+   go back (the table beneath still holds `sel` and `open`, so back lands on the drawer),
+   otherwise `dismissTo` the incidents list. A deep link with no query shows no prev / next.
+10. **Live rows patch, they do not refetch.** In `features/live/hub.ts` an
+    `INCIDENT_CHANGED` poke calls `GetIncident` for that number and writes the row into
+    every cached `listIncidents` for the event with `setQueryData`: replace by number,
+    insert when new, **remove on a not-found** (the incident became private to the viewer
+    or was never theirs); system journal entries are stripped so the cache matches
+    `excludeSystemEntries: true`; `GetIncident` answers an `IncidentView`, so
+    `viewerMayAddJournal` comes with the row. The `getIncident`
+    invalidation stays (the drawer refetches); the `listIncidents` invalidation on a single
+    poke goes; the full refetch on reopen after a gap stays. Selection, scroll and the
+    open drawer do not move (a test). `REPORT_CHANGED` is unchanged. **This file is
+    shared with the phone: the architect reviews it line by line (rule 4)** and the
+    existing `__tests__/features/live` suite must stay green.
+11. **The keyboard map is one hook**, `useKeyboardMap`, web only, gated on `useFocusEffect`
+    (finding 2), suppressed while an input has focus except Esc (which blurs it), ignoring
+    modifier chords. Bound: `?` help sheet, `/` search, `j` / `k` / arrows, Enter (selection →
+    open; drawer open → full page; nothing selected → first row), Esc (the chain above), `n`
+    (→ `…/incidents/new`, only with `writeIncidents`), `a` (composer focus, drawer or page),
+    `h` (the incident's existing system-entries toggle). **`m` is not bound** — the client
+    has no multi-event search; 3c.6 decides. `p` / `P` die with the surface. Every binding
+    has a visible affordance and a line in the `?` sheet; focus is the `focus` token ring.
+12. **Every state is designed**: loading, error with retry and no-access reuse
+    `src/features/shell/`; the empty filtered result is criterion 5's; the stream state is
+    criterion 2's word in the shell. Reduced motion has nothing to drop: press feedback and the two
+    `StateFade`s (the empty result, the help sheet) are the whole of the motion. No new
+    dependency. `/review-animations` runs before the PR is called done.
+13. **Privacy and gating** as the rule above: rows as given, `n` and the composer gated, a
+    granted row indistinguishable but for its chip. No file in rule 3's list changes.
+14. **The surface is deleted in the same PR**: `app/(dev)/dispatch.tsx` and
+    `src/prototypes/`; nothing imports `@/prototypes`.
+15. **`DESIGN.md` gains a short "The table" section** from this brief: one line per row,
+    the row height, the number column, the hide order, what carries colour.
+16. **Tests.** Jest, in `__tests__/features/dispatch/`: the codec (round-trip, absent means
+    default, garbage dropped, `full` rejected); `applyQuery` (each filter alone, their
+    union, mine by the four rules, days, the number prefix, the regex and the half-typed
+    one); the sort (each key, `defaultDir`, the number tie-break); `columnsFor` at 1024,
+    1280 and 1440 minus the shell; `neighboursOf` at both ends; the state preference's
+    precedence; the hub patch (replace, insert, remove on not-found, entries stripped, no
+    list refetch, the phone's suite still green); and a `DispatchScreen` render over
+    `createRouterTransport` + `createFakeIms()`: rows, a chip writes its key, a poke keeps
+    the selection, Enter opens the drawer with the incident's journal, no **New incident**
+    without `writeIncidents`. Playwright: `e2e/dispatch.spec.ts` at 1440 × 900, gated like
+    the tracer, walking sign-in → events → table → `/` type → Enter → `j` / `k` → Enter →
+    Enter (page) → `j` → Esc → Esc → sign-out; the smoke and the phone tracer unchanged.
+17. **The 09i §9 list passes** (`typecheck`, `lint`, `test`, `export:web`, `e2e`); hand checks
+    on staging at 1024 and 1440 in both schemes, the poke-behind-the-drawer case among
+    them.
+
+### The promotion map
+
+| Surface (`src/prototypes/dispatch/`) | Lands as | What changes |
+|---|---|---|
+| `state.ts` | `src/features/dispatch/query.ts` | Over `IncidentView[]`; `full` dropped; mine via `whyMineIncident` |
+| `columns.ts` | `src/features/dispatch/columns.ts` | Widths read from `tokens.ts` |
+| `IncidentRow.tsx` | `src/features/dispatch/IncidentRow.tsx` | `Density` dropped; takes an `IncidentView` |
+| `Table.tsx` | `src/features/dispatch/Table.tsx` | The scroll bookkeeping intact; the header sorts |
+| `FilterBar.tsx` | `src/features/dispatch/FilterBar.tsx` | Real lookups; the person chip from the rows |
+| `neighbours.ts` | `src/features/dispatch/neighbours.ts` | As is |
+| `useDispatch.ts` | `useDispatchQuery.ts` + `useKeyboardMap.ts` | Split; pokes, notices and the harness keys gone; `openFull` pushes the real route |
+| `Overlays.tsx` | `src/features/dispatch/HelpSheet.tsx` | The `?` sheet only; the notice toast goes |
+| `Shell.tsx` | `src/features/shell/Shell.tsx` | Items as props, real data, `onNotice` gone |
+| `Drawer.tsx` | `src/features/dispatch/Drawer.tsx` | The panel and scrim; the body is criterion 8's |
+| `IncidentPane.tsx`, `Split.tsx`, `Page.tsx`, `Picker.tsx`, `Harness.tsx`, `data.ts` | deleted | The pane is replaced by the 3b `IncidentScreen`; the fixtures by `createFakeIms()` |
+
+New: `DispatchScreen.tsx`, `IncidentPage.tsx`, `statePreference.ts` (dispatch);
+`layoutMode.ts` (shell); tokens `wideBreakpoint`, `dispatch.*` column widths,
+`drawerShare`, `pageMaxWidth`. Edited: the two routes, `hub.ts` and its tests,
+`IncidentScreen.tsx` (the header prop), `tokens.ts`, `DESIGN.md`, the client README (one
+line: the wide layout). The slice runs well past the `Agent` ceiling of rule 5: **a fresh
+Sonnet session with this section as the brief, one PR** — if the maintainer asks for a
+stack, the seam is shell + table + URL + keyboard first, drawer + page + live patch second.
 
 ## Out of scope
 
@@ -325,8 +467,8 @@ keyboard walk, the poke-behind-selection case, reduced motion. Nothing goes to s
 - [x] Brief written; the contract verified; the URL schema fixed (2026-09-13)
 - [x] The surface built, verified and the scripted walk green (2026-09-13)
 - [x] The round run; the pick recorded here with its reasons (2026-09-13: Drawer + top bar + full page)
-- [ ] The 3c.1 acceptance criteria written (architect)
-- [ ] The throwaway surface deleted; `/review-animations` on anything promoted
+- [x] The 3c.1 acceptance criteria written (architect, 2026-09-13)
+- [ ] The throwaway surface deleted; `/review-animations` on anything promoted (in the 3c.1 PR)
 
 ## Open questions
 
@@ -335,11 +477,12 @@ keyboard walk, the poke-behind-selection case, reduced motion. Nothing goes to s
 2. **Tablets at 768–1023 px** — the phone layout, by the breakpoint rule. If the tent
    runs iPads in landscape (1024+) they get dispatch; portrait gets the phone. Confirm
    with dispatch before 3c.6.
-3. **User-hideable columns** — a stored preference is cheap; the round says whether
-   1024 px needs it or a good hide order is enough.
-4. **The Board at ≥ 1024** — this brief says it does not survive there (mine is a
-   filter). If the round finds the Board's unread watermark is something dispatch wants
-   as a column, that is a 3c.1 criterion, not a second screen.
+3. **User-hideable columns** — answered: not in 3c.1. With the top bar, 1024 px keeps
+   number, state, priority, summary, area and changed under the hide order; a preference
+   is a 3c.6 line item if dispatch asks.
+4. **The Board at ≥ 1024** — answered: it does not render there (mine is a filter,
+   criterion 4). The unread watermark is not a column in 3c.1; if dispatch misses it,
+   3c.6 books it.
 5. **Selection in the URL vs the route** — answered by the pick: `sel=` and `open=` for
    the table and the drawer, the path segment for the full page; the full page carries
    the table's query in its search string.
