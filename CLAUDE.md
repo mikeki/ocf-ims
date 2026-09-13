@@ -117,13 +117,22 @@ Rules (numbered as 09i §7 cites them):
 3. **Security code is architect-only, no subagents:** `internal/auth`, `lib/push`, and the
    client's `src/api/transport.ts`, `src/api/blobs.ts`, `src/api/stream.ts`,
    `src/session/*`, `src/push/*`, `src/lib/permissions.ts`, `src/lib/returnPath.ts`.
-4. **Review climbs a tier.** Builder PR → architect `/code-review` → the maintainer;
-   architect PR → a second architect review → the maintainer; mechanic PR → architect skim.
-5. **In Claude Code:** an architect session writes the brief and lands foundations itself;
-   builder work is a fresh Sonnet session per slice, or `Agent` with `model: sonnet` for
-   slices under ~500 lines, the brief as the whole prompt; mechanic tasks are `Agent`
-   with `model: haiku`. Parallel builders only where the plan marks slices independent;
-   a multi-agent `Workflow` only when the maintainer opts in.
+4. **Review climbs a tier.** Builder PR → architect `/code-review medium` → the maintainer;
+   architect PR → a second architect review (`/code-review high`) → the maintainer;
+   mechanic PR → architect skim. `high` fans out to ~20 agents; it is for foundations
+   and security, not for a screen slice.
+5. **In Claude Code:** an architect session writes the brief and lands foundations itself.
+   Builder work is **a fresh Sonnet session per slice**; `Agent` with
+   `subagent_type: builder` only for a slice the plan marks under ~500 lines, the brief
+   as the whole prompt. Mechanic tasks are `Agent` with `subagent_type: mechanic`. The
+   agents (`.claude/agents/`) carry the standing rules, the tool set and the budget, so
+   a brief states only the slice. Parallel builders only where the plan marks slices
+   independent; a multi-agent `Workflow` only when the maintainer opts in.
+6. **Every subagent has a budget** and stops at it: the builder at 120 tool calls or
+   ~150K context, the mechanic at 60 or ~100K. A subagent cannot compact and nobody
+   watches its meter; a slice that outgrows the budget is a session, not a longer
+   `Agent` call. Splitting a slice in halves does not make it `Agent`-sized: each
+   half of 3c.1 ran 250 calls at 340K+ context and paid the long-context rate.
 
 ## Session hygiene (keep the context small)
 
