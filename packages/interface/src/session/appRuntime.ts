@@ -5,6 +5,7 @@ import type { QueryClient } from "@tanstack/react-query";
 import type { Persister } from "@tanstack/react-query-persist-client";
 import Constants from "expo-constants";
 import { Platform } from "react-native";
+import { createBlobs } from "@/api/blobs";
 import { cacheBuster, createAppPersister } from "@/api/persist";
 import { createAppQueryClient } from "@/api/query";
 import { createConnectTransportFactory } from "@/api/transport";
@@ -35,6 +36,7 @@ export function createAppRuntime(): AppRuntime {
     }),
     store: refreshTokenStore,
     platform: Platform.OS === "web" ? "web" : "native",
+    makeBlobs: (deps) => createBlobs({ baseUrl: apiBaseUrl(), ...deps }),
     onSignedOut: async () => {
       queryClient.clear();
       await persister.removeClient();

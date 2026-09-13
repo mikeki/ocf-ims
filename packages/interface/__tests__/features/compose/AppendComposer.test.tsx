@@ -73,6 +73,7 @@ describe("AppendComposer", () => {
         onOpenIncident={() => undefined}
         onOpenReport={() => undefined}
         onFileReport={() => undefined}
+        onOpenAttachment={() => undefined}
       />,
       runtime,
     );
@@ -108,6 +109,7 @@ describe("AppendComposer", () => {
         onOpenIncident={() => undefined}
         onOpenReport={() => undefined}
         onFileReport={() => undefined}
+        onOpenAttachment={() => undefined}
       />,
       runtime,
     );
@@ -133,6 +135,7 @@ describe("AppendComposer", () => {
         onOpenIncident={() => undefined}
         onOpenReport={() => undefined}
         onFileReport={() => undefined}
+        onOpenAttachment={() => undefined}
       />,
       runtime,
     );

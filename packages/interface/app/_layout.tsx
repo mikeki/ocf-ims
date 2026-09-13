@@ -22,6 +22,7 @@ export default function RootLayout() {
         queryClient={runtime.queryClient}
         persister={runtime.persister}
         buster={runtime.buster}
+        blobs={runtime.blobs}
       >
         <SessionProvider session={runtime.session}>
           <Stack screenOptions={{ headerShown: false, animation }} />

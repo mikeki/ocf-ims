@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import type { Transport } from "@connectrpc/connect";
+import type { Blobs, BlobsDeps } from "@/api/blobs";
 import { createImsClient, type ImsClient } from "@/api/client";
 import { createRefresher, type Refresher } from "@/api/refresh";
 import { type AccessTokenCache, createAccessTokenCache } from "@/api/tokens";
@@ -25,6 +26,8 @@ export interface RuntimeDeps {
   /** Runs on every sign-out (definitive refresh failure or the user's): clear the query caches. */
   onSignedOut?: () => Promise<void> | void;
   clock?: () => number;
+  /** Builds the blob helper (09s) over the runtime's token cache and refresher. */
+  makeBlobs?: (deps: Pick<BlobsDeps, "tokens" | "refresher">) => Blobs;
 }
 
 export interface Runtime {
@@ -36,6 +39,8 @@ export interface Runtime {
   tokens: AccessTokenCache;
   refresher: Refresher;
   session: Session;
+  /** The attachment routes' helper; undefined when the runtime was built without one. */
+  blobs: Blobs | undefined;
 }
 
 export function createRuntime(deps: RuntimeDeps): Runtime {
@@ -62,5 +67,14 @@ export function createRuntime(deps: RuntimeDeps): Runtime {
     platform: deps.platform,
     onSignedOut: deps.onSignedOut,
   });
-  return { transport, bareTransport, client, tokens, refresher, session };
+  const blobs = deps.makeBlobs?.({ tokens, refresher });
+  return {
+    transport,
+    bareTransport,
+    client,
+    tokens,
+    refresher,
+    session,
+    blobs,
+  };
 }

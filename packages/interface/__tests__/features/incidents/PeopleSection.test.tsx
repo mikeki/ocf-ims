@@ -83,6 +83,7 @@ function renderIncident(
       onOpenIncident={() => undefined}
       onOpenReport={handlers.onOpenReport ?? (() => undefined)}
       onFileReport={handlers.onFileReport ?? (() => undefined)}
+      onOpenAttachment={() => undefined}
     />,
     runtime,
   );

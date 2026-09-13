@@ -24,6 +24,17 @@
       "output": "single",
       "favicon": "./assets/favicon.png"
     },
-    "plugins": ["expo-router"]
+    "plugins": [
+      "expo-router",
+      "expo-image",
+      [
+        "expo-image-picker",
+        {
+          "cameraPermission": "Allow OCF IMS to use the camera to photograph an incident.",
+          "photosPermission": "Allow OCF IMS to choose a photo from your library to attach to an incident.",
+          "microphonePermission": false
+        }
+      ]
+    ]
   }
 }

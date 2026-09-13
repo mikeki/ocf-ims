@@ -23,6 +23,12 @@ export function useEvents() {
   return useQuery(ImsService.method.listEvents, {});
 }
 
+/** The event's name — what the attachment routes are addressed by (09s); "" until the list answers. */
+export function useEventName(eventId: number): string {
+  const { data } = useEvents();
+  return data?.events.find((e) => e.id === eventId)?.name ?? "";
+}
+
 /**
  * The caller's access to one event (plan 09n T7); all-false until
  * GetAuthStatus has answered. GetAuthStatus tolerates an anonymous caller

@@ -1,5 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
+/// <reference types="node" />
+
 import { expect, test } from "@playwright/test";
 
 // The read-only tracer (plan 09n T11): sign in → events → incidents →
@@ -183,7 +185,12 @@ test("file a report from the Board's Reports segment, append an entry", async ({
   await composer.click();
   await composer.fill("Tracer follow-up entry.");
   await page.getByTestId("report-append-send").click();
-  await expect(page.getByText("Tracer follow-up entry.")).toBeVisible();
+  // Scoped: the composer's textarea still holds the text until the draft clears.
+  await expect(
+    page
+      .getByTestId("report-refresh-control")
+      .getByText("Tracer follow-up entry."),
+  ).toBeVisible();
 
   await page.getByRole("button", { name: "Board" }).click();
   await expect(page).toHaveURL(/\/events\/\d+\/incidents$/);
@@ -191,3 +198,55 @@ test("file a report from the Board's Reports segment, append an entry", async ({
   await page.getByRole("button", { name: "Sign out" }).click();
   await expect(page.getByRole("button", { name: "Sign in" })).toBeVisible();
 });
+
+// Photos (plan 09s, slice 3b.4b): a photo on the filing form rides after the
+// incident is filed, renders inline in the journal, and opens at full width.
+// The web picker is a file input, so the chooser is answered with a generated
+// PNG — test content only.
+test("file an incident with a photo, see it in the journal, open it", async ({
+  page,
+}) => {
+  await page.goto("/");
+  await page.getByLabel("Email").fill(email ?? "");
+  await page.getByLabel("Password", { exact: true }).fill(password ?? "");
+  await page.getByRole("button", { name: "Sign in" }).click();
+  await expect(page).toHaveURL(/\/events\/\d+\/incidents$/);
+
+  const stamp = new Date().toISOString();
+  await page.getByTestId("quick-bar").click();
+  await expect(page).toHaveURL(/\/incidents\/new$/);
+  await page.getByTestId("summary").fill(`Tracer test photo ${stamp}`);
+  await page.getByTestId("priority-low").click();
+  const chooser = page.waitForEvent("filechooser");
+  await page.getByTestId("photo-add").click();
+  await (await chooser).setFiles({
+    name: "tracer.png",
+    mimeType: "image/png",
+    buffer: Buffer.from(TRACER_PNG, "base64"),
+  });
+  await expect(page.getByTestId("photo-chip")).toBeVisible();
+  await expect(page.getByText("Photo ready to send")).toBeVisible();
+  await page.getByTestId("file-incident").click();
+  await expect(page).toHaveURL(/\/incidents\/\d+$/);
+  await expect(page.getByTestId("incident-number")).toBeVisible();
+
+  const image = page.getByTestId(/^attachment-image-\d+$/).first();
+  await expect(image).toBeVisible();
+  await page
+    .getByTestId(/^attachment-open-\d+$/)
+    .first()
+    .click();
+  await expect(page).toHaveURL(/\/attachments\/\d+\/\d+$/);
+  await expect(page.getByTestId("attachment-full")).toBeVisible();
+  await page.getByRole("button", { name: "Close" }).click();
+  await expect(page).toHaveURL(/\/incidents\/\d+$/);
+
+  await page.getByRole("button", { name: "Board" }).click();
+  await page.getByRole("button", { name: "Events" }).click();
+  await page.getByRole("button", { name: "Sign out" }).click();
+  await expect(page.getByRole("button", { name: "Sign in" })).toBeVisible();
+});
+
+/** A 2×2 orange PNG. */
+const TRACER_PNG =
+  "iVBORw0KGgoAAAANSUhEUgAAAAIAAAACCAIAAAD91JpzAAAAFklEQVR4nGP4z8DwHwyBFAMDGIIBAG4bDfXkxT4nAAAAAElFTkSuQmCC";

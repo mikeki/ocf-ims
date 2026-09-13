@@ -45,6 +45,9 @@ export default function IncidentRoute() {
           params: { incident: String(number) },
         });
       }}
+      onOpenAttachment={(entryId) => {
+        router.push(`/events/${eventId}/attachments/${number}/${entryId}`);
+      }}
     />
   );
 }

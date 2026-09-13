@@ -7,8 +7,9 @@ import { focusManager, QueryClientProvider } from "@tanstack/react-query";
 import type { Persister } from "@tanstack/react-query-persist-client";
 import { PersistQueryClientProvider } from "@tanstack/react-query-persist-client";
 import type { ReactNode } from "react";
-import { useEffect } from "react";
+import { createContext, useContext, useEffect } from "react";
 import { AppState, Platform } from "react-native";
+import type { Blobs } from "@/api/blobs";
 import { PERSIST_MAX_AGE_MS } from "@/api/persist";
 
 // The data-layer providers (plan 09l F10): connect-query's TransportProvider
@@ -22,7 +23,20 @@ export interface ApiProviderProps {
   persister?: Persister;
   /** Discards a restored cache whose buster differs (see cacheBuster). */
   buster?: string;
+  /** The blob helper (09s); absent only in tests that never upload. */
+  blobs?: Blobs;
   children: ReactNode;
+}
+
+const BlobsContext = createContext<Blobs | undefined>(undefined);
+
+/** The blob helper for the attachment routes (09s). */
+export function useBlobs(): Blobs {
+  const blobs = useContext(BlobsContext);
+  if (!blobs) {
+    throw new Error("useBlobs() needs an <ApiProvider blobs> above it");
+  }
+  return blobs;
 }
 
 export function ApiProvider(props: ApiProviderProps) {
@@ -44,7 +58,11 @@ export function ApiProvider(props: ApiProviderProps) {
     </QueryClientProvider>
   );
   return (
-    <TransportProvider transport={props.transport}>{client}</TransportProvider>
+    <TransportProvider transport={props.transport}>
+      <BlobsContext.Provider value={props.blobs}>
+        {client}
+      </BlobsContext.Provider>
+    </TransportProvider>
   );
 }
 
