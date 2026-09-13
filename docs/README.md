@@ -4,6 +4,9 @@ A single-page reference for the Ranger IMS Go service: architecture, data model,
 auth flow, and a dev-vs-prod comparison. Written to help a TS-fluent engineer
 get oriented quickly.
 
+The prose reference — layers, data model, migrations how-to, configuration, auth,
+the audit log — is `docs/architecture.md` (moved out of `CLAUDE.md` in 2026-09).
+
 ## How to view
 
 Just open the HTML file in a browser — no build step, no server needed:
