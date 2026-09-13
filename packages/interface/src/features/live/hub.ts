@@ -101,7 +101,12 @@ export function createLiveHub(deps: LiveHubDeps): LiveHub {
    * absent, remove it on NotFound. Never refetches the list itself, so the
    * table's selection and scroll do not move.
    */
+  // Pokes for one incident can overlap; only the latest fetch may write.
+  const patchSeq = new Map<string, number>();
   const patchIncidentList = async (eventId: number, number: number) => {
+    const key = `${eventId}:${number}`;
+    const seq = (patchSeq.get(key) ?? 0) + 1;
+    patchSeq.set(key, seq);
     let incident: IncidentView | undefined;
     try {
       const response = await deps.client.getIncident({
@@ -111,8 +116,13 @@ export function createLiveHub(deps: LiveHubDeps): LiveHub {
       incident = response.incident;
     } catch (err) {
       if (toAppError(err).kind !== "notFound") {
+        // Anything else: fall back to the list refetch rather than stay stale.
+        invalidate(ImsService.method.listIncidents, { eventId });
         return;
       }
+    }
+    if (patchSeq.get(key) !== seq) {
+      return;
     }
     const patched = incident ? stripSystemEntries(incident) : undefined;
     deps.queryClient.setQueriesData<ListIncidentsResponse>(

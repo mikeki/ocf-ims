@@ -17,6 +17,10 @@ import { expect, test } from "@playwright/test";
 const email = process.env.E2E_EMAIL;
 const password = process.env.E2E_PASSWORD;
 const hosted = Boolean(process.env.E2E_BASE_URL); // same origin: the cookie survives a reload
+// The phone layout: at Desktop Chrome's default 1280 px the incidents route
+// renders the dispatch table (3c.1); e2e/dispatch.spec.ts walks that one.
+test.use({ viewport: { width: 400, height: 800 } });
+
 test.skip(
   !email || !password,
   "set E2E_EMAIL and E2E_PASSWORD (and E2E_BASE_URL for the hosted build) to run the tracer against a server",

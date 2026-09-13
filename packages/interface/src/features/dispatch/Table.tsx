@@ -1,7 +1,13 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import { useEffect, useMemo, useRef, useState } from "react";
-import { FlatList, Pressable, StyleSheet, View } from "react-native";
+import {
+  FlatList,
+  Pressable,
+  StyleSheet,
+  useWindowDimensions,
+  View,
+} from "react-native";
 import { PressFeedback } from "@/design/motion";
 import { Text } from "@/design/primitives/Text";
 import { useTheme } from "@/design/theme";
@@ -35,15 +41,25 @@ export interface TableProps {
 export function Table(props: TableProps) {
   const { d, lookups, onRowPress } = props;
   const theme = useTheme();
-  const [width, setWidth] = useState(0);
+  // Seeded from the window so the first frame already has the real columns
+  // (finding 3) — the top bar shell spends no horizontal space, so the
+  // window width is the table's width until `onLayout` measures the actual
+  // container and refines it.
+  const { width: windowWidth } = useWindowDimensions();
+  const [width, setWidth] = useState(windowWidth);
   const columns = useMemo(() => columnsFor(width), [width]);
   const height = rowHeight(theme.type.body.lineHeight ?? 0, theme.spacing.md);
   const scroll = useRef({ y: 0, height: 0 });
   const { sel } = d.query;
+  // The last `sel` scrolled for (finding 2): row data alone — a hub patch, a
+  // poll — must never re-scroll, only `sel` itself changing (a click, j/k).
+  const scrolledSel = useRef<number | undefined>(undefined);
 
-  // Keep the selection in view when the keyboard walks it off the edge — and
-  // only then. A click, a poke or a filter never moves the scroll.
   useEffect(() => {
+    if (sel === scrolledSel.current) {
+      return;
+    }
+    scrolledSel.current = sel;
     if (sel === undefined) {
       return;
     }
@@ -134,7 +150,7 @@ export function Table(props: TableProps) {
             lookups={lookups}
             selected={item.incident.number === sel}
             height={height}
-            onPress={() => onRowPress(item.incident.number)}
+            onPress={onRowPress}
           />
         )}
         ListEmptyComponent={empty}

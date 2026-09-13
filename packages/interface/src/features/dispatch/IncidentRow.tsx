@@ -38,7 +38,13 @@ export interface IncidentRowProps {
   lookups: Lookups;
   selected: boolean;
   height: number;
-  onPress: () => void;
+  /**
+   * Takes the incident's number rather than being pre-bound to it, so every
+   * row can share the same function reference and `memo` below actually
+   * skips the rows a keystroke or a poke did not touch (finding 2's cousin,
+   * plan 09x code review).
+   */
+  onPress: (number: number) => void;
 }
 
 export const IncidentRow = memo(function IncidentRow(props: IncidentRowProps) {
@@ -54,7 +60,7 @@ export const IncidentRow = memo(function IncidentRow(props: IncidentRowProps) {
       accessibilityRole="button"
       accessibilityState={{ selected }}
       accessibilityLabel={`#${incident.number} ${incident.summary ?? ""}`}
-      onPress={onPress}
+      onPress={() => onPress(incident.number)}
       onHoverIn={() => setHovered(true)}
       onHoverOut={() => setHovered(false)}
       pressRetentionOffset={pressRetentionOffset}

@@ -56,13 +56,17 @@ export function DispatchScreen(props: DispatchScreenProps) {
     [typesQuery.data, areasQuery.data],
   );
 
-  const d = useDispatchQuery(rows, lookups, me);
+  const d = useDispatchQuery(rows, lookups, me, !incidentsQuery.isLoading);
   const [help, setHelp] = useState(false);
   const handle = useRef<IncidentScreenHandle>(null);
 
   // Enter on an open drawer, and its "Full page" control, push the real
   // route with the table's query carried, minus `sel`/`open` (criterion 9):
-  // those become the path segment, not a key.
+  // those become the path segment, not a key. `from=table` (finding 4) marks
+  // the push as coming from here even when the table's own query is the bare
+  // default and so carries nothing else — without it, `IncidentPage` cannot
+  // tell "pushed from the table, no filters set" from a bare deep link, and
+  // shows no prev/next for either.
   const onFull = useCallback(() => {
     const opened = d.opened;
     if (!opened) {
@@ -70,7 +74,7 @@ export function DispatchScreen(props: DispatchScreenProps) {
     }
     const number = opened.incident.number;
     const carried = serializeQuery(d.query);
-    const params: Record<string, string> = {};
+    const params: Record<string, string> = { from: "table" };
     for (const [key, value] of Object.entries(carried)) {
       if (value !== undefined && key !== "sel" && key !== "open") {
         params[key] = value;

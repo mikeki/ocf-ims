@@ -22,6 +22,7 @@ import {
   loadStatePreference,
   saveStatePreference,
 } from "@/features/dispatch/statePreference";
+import { useMinuteClock } from "@/features/dispatch/useMinuteClock";
 
 // The table's URL state and its actions (plan 09x criteria 6-7), promoted
 // from src/prototypes/dispatch/useDispatch.ts: the pokes, the notices and the
@@ -31,6 +32,14 @@ import {
 // the drawer's "Full page" action for now. The keyboard map moved out to
 // `useKeyboardMap` (finding 2 of the D2 round: a page pushed on top of this
 // screen must not fight this hook's listener over the URL).
+//
+// The stored state preference (criterion 6) only ever reaches the URL
+// through an explicit `state` key in a `setQuery` patch — never through a
+// spread of the resolved `query`, whose `.state` may be the stored fallback.
+// `rawState` is that spread's `state` field instead: the URL's own value,
+// ignoring storage. Without this split, any in-place patch (the open⇒sel
+// normalisation among them) would leak the stored preference into a shared
+// link's URL (code review finding, 09x 3c.1).
 
 export interface DispatchQuery {
   query: Query;
@@ -39,8 +48,9 @@ export interface DispatchQuery {
   opened: Row | undefined;
   searchRef: RefObject<TextInput | null>;
   listRef: RefObject<FlatList<Row> | null>;
+  /** A patch naming `state` explicitly also remembers it (criterion 6). */
   setQuery: (patch: Partial<Query>) => void;
-  /** Like `setQuery({ state })`, but also remembers it (criterion 6). */
+  /** `setQuery({ state })`, named for the state chips. */
   setState: (state: StateFilter) => void;
   select: (number: number | undefined) => void;
   open: (number: number) => void;
@@ -57,15 +67,18 @@ export function useDispatchQuery(
   rows: IncidentView[],
   lookups: Lookups,
   me: number,
+  /** Have the rows loaded at least once (finding 6)? Default true for callers (tests) that don't poll. */
+  loaded = true,
 ): DispatchQuery {
   const router = useRouter();
   const params = useLocalSearchParams<Record<string, string | string[]>>();
-  const now = useRef(Date.now()).current;
+  const now = useMinuteClock();
   const searchRef = useRef<TextInput>(null);
   const listRef = useRef<FlatList<Row>>(null);
 
   // The stored state preference (criterion 6): loaded once, never written
-  // back into the URL — only a chip press (`setState`) writes either.
+  // back into the URL by anything but an explicit `state` patch (a chip,
+  // Clear) — `setQuery` is what writes both.
   const [storedState, setStoredState] = useState<StateFilter>();
   const [stateLoaded, setStateLoaded] = useState(false);
   useEffect(() => {
@@ -97,6 +110,9 @@ export function useDispatchQuery(
     () => parseQuery(flat, fallbackState),
     [flat, fallbackState],
   );
+  // The URL's own `state`, ignoring the stored fallback — see the header
+  // comment. `parseQuery`'s own default ("open") is what a bare view is.
+  const rawState = useMemo(() => parseQuery(flat).state, [flat]);
 
   const visible = useMemo(
     () => applyQuery(rows, query, lookups, me, now),
@@ -127,15 +143,23 @@ export function useDispatchQuery(
   );
 
   const setQuery = useCallback(
-    (patch: Partial<Query>) => navigate({ ...query, ...patch }),
-    [navigate, query],
+    (patch: Partial<Query>) => {
+      // A patch that names `state` explicitly (a chip, Clear) is the one
+      // case that both writes the URL and remembers it (criterion 6); every
+      // other patch keeps whatever `state` the URL already had.
+      if (patch.state !== undefined) {
+        setStoredState(patch.state);
+        void saveStatePreference(AsyncStorage, patch.state).catch(
+          () => undefined,
+        );
+      }
+      navigate({ ...query, state: rawState, ...patch });
+    },
+    [navigate, query, rawState],
   );
 
   const setState = useCallback(
-    (state: StateFilter) => {
-      setQuery({ state });
-      void saveStatePreference(AsyncStorage, state).catch(() => undefined);
-    },
+    (state: StateFilter) => setQuery({ state }),
     [setQuery],
   );
 
@@ -145,8 +169,9 @@ export function useDispatchQuery(
   );
 
   const open = useCallback(
-    (number: number) => navigate({ ...query, sel: number, open: number }),
-    [navigate, query],
+    (number: number) =>
+      navigate({ ...query, state: rawState, sel: number, open: number }),
+    [navigate, query, rawState],
   );
 
   const close = useCallback(() => setQuery({ open: undefined }), [setQuery]);
@@ -171,12 +196,12 @@ export function useDispatchQuery(
       }
       // With something open, walking the table walks what is open too.
       if (query.open !== undefined) {
-        navigate({ ...query, sel: number, open: number });
+        navigate({ ...query, state: rawState, sel: number, open: number });
       } else {
         select(number);
       }
     },
-    [visible, query, navigate, select],
+    [visible, query, navigate, rawState, select],
   );
 
   const submitSearch = useCallback(() => {
@@ -196,12 +221,24 @@ export function useDispatchQuery(
 
   // `open` implies `sel` (criterion 6): a link with only `open=` selects that
   // row too; a stale `sel` from before a filter change is normalised in
-  // place, never pushed.
+  // place, never pushed. And once the rows have loaded, an `open` that
+  // resolves to no row is stale, not a value to keep normalising toward —
+  // the hub removed it (a NotFound: it went private) out from under an open
+  // drawer (finding 6), so the URL keys pointing at it are cleared instead.
+  // One effect, not two: both branches call `setQuery` from the same `query`
+  // snapshot, so they can never race each other into re-adding what the
+  // other just cleared.
   useEffect(() => {
-    if (query.open !== undefined && query.sel !== query.open) {
-      setQuery({ sel: query.open });
+    const openNumber = query.open;
+    if (openNumber === undefined) {
+      return;
     }
-  }, [query.open, query.sel, setQuery]);
+    if (loaded && !byNumber.has(openNumber)) {
+      setQuery({ open: undefined, sel: undefined });
+    } else if (query.sel !== openNumber) {
+      setQuery({ sel: openNumber });
+    }
+  }, [query.open, query.sel, loaded, byNumber, setQuery]);
 
   return {
     query,

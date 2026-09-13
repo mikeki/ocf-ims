@@ -158,8 +158,9 @@ describe("createLiveHub", () => {
         listData()?.incidents.find((v) => v.incident?.number === 12)?.incident
           ?.summary === "Updated by the poke",
     );
-    // #13 is untouched, and the row count did not grow.
+    // #13 is untouched, the row count did not grow, and #12 kept its place.
     expect(listData()?.incidents).toHaveLength(2);
+    expect(listData()?.incidents[0]?.incident?.number).toBe(12);
     expect(
       listData()?.incidents.find((v) => v.incident?.number === 13)?.incident
         ?.summary,
@@ -197,6 +198,18 @@ describe("createLiveHub", () => {
         listData()?.incidents.some((v) => v.incident?.number === 13) === false,
     );
     expect(listData()?.incidents).toHaveLength(1);
+    release();
+  });
+
+  it("falls back to a list refetch when GetIncident fails for any reason but NotFound", async () => {
+    const { fake, hub, invalidated, list, listData } = await setup();
+    const release = hub.watch(1);
+    await until(() => hub.isLive(1));
+    fake.behaviour.getIncident = "unavailable";
+    fake.poke({ eventId: 1, incidentNumber: 12 });
+    await until(() => invalidated(list));
+    // Nothing was written into the cache; the refetch is what corrects it.
+    expect(listData()?.incidents).toHaveLength(2);
     release();
   });
 

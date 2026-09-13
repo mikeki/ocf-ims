@@ -37,6 +37,11 @@ function getParams(): FakeRouterParams {
   return params;
 }
 
+/** The URL's current params, for asserting what a `setParams` call did. */
+export function currentParams(): FakeRouterParams {
+  return { ...params };
+}
+
 function subscribe(listener: () => void): () => void {
   listeners.add(listener);
   return () => listeners.delete(listener);
