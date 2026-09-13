@@ -15,6 +15,7 @@ import {
   parseQuery,
 } from "@/features/dispatch/query";
 import { useKeyboardMap } from "@/features/dispatch/useKeyboardMap";
+import { useMinuteClock } from "@/features/dispatch/useMinuteClock";
 import { useEventAccess } from "@/features/events/hooks";
 import {
   useAreas,
@@ -82,8 +83,12 @@ export function IncidentPage(props: IncidentPageProps) {
     return out;
   }, [params]);
   // A bare deep link carries none of the table's keys — show no prev/next
-  // rather than guess a query the visitor never chose.
-  const carried = QUERY_KEYS.some((key) => flat[key] !== undefined);
+  // rather than guess a query the visitor never chose. `from=table` (finding
+  // 4) is the sentinel `onFull` always adds, so a push from the table with
+  // its query at the bare default (which carries none of QUERY_KEYS either)
+  // still counts as carried; `parseQuery` below ignores the unknown key.
+  const carried =
+    flat.from === "table" || QUERY_KEYS.some((key) => flat[key] !== undefined);
   const query = useMemo(() => parseQuery(flat, "open"), [flat]);
   const lookups: Lookups = useMemo(
     () => ({
@@ -93,9 +98,12 @@ export function IncidentPage(props: IncidentPageProps) {
     [typesQuery.data, areasQuery.data],
   );
   const rows = incidentsQuery.data?.incidents ?? [];
+  // The same minute clock as the table (finding 7), so the two never
+  // disagree on which rows a "days" filter keeps.
+  const now = useMinuteClock();
   const visible = useMemo(
-    () => (carried ? applyQuery(rows, query, lookups, me) : []),
-    [carried, rows, query, lookups, me],
+    () => (carried ? applyQuery(rows, query, lookups, me, now) : []),
+    [carried, rows, query, lookups, me, now],
   );
   const { prev, next } = carried ? neighboursOf(visible, number) : {};
 
@@ -117,13 +125,15 @@ export function IncidentPage(props: IncidentPageProps) {
     [next, prev, goTo],
   );
   const goBack = useCallback(() => {
-    // The table beneath still holds sel/open, so back lands on the drawer;
-    // a bare deep link has nothing to go back to.
-    if (router.canGoBack()) {
-      router.back();
-    } else {
-      router.dismissTo(`/events/${eventId}/incidents`);
-    }
+    // Unconditional (finding 5): the `(app)` Stack's anchor is the events
+    // list, not this route, so `router.back()` on a deep link or a reload
+    // — where this is the only entry — would skip past the incidents list
+    // straight to Events. `dismissTo` instead pops to the table when it is
+    // in the stack (pushed from the drawer, its `sel`/`open` untouched, so
+    // the drawer is exactly as the visitor left it) and replaces this screen
+    // with the table when it is not — the same call the phone branch of
+    // `[number].tsx` makes and documents.
+    router.dismissTo(`/events/${eventId}/incidents`);
   }, [router, eventId]);
 
   const [help, setHelp] = useState(false);

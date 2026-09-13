@@ -67,13 +67,14 @@ test("dispatch: search opens the drawer, a second Enter opens the full page, Esc
   await expect(table).not.toBeVisible();
   await expect(page.getByTestId("incident-number")).toBeVisible();
 
-  // j moves the page to its next incident, when the carried query has one.
+  // j moves the page to its next incident — Next/Prev must be visible here:
+  // the table's push always carries `from=table` (finding 4), even from its
+  // bare default query, so a page opened from the table always has neighbours.
   const next = page.getByTestId("incident-page-next");
-  if (await next.isVisible()) {
-    const before = page.url();
-    await page.keyboard.press("j");
-    await expect(page).not.toHaveURL(before);
-  }
+  await expect(next).toBeVisible();
+  const before = page.url();
+  await page.keyboard.press("j");
+  await expect(page).not.toHaveURL(before);
 
   // Esc backs to the drawer (the table beneath still holds sel/open — 09x
   // criterion 9), then closes the drawer, keeping the search text (criterion 6).

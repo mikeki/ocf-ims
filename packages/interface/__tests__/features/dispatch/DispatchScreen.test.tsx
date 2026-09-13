@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import { fireEvent, screen, waitFor } from "@testing-library/react-native";
+import { Dimensions } from "react-native";
 import { DispatchScreen } from "@/features/dispatch/DispatchScreen";
 import { Shell } from "@/features/shell/Shell";
 import { createFakeIms, type FakeIms } from "@/test/fakeIms";
@@ -151,5 +152,27 @@ describe("DispatchScreen (wide layout)", () => {
       expect(screen.getByTestId("dispatch-row-214")).toBeTruthy();
     });
     expect(screen.queryByText("New incident")).toBeNull();
+  });
+
+  it("shows the wide columns, like People, once the table has a wide width", async () => {
+    // The table seeds its width from the window (finding 3) rather than
+    // starting at 0 until `onLayout` — which this RNTL environment never
+    // fires — so a wide window must show every column from the first frame.
+    const dimensions = jest
+      .spyOn(Dimensions, "get")
+      .mockReturnValue({ width: 1440, height: 900, scale: 1, fontScale: 1 });
+    try {
+      const fake = createFakeIms();
+      populate(fake);
+      const runtime = await signedInRuntime(fake);
+      await renderDispatch(runtime);
+
+      await waitFor(() => {
+        expect(screen.getByTestId("dispatch-row-214")).toBeTruthy();
+      });
+      expect(screen.getByText("People")).toBeTruthy();
+    } finally {
+      dimensions.mockRestore();
+    }
   });
 });
