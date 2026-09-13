@@ -3,18 +3,29 @@
 import type { DescMethodUnary, MessageInitShape } from "@bufbuild/protobuf";
 import type { Transport } from "@connectrpc/connect";
 import { createConnectQueryKey } from "@connectrpc/connect-query";
+import type {
+  IncidentView,
+  ListIncidentsResponse,
+} from "@ocf-ims/protocol-buffers/ocf/ims/service/rpc/v1/incident_pb";
 import { EventPokeKind } from "@ocf-ims/protocol-buffers/ocf/ims/service/rpc/v1/stream_pb";
 import { ImsService } from "@ocf-ims/protocol-buffers/ocf/ims/service/v1/service_pb";
 import type { QueryClient } from "@tanstack/react-query";
 import type { ImsClient } from "@/api/client";
+import { toAppError } from "@/api/errors";
 import { type WatchOptions, watchEvents } from "@/api/stream";
 
 // The live hub (plan 09v): one WatchEvent stream per event while any screen
 // watches it, shared by reference count; paused when the app leaves the
-// foreground and reopened — with a full refetch — when it returns. A poke
-// invalidates the record it names and the list it sits in; the screens'
-// queries refetch through the access-gated reads, as they always did. The
-// 30 s polls stay as the fallback for a stream that will not open.
+// foreground and reopened — with a full refetch — when it returns. The
+// screens' queries refetch through the access-gated reads, as they always
+// did. The 30 s polls stay as the fallback for a stream that will not open.
+//
+// An INCIDENT_CHANGED poke patches the cached lists directly instead of
+// refetching them (plan 09x criterion 10): `getIncident` for the number, then
+// the row replaces, inserts or — on NotFound, the incident went private to
+// this viewer — is removed from every cached `listIncidents` for the event.
+// Selection, scroll and an open drawer never move, because the list query
+// itself never refetches.
 
 export interface LiveHub {
   /** Watch an event; returns the release. */
@@ -42,6 +53,22 @@ interface Watched {
   gap: boolean;
 }
 
+/** The cache matches `excludeSystemEntries: true` (`useIncidents`). */
+function stripSystemEntries(view: IncidentView): IncidentView {
+  if (!view.incident) {
+    return view;
+  }
+  return {
+    ...view,
+    incident: {
+      ...view.incident,
+      journalEntries: view.incident.journalEntries.filter(
+        (e) => !e.systemEntry,
+      ),
+    },
+  };
+}
+
 export function createLiveHub(deps: LiveHubDeps): LiveHub {
   const watched = new Map<number, Watched>();
   const listeners = new Set<() => void>();
@@ -66,6 +93,55 @@ export function createLiveHub(deps: LiveHubDeps): LiveHub {
         ...(input === undefined ? {} : { input }),
       }),
     });
+  };
+
+  /**
+   * `GetIncident` for the poke, then patch every cached `listIncidents` for
+   * the event (criterion 10): replace the row by number, insert it when
+   * absent, remove it on NotFound. Never refetches the list itself, so the
+   * table's selection and scroll do not move.
+   */
+  const patchIncidentList = async (eventId: number, number: number) => {
+    let incident: IncidentView | undefined;
+    try {
+      const response = await deps.client.getIncident({
+        eventId,
+        incidentNumber: number,
+      });
+      incident = response.incident;
+    } catch (err) {
+      if (toAppError(err).kind !== "notFound") {
+        return;
+      }
+    }
+    const patched = incident ? stripSystemEntries(incident) : undefined;
+    deps.queryClient.setQueriesData<ListIncidentsResponse>(
+      {
+        queryKey: createConnectQueryKey({
+          schema: ImsService.method.listIncidents,
+          transport: deps.transport,
+          cardinality: "finite",
+          input: { eventId },
+        }),
+      },
+      (prev) => {
+        if (!prev) {
+          return prev;
+        }
+        const at = prev.incidents.findIndex(
+          (v) => v.incident?.number === number,
+        );
+        const incidents = [...prev.incidents];
+        if (!patched) {
+          incidents.splice(at, at < 0 ? 0 : 1);
+        } else if (at < 0) {
+          incidents.push(patched);
+        } else {
+          incidents[at] = patched;
+        }
+        return { ...prev, incidents };
+      },
+    );
   };
 
   const refetchEvent = (eventId: number) => {
@@ -110,9 +186,7 @@ export function createLiveHub(deps: LiveHubDeps): LiveHub {
               eventId: poke.eventId,
               incidentNumber: poke.incidentNumber,
             });
-            invalidate(ImsService.method.listIncidents, {
-              eventId: poke.eventId,
-            });
+            void patchIncidentList(poke.eventId, poke.incidentNumber);
           } else if (
             poke.kind === EventPokeKind.REPORT_CHANGED &&
             poke.reportNumber !== undefined

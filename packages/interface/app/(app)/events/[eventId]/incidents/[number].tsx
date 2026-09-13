@@ -1,8 +1,15 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import { useLocalSearchParams, useRouter } from "expo-router";
+import { IncidentPage } from "@/features/dispatch/IncidentPage";
 import { IncidentScreen } from "@/features/incidents/IncidentScreen";
 import { EmptyState } from "@/features/shell/EmptyState";
+import { useLayoutMode } from "@/features/shell/layoutMode";
+import { Shell } from "@/features/shell/Shell";
+
+// The 3b incident screen on a phone; the full page (plan 09x criterion 9)
+// inside the shell on a wide window (criterion 1) — the drawer's second
+// Enter, or its "Full page" control, land here.
 
 export default function IncidentRoute() {
   const router = useRouter();
@@ -12,6 +19,7 @@ export default function IncidentRoute() {
   }>();
   const eventId = Number.parseInt(rawEventId, 10);
   const number = Number.parseInt(rawNumber, 10);
+  const mode = useLayoutMode();
 
   if (
     !Number.isFinite(eventId) ||
@@ -20,6 +28,14 @@ export default function IncidentRoute() {
     number <= 0
   ) {
     return <EmptyState title="Not found" />;
+  }
+
+  if (mode === "wide") {
+    return (
+      <Shell eventId={eventId}>
+        <IncidentPage eventId={eventId} number={number} />
+      </Shell>
+    );
   }
 
   return (

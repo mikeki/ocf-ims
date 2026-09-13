@@ -1,33 +1,36 @@
 // SPDX-License-Identifier: Apache-2.0
 
+import type { IncidentView } from "@ocf-ims/protocol-buffers/ocf/ims/service/rpc/v1/incident_pb";
 import type { ReactNode } from "react";
 import { useEffect, useState } from "react";
 import { Pressable, StyleSheet, TextInput, View } from "react-native";
 import { PressFeedback } from "@/design/motion";
-import { Button } from "@/design/primitives/Button";
 import { Text } from "@/design/primitives/Text";
 import { TextButton } from "@/design/primitives/TextButton";
 import { useTheme } from "@/design/theme";
 import { pressRetentionOffset } from "@/design/tokens";
 import { Chip } from "@/features/compose/Chip";
-import { personLabel } from "@/lib/format";
-import { access, people } from "@/prototypes/dispatch/data";
 import {
   clearFilters,
   isFiltered,
+  type Lookups,
   type PriorityKey,
+  peopleOptions,
   type StateFilter,
-} from "@/prototypes/dispatch/state";
-import type { Dispatch } from "@/prototypes/dispatch/useDispatch";
+} from "@/features/dispatch/query";
+import type { DispatchQuery } from "@/features/dispatch/useDispatchQuery";
 
-// The filter bar (plan 09x): toolbar chips above the table — state,
-// priority, type, area, person, mine, days, search — the starting position
-// the brief names. Every chip writes the URL; the count says what the view
-// holds. A facet column is deliberately not built: it would have to earn a
-// second sidebar, and this bar is what it has to beat.
+// The filter bar (plan 09x criterion 5), promoted from
+// src/prototypes/dispatch/FilterBar.tsx: chips for state, priority, type,
+// area, person, mine and days, plus the search field and Clear. "New
+// incident" moved to the shell (criterion 2); the person chip's choices come
+// from the loaded rows (criterion 4), not a fixture or a new RPC.
 
 export interface FilterBarProps {
-  d: Dispatch;
+  d: DispatchQuery;
+  rows: IncidentView[];
+  lookups: Lookups;
+  onHelp: () => void;
 }
 
 const STATES: [StateFilter, string][] = [
@@ -49,7 +52,7 @@ const DAYS: [number | undefined, string][] = [
 ];
 
 export function FilterBar(props: FilterBarProps) {
-  const { d } = props;
+  const { d, rows, lookups } = props;
   const theme = useTheme();
   const { query } = d;
 
@@ -77,20 +80,11 @@ export function FilterBar(props: FilterBarProps) {
         <Search d={d} />
         <View style={styles.spacer} />
         <Text variant="caption" color="textMuted">
-          {`${d.visible.length} of ${d.rows.length}`}
+          {`${d.visible.length} of ${rows.length}`}
         </Text>
         <View style={styles.centered}>
-          <TextButton label="Keys ?" onPress={() => d.setHelp(true)} />
+          <TextButton label="Keys ?" onPress={props.onHelp} />
         </View>
-        {access.writeIncidents ? (
-          <Button
-            label="New incident"
-            variant="secondary"
-            onPress={() =>
-              d.notify("New incident — the editor lands with 3c.2")
-            }
-          />
-        ) : null}
       </View>
       <View style={[styles.row, { gap: theme.spacing.sm }]}>
         <Group label="State">
@@ -100,7 +94,7 @@ export function FilterBar(props: FilterBarProps) {
               label={label}
               tone={key === "open" ? "info" : "neutral"}
               selected={query.state === key}
-              onPress={() => d.setQuery({ state: key })}
+              onPress={() => d.setState(key)}
             />
           ))}
         </Group>
@@ -117,9 +111,9 @@ export function FilterBar(props: FilterBarProps) {
         </Group>
         <Menu
           label="Type"
-          options={d.lookups.types.map((t) => ({
+          options={lookups.types.map((t) => ({
             key: String(t.id),
-            label: t.name ?? `Type #${t.id}`,
+            label: t.name || `Type #${t.id}`,
           }))}
           selected={query.type.map(String)}
           onToggle={(key) => {
@@ -133,9 +127,9 @@ export function FilterBar(props: FilterBarProps) {
         />
         <Menu
           label="Area"
-          options={d.lookups.areas.map((a) => ({
+          options={lookups.areas.map((a) => ({
             key: a.slug,
-            label: a.name ?? a.slug,
+            label: a.name || a.slug,
           }))}
           selected={query.area}
           onToggle={(slug) =>
@@ -148,10 +142,7 @@ export function FilterBar(props: FilterBarProps) {
         />
         <Menu
           label="Person"
-          options={people.map((p) => ({
-            key: String(p.personId),
-            label: personLabel(p),
-          }))}
+          options={peopleOptions(rows)}
           selected={query.person === undefined ? [] : [String(query.person)]}
           onToggle={(key) => {
             const id = Number.parseInt(key, 10);
@@ -201,7 +192,7 @@ function Group(props: { label: string; children: ReactNode }) {
 }
 
 /** The search box: `/` focuses it, Enter hands focus back to the table. */
-function Search(props: { d: Dispatch }) {
+function Search(props: { d: DispatchQuery }) {
   const { d } = props;
   const theme = useTheme();
   const [focused, setFocused] = useState(false);

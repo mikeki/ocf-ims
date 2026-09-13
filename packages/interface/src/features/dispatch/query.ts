@@ -8,13 +8,17 @@ import {
   IncidentState,
 } from "@ocf-ims/protocol-buffers/ocf/ims/resources/v1/incident_pb";
 import type { IncidentType } from "@ocf-ims/protocol-buffers/ocf/ims/resources/v1/incident_type_pb";
+import type { IncidentView } from "@ocf-ims/protocol-buffers/ocf/ims/service/rpc/v1/incident_pb";
+import { whyMineIncident } from "@/features/board/work";
 import { areaName, typeName } from "@/features/incidents/lookups";
 import { personLabel } from "@/lib/format";
 
-// The URL is the state (plan 09x § The URL is the state): every filter, the
-// sort, the search and the selection are query keys, absent means default,
-// and the whole thing round-trips so a view is a link. `open` is this
-// surface's stand-in for the Page variant's path segment.
+// The dispatch table's query (plan 09x, promoted from
+// src/prototypes/dispatch/state.ts): every filter, the sort, the search and
+// the selection are query keys, absent means default, and the whole thing
+// round-trips so a view is a link. `full` is dropped — the full page is the
+// path segment, not a key (criterion 6) — and `open` survives as the
+// drawer's incident.
 
 export type StateFilter = "open" | "closed" | "all";
 export type PriorityKey = "high" | "normal" | "low";
@@ -42,8 +46,6 @@ export interface Query {
   sort: { key: SortKey; dir: SortDir };
   sel?: number;
   open?: number;
-  /** The drawer's incident opened as a full page (the pushed route). */
-  full: boolean;
 }
 
 export type Params = Record<string, string | undefined>;
@@ -87,12 +89,24 @@ function list(value: string | undefined): string[] {
   return value ? value.split(",").filter(Boolean) : [];
 }
 
-export function parseQuery(params: Params): Query {
+/**
+ * `fallbackState` is what an absent (or garbage) `state` key resolves to —
+ * the state preference once it has loaded, else "open" (criterion 6: URL >
+ * stored > default). `parseQuery` itself stays pure and knows nothing about
+ * storage; `useDispatchQuery` supplies the fallback.
+ */
+export function parseQuery(
+  params: Params,
+  fallbackState: StateFilter = "open",
+): Query {
   const state = params.state;
   const [sortKey, sortDir] = (params.sort ?? "").split(":");
   const key = SORT_KEYS.find((k) => k === sortKey);
   return {
-    state: state === "closed" || state === "all" ? state : "open",
+    state:
+      state === "closed" || state === "all" || state === "open"
+        ? state
+        : fallbackState,
     priority: list(params.priority).filter(
       (p): p is PriorityKey => p === "high" || p === "normal" || p === "low",
     ),
@@ -107,11 +121,10 @@ export function parseQuery(params: Params): Query {
     sort: key ? { key, dir: sortDir === "asc" ? "asc" : "desc" } : DEFAULT_SORT,
     sel: int(params.sel),
     open: int(params.open),
-    full: params.full === "1",
   };
 }
 
-/** Absent means default, so a default view is a bare URL. */
+/** Absent means default, so a default view is a bare URL. Never emits `full`. */
 export function serializeQuery(query: Query): Params {
   const sort =
     query.sort.key === DEFAULT_SORT.key && query.sort.dir === DEFAULT_SORT.dir
@@ -129,7 +142,6 @@ export function serializeQuery(query: Query): Params {
     sort,
     sel: query.sel === undefined ? undefined : String(query.sel),
     open: query.open === undefined ? undefined : String(query.open),
-    full: query.full ? "1" : undefined,
   };
 }
 
@@ -166,6 +178,18 @@ export interface Lookups {
   areas: Area[];
 }
 
+/** An `IncidentView` the table can actually show: `.incident` is set. */
+export type Row = IncidentView & { incident: Incident };
+
+function hasIncident(view: IncidentView): view is Row {
+  return view.incident !== undefined;
+}
+
+/** Every row `applyQuery` could show, before filtering — the table's `byNumber`. */
+export function toRows(views: IncidentView[]): Row[] {
+  return views.filter(hasIncident);
+}
+
 export function priorityKey(priority: IncidentPriority): PriorityKey {
   switch (priority) {
     case IncidentPriority.HIGH:
@@ -177,22 +201,42 @@ export function priorityKey(priority: IncidentPriority): PriorityKey {
   }
 }
 
-export function typesText(incident: Incident, lookups: Lookups): string {
-  return incident.incidentTypeIds
+export function typesText(row: Row, lookups: Lookups): string {
+  return row.incident.incidentTypeIds
     .map((id) => typeName(lookups.types, id))
     .join(", ");
 }
 
-export function areaText(incident: Incident, lookups: Lookups): string {
-  return areaName(lookups.areas, incident.location?.areaSlug) ?? "";
+export function areaText(row: Row, lookups: Lookups): string {
+  return areaName(lookups.areas, row.incident.location?.areaSlug) ?? "";
 }
 
-export function peopleText(incident: Incident): string {
-  return incident.people.map((p) => personLabel(p.person)).join(", ");
+export function peopleText(row: Row): string {
+  return row.incident.people.map((p) => personLabel(p.person)).join(", ");
 }
 
-function ms(incident: Incident, field: "started" | "lastModified"): number {
-  const stamp = incident[field];
+/**
+ * The person chip's choices (criterion 4): no new RPC, just who appears on
+ * any loaded row, sorted by label.
+ */
+export function peopleOptions(
+  rows: IncidentView[],
+): { key: string; label: string }[] {
+  const byId = new Map<number, string>();
+  for (const view of rows) {
+    for (const p of view.incident?.people ?? []) {
+      if (p.person) {
+        byId.set(p.person.personId, personLabel(p.person));
+      }
+    }
+  }
+  return [...byId.entries()]
+    .map(([id, label]) => ({ key: String(id), label }))
+    .sort((a, b) => a.label.localeCompare(b.label));
+}
+
+function ms(row: Row, field: "started" | "lastModified"): number {
+  const stamp = row.incident[field];
   return stamp ? timestampDate(stamp).getTime() : 0;
 }
 
@@ -221,66 +265,66 @@ function matcher(q: string): (haystack: string) => boolean {
   return (h) => h.toLowerCase().includes(needle);
 }
 
-/** Filter, search and sort, client-side over the whole event (09x). */
+/**
+ * Filter, search and sort, client-side over the whole event (criterion 4).
+ * "Mine" is the Board's four rules, not a two-rule shortcut of its own.
+ */
 export function applyQuery(
-  rows: Incident[],
+  rows: IncidentView[],
   query: Query,
   lookups: Lookups,
   me: number,
   now = Date.now(),
-): Incident[] {
+): Row[] {
   const match = matcher(query.q);
   const number = bareNumber(query.q);
   const since =
     query.days === undefined ? undefined : now - query.days * 86_400_000;
-  const kept = rows.filter((row) => {
-    if (query.state === "open" && row.state !== IncidentState.OPEN) {
+  const kept = toRows(rows).filter((row) => {
+    const incident = row.incident;
+    if (query.state === "open" && incident.state !== IncidentState.OPEN) {
       return false;
     }
-    if (query.state === "closed" && row.state !== IncidentState.CLOSED) {
+    if (query.state === "closed" && incident.state !== IncidentState.CLOSED) {
       return false;
     }
     if (
       query.priority.length &&
-      !query.priority.includes(priorityKey(row.priority))
+      !query.priority.includes(priorityKey(incident.priority))
     ) {
       return false;
     }
     if (
       query.type.length &&
-      !row.incidentTypeIds.some((id) => query.type.includes(id))
+      !incident.incidentTypeIds.some((id) => query.type.includes(id))
     ) {
       return false;
     }
     if (
       query.area.length &&
-      !query.area.includes(row.location?.areaSlug ?? "")
+      !query.area.includes(incident.location?.areaSlug ?? "")
     ) {
       return false;
     }
     if (
       query.person !== undefined &&
-      !row.people.some((p) => p.person?.personId === query.person)
+      !incident.people.some((p) => p.person?.personId === query.person)
     ) {
       return false;
     }
-    if (
-      query.mine &&
-      row.createdBy?.personId !== me &&
-      !row.people.some((p) => p.person?.personId === me)
-    ) {
+    if (query.mine && whyMineIncident(row, me) === undefined) {
       return false;
     }
     if (since !== undefined && ms(row, "started") < since) {
       return false;
     }
     if (number !== undefined) {
-      return String(row.number).startsWith(String(number));
+      return String(incident.number).startsWith(String(number));
     }
     return match(
       [
-        `#${row.number}`,
-        row.summary ?? "",
+        `#${incident.number}`,
+        incident.summary ?? "",
         typesText(row, lookups),
         areaText(row, lookups),
         peopleText(row),
@@ -290,26 +334,24 @@ export function applyQuery(
   return sortRows(kept, query.sort, lookups);
 }
 
-function sortRows(
-  rows: Incident[],
-  sort: Query["sort"],
-  lookups: Lookups,
-): Incident[] {
+function sortRows(rows: Row[], sort: Query["sort"], lookups: Lookups): Row[] {
   const dir = sort.dir === "asc" ? 1 : -1;
-  const cmp = (a: Incident, b: Incident): number => {
+  const cmp = (a: Row, b: Row): number => {
     switch (sort.key) {
       case "number":
-        return a.number - b.number;
+        return a.incident.number - b.incident.number;
       case "state":
-        return a.state - b.state;
+        return a.incident.state - b.incident.state;
       case "priority":
-        return a.priority - b.priority;
+        return a.incident.priority - b.incident.priority;
       case "types":
         return typesText(a, lookups).localeCompare(typesText(b, lookups));
       case "area":
         return areaText(a, lookups).localeCompare(areaText(b, lookups));
       case "summary":
-        return (a.summary ?? "").localeCompare(b.summary ?? "");
+        return (a.incident.summary ?? "").localeCompare(
+          b.incident.summary ?? "",
+        );
       case "started":
         return ms(a, "started") - ms(b, "started");
       case "modified":
@@ -320,6 +362,6 @@ function sortRows(
   };
   // Ties fall back to the number so the order is stable across pokes.
   return [...rows].sort(
-    (a, b) => dir * cmp(a, b) || (b.number - a.number) * dir,
+    (a, b) => dir * cmp(a, b) || (b.incident.number - a.incident.number) * dir,
   );
 }

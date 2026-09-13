@@ -1,6 +1,5 @@
 // SPDX-License-Identifier: Apache-2.0
 
-import type { Incident } from "@ocf-ims/protocol-buffers/ocf/ims/resources/v1/incident_pb";
 import { memo, useState } from "react";
 import { Pressable, StyleSheet, View } from "react-native";
 import { PressFeedback } from "@/design/motion";
@@ -8,34 +7,33 @@ import { Badge } from "@/design/primitives/Badge";
 import { Text } from "@/design/primitives/Text";
 import { useTheme } from "@/design/theme";
 import { pressRetentionOffset } from "@/design/tokens";
-import { formatShortTime, priorityLabel, stateLabel } from "@/lib/format";
-import type { Column } from "@/prototypes/dispatch/columns";
+import type { Column } from "@/features/dispatch/columns";
 import {
   areaText,
   type Lookups,
   peopleText,
+  type Row,
   typesText,
-} from "@/prototypes/dispatch/state";
+} from "@/features/dispatch/query";
+import { formatShortTime, priorityLabel, stateLabel } from "@/lib/format";
 
-// The ONE row every variant shares (plan 09x), so the comparison is about
-// shape and not about three row designs. One line, a fixed height (the
-// windowed list needs `getItemLayout`), the number in the ledger column,
-// and the colour language unchanged: Open carries `info`, High `danger`,
-// Private `restricted`, Normal wears nothing. Selection is the focus ring
-// `Field` draws plus a raised ground; hover is the ground alone.
-
-export type Density = "compact" | "comfortable";
+// The one incident row (plan 09x criterion 3), promoted from
+// src/prototypes/dispatch/IncidentRow.tsx: one line, a fixed height (the
+// list windows on it), the number in the ledger column, and the colour
+// language unchanged — Open carries `info`, High `danger`, Private
+// `restricted`, Normal wears nothing. `Density` is dropped: comfortable is
+// the only row this slice ships (a preference is 3c.6's).
 
 /**
- * Row height: one body line, its vertical padding (`sm` compact, `md`
- * comfortable) and the rule. Fixed, so the list can window on it.
+ * Row height: one body line, its vertical padding and the rule. Fixed, so
+ * the list can window on it.
  */
-export function rowHeight(lineHeight: number, pad: number) {
+export function rowHeight(lineHeight: number, pad: number): number {
   return lineHeight + 2 * pad + StyleSheet.hairlineWidth;
 }
 
 export interface IncidentRowProps {
-  incident: Incident;
+  view: Row;
   columns: Column[];
   lookups: Lookups;
   selected: boolean;
@@ -44,7 +42,8 @@ export interface IncidentRowProps {
 }
 
 export const IncidentRow = memo(function IncidentRow(props: IncidentRowProps) {
-  const { incident, columns, lookups, selected, height, onPress } = props;
+  const { view, columns, lookups, selected, height, onPress } = props;
+  const incident = view.incident;
   const theme = useTheme();
   const [hovered, setHovered] = useState(false);
   const state = stateLabel(incident.state);
@@ -91,7 +90,7 @@ export const IncidentRow = memo(function IncidentRow(props: IncidentRowProps) {
                 column.align === "right" ? styles.right : null,
               ]}
             >
-              {cell(column, incident, lookups, selected)}
+              {cell(column)}
             </View>
           ))}
         </PressFeedback>
@@ -99,24 +98,21 @@ export const IncidentRow = memo(function IncidentRow(props: IncidentRowProps) {
     </Pressable>
   );
 
-  function cell(
-    column: Column,
-    row: Incident,
-    lookups: Lookups,
-    isSelected: boolean,
-  ) {
+  function cell(column: Column) {
     switch (column.key) {
       case "number":
         return (
-          <Text variant="figure" color={isSelected ? "primary" : "text"}>
-            {row.number}
+          <Text variant="figure" color={selected ? "primary" : "text"}>
+            {incident.number}
           </Text>
         );
       case "state":
         return (
           <View style={[styles.marks, { gap: theme.spacing.xs }]}>
             {state ? <Badge label={state.label} tone={state.tone} /> : null}
-            {row.private ? <Badge label="Private" tone="restricted" /> : null}
+            {incident.private ? (
+              <Badge label="Private" tone="restricted" />
+            ) : null}
           </View>
         );
       case "priority":
@@ -126,37 +122,37 @@ export const IncidentRow = memo(function IncidentRow(props: IncidentRowProps) {
       case "types":
         return (
           <Text variant="caption" color="textMuted" numberOfLines={1}>
-            {typesText(row, lookups)}
+            {typesText(view, lookups)}
           </Text>
         );
       case "area":
         return (
           <Text variant="caption" color="textMuted" numberOfLines={1}>
-            {areaText(row, lookups)}
+            {areaText(view, lookups)}
           </Text>
         );
       case "summary":
         return (
           <Text variant="body" numberOfLines={1}>
-            {row.summary ?? ""}
+            {incident.summary ?? ""}
           </Text>
         );
       case "started":
         return (
           <Text variant="caption" color="textMuted">
-            {formatShortTime(row.started)}
+            {formatShortTime(incident.started)}
           </Text>
         );
       case "modified":
         return (
           <Text variant="caption" color="textMuted">
-            {formatShortTime(row.lastModified)}
+            {formatShortTime(incident.lastModified)}
           </Text>
         );
       case "people":
         return (
           <Text variant="caption" color="textMuted" numberOfLines={1}>
-            {peopleText(row)}
+            {peopleText(view)}
           </Text>
         );
     }

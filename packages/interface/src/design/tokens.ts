@@ -272,3 +272,31 @@ export const ledgerColumn = 58;
 
 /** A form stops growing here; on a wide window it sits centred instead. */
 export const formMaxWidth = 420;
+
+/**
+ * Below this window width the app is "phone"; at or above, "wide" (plan 09x
+ * criterion 1 — `useLayoutMode()` is the one place that reads it).
+ */
+export const wideBreakpoint = 1024;
+
+/**
+ * The dispatch table's column widths (plan 09x criterion 3): every column but
+ * the summary is fixed; the summary is the one that yields, down to
+ * `summaryMin`, after which a column in `columns.ts`'s hide order gives way.
+ */
+export const dispatch = {
+  state: 128,
+  priority: 68,
+  types: 150,
+  area: 130,
+  started: 72,
+  modified: 72,
+  people: 150,
+  summaryMin: 200,
+} as const;
+
+/** The drawer's share of the content width (plan 09x criterion 7). */
+export const drawerShare = 0.66;
+
+/** A full incident page centres at this width on a wide window (criterion 9). */
+export const pageMaxWidth = 720;

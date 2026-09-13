@@ -79,6 +79,21 @@ aligns on the digit rather than drifting.
 Badges are tinted chips — the tone's ink on a ~14% (light) / ~22% (dark) wash of
 itself — rather than solid blocks, so a row with three marks stays calm.
 
+## The table
+
+The dispatch table (plan 09x, 3c.1):
+
+- One line per row; no incident wraps to a second line.
+- Row height: `rowHeight(lineHeight, spacing.md)` — one density, no compact/comfortable choice.
+- The number sits in its own column under a bare `#`, tabular, never a prefix.
+- Fixed-height rows with `getItemLayout`; scroll position is tracked by hand, not `onViewableItemsChanged`.
+- Columns, left to right: `#`, State, Priority, Types, Area, Summary, Started, Modified, People.
+- The summary is the one column that yields width to the window; it never drops under 200 px.
+- The hide order, one column at a time as the window narrows: People → Started → Types → Area → Modified.
+- `#`, State, Priority and Summary never hide.
+- Colour: **Open** carries `info`, **High** carries `danger`, a private row carries `restricted`; **Normal** wears no badge.
+- A hidden column stays searched — hiding only changes what is drawn.
+
 ## Motion budget
 
 The whole budget, from `tokens.motion`:

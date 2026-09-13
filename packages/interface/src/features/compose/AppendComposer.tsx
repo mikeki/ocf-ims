@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
-import { useState } from "react";
-import { StyleSheet, View } from "react-native";
+import { forwardRef, useImperativeHandle, useRef, useState } from "react";
+import { StyleSheet, type TextInput, View } from "react-native";
 import { type AppError, toAppError } from "@/api/errors";
 import { Box } from "@/design/primitives/Box";
 import { Button } from "@/design/primitives/Button";
@@ -16,6 +16,13 @@ import { usePhotoUpload } from "@/features/compose/usePhotoUpload";
 // The incident's docked composer (plan 09r, the D2 pick — Radio's bar): there
 // whenever the caller may add to the journal. An entry lands optimistically;
 // a failure keeps the text and says so beneath the box.
+//
+// Forwards an `AppendComposerHandle` (plan 09x criterion 8: the drawer/page
+// keyboard map's `a` focuses this from outside).
+
+export interface AppendComposerHandle {
+  focus(): void;
+}
 
 export interface AppendComposerProps {
   eventId: number;
@@ -27,7 +34,10 @@ export interface AppendComposerProps {
   attachFiles?: boolean;
 }
 
-export function AppendComposer(props: AppendComposerProps) {
+export const AppendComposer = forwardRef<
+  AppendComposerHandle,
+  AppendComposerProps
+>(function AppendComposer(props, ref) {
   const { eventId, number, author, eventName = "", attachFiles } = props;
   const theme = useTheme();
   const draft = useDraft(eventId, number);
@@ -36,6 +46,12 @@ export function AppendComposer(props: AppendComposerProps) {
   const [sending, setSending] = useState(false);
   const { append, isPending } = useAppendEntry(eventId, number, author);
   const photo = usePhotoUpload(eventId, eventName);
+  const inputRef = useRef<TextInput>(null);
+  useImperativeHandle(
+    ref,
+    () => ({ focus: () => inputRef.current?.focus() }),
+    [],
+  );
   const text = draft.draft.text;
   const canSend = text.trim().length > 0 || photo.pending !== undefined;
 
@@ -93,6 +109,7 @@ export function AppendComposer(props: AppendComposerProps) {
         />
       ) : null}
       <Composer
+        inputRef={inputRef}
         eventId={eventId}
         label="Add to the journal"
         value={text}
@@ -123,7 +140,7 @@ export function AppendComposer(props: AppendComposerProps) {
       </Box>
     </View>
   );
-}
+});
 
 const styles = StyleSheet.create({
   dock: { borderTopWidth: StyleSheet.hairlineWidth },
