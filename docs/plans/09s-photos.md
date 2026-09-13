@@ -2,8 +2,8 @@
 
 # 09s — slice 3b.4: photos
 
-> **Status:** **Built** — brief 2026-09-12; 3b.4a (server) merged the same day, 3b.4b
-> (client) built 2026-09-12 on the brief's recommendations for the open questions below
+> **Status:** **Merged** — brief 2026-09-12; 3b.4a (server, #259) merged the same day, 3b.4b
+> (client, #263) merged 2026-09-13, built on the brief's recommendations for the open questions below
 > (no prototype round; the form carries a photo; the small modal kept). The phone hand
 > check is owed.
 > **Parent:** [09i-expo-client.md](09i-expo-client.md) (Phase 3, the 3b.4 row)

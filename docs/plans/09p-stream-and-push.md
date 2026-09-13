@@ -118,12 +118,12 @@ staging check with two browser sessions, and it is the acceptance test for S2/S3
 
 ## Checklist
 
-- [ ] 3a gate closed (device session) — **this slice does not start before it**
+- [x] ~~3a gate closed (device session) — this slice does not start before it~~ — taken ahead deliberately (see *Status*): no RPC surface at risk, provable in Go tests alone
 - [x] 3b.0a: streaming-safe interceptor spine, with tests, merged
 - [x] 3b.0b: `WatchEvent` — per-subscriber filter, per-poke re-check, heartbeat, cancellation
 - [x] 3b.0c: `KIND` migration, device RPCs, `ExpoPushSender` with receipts, `IMS_EXPO_PUSH_ENABLED`
 - [ ] Two-client privacy check on staging (a writer must never observe a private incident's pokes)
-- [ ] `CLAUDE.md` § *Private incidents* updated — the SSE residual is retired **only** for stream subscribers
+- [x] `docs/architecture.md` § *Authorization* (was `CLAUDE.md`) updated 2026-09-13 — the SSE residual is retired **only** for stream subscribers
 - [x] Plan 09 §7 finding written (connect-go streaming) — *3b.0a — A unary interceptor spine cannot be extended to streaming*
 
 ## Open questions

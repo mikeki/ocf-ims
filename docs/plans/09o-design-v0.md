@@ -220,8 +220,7 @@ which is the artefact to argue with if the direction is ever revisited.
       `getByText(/^#\d+$/)` had the same problem for real (every row now renders a bare
       `#123`, and the list stays mounted under the detail), so the detail's number carries
       `testID="incident-number"` and the tracer asks for that instead.
-      [ ] The **hosted** tracer on staging waits for the merge — staging serves master's
-      build.
+      [x] The **hosted** tracer on staging — green on 180ba55 (2026-09-10).
 - [x] Dark mode: every screen checked in both schemes (Chrome, `colorScheme` emulation);
       the scheme follows the OS.
 - [ ] Screenshots: **Chrome done** — light and dark, at phone width and at 1280 px, for
@@ -309,7 +308,7 @@ schemes), the contrast table, and the `review-animations` table — all recorded
 - [x] Builder run; Chrome screenshots; PR — [x] `review-animations` (Miguel, 2026-09-10:
       **Block**, three findings fixed in the motion follow-up), CI green, Miguel merges
 - [x] Hosted tracer green on staging — **2026-09-10 against 180ba55**, 2 passed / 1 skipped
-- [ ] 09i 3a.4 row + README row → Merged
+- [x] 09i 3a.4 row + README row → Merged (2026-09-13)
 - [x] Plan 09 §7 finding ("what a design system costs on Expo": tokens on three platforms, elevation, the motion budget) — **written 2026-09-10**, with the 3a gate's companion finding
 
 ## Build notes

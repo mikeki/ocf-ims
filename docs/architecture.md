@@ -220,7 +220,9 @@ Event-based access control defined in `lib/authz/`:
   "poke" stream (`GET /ims/api/eventsource`) requires the refresh-token cookie and redacts a
   private incident's number at publish time (`EventSourcerer` privacy oracle → a number-less
   `update_all` poke); the accepted residual is that *some* activity in an event is observable
-  to an authenticated subscriber, until a per-subscriber Connect stream replaces it (Phase 3).
+  to an authenticated subscriber. The per-subscriber Connect stream `WatchEvent` (plan 09p,
+  built 2026-09-10) filters through `mayViewIncident` per subscriber, so that residual is retired
+  for stream subscribers; it remains only for the legacy SSE route until Phase 4 deletes it.
   Non-sensitive attributes (state, priority, type, area) may still feed aggregate
   dashboard counts.
 
