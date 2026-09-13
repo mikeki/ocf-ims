@@ -4,6 +4,8 @@ import { Stack } from "expo-router";
 import { ApiProvider } from "@/api/providers";
 import { useScreenAnimation } from "@/design/motion";
 import { ThemeProvider } from "@/design/theme";
+import { createExpoPushService } from "@/push/expo";
+import { PushProvider } from "@/push/service";
 import { createAppRuntime } from "@/session/appRuntime";
 import { SessionProvider } from "@/session/provider";
 
@@ -12,6 +14,7 @@ import { SessionProvider } from "@/session/provider";
 // the router. The runtime is built once per process, not per render.
 
 const runtime = createAppRuntime();
+const push = createExpoPushService();
 
 export default function RootLayout() {
   const animation = useScreenAnimation();
@@ -25,7 +28,9 @@ export default function RootLayout() {
         blobs={runtime.blobs}
       >
         <SessionProvider session={runtime.session}>
-          <Stack screenOptions={{ headerShown: false, animation }} />
+          <PushProvider service={push}>
+            <Stack screenOptions={{ headerShown: false, animation }} />
+          </PushProvider>
         </SessionProvider>
       </ApiProvider>
     </ThemeProvider>

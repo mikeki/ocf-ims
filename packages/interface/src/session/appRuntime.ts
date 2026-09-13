@@ -11,6 +11,7 @@ import { createAppQueryClient } from "@/api/query";
 import { createConnectTransportFactory } from "@/api/transport";
 import { apiBaseUrl, binaryWireFormat } from "@/config/env";
 import { clearDrafts } from "@/features/compose/drafts";
+import { unregisterStored } from "@/push/registration";
 import { createRuntime, type Runtime } from "@/session/runtime";
 import { refreshTokenStore } from "@/session/store";
 
@@ -37,6 +38,7 @@ export function createAppRuntime(): AppRuntime {
     store: refreshTokenStore,
     platform: Platform.OS === "web" ? "web" : "native",
     makeBlobs: (deps) => createBlobs({ baseUrl: apiBaseUrl(), ...deps }),
+    beforeSignOut: (client) => unregisterStored(client, AsyncStorage),
     onSignedOut: async () => {
       queryClient.clear();
       await persister.removeClient();

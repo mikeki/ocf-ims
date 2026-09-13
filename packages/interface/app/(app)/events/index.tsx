@@ -10,6 +10,9 @@ export default function EventsRoute() {
       onOpenEvent={(eventId) => {
         router.push(`/events/${eventId}/incidents`);
       }}
+      onOpenAlerts={() => {
+        router.push("/alerts");
+      }}
     />
   );
 }

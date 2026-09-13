@@ -1,12 +1,13 @@
 // SPDX-License-Identifier: Apache-2.0
 
-import { Redirect, Stack, usePathname } from "expo-router";
+import { Redirect, Stack, usePathname, useRouter } from "expo-router";
 import { Platform } from "react-native";
 import { useScreenAnimation } from "@/design/motion";
 import { ChangePasswordScreen } from "@/features/auth/ChangePasswordScreen";
 import { Splash } from "@/features/shell/Splash";
 import { Unreachable } from "@/features/shell/Unreachable";
 import { loginHref } from "@/lib/returnPath";
+import { PushEffects } from "@/push/PushEffects";
 import { useSession } from "@/session/provider";
 
 // The signed-in route group (plan 09n T1/T2/T5): the session gate for every
@@ -22,6 +23,7 @@ export const unstable_settings = {
 export default function AppLayout() {
   const { state, retry } = useSession();
   const pathname = usePathname();
+  const router = useRouter();
   const animation = useScreenAnimation();
 
   switch (state.status) {
@@ -42,6 +44,11 @@ export default function AppLayout() {
       if (state.auth.usingDefaultPassword) {
         return <ChangePasswordScreen />;
       }
-      return <Stack screenOptions={{ headerShown: false, animation }} />;
+      return (
+        <>
+          <PushEffects onOpen={(href) => router.push(href as never)} />
+          <Stack screenOptions={{ headerShown: false, animation }} />
+        </>
+      );
   }
 }

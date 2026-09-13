@@ -15,6 +15,11 @@ import type { IncidentType } from "@ocf-ims/protocol-buffers/ocf/ims/resources/v
 import { IncidentTypeSchema } from "@ocf-ims/protocol-buffers/ocf/ims/resources/v1/incident_type_pb";
 import type { JournalEntry } from "@ocf-ims/protocol-buffers/ocf/ims/resources/v1/journal_entry_pb";
 import { JournalEntrySchema } from "@ocf-ims/protocol-buffers/ocf/ims/resources/v1/journal_entry_pb";
+import {
+  type Notification,
+  NotificationSchema,
+  NotificationType,
+} from "@ocf-ims/protocol-buffers/ocf/ims/resources/v1/notification_pb";
 import type { Report } from "@ocf-ims/protocol-buffers/ocf/ims/resources/v1/report_pb";
 import { ReportSchema } from "@ocf-ims/protocol-buffers/ocf/ims/resources/v1/report_pb";
 import type { IncidentView } from "@ocf-ims/protocol-buffers/ocf/ims/service/rpc/v1/incident_pb";
@@ -63,6 +68,22 @@ export function makeJournalEntry(
     author: "Dee",
     systemEntry: false,
     text: "An entry.",
+    ...overrides,
+  });
+}
+
+export function makeNotification(
+  overrides: MessageInitShape<typeof NotificationSchema> = {},
+): Notification {
+  return create(NotificationSchema, {
+    id: 1,
+    type: NotificationType.MENTIONED,
+    event: "2026",
+    incidentNumber: 12,
+    incidentSummary: "Lost child",
+    actor: "Marisol",
+    created: DEFAULT_TIMESTAMP,
+    read: false,
     ...overrides,
   });
 }
