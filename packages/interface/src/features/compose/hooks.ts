@@ -12,6 +12,7 @@ import {
 import { JournalEntrySchema } from "@ocf-ims/protocol-buffers/ocf/ims/resources/v1/journal_entry_pb";
 import type { Person } from "@ocf-ims/protocol-buffers/ocf/ims/resources/v1/person_pb";
 import type { GetIncidentResponse } from "@ocf-ims/protocol-buffers/ocf/ims/service/rpc/v1/incident_pb";
+import type { GetReportResponse } from "@ocf-ims/protocol-buffers/ocf/ims/service/rpc/v1/report_pb";
 import { ImsService } from "@ocf-ims/protocol-buffers/ocf/ims/service/v1/service_pb";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { useQueryClient } from "@tanstack/react-query";
@@ -25,7 +26,14 @@ import {
   saveDraft,
 } from "@/features/compose/drafts";
 import { MENTION_QUERY_MIN } from "@/features/compose/mentions";
-import { appendUpdate, type EntryInput } from "@/features/compose/payload";
+import {
+  appendUpdate,
+  type EntryInput,
+  type ReportEntryInput,
+  reportAppend,
+  reportLink,
+} from "@/features/compose/payload";
+import { useSession } from "@/session/provider";
 
 // Domain hooks for filing and appending (plan 09r § Cache): the mutations and
 // what they invalidate, the mention typeahead, and the per-target draft.
@@ -292,4 +300,311 @@ export function useDraft(
   useEffect(() => write, [write]);
 
   return { loaded, restored, draft, update, flush: write, clear };
+}
+
+// --- Reports (plan 09t, slice 3b.3b) ---
+
+/** A pick for "on behalf of": the person and the words the footer shows. */
+export interface OnBehalfOf {
+  personId: number;
+  label: string;
+}
+
+/**
+ * The sticky "on behalf of" choice, per event, for the session (09i): a
+ * module-level map, so it survives screens and dies with the app.
+ */
+const onBehalfOfByEvent = new Map<number, OnBehalfOf>();
+
+export function useOnBehalfOf(eventId: number) {
+  const [pick, setPickState] = useState<OnBehalfOf | undefined>(
+    onBehalfOfByEvent.get(eventId),
+  );
+  const setPick = useCallback(
+    (next: OnBehalfOf | undefined) => {
+      if (next) {
+        onBehalfOfByEvent.set(eventId, next);
+      } else {
+        onBehalfOfByEvent.delete(eventId);
+      }
+      setPickState(next);
+    },
+    [eventId],
+  );
+  return { pick, setPick };
+}
+
+/** Test seam: forget every event's pick. */
+export function resetOnBehalfOf(): void {
+  onBehalfOfByEvent.clear();
+}
+
+/** How many reports in the event the caller filed — the first-report instructions open when it is 0. */
+export function useOwnReportCount(eventId: number): number | undefined {
+  const { state } = useSession();
+  const me = state.status === "signedIn" ? state.auth.personId : 0;
+  const { data } = useQuery(
+    ImsService.method.listReports,
+    { eventId, excludeSystemEntries: true },
+    { retry: false },
+  );
+  if (!data) {
+    return undefined;
+  }
+  return data.reports.filter((v) => v.report?.createdBy?.personId === me)
+    .length;
+}
+
+/** File a report; the list refetches, and the incident it linked to, if any. */
+export function useCreateReport(eventId: number) {
+  const transport = useTransport();
+  const queryClient = useQueryClient();
+  return useMutation(ImsService.method.createReport, {
+    onSuccess: async (_res, req) => {
+      const jobs = [
+        queryClient.invalidateQueries({
+          queryKey: createConnectQueryKey({
+            schema: ImsService.method.listReports,
+            transport,
+            cardinality: "finite",
+          }),
+        }),
+      ];
+      const incident = req.report?.incident;
+      if (incident) {
+        jobs.push(
+          queryClient.invalidateQueries({
+            queryKey: createConnectQueryKey({
+              schema: ImsService.method.getIncident,
+              transport,
+              input: { eventId, incidentNumber: incident },
+              cardinality: "finite",
+            }),
+          }),
+          queryClient.invalidateQueries({
+            queryKey: createConnectQueryKey({
+              schema: ImsService.method.listIncidents,
+              transport,
+              cardinality: "finite",
+            }),
+          }),
+        );
+      }
+      await Promise.all(jobs);
+    },
+  });
+}
+
+/**
+ * Append one entry to a report: optimistic in the report's cache, the report
+ * and the list refetch on settle; an error rolls back and the screen keeps the text.
+ */
+export function useAppendReportEntry(
+  eventId: number,
+  number: number,
+  author: string,
+) {
+  const transport = useTransport();
+  const queryClient = useQueryClient();
+  const reportKey = createConnectQueryKey({
+    schema: ImsService.method.getReport,
+    transport,
+    input: { eventId, reportNumber: number },
+    cardinality: "finite",
+  });
+  const mutation = useMutation(ImsService.method.updateReport, {
+    onMutate: async (req) => {
+      await queryClient.cancelQueries({ queryKey: reportKey });
+      const previous = queryClient.getQueryData<GetReportResponse>(reportKey);
+      const pending = req.report?.journalEntries?.[0];
+      if (pending) {
+        queryClient.setQueryData(
+          reportKey,
+          createProtobufSafeUpdater(ImsService.method.getReport, (prev) => {
+            if (!prev?.report?.report) {
+              return prev;
+            }
+            const entry = create(JournalEntrySchema, {
+              id: -Date.now(),
+              created: timestampFromDate(new Date()),
+              author,
+              text: pending.text ?? "",
+              mentions: pending.mentions ?? [],
+              onBehalfOf: pending.onBehalfOf,
+            });
+            return {
+              ...prev,
+              report: {
+                ...prev.report,
+                report: {
+                  ...prev.report.report,
+                  journalEntries: [...prev.report.report.journalEntries, entry],
+                },
+              },
+            };
+          }),
+        );
+      }
+      return { previous };
+    },
+    onError: (_error, _req, context) => {
+      if (context?.previous) {
+        queryClient.setQueryData(reportKey, context.previous);
+      }
+    },
+    onSettled: async () => {
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: reportKey }),
+        queryClient.invalidateQueries({
+          queryKey: createConnectQueryKey({
+            schema: ImsService.method.listReports,
+            transport,
+            cardinality: "finite",
+          }),
+        }),
+      ]);
+    },
+  });
+  const append = useCallback(
+    (entry: ReportEntryInput) =>
+      mutation.mutateAsync({
+        eventId,
+        reportNumber: number,
+        report: reportAppend(entry),
+      }),
+    [mutation.mutateAsync, eventId, number],
+  );
+  return { append, isPending: mutation.isPending };
+}
+
+/** Link a report to an incident; both records refetch. */
+export function useLinkReport(eventId: number, number: number) {
+  const transport = useTransport();
+  const queryClient = useQueryClient();
+  const mutation = useMutation(ImsService.method.updateReport, {
+    onSuccess: async (_res, req) => {
+      await Promise.all([
+        queryClient.invalidateQueries({
+          queryKey: createConnectQueryKey({
+            schema: ImsService.method.getReport,
+            transport,
+            input: { eventId, reportNumber: number },
+            cardinality: "finite",
+          }),
+        }),
+        queryClient.invalidateQueries({
+          queryKey: createConnectQueryKey({
+            schema: ImsService.method.listReports,
+            transport,
+            cardinality: "finite",
+          }),
+        }),
+        queryClient.invalidateQueries({
+          queryKey: createConnectQueryKey({
+            schema: ImsService.method.getIncident,
+            transport,
+            input: { eventId, incidentNumber: req.report?.incident ?? 0 },
+            cardinality: "finite",
+          }),
+        }),
+        queryClient.invalidateQueries({
+          queryKey: createConnectQueryKey({
+            schema: ImsService.method.listIncidents,
+            transport,
+            cardinality: "finite",
+          }),
+        }),
+      ]);
+    },
+  });
+  const link = useCallback(
+    (incident: number) =>
+      mutation.mutateAsync({
+        eventId,
+        reportNumber: number,
+        report: reportLink(incident),
+      }),
+    [mutation.mutateAsync, eventId, number],
+  );
+  return { link, isPending: mutation.isPending };
+}
+
+/** Ask a person for their report on an incident; the incident refetches. */
+export function useRequestReport(eventId: number, number: number) {
+  const transport = useTransport();
+  const queryClient = useQueryClient();
+  const mutation = useMutation(ImsService.method.requestReport, {
+    onSuccess: async () => {
+      await Promise.all([
+        queryClient.invalidateQueries({
+          queryKey: createConnectQueryKey({
+            schema: ImsService.method.getIncident,
+            transport,
+            input: { eventId, incidentNumber: number },
+            cardinality: "finite",
+          }),
+        }),
+        queryClient.invalidateQueries({
+          queryKey: createConnectQueryKey({
+            schema: ImsService.method.listIncidents,
+            transport,
+            cardinality: "finite",
+          }),
+        }),
+      ]);
+    },
+  });
+  const request = useCallback(
+    (personId: number) =>
+      mutation.mutateAsync({ eventId, incidentNumber: number, personId }),
+    [mutation.mutateAsync, eventId, number],
+  );
+  return { request, isPending: mutation.isPending };
+}
+
+/** Whether the report-writing instructions are open on this device for the event. */
+const HELP_KEY = "ocf-ims/report-help";
+
+export function useReportHelp(
+  eventId: number,
+  defaultOpen: boolean | undefined,
+) {
+  const [stored, setStored] = useState<boolean | undefined>(undefined);
+  const [loaded, setLoaded] = useState(false);
+
+  useEffect(() => {
+    let cancelled = false;
+    void AsyncStorage.getItem(`${HELP_KEY}/${eventId}`)
+      .catch(() => null)
+      .then((raw) => {
+        if (cancelled) {
+          return;
+        }
+        // A toggle that landed before the read finished wins.
+        setStored((current) =>
+          current !== undefined
+            ? current
+            : raw === null
+              ? undefined
+              : raw === "1",
+        );
+        setLoaded(true);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [eventId]);
+
+  const open = stored ?? defaultOpen ?? false;
+  const setOpen = useCallback(
+    (next: boolean) => {
+      setStored(next);
+      void AsyncStorage.setItem(
+        `${HELP_KEY}/${eventId}`,
+        next ? "1" : "0",
+      ).catch(() => undefined);
+    },
+    [eventId],
+  );
+  return { open, setOpen, loaded };
 }

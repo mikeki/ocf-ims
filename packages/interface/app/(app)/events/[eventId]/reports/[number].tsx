@@ -26,6 +26,15 @@ export default function ReportRoute() {
       onBack={() => {
         router.dismissTo(`/events/${eventId}/incidents`);
       }}
+      onOpenIncident={(n) => {
+        router.push(`/events/${eventId}/incidents/${n}`);
+      }}
+      onCreateIncident={(summary) => {
+        router.push({
+          pathname: `/events/${eventId}/incidents/new`,
+          params: { report: String(number), summary },
+        });
+      }}
     />
   );
 }

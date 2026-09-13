@@ -50,10 +50,19 @@ export interface BoardScreenProps {
   onOpenReport: (number: number) => void;
   /** Opens the filing form (09r). */
   onFile: () => void;
+  /** Opens the report form (09t). */
+  onFileReport: () => void;
 }
 
 export function BoardScreen(props: BoardScreenProps) {
-  const { eventId, onBack, onOpenIncident, onOpenReport, onFile } = props;
+  const {
+    eventId,
+    onBack,
+    onOpenIncident,
+    onOpenReport,
+    onFile,
+    onFileReport,
+  } = props;
   const [segment, setSegment] = useState<SegmentKey>("mine");
 
   const { state } = useSession();
@@ -154,7 +163,13 @@ export function BoardScreen(props: BoardScreenProps) {
             onOpenReport(item.number);
           },
         })}
-        {access.writeIncidents ? <QuickBar onFile={onFile} /> : null}
+        {renderBar({
+          segment: active,
+          writeIncidents: access.writeIncidents,
+          writeReports: access.writeReports && !reportsForbidden,
+          onFile,
+          onFileReport,
+        })}
       </Box>
     </KeyboardAvoidingView>
   );
@@ -163,6 +178,26 @@ export function BoardScreen(props: BoardScreenProps) {
 const styles = StyleSheet.create({
   fill: { flex: 1 },
 });
+
+/**
+ * The docked bar: the incident bar for a writer on All / Mine, the report bar
+ * on Reports — and on every segment for someone who can only write reports.
+ */
+function renderBar(args: {
+  segment: SegmentKey;
+  writeIncidents: boolean;
+  writeReports: boolean;
+  onFile: () => void;
+  onFileReport: () => void;
+}): ReactNode {
+  if (args.segment !== "reports" && args.writeIncidents) {
+    return <QuickBar onFile={args.onFile} />;
+  }
+  if (args.writeReports) {
+    return <QuickBar kind="report" onFile={args.onFileReport} />;
+  }
+  return null;
+}
 
 interface BodyArgs {
   segment: SegmentKey;

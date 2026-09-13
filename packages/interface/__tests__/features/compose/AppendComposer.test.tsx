@@ -71,6 +71,8 @@ describe("AppendComposer", () => {
         number={214}
         onBack={() => undefined}
         onOpenIncident={() => undefined}
+        onOpenReport={() => undefined}
+        onFileReport={() => undefined}
       />,
       runtime,
     );
@@ -104,6 +106,8 @@ describe("AppendComposer", () => {
         number={214}
         onBack={() => undefined}
         onOpenIncident={() => undefined}
+        onOpenReport={() => undefined}
+        onFileReport={() => undefined}
       />,
       runtime,
     );
@@ -127,6 +131,8 @@ describe("AppendComposer", () => {
         number={214}
         onBack={() => undefined}
         onOpenIncident={() => undefined}
+        onOpenReport={() => undefined}
+        onFileReport={() => undefined}
       />,
       runtime,
     );

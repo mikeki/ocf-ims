@@ -13,10 +13,26 @@ import { pressRetentionOffset, touchTarget } from "@/design/tokens";
 
 export interface QuickBarProps {
   onFile: () => void;
+  /** What a tap starts: an incident (the default) or a report (09t). */
+  kind?: "incident" | "report";
 }
+
+const COPY = {
+  incident: {
+    a11y: "What's happening? Start a new incident",
+    label: "What's happening?",
+    hint: "One line to start an incident",
+  },
+  report: {
+    a11y: "Something to report? Write a report",
+    label: "Something to report?",
+    hint: "One line to start a report",
+  },
+} as const;
 
 export function QuickBar(props: QuickBarProps) {
   const theme = useTheme();
+  const copy = COPY[props.kind ?? "incident"];
   return (
     <View
       style={[
@@ -30,15 +46,15 @@ export function QuickBar(props: QuickBarProps) {
     >
       <Pressable
         accessibilityRole="button"
-        accessibilityLabel="What's happening? Start a new incident"
+        accessibilityLabel={copy.a11y}
         onPress={props.onFile}
         pressRetentionOffset={pressRetentionOffset}
-        testID="quick-bar"
+        testID={props.kind === "report" ? "quick-bar-report" : "quick-bar"}
       >
         {({ pressed }) => (
           <PressFeedback pressed={pressed} style={{ gap: theme.spacing.xs }}>
             <Text variant="label" color="textMuted" aria-hidden>
-              What's happening?
+              {copy.label}
             </Text>
             <View
               style={[
@@ -52,7 +68,7 @@ export function QuickBar(props: QuickBarProps) {
               ]}
             >
               <Text color="textMuted" aria-hidden>
-                One line to start an incident
+                {copy.hint}
               </Text>
             </View>
           </PressFeedback>

@@ -152,3 +152,42 @@ test("file an incident from the Board's bar, append an entry with a mention", as
   await page.getByRole("button", { name: "Sign out" }).click();
   await expect(page.getByRole("button", { name: "Sign in" })).toBeVisible();
 });
+
+// Reports (plan 09t, slice 3b.3b): the Reports segment offers the report bar,
+// the form files with a summary and details, the report replaces the form and
+// its composer appends an entry. Test content only — the staging seed keeps it.
+test("file a report from the Board's Reports segment, append an entry", async ({
+  page,
+}) => {
+  await page.goto("/");
+  await page.getByLabel("Email").fill(email ?? "");
+  // exact: the PasswordField's reveal button is also labelled "…Password".
+  await page.getByLabel("Password", { exact: true }).fill(password ?? "");
+  await page.getByRole("button", { name: "Sign in" }).click();
+  await expect(page).toHaveURL(/\/events\/\d+\/incidents$/);
+
+  const stamp = new Date().toISOString();
+  await page.getByTestId("board-segment-reports").click();
+  await page.getByTestId("quick-bar-report").click();
+  await expect(page).toHaveURL(/\/reports\/new$/);
+  await page.getByTestId("report-summary").fill(`Tracer test report ${stamp}`);
+  await page
+    .getByTestId("report-details")
+    .fill("Filed by the tracer; ignore. Nothing happened.");
+  await page.getByTestId("file-report").click();
+  await expect(page).toHaveURL(/\/reports\/\d+$/);
+  await expect(page.getByTestId("report-number")).toBeVisible();
+  await expect(page.getByText("Nothing happened.")).toBeVisible();
+
+  const composer = page.getByTestId("report-append-text");
+  await composer.click();
+  await composer.fill("Tracer follow-up entry.");
+  await page.getByTestId("report-append-send").click();
+  await expect(page.getByText("Tracer follow-up entry.")).toBeVisible();
+
+  await page.getByRole("button", { name: "Board" }).click();
+  await expect(page).toHaveURL(/\/events\/\d+\/incidents$/);
+  await page.getByRole("button", { name: "Events" }).click();
+  await page.getByRole("button", { name: "Sign out" }).click();
+  await expect(page.getByRole("button", { name: "Sign in" })).toBeVisible();
+});

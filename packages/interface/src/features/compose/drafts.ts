@@ -9,12 +9,17 @@ import type { AsyncStorageLike } from "@/api/persist";
 
 export const DRAFTS_KEY = "ocf-ims/drafts";
 
-/** `"new"` for the filing form, an incident number for its composer. */
-export type DraftTarget = "new" | number;
+/**
+ * `"new"` for the filing form, an incident number for its composer,
+ * `"report-new"` for the report form and `report-<n>` for a report's composer (09t).
+ */
+export type DraftTarget = "new" | "report-new" | number | `report-${number}`;
 
 export interface Draft {
   summary?: string;
   text: string;
+  /** The report form's "on behalf of" pick (09t): a person id and its label. */
+  onBehalfOf?: { personId: number; label: string };
 }
 
 export type Drafts = Readonly<Record<string, Draft>>;
@@ -48,13 +53,21 @@ export function parseDrafts(raw: string): Drafts {
     if (typeof value !== "object" || value === null) {
       continue;
     }
-    const { summary, text } = value as Partial<Draft>;
+    const { summary, text, onBehalfOf } = value as Partial<Draft>;
     if (typeof text !== "string") {
       continue;
     }
+    const pick =
+      typeof onBehalfOf === "object" &&
+      onBehalfOf !== null &&
+      typeof onBehalfOf.personId === "number" &&
+      typeof onBehalfOf.label === "string"
+        ? { personId: onBehalfOf.personId, label: onBehalfOf.label }
+        : undefined;
     drafts[key] = {
       text,
       ...(typeof summary === "string" ? { summary } : {}),
+      ...(pick ? { onBehalfOf: pick } : {}),
     };
   }
   return drafts;
