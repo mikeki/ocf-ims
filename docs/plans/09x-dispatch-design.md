@@ -3,9 +3,12 @@
 # 09x — D2 and slice 3c.0: Dispatch on a wide screen
 
 > **Status:** **Picked 2026-09-13: Drawer, with the top bar, and the drawer opens the full
-> page.** The surface is merged (#272) and stays in the tree until 3c.1 promotes and
-> deletes it; **the 3c.1 acceptance criteria are written below (2026-09-13)** — the next
-> step is the builder, a fresh Sonnet session with that section as the brief.
+> page.** The 3c.1 acceptance criteria are below (2026-09-13); **3c.1 built 2026-09-14
+> (#274)** as two Sonnet builders under the architect (the seam: shell + table + URL +
+> keyboard, then drawer + page + live patch), one PR, the surface deleted in it. Two things
+> only a browser can confirm, for the staging hand check: prev / next on the full page via
+> `setParams` must not remount the screen, and Enter on a bare-number search must leave
+> the keyboard map live.
 > Taken ahead of the 3b gate on the 3b.0 precedent: the gate is held by accounts and
 > hardware, not code, and this slice ships no code — it decides shape.
 > **Parent:** [09i-expo-client.md](09i-expo-client.md) (Phase 3, §6 **D2** and the 3c.0 row)
@@ -468,7 +471,7 @@ keyboard walk, the poke-behind-selection case, reduced motion. Nothing goes to s
 - [x] The surface built, verified and the scripted walk green (2026-09-13)
 - [x] The round run; the pick recorded here with its reasons (2026-09-13: Drawer + top bar + full page)
 - [x] The 3c.1 acceptance criteria written (architect, 2026-09-13)
-- [ ] The throwaway surface deleted; `/review-animations` on anything promoted (in the 3c.1 PR)
+- [x] The throwaway surface deleted in the 3c.1 PR (#274, 2026-09-14); the promoted motion is press feedback and the help sheet's `StateFade` only
 
 ## Open questions
 
