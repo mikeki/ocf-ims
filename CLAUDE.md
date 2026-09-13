@@ -80,7 +80,7 @@ Client rules: `@/x` is `src/x`; generated protos are deep-imported
 runtime over `createRouterTransport` + `createFakeIms()` (`src/test/`); RNTL 14 is
 async — `await render(...)` **and** `await fireEvent.*(...)`. The session and transport
 files (`src/api/transport.ts`, `src/session/*`, `src/api/blobs.ts`, `src/api/stream.ts`,
-`src/push/*`) are architect-tier (09i §7 rule 3): no subagents edit them.
+`src/push/*`) are architect-tier (roster rule 3): no subagents edit them.
 
 **Design.** `src/design/tokens.ts` is the only file that may hold a colour, spacing,
 font-size or duration literal; everything else reads them through `useTheme()`. The
@@ -97,6 +97,33 @@ Brand assets come from `node scripts/brand-assets.mjs`; don't hand-edit the PNGs
 `animate-expo`; before a UI PR closes → `review-animations`; a design round with
 variants → `prototype`; the taste and philosophy doc `emil-design-eng` only when
 writing a design brief or judging a direction.
+
+## Model roster (who does what)
+
+One tier per session or `Agent` call; a task takes the lowest tier that can own it.
+
+| Tier | Model | Owns |
+|---|---|---|
+| **Design** | Claude Design, or an in-code picker round (`prototype`) run by the maintainer | Design system, screen prototypes, flows and states, brand assets; the handoff bundle. Decided one slice ahead of implementation (09i §6). |
+| **Architect** | Opus 5; Fable 5.1 for auth / session / privacy review and the slice briefs | Plan and slice briefs; the foundations (transport, session, data layer, stream client, error model); **every server slice**; anything touching authn / authz / privacy; `/code-review` of every builder PR; the §7 findings; the 3c.6 "what people rely on" list with the maintainer. |
+| **Builder** | Sonnet 5 | Screen and feature slices against a fixed brief (acceptance criteria, hooks, invalidations, design refs, files to touch) and their Jest / Playwright specs. |
+| **Mechanic** | Haiku 4.5 | CI / Docker / compose / Caddy, `app.json` / `eas.json`, biome / tsconfig, dependency bumps, lint fixes, rename sweeps, inventories, README and changelog chores. |
+
+Rules (numbered as 09i §7 cites them):
+
+1. **A brief precedes a builder.** A builder that finds the brief wrong stops and reports.
+2. **Contract gaps stop the builder.** File the gap in the slice notes and continue with
+   what exists; the architect fixes the proto in a server slice. Never work around it.
+3. **Security code is architect-only, no subagents:** `internal/auth`, `lib/push`, and the
+   client's `src/api/transport.ts`, `src/api/blobs.ts`, `src/api/stream.ts`,
+   `src/session/*`, `src/push/*`, `src/lib/permissions.ts`, `src/lib/returnPath.ts`.
+4. **Review climbs a tier.** Builder PR → architect `/code-review` → the maintainer;
+   architect PR → a second architect review → the maintainer; mechanic PR → architect skim.
+5. **In Claude Code:** an architect session writes the brief and lands foundations itself;
+   builder work is a fresh Sonnet session per slice, or `Agent` with `model: sonnet` for
+   slices under ~500 lines, the brief as the whole prompt; mechanic tasks are `Agent`
+   with `model: haiku`. Parallel builders only where the plan marks slices independent;
+   a multi-agent `Workflow` only when the maintainer opts in.
 
 ## Session hygiene (keep the context small)
 
