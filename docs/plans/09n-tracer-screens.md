@@ -377,7 +377,7 @@ runs the `latest` images and pulls every 10 min):**
 | Hosted, on the 3a.3 image | sign-in ✓, `/` → the newest event's incidents ✓, Events ✓, incident rows ✓, detail ✓, **reload-resume ✓ (the cookie)**; then "Incidents" landed on *Events* ✗ — the back-after-deep-link bug, fixed in the follow-up PR (`dismissTo`) |
 | Interim, as documented | the login form never appeared: the export had ignored `EXPO_PUBLIC_API_URL` (Metro's transform cache kept the config module transformed for the unset value) and the app talked to the static server — "Something went wrong" |
 | Interim, `--clear` + `e2e/serve.mjs` | **both tests pass** (the flow 1.3 s; the deep link 1.5 s) with the fix |
-| Hosted, with the fix | pending — after the follow-up merges and staging pulls the web image |
+| Hosted, with the fix | **both tests pass** — 2026-09-10 on 180ba55 (the checklist row below) |
 
 The follow-up PR reran the §9 steps (typecheck 0, lint 91 files 0, 18 suites / 147 tests,
 export, smoke behind `serve.mjs` green).

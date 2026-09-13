@@ -2,7 +2,7 @@
 
 # 09r — D2 and slice 3b.2: file an incident, append an entry
 
-> **Status:** **Built** — the round ran and the maintainer chose a hybrid (2026-09-12);
+> **Status:** **Merged (#258, 2026-09-12)** — the round ran and the maintainer chose a hybrid (2026-09-12);
 > slice 3b.2 shipped with it. Open: a hand check on a real phone.
 > **Parent:** [09i-expo-client.md](09i-expo-client.md) (Phase 3, §6 **D1** and the 3b.2 row)
 > under [09-proto-connect-platform.md](09-proto-connect-platform.md)

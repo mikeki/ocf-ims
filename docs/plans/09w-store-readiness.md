@@ -2,7 +2,7 @@
 
 # 09w — slice 3b.7: store readiness
 
-> **Status:** **Built, as far as a repository can be** — 2026-09-12, the last PR in the
+> **Status:** **Merged (#266, 2026-09-13), as far as a repository can be** — built 2026-09-12, the last PR in the
 > 3b client stack. What remains is the maintainer's: the accounts, the EAS project, the
 > first builds, and the device checks the earlier slices owe. The 3b gate stays open until
 > those run.

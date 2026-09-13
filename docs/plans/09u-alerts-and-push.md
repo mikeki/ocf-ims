@@ -2,7 +2,7 @@
 
 # 09u — slice 3b.5: alerts and push
 
-> **Status:** **Built** — 2026-09-12, as the next PR in the 3b client stack. The device
+> **Status:** **Merged (#264, 2026-09-13)** — built 2026-09-12 as the next PR in the 3b client stack. The device
 > half of the verification (a real phone, a real push) is owed, and it needs an EAS project
 > id first (open question 1).
 > **Parent:** [09i-expo-client.md](09i-expo-client.md) (Phase 3, the 3b.5 row)

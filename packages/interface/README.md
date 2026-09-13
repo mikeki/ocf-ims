@@ -149,6 +149,20 @@ never carries it. The second tracer test starts from a signed-out deep link (the
 `?o=` return path, then "Incidents" must reach the list) and needs no cookie, so
 it runs in both modes. Staging follows master about ten minutes behind CI.
 
+## The field app (3b, [09q](../../docs/plans/09q-field-flows.md)–[09w](../../docs/plans/09w-store-readiness.md))
+
+On top of the tracer screens: the Board with its "Mine" segment (created by me,
+attached, or mentioned — 09q); filing an incident from the Board's docked bar and
+appending an entry with `@` mentions, drafts surviving in storage (09r); reports —
+file, append on behalf of someone, ask a person for their report from an incident,
+the "owes a report" rule (09t); a photo on an entry or on the filing form, shrunk
+client-side, uploaded over `src/api/blobs.ts` with progress and Retry, shown inline
+(09s); the Alerts screen behind the header's bell and native push through
+`src/push/` (09u); live updates — `src/api/stream.ts` consumes `WatchEvent` and a
+per-event hub turns pokes into query invalidations, paused in the background (09v);
+and the store scaffolding below (09w). The tracer covers all of it on web; the phone
+checks are listed in each brief.
+
 ## Layout and rules (09i §5)
 
 - `app/` holds routes only (Expo Router); logic lives in `src/`. Security-sensitive
