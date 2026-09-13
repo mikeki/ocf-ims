@@ -257,3 +257,58 @@ test("file an incident with a photo, see it in the journal, open it", async ({
 /** A 2×2 orange PNG. */
 const TRACER_PNG =
   "iVBORw0KGgoAAAANSUhEUgAAAAIAAAACCAIAAAD91JpzAAAAFklEQVR4nGP4z8DwHwyBFAMDGIIBAG4bDfXkxT4nAAAAAElFTkSuQmCC";
+
+// Live updates (plan 09v, slice 3b.6): an entry appended from a second session
+// shows on the first within seconds — well inside the 30 s poll, so it is the
+// stream that carried it.
+test("an entry from a second session appears live on the first", async ({
+  browser,
+  page,
+}) => {
+  await page.goto("/");
+  await page.getByLabel("Email").fill(email ?? "");
+  await page.getByLabel("Password", { exact: true }).fill(password ?? "");
+  await page.getByRole("button", { name: "Sign in" }).click();
+  await expect(page).toHaveURL(/\/events\/\d+\/incidents$/);
+  await page.getByTestId("board-segment-all").click();
+  await page
+    .getByTestId(/^incident-row-/)
+    .first()
+    .click();
+  await expect(page).toHaveURL(/\/incidents\/\d+$/);
+  const url = page.url();
+
+  const other = await browser.newContext();
+  const second = await other.newPage();
+  await second.goto("/");
+  await second.getByLabel("Email").fill(email ?? "");
+  await second.getByLabel("Password", { exact: true }).fill(password ?? "");
+  await second.getByRole("button", { name: "Sign in" }).click();
+  await expect(second).toHaveURL(/\/events\/\d+\/incidents$/);
+  await second.getByTestId("board-segment-all").click();
+  await second
+    .getByTestId(/^incident-row-/)
+    .first()
+    .click();
+  await expect(second).toHaveURL(url);
+  const stamp = new Date().toISOString();
+  await second.getByTestId("append-text").fill(`Live tracer entry ${stamp}`);
+  await second.getByTestId("append-send").click();
+  await expect(
+    second
+      .getByTestId("incident-refresh-control")
+      .getByText(`Live tracer entry ${stamp}`),
+  ).toBeVisible();
+
+  await expect(
+    page
+      .getByTestId("incident-refresh-control")
+      .getByText(`Live tracer entry ${stamp}`),
+  ).toBeVisible({ timeout: 10_000 });
+  await other.close();
+
+  await page.getByRole("button", { name: "Board" }).click();
+  await page.getByRole("button", { name: "Events" }).click();
+  await page.getByRole("button", { name: "Sign out" }).click();
+  await expect(page.getByRole("button", { name: "Sign in" })).toBeVisible();
+});

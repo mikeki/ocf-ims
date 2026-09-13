@@ -68,6 +68,12 @@ import {
   type UpdateReportRequest,
   UpdateReportResponseSchema,
 } from "@ocf-ims/protocol-buffers/ocf/ims/service/rpc/v1/report_pb";
+import {
+  type EventPoke,
+  EventPokeKind,
+  type WatchEventRequest,
+  WatchEventResponseSchema,
+} from "@ocf-ims/protocol-buffers/ocf/ims/service/rpc/v1/stream_pb";
 import { ImsService } from "@ocf-ims/protocol-buffers/ocf/ims/service/v1/service_pb";
 
 // A programmable in-memory ImsService for createRouterTransport (plan 09l): the
@@ -151,7 +157,16 @@ export interface FakeIms {
     markAllNotificationsRead: ListBehaviour;
     registerPushDevice: ListBehaviour;
     unregisterPushDevice: ListBehaviour;
+    watchEvent: ListBehaviour;
   };
+  /** The WatchEvent streams open right now (09v). */
+  openStreams: WatchEventRequest[];
+  /** Every WatchEvent ever opened. */
+  streamRequests: WatchEventRequest[];
+  /** Delivers a poke on every open stream watching its event. */
+  poke(poke: Partial<EventPoke> & { eventId: number }): void;
+  /** Ends every open stream: cleanly, or with the error. */
+  endStreams(error?: ConnectError): void;
   user: FakeUser;
   /** Programmable ListNotifications data (09u); `read` is flipped by the mark RPCs. */
   notifications: Notification[];
@@ -223,6 +238,21 @@ export function createFakeIms(options: FakeImsOptions = {}): FakeIms {
       markAllNotificationsRead: "ok",
       registerPushDevice: "ok",
       unregisterPushDevice: "ok",
+      watchEvent: "ok",
+    },
+    openStreams: [],
+    streamRequests: [],
+    poke(poke) {
+      for (const stream of streams) {
+        if (stream.req.eventIds.includes(poke.eventId)) {
+          stream.push({ kind: "poke", poke });
+        }
+      }
+    },
+    endStreams(error) {
+      for (const stream of [...streams]) {
+        stream.push({ kind: "end", error });
+      }
     },
     notifications: [],
     pushDevices: [],
@@ -844,6 +874,39 @@ export function createFakeIms(options: FakeImsOptions = {}): FakeIms {
           }
           return create(RegisterPushDeviceResponseSchema);
         },
+        async *watchEvent(req, ctx) {
+          record("WatchEvent", ctx);
+          guard(fake.behaviour.watchEvent, ctx);
+          fake.streamRequests.push(req);
+          const stream = openStream(req, ctx.signal);
+          try {
+            yield create(WatchEventResponseSchema, {
+              poke: {
+                kind: EventPokeKind.HEARTBEAT,
+                eventId: req.eventIds[0],
+                sent: timestampFromDate(new Date(clock())),
+              },
+            });
+            for (;;) {
+              const item = await stream.next();
+              if (item.kind === "end") {
+                if (item.error) {
+                  throw item.error;
+                }
+                return;
+              }
+              yield create(WatchEventResponseSchema, {
+                poke: {
+                  kind: EventPokeKind.INCIDENT_CHANGED,
+                  sent: timestampFromDate(new Date(clock())),
+                  ...item.poke,
+                },
+              });
+            }
+          } finally {
+            stream.close();
+          }
+        },
         unregisterPushDevice(req, ctx) {
           record("UnregisterPushDevice", ctx);
           guard(fake.behaviour.unregisterPushDevice, ctx);
@@ -942,6 +1005,59 @@ export function createFakeIms(options: FakeImsOptions = {}): FakeIms {
   }
 
   /** The read/write RPCs' shared preamble: availability, sign-in, then the forbidden switch. */
+  type StreamItem =
+    | { kind: "poke"; poke: Partial<EventPoke> & { eventId: number } }
+    | { kind: "end"; error: ConnectError | undefined };
+  interface OpenStream {
+    req: WatchEventRequest;
+    push(item: StreamItem): void;
+    next(): Promise<StreamItem>;
+    close(): void;
+  }
+  const streams: OpenStream[] = [];
+
+  /** A queue the handler awaits and a test feeds; the client's abort ends it. */
+  function openStream(req: WatchEventRequest, signal: AbortSignal): OpenStream {
+    const queue: StreamItem[] = [];
+    let waiting: ((item: StreamItem) => void) | undefined;
+    const stream: OpenStream = {
+      req,
+      push(item) {
+        if (waiting) {
+          const resolve = waiting;
+          waiting = undefined;
+          resolve(item);
+        } else {
+          queue.push(item);
+        }
+      },
+      next() {
+        const item = queue.shift();
+        if (item) {
+          return Promise.resolve(item);
+        }
+        return new Promise((resolve) => {
+          waiting = resolve;
+        });
+      },
+      close() {
+        const at = streams.indexOf(stream);
+        if (at >= 0) {
+          streams.splice(at, 1);
+        }
+        fake.openStreams = streams.map((s) => s.req);
+      },
+    };
+    signal.addEventListener(
+      "abort",
+      () => stream.push({ kind: "end", error: undefined }),
+      { once: true },
+    );
+    streams.push(stream);
+    fake.openStreams = streams.map((s) => s.req);
+    return stream;
+  }
+
   function guard(behaviour: ListBehaviour, ctx: HandlerContext): void {
     if (behaviour === "unavailable") {
       throw new ConnectError("redeploying", Code.Unavailable);

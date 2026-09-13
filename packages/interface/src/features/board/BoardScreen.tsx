@@ -31,6 +31,7 @@ import { QuickBar } from "@/features/compose/QuickBar";
 import { useEventAccess, useEvents } from "@/features/events/hooks";
 import { useAreas } from "@/features/incidents/hooks";
 import { areaName } from "@/features/incidents/lookups";
+import { useLiveEvent } from "@/features/live/useLiveEvent";
 import { EmptyState } from "@/features/shell/EmptyState";
 import { ErrorState } from "@/features/shell/ErrorState";
 import { LoadingState } from "@/features/shell/LoadingState";
@@ -75,6 +76,7 @@ export function BoardScreen(props: BoardScreenProps) {
   const eventsQuery = useEvents();
   const incidentsQuery = useIncidentsForBoard(eventId);
   const reportsQuery = useReports(eventId);
+  useLiveEvent(eventId);
   const areasQuery = useAreas(eventId, access.readAreas);
   const seen = useSeen(eventId);
 
