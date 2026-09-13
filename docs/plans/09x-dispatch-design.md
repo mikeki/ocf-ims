@@ -2,7 +2,9 @@
 
 # 09x — D2 and slice 3c.0: Dispatch on a wide screen
 
-> **Status:** **Brief written 2026-09-13; the prototype round is the maintainer's to run.**
+> **Status:** **Picked 2026-09-13: Drawer, with the top bar, and the drawer opens the full
+> page.** The surface is on branch `feat/09x-d2-dispatch-round`; the 3c.1 acceptance
+> criteria are the next step (architect), then the surface is deleted.
 > Taken ahead of the 3b gate on the 3b.0 precedent: the gate is held by accounts and
 > hardware, not code, and this slice ships no code — it decides shape.
 > **Parent:** [09i-expo-client.md](09i-expo-client.md) (Phase 3, §6 **D2** and the 3c.0 row)
@@ -124,6 +126,90 @@ column layout if the maintainer prefers to iterate those on a canvas first; the 
 itself should be made on a running surface. The throwaway surface is deleted after the
 pick, as 09q's was.
 
+### What was built — the surface (2026-09-13)
+
+`app/(dev)/dispatch.tsx` + `src/prototypes/dispatch/` (throwaway, outside the session
+gates, no server, deleted after the pick). One `useDispatch` state machine (the URL codec,
+the client-side filter/sort/search, the cached rows with pokes patched in, the keyboard
+map), one `IncidentRow`, one `Table`, one `FilterBar`, one `IncidentPane`, one `Shell`;
+the three variants differ only in what "open" means. Run it with
+`pnpm -F @ocf-ims/interface start` and open `http://localhost:8081/dispatch?v=1`
+(`1`/`2`/`3` or `←`/`→` flip the picker). The harness band above the stage takes the
+shape-independent decisions: shell (sidebar / top bar), a fixed stage width (1024 / 1440 /
+fit), scheme (light / dark / OS), rows (compact 33 px / comfortable 41 px), and the two
+pokes (`p` another row, `P` the selected row). The query string is this brief's schema
+verbatim plus `open=` (the Page variant's stand-in for the path segment) and the harness
+keys `v`, `shell`, `w`, `scheme`, `density`; switching variants keeps the table's state, so
+the comparison is about shape. The fixture event holds 196 incidents; #173 carries the
+30-entry journal; `?state=closed&priority=high&days=1&q=zzz` is the empty result.
+
+| Variant | Axis | When it is the right choice | Its cost, measured |
+|---|---|---|---|
+| Split | Persistence | The dispatcher works one incident while watching the rest | The pane takes 40 % (never under 360 px): at 1440 with the sidebar the table keeps 732 px and loses Type, Started and People; at 1024 with the sidebar it keeps 444 px — number, state, priority, summary only. The top bar gives the table 220 px back |
+| Drawer | Focus | Reading and appending is the job; the table is context | The panel (66 %) covers the summary column and everything right of it; the filter bar stays live and a poke behind the scrim is visible only in the number / state / priority columns |
+| Page | Sequence | The table is where you return to; the incident deserves the whole window | The table is gone while an incident is open; prev / next in the header (`j` / `k` too) is the only "what else is there" |
+
+**Found by running it, not by reading it** (each is a 3c.1 criterion or a thing to verify):
+
+1. **`router.replace` remounts the screen** — the search lost focus after one character,
+   the scroll bookkeeping reset, the pokes vanished. Every in-place change is
+   `router.setParams` (absent keys passed as `undefined` so a stale key clears); only
+   the Page's open pushes.
+2. **A push leaves the table screen mounted beneath the page**, so two keyboard
+   listeners fired on every key and fought over the URL (Esc cleared the selection *and*
+   went back). The map is gated on `useFocusEffect`. In 3c.1 the map lives in one place
+   and is focus-gated, whatever the shape.
+3. **A wrong first diagnosis, kept as a warning.** Before finding 2 was understood, the
+   lost state after Esc looked like `router.back()` restoring the table route from a
+   stale snapshot, and the surface briefly closed the page with `window.history.back()`.
+   With the keyboard map focus-gated, `router.back()` restores the live params correctly
+   and the surface uses it. Do not carry the snapshot theory into 3c.1.
+4. **Windowing is fine with fixed rows**: 196 rows in the event, 64 in the DOM (33 px
+   rows, a 900 px window, `windowSize` 5) — against 09q's 156 of 185 with variable rows.
+   Fixed height + `getItemLayout` is enough; no windowed-list dependency needed.
+5. **`onViewableItemsChanged` is not reliable on the web build** for "scroll only when
+   the selection leaves the viewport"; the surface tracks `contentOffset` and the
+   viewport height by hand and calls `scrollToOffset` — a click, a poke or a filter never
+   moves the scroll, and a 30-row walk scrolls exactly enough.
+6. **The hide rule is an order, not breakpoints**: people → started → types → area →
+   changed, dropped one at a time until the summary keeps ≥ 200 px; number, state,
+   priority and the summary never hide. The order is the round's to argue with.
+7. **Enter on a focused chip toggles the chip** (React Native Web's `Pressable` handles
+   the key before the window does), which is correct browser behaviour but surprised the
+   scripted walk; the `?` sheet says shortcuts pause while a control has focus.
+
+Defaults the surface took that the round can flip: the number column shows the bare
+number under a `#` header (the phone and the radio say `#214`); Normal priority is an
+empty cell; a private row carries its chip in the State column; Split's Enter puts the
+cursor in the composer (the pane already follows the selection); Drawer walks with
+`j` / `k` while open; the pane's fields are read-only with a line saying the editor is
+3c.2's. Verified: typecheck, lint, Jest (39 suites), `export:web`, the smoke e2e, and a
+scripted walk of `/` → type → Enter → `j` / `k` → Enter → Esc across all three variants
+with no console errors. Reduced motion has nothing to drop: the only motion on the
+surface is press feedback and the two `StateFade`s (the empty result, the help sheet).
+
+### The pick (2026-09-13)
+
+**Drawer, with the top bar, and the drawer opens the full page.** The maintainer's
+reasons: the drawer keeps the table as the workspace without halving it, and the top bar
+matches the templ interface dispatch already knows. The amendment: a row opens the
+drawer (`sel=` + `open=` in the URL, set in place), and from the drawer a second Enter or
+the "Full page" control pushes the incident as a full page — in 3c.1 the real route
+`/events/:eventId/incidents/:number`, with the table's query carried in its search string
+so back lands on the drawer, then on the table. The surface has this as `full=1`
+(`Drawer.tsx`, `openFull` / the two-step `close` in `useDispatch.ts`), verified by a
+scripted walk: Enter → drawer, Enter → full page, `j` walks the page, Esc → drawer, Esc →
+table with the selection and search kept; a deep link straight into the full page
+unsets it in place.
+
+**Sidebar as a user setting?** Cheap in code — the shell is one component with one
+switch, and a stored preference is a line in the person menu — but it doubles the surface
+every later 3c round has to check (the roster, the dashboard, each at two shells), and
+09o's rule against a user-facing scheme preference argues the same way here: one shell
+until dispatch asks for the other. **Recommendation: 3c.1 ships the top bar only**; the
+`Shell` switch stays in the promoted component so a setting is a 3c.6 line item if the
+tent wants it, not a rewrite.
+
 ### Decisions the round must also take (shape-independent, but only visible when run)
 
 - **The shell.** A left sidebar (event switcher at top; Incidents · Reports · Roster ·
@@ -237,13 +323,15 @@ keyboard walk, the poke-behind-selection case, reduced motion. Nothing goes to s
 ## Checklist
 
 - [x] Brief written; the contract verified; the URL schema fixed (2026-09-13)
-- [ ] The round run; the pick recorded here with its reasons (the maintainer)
+- [x] The surface built, verified and the scripted walk green (2026-09-13)
+- [x] The round run; the pick recorded here with its reasons (2026-09-13: Drawer + top bar + full page)
 - [ ] The 3c.1 acceptance criteria written (architect)
 - [ ] The throwaway surface deleted; `/review-animations` on anything promoted
 
 ## Open questions
 
-1. **Sidebar or top bar** — the round's to answer; E15's sidebar is the prior.
+1. **Sidebar or top bar** — answered: the top bar (2026-09-13); the sidebar stays one
+   prop away in the promoted `Shell`, a possible 3c.6 setting, not a 3c.1 feature.
 2. **Tablets at 768–1023 px** — the phone layout, by the breakpoint rule. If the tent
    runs iPads in landscape (1024+) they get dispatch; portrait gets the phone. Confirm
    with dispatch before 3c.6.
@@ -252,5 +340,6 @@ keyboard walk, the poke-behind-selection case, reduced motion. Nothing goes to s
 4. **The Board at ≥ 1024** — this brief says it does not survive there (mine is a
    filter). If the round finds the Board's unread watermark is something dispatch wants
    as a column, that is a 3c.1 criterion, not a second screen.
-5. **Selection in the URL vs the route** — `sel=` for Split and Drawer, a path segment
-   for Page. Whichever wins, the other form should redirect so old links keep working.
+5. **Selection in the URL vs the route** — answered by the pick: `sel=` and `open=` for
+   the table and the drawer, the path segment for the full page; the full page carries
+   the table's query in its search string.
