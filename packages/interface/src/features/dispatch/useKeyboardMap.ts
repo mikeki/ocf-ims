@@ -5,6 +5,7 @@ import type { RefObject } from "react";
 import { useCallback, useEffect, useRef } from "react";
 import { Platform, type TextInput } from "react-native";
 import type { Query, Row } from "@/features/dispatch/query";
+import type { IncidentScreenHandle } from "@/features/incidents/IncidentScreen";
 
 // The dispatch keyboard map (plan 09x criterion 11), promoted from
 // src/prototypes/dispatch/useDispatch.ts: web only, and gated on
@@ -12,27 +13,34 @@ import type { Query, Row } from "@/features/dispatch/query";
 // screen leaves it mounted beneath, and two ungated listeners fight over the
 // URL). Suppressed while an input has focus, except Esc, which blurs it.
 //
-// Not bound: `a` (focus the composer) and `h` (toggle system entries) —
-// both would have to reach into the drawer's `IncidentScreen`, which exposes
-// neither a ref nor a callback for either and is explicitly unedited this
-// slice. Filed as a gap for whichever slice adds its header prop. `m` is not
-// bound (no multi-event search yet, 09x); `p`/`P` die with the surface.
+// One hook, two callers (criterion 9): the dispatch table passes every field;
+// `IncidentPage` (criterion 9) passes a narrower set — no search field, no
+// "new incident", `close` is its "back" — so `setQuery`/`select`/`open`/
+// `onFull`/`onNewIncident`/`searchRef` are optional. `query.open` is what
+// both callers use to say "an incident is showing": the drawer sets it only
+// while open, the page holds it fixed to the incident it shows, which is
+// also what gates `a`/`h` below. `m` is not bound (no multi-event search
+// yet, 09x); `p`/`P` die with the surface.
 
 export interface KeyboardMapDeps {
-  query: Query;
+  query: Pick<Query, "open" | "sel" | "q">;
   visible: Row[];
   help: boolean;
   setHelp: (on: boolean) => void;
-  setQuery: (patch: Partial<Query>) => void;
-  select: (number: number | undefined) => void;
-  open: (number: number) => void;
+  setQuery?: (patch: Partial<Query>) => void;
+  select?: (number: number | undefined) => void;
+  open?: (number: number) => void;
+  /** Closes the drawer (the table) or goes back (the page). */
   close: () => void;
   move: (delta: 1 | -1) => void;
-  /** Drawer open, Enter again: the full page (criterion 9, wired next half). */
-  onFull: () => void;
-  /** Absent when the caller may not write incidents: `n` does nothing. */
+  /** Drawer open, Enter again: the full page. Absent on the page — there is nowhere further to go. */
+  onFull?: () => void;
+  /** Absent when the caller may not write incidents, or on the page (not bound there). */
   onNewIncident?: () => void;
-  searchRef: RefObject<TextInput | null>;
+  /** Absent on the page: no search field there. */
+  searchRef?: RefObject<TextInput | null>;
+  /** The open incident's composer / system-entries controls (criteria 8, 9); bound while `query.open` is set. */
+  handle?: RefObject<IncidentScreenHandle | null>;
 }
 
 export function useKeyboardMap(deps: KeyboardMapDeps): void {
@@ -74,9 +82,9 @@ export function useKeyboardMap(deps: KeyboardMapDeps): void {
         } else if (d.query.open !== undefined) {
           d.close();
         } else if (d.query.sel !== undefined) {
-          d.select(undefined);
+          d.select?.(undefined);
         } else if (d.query.q) {
-          d.setQuery({ q: "" });
+          d.setQuery?.({ q: "" });
         }
         return;
       }
@@ -86,7 +94,7 @@ export function useKeyboardMap(deps: KeyboardMapDeps): void {
       switch (e.key) {
         case "/":
           e.preventDefault();
-          d.searchRef.current?.focus();
+          d.searchRef?.current?.focus();
           break;
         case "j":
         case "ArrowDown":
@@ -100,15 +108,26 @@ export function useKeyboardMap(deps: KeyboardMapDeps): void {
           break;
         case "Enter":
           if (d.query.open !== undefined) {
-            d.onFull();
+            d.onFull?.();
           } else if (d.query.sel !== undefined) {
-            d.open(d.query.sel);
+            d.open?.(d.query.sel);
           } else {
             d.move(1);
           }
           break;
         case "n":
           d.onNewIncident?.();
+          break;
+        case "a":
+          if (d.query.open !== undefined) {
+            e.preventDefault();
+            d.handle?.current?.focusComposer();
+          }
+          break;
+        case "h":
+          if (d.query.open !== undefined) {
+            d.handle?.current?.toggleSystemEntries();
+          }
           break;
         case "?":
           d.setHelp(!d.help);

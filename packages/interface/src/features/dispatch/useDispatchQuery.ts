@@ -183,6 +183,7 @@ export function useDispatchQuery(
     const number = bareNumber(query.q);
     if (number !== undefined && byNumber.has(number)) {
       // A bare number plus Enter jumps to that incident (templ's rule).
+      searchRef.current?.blur();
       open(number);
       return;
     }

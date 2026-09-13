@@ -1,13 +1,14 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import { useRouter } from "expo-router";
-import { useCallback, useMemo, useState } from "react";
+import { useCallback, useMemo, useRef, useState } from "react";
 import { StyleSheet, View } from "react-native";
 import { toAppError } from "@/api/errors";
 import { Drawer } from "@/features/dispatch/Drawer";
 import { FilterBar } from "@/features/dispatch/FilterBar";
 import { HelpSheet } from "@/features/dispatch/HelpSheet";
 import type { Lookups } from "@/features/dispatch/query";
+import { serializeQuery } from "@/features/dispatch/query";
 import { Table } from "@/features/dispatch/Table";
 import { useDispatchQuery } from "@/features/dispatch/useDispatchQuery";
 import { useKeyboardMap } from "@/features/dispatch/useKeyboardMap";
@@ -17,6 +18,7 @@ import {
   useIncidents,
   useIncidentTypes,
 } from "@/features/incidents/hooks";
+import type { IncidentScreenHandle } from "@/features/incidents/IncidentScreen";
 import { useLiveEvent } from "@/features/live/useLiveEvent";
 import { EmptyState } from "@/features/shell/EmptyState";
 import { ErrorState } from "@/features/shell/ErrorState";
@@ -26,8 +28,9 @@ import { useSession } from "@/session/provider";
 // The dispatch table screen (plan 09x, the D2 pick): the drawer shape, the
 // filter bar and the URL-driven table over the whole event's incidents.
 // Composed inside `Shell` by the incidents index route on a wide window;
-// `BoardScreen` still owns the phone (criterion 1). The full page (criterion
-// 9) and the live-row patch (criterion 10) are the second half's.
+// `BoardScreen` still owns the phone (criterion 1). A second Enter, or the
+// drawer's "Full page", pushes the real route with the table's query carried
+// (criterion 9); the live-row patch (criterion 10) is `features/live/hub.ts`.
 
 export interface DispatchScreenProps {
   eventId: number;
@@ -55,10 +58,29 @@ export function DispatchScreen(props: DispatchScreenProps) {
 
   const d = useDispatchQuery(rows, lookups, me);
   const [help, setHelp] = useState(false);
+  const handle = useRef<IncidentScreenHandle>(null);
 
-  // The full page push is criterion 9's (the second half); until then Enter
-  // on an open drawer, and its "Full page" control, do nothing.
-  const onFull = useCallback(() => undefined, []);
+  // Enter on an open drawer, and its "Full page" control, push the real
+  // route with the table's query carried, minus `sel`/`open` (criterion 9):
+  // those become the path segment, not a key.
+  const onFull = useCallback(() => {
+    const opened = d.opened;
+    if (!opened) {
+      return;
+    }
+    const number = opened.incident.number;
+    const carried = serializeQuery(d.query);
+    const params: Record<string, string> = {};
+    for (const [key, value] of Object.entries(carried)) {
+      if (value !== undefined && key !== "sel" && key !== "open") {
+        params[key] = value;
+      }
+    }
+    router.push({
+      pathname: `/events/${eventId}/incidents/${number}`,
+      params,
+    });
+  }, [d.opened, d.query, eventId, router]);
 
   const onNewIncident = access.writeIncidents
     ? () => router.push(`/events/${eventId}/incidents/new`)
@@ -77,6 +99,7 @@ export function DispatchScreen(props: DispatchScreenProps) {
     onFull,
     onNewIncident,
     searchRef: d.searchRef,
+    handle,
   });
 
   if (incidentsQuery.isLoading) {
@@ -116,6 +139,7 @@ export function DispatchScreen(props: DispatchScreenProps) {
           d={d}
           eventId={eventId}
           onFull={onFull}
+          handle={handle}
           onOpenReport={(n) => router.push(`/events/${eventId}/reports/${n}`)}
           onFileReport={(n) =>
             router.push({

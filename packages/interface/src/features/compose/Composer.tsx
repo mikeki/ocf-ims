@@ -1,7 +1,9 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import type { Person } from "@ocf-ims/protocol-buffers/ocf/ims/resources/v1/person_pb";
+import type { RefObject } from "react";
 import { useState } from "react";
+import type { TextInput } from "react-native";
 import { Pressable, StyleSheet, View } from "react-native";
 import { PressFeedback } from "@/design/motion";
 import { Field } from "@/design/primitives/Field";
@@ -34,6 +36,8 @@ export interface ComposerProps {
   error?: string;
   onBlur?: () => void;
   testID?: string;
+  /** Imperative focus (plan 09x criterion 8: the keyboard map's `a`). */
+  inputRef?: RefObject<TextInput | null>;
 }
 
 export function Composer(props: ComposerProps) {
@@ -55,6 +59,7 @@ export function Composer(props: ComposerProps) {
   return (
     <View style={{ gap: theme.spacing.xs }}>
       <Field
+        ref={props.inputRef}
         label={props.label}
         value={value}
         onChangeText={onChangeText}

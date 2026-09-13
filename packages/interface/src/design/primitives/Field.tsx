@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 
-import { useId, useState } from "react";
+import { forwardRef, useId, useState } from "react";
 import type { TextInputProps } from "react-native";
 import { StyleSheet, TextInput, View } from "react-native";
 import { Text } from "@/design/primitives/Text";
@@ -15,64 +15,71 @@ import { touchTarget } from "@/design/tokens";
 // to be perceivable (3:1), and `border` is a decorative rule that deliberately
 // is not. Focus paints the ring in `focusRing` — a shadow, not a wider border,
 // so a keyboard user tabbing through the form never shifts the layout.
+//
+// Forwards its ref to the underlying `TextInput` (plan 09x criterion 8: the
+// dispatch keyboard map's `a` binding needs to focus the journal composer
+// imperatively) — additive, every existing caller is unaffected.
 
 export interface FieldProps extends TextInputProps {
   label: string;
   error?: string;
 }
 
-export function Field(props: FieldProps) {
-  const { label, error, style, onFocus, onBlur, ...input } = props;
-  const theme = useTheme();
-  const id = useId();
-  const [focused, setFocused] = useState(false);
-  const borderColor = error
-    ? theme.colors.danger
-    : focused
-      ? theme.colors.focus
-      : theme.colors.borderStrong;
-  return (
-    <View style={{ gap: theme.spacing.xs }}>
-      <Text variant="label" color="textMuted" nativeID={id}>
-        {label}
-      </Text>
-      <TextInput
-        accessibilityLabel={label}
-        accessibilityLabelledBy={id}
-        placeholderTextColor={theme.colors.textMuted}
-        {...input}
-        onFocus={(e) => {
-          setFocused(true);
-          onFocus?.(e);
-        }}
-        onBlur={(e) => {
-          setFocused(false);
-          onBlur?.(e);
-        }}
-        style={[
-          styles.input,
-          theme.type.body,
-          {
-            color: theme.colors.text,
-            backgroundColor: theme.colors.surface,
-            borderColor,
-            borderRadius: theme.radii.md,
-            paddingHorizontal: theme.spacing.md,
-            boxShadow: focused
-              ? `0 0 0 3px ${theme.colors.focusRing}`
-              : undefined,
-          },
-          style,
-        ]}
-      />
-      {error ? (
-        <Text variant="caption" color="danger" accessibilityRole="alert">
-          {error}
+export const Field = forwardRef<TextInput, FieldProps>(
+  function Field(props, ref) {
+    const { label, error, style, onFocus, onBlur, ...input } = props;
+    const theme = useTheme();
+    const id = useId();
+    const [focused, setFocused] = useState(false);
+    const borderColor = error
+      ? theme.colors.danger
+      : focused
+        ? theme.colors.focus
+        : theme.colors.borderStrong;
+    return (
+      <View style={{ gap: theme.spacing.xs }}>
+        <Text variant="label" color="textMuted" nativeID={id}>
+          {label}
         </Text>
-      ) : null}
-    </View>
-  );
-}
+        <TextInput
+          ref={ref}
+          accessibilityLabel={label}
+          accessibilityLabelledBy={id}
+          placeholderTextColor={theme.colors.textMuted}
+          {...input}
+          onFocus={(e) => {
+            setFocused(true);
+            onFocus?.(e);
+          }}
+          onBlur={(e) => {
+            setFocused(false);
+            onBlur?.(e);
+          }}
+          style={[
+            styles.input,
+            theme.type.body,
+            {
+              color: theme.colors.text,
+              backgroundColor: theme.colors.surface,
+              borderColor,
+              borderRadius: theme.radii.md,
+              paddingHorizontal: theme.spacing.md,
+              boxShadow: focused
+                ? `0 0 0 3px ${theme.colors.focusRing}`
+                : undefined,
+            },
+            style,
+          ]}
+        />
+        {error ? (
+          <Text variant="caption" color="danger" accessibilityRole="alert">
+            {error}
+          </Text>
+        ) : null}
+      </View>
+    );
+  },
+);
 
 const styles = StyleSheet.create({
   input: {

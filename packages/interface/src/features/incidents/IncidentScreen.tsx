@@ -6,8 +6,8 @@ import type { Area } from "@ocf-ims/protocol-buffers/ocf/ims/resources/v1/area_p
 import type { Incident } from "@ocf-ims/protocol-buffers/ocf/ims/resources/v1/incident_pb";
 import type { IncidentType } from "@ocf-ims/protocol-buffers/ocf/ims/resources/v1/incident_type_pb";
 import type { IncidentView } from "@ocf-ims/protocol-buffers/ocf/ims/service/rpc/v1/incident_pb";
-import type { ReactNode } from "react";
-import { useState } from "react";
+import type { ReactNode, RefObject } from "react";
+import { useImperativeHandle, useRef, useState } from "react";
 import {
   KeyboardAvoidingView,
   Platform,
@@ -25,7 +25,10 @@ import { Text } from "@/design/primitives/Text";
 import { TextButton } from "@/design/primitives/TextButton";
 import { useTheme } from "@/design/theme";
 import { owesReport } from "@/features/board/work";
-import { AppendComposer } from "@/features/compose/AppendComposer";
+import {
+  AppendComposer,
+  type AppendComposerHandle,
+} from "@/features/compose/AppendComposer";
 import { useEventAccess, useEventName } from "@/features/events/hooks";
 import {
   useAreas,
@@ -53,6 +56,17 @@ import { useSession } from "@/session/provider";
 // composer when the caller may add to the journal (09r). Navigation
 // (linked-incident presses, back) is the route's job (T6) — this component
 // takes ids and callbacks only.
+//
+// `chrome` (plan 09x criterion 8) lets the dispatch drawer and the full page
+// embed this screen under their own header: "embedded" drops `ScreenHeader`
+// and nothing else changes, so the phone (default "screen") is byte-for-byte
+// unaffected. `handle` exposes what their keyboard map needs to reach in:
+// `focusComposer` and `toggleSystemEntries`.
+
+export interface IncidentScreenHandle {
+  focusComposer(): void;
+  toggleSystemEntries(): void;
+}
 
 export interface IncidentScreenProps {
   eventId: number;
@@ -64,6 +78,9 @@ export interface IncidentScreenProps {
   onFileReport: () => void;
   /** Open an entry's image full-width (09s). */
   onOpenAttachment: (entryId: number) => void;
+  /** "embedded" (the drawer, the full page) drops the screen's own header. */
+  chrome?: "screen" | "embedded";
+  handle?: RefObject<IncidentScreenHandle | null>;
 }
 
 export function IncidentScreen(props: IncidentScreenProps) {
@@ -75,6 +92,8 @@ export function IncidentScreen(props: IncidentScreenProps) {
     onOpenReport,
     onFileReport,
     onOpenAttachment,
+    chrome = "screen",
+    handle,
   } = props;
   const theme = useTheme();
   const access = useEventAccess(eventId);
@@ -89,6 +108,16 @@ export function IncidentScreen(props: IncidentScreenProps) {
   const author = state.status === "signedIn" ? state.auth.user : "";
   const me = state.status === "signedIn" ? state.auth.personId : 0;
   const owed = view !== undefined && owesReport(view, me);
+  const [showSystemEntries, setShowSystemEntries] = useState(false);
+  const composerRef = useRef<AppendComposerHandle>(null);
+  useImperativeHandle(
+    handle,
+    () => ({
+      focusComposer: () => composerRef.current?.focus(),
+      toggleSystemEntries: () => setShowSystemEntries((v) => !v),
+    }),
+    [],
+  );
 
   return (
     <KeyboardAvoidingView
@@ -96,10 +125,12 @@ export function IncidentScreen(props: IncidentScreenProps) {
       behavior={Platform.OS === "ios" ? "padding" : undefined}
     >
       <Box flex={1} bg="background">
-        <ScreenHeader
-          title={`#${number}`}
-          back={{ label: "Board", onPress: onBack }}
-        />
+        {chrome === "screen" ? (
+          <ScreenHeader
+            title={`#${number}`}
+            back={{ label: "Board", onPress: onBack }}
+          />
+        ) : null}
         {renderBody({
           incidentQuery,
           areas: areasQuery.data?.areas,
@@ -112,6 +143,8 @@ export function IncidentScreen(props: IncidentScreenProps) {
           onOpenIncident,
           onOpenReport,
           onOpenAttachment,
+          showSystemEntries,
+          onToggleSystemEntries: setShowSystemEntries,
         })}
         {owed ? (
           <View
@@ -133,6 +166,7 @@ export function IncidentScreen(props: IncidentScreenProps) {
         ) : null}
         {mayAppend ? (
           <AppendComposer
+            ref={composerRef}
             eventId={eventId}
             number={number}
             author={author}
@@ -162,6 +196,8 @@ interface BodyArgs {
   onOpenIncident: (number: number) => void;
   onOpenReport: (number: number) => void;
   onOpenAttachment: (entryId: number) => void;
+  showSystemEntries: boolean;
+  onToggleSystemEntries: (value: boolean) => void;
 }
 
 function renderBody(args: BodyArgs): ReactNode {
@@ -208,6 +244,8 @@ function renderBody(args: BodyArgs): ReactNode {
       onRefresh={() => {
         void incidentQuery.refetch();
       }}
+      showSystemEntries={args.showSystemEntries}
+      onToggleSystemEntries={args.onToggleSystemEntries}
     />
   );
 }
@@ -224,6 +262,8 @@ interface IncidentDetailProps {
   onOpenAttachment: (entryId: number) => void;
   refreshing: boolean;
   onRefresh: () => void;
+  showSystemEntries: boolean;
+  onToggleSystemEntries: (value: boolean) => void;
 }
 
 function IncidentDetail(props: IncidentDetailProps) {
@@ -239,8 +279,9 @@ function IncidentDetail(props: IncidentDetailProps) {
     onOpenAttachment,
     refreshing,
     onRefresh,
+    showSystemEntries,
+    onToggleSystemEntries,
   } = props;
-  const [showSystemEntries, setShowSystemEntries] = useState(false);
   const incident = view.incident;
   if (!incident) {
     return null;
@@ -353,7 +394,7 @@ function IncidentDetail(props: IncidentDetailProps) {
               <Switch
                 accessibilityLabel="Show system entries"
                 value={showSystemEntries}
-                onValueChange={setShowSystemEntries}
+                onValueChange={onToggleSystemEntries}
               />
             </Box>
           </Box>

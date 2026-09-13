@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 
+import type { RefObject } from "react";
 import { Pressable, StyleSheet, View } from "react-native";
 import { Text } from "@/design/primitives/Text";
 import { TextButton } from "@/design/primitives/TextButton";
@@ -7,15 +8,18 @@ import { useTheme } from "@/design/theme";
 import { drawerShare, touchTarget } from "@/design/tokens";
 import { neighboursOf } from "@/features/dispatch/neighbours";
 import type { DispatchQuery } from "@/features/dispatch/useDispatchQuery";
-import { IncidentScreen } from "@/features/incidents/IncidentScreen";
+import {
+  IncidentScreen,
+  type IncidentScreenHandle,
+} from "@/features/incidents/IncidentScreen";
 
 // The drawer (plan 09x criterion 7), promoted from
 // src/prototypes/dispatch/Drawer.tsx: the panel over the table's right two
 // thirds, the scrim, and its own header — "Incidents" closes, the number,
 // prev/next among the visible rows, and "Full page". The body is the 3b
-// incident screen, UNCHANGED (criterion 8, not this half's): its own header
-// shows twice for now, and "Full page" is a stub until the second half wires
-// the push (criterion 9).
+// incident screen, embedded (criterion 8): `chrome="embedded"` drops its own
+// header, so this one is the only one shown. "Full page" and a second Enter
+// push the real route (criterion 9, wired by the caller's `onFull`).
 
 export interface DrawerProps {
   d: DispatchQuery;
@@ -24,11 +28,20 @@ export interface DrawerProps {
   onOpenReport: (number: number) => void;
   onFileReport: (number: number) => void;
   onOpenAttachment: (number: number, entryId: number) => void;
+  /** The keyboard map's `a` / `h` reach the embedded incident through this. */
+  handle: RefObject<IncidentScreenHandle | null>;
 }
 
 export function Drawer(props: DrawerProps) {
-  const { d, eventId, onFull, onOpenReport, onFileReport, onOpenAttachment } =
-    props;
+  const {
+    d,
+    eventId,
+    onFull,
+    onOpenReport,
+    onFileReport,
+    onOpenAttachment,
+    handle,
+  } = props;
   const theme = useTheme();
   const opened = d.opened;
   if (!opened) {
@@ -92,6 +105,8 @@ export function Drawer(props: DrawerProps) {
         </View>
         <View style={styles.fill}>
           <IncidentScreen
+            chrome="embedded"
+            handle={handle}
             eventId={eventId}
             number={number}
             onBack={d.close}

@@ -163,6 +163,9 @@ per-event hub turns pokes into query invalidations, paused in the background (09
 and the store scaffolding below (09w). The tracer covers all of it on web; the phone
 checks are listed in each brief.
 
+At a window width ≥ 1024 px the incidents route renders a dispatch table inside a
+shell instead of the Board, with a keyboard map and a `?` help sheet (3c.1, [09x](../../docs/plans/09x-dispatch-design.md)).
+
 ## Layout and rules (09i §5)
 
 - `app/` holds routes only (Expo Router); logic lives in `src/`. Security-sensitive

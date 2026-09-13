@@ -9,9 +9,7 @@ import { useTheme } from "@/design/theme";
 // The `?` help sheet (plan 09x criterion 11), promoted from
 // src/prototypes/dispatch/Overlays.tsx: a visible affordance for every bound
 // key, minus the notice toast and the harness-only rows. `n` only appears
-// when it is actually bound (`writeIncidents`); `a` and `h` are left off —
-// they are registered nowhere yet (see `useKeyboardMap`'s note) and a
-// keyboard-only feature that does nothing is not a feature.
+// when it is actually bound (`writeIncidents`).
 
 export interface HelpSheetProps {
   open: boolean;
@@ -37,6 +35,8 @@ export function HelpSheet(props: HelpSheetProps) {
       "Open the selected incident; in the drawer, again for the full page",
     ],
     ["Esc", "Close · clear the selection · clear the search"],
+    ["a", "Focus the composer (drawer or page open)"],
+    ["h", "Toggle system journal entries (drawer or page open)"],
     ...(writeIncidents ? ([["n", "New incident"]] as [string, string][]) : []),
     ["?", "This sheet"],
   ];

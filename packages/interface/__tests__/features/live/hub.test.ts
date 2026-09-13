@@ -2,14 +2,21 @@
 
 import type { DescMethodUnary, MessageInitShape } from "@bufbuild/protobuf";
 import { createConnectQueryKey } from "@connectrpc/connect-query";
+import type { ListIncidentsResponse } from "@ocf-ims/protocol-buffers/ocf/ims/service/rpc/v1/incident_pb";
 import { ImsService } from "@ocf-ims/protocol-buffers/ocf/ims/service/v1/service_pb";
 import { createLiveHub } from "@/features/live/hub";
 import { createFakeIms } from "@/test/fakeIms";
+import {
+  makeIncident,
+  makeIncidentView,
+  makeJournalEntry,
+} from "@/test/fixtures";
 import { createTestQueryClient, createTestRuntime } from "@/test/harness";
 import { createMemoryRefreshTokenStore } from "@/test/storage";
 
-// The live hub (plan 09v): reference-counted streams, pokes → invalidations,
-// the background pause and the foreground resume with a full refetch.
+// The live hub (plan 09v/09x): reference-counted streams, a poke that patches
+// the cached lists (criterion 10) rather than refetching them, the
+// background pause and the foreground resume with a full refetch.
 
 function until(check: () => boolean, ms = 2000): Promise<void> {
   const start = Date.now();
@@ -29,6 +36,16 @@ function until(check: () => boolean, ms = 2000): Promise<void> {
 
 async function setup() {
   const fake = createFakeIms();
+  // The source GetIncident/ListIncidents read from (plan 09x criterion 10:
+  // the patch calls the real GetIncident route through the fake).
+  fake.incidents = [
+    makeIncidentView({
+      incident: makeIncident({ eventId: 1, number: 12, summary: "A" }),
+    }),
+    makeIncidentView({
+      incident: makeIncident({ eventId: 1, number: 13, summary: "B" }),
+    }),
+  ];
   const store = createMemoryRefreshTokenStore(fake.issueRefreshToken());
   const runtime = createTestRuntime({ fake, store, platform: "native" });
   await runtime.session.bootstrap();
@@ -60,18 +77,37 @@ async function setup() {
     eventId: 1,
     reportNumber: 3,
   });
-  for (const k of [incident12, incident13, list, report3]) {
-    queryClient.setQueryData(k as never, {} as never);
-  }
+  queryClient.setQueryData(incident12 as never, {} as never);
+  queryClient.setQueryData(incident13 as never, {} as never);
+  // The list cache mirrors what `useIncidents` would actually hold — the
+  // patch reads and writes `.incidents`, unlike the other seeded reads.
+  queryClient.setQueryData(
+    list as never,
+    {
+      incidents: fake.incidents,
+    } as never,
+  );
+  queryClient.setQueryData(report3 as never, {} as never);
   const invalidated = (k: readonly unknown[]) =>
     queryClient.getQueryState(k as never)?.isInvalidated === true;
+  const listData = () =>
+    queryClient.getQueryData<ListIncidentsResponse>(list as never);
   const hub = createLiveHub({
     client: runtime.client,
     queryClient,
     transport: runtime.transport,
     stream: { sleep: async () => undefined },
   });
-  return { fake, hub, invalidated, incident12, incident13, list, report3 };
+  return {
+    fake,
+    hub,
+    invalidated,
+    incident12,
+    incident13,
+    list,
+    report3,
+    listData,
+  };
 }
 
 describe("createLiveHub", () => {
@@ -88,16 +124,113 @@ describe("createLiveHub", () => {
     expect(hub.isLive(1)).toBe(false);
   });
 
-  it("invalidates the record a poke names and its list, nothing else", async () => {
+  it("invalidates the record a poke names, nothing else — the list is patched, not refetched", async () => {
     const { fake, hub, invalidated, incident12, incident13, list, report3 } =
       await setup();
     const release = hub.watch(1);
     await until(() => hub.isLive(1));
     fake.poke({ eventId: 1, incidentNumber: 12 });
     await until(() => invalidated(incident12));
-    expect(invalidated(list)).toBe(true);
+    expect(invalidated(list)).toBe(false);
     expect(invalidated(incident13)).toBe(false);
     expect(invalidated(report3)).toBe(false);
+    release();
+  });
+
+  it("patches the cached list in place: replaces the row a poke names", async () => {
+    const { fake, hub, listData } = await setup();
+    const release = hub.watch(1);
+    await until(() => hub.isLive(1));
+    fake.incidents = fake.incidents.map((v) =>
+      v.incident?.number === 12
+        ? makeIncidentView({
+            incident: makeIncident({
+              eventId: 1,
+              number: 12,
+              summary: "Updated by the poke",
+            }),
+          })
+        : v,
+    );
+    fake.poke({ eventId: 1, incidentNumber: 12 });
+    await until(
+      () =>
+        listData()?.incidents.find((v) => v.incident?.number === 12)?.incident
+          ?.summary === "Updated by the poke",
+    );
+    // #13 is untouched, and the row count did not grow.
+    expect(listData()?.incidents).toHaveLength(2);
+    expect(
+      listData()?.incidents.find((v) => v.incident?.number === 13)?.incident
+        ?.summary,
+    ).toBe("B");
+    release();
+  });
+
+  it("inserts a row the cached list didn't have yet", async () => {
+    const { fake, hub, listData } = await setup();
+    const release = hub.watch(1);
+    await until(() => hub.isLive(1));
+    fake.incidents = [
+      ...fake.incidents,
+      makeIncidentView({
+        incident: makeIncident({ eventId: 1, number: 99, summary: "New" }),
+      }),
+    ];
+    fake.poke({ eventId: 1, incidentNumber: 99 });
+    await until(
+      () =>
+        listData()?.incidents.some((v) => v.incident?.number === 99) === true,
+    );
+    expect(listData()?.incidents).toHaveLength(3);
+    release();
+  });
+
+  it("removes a row on NotFound — the incident went private to this viewer", async () => {
+    const { fake, hub, listData } = await setup();
+    const release = hub.watch(1);
+    await until(() => hub.isLive(1));
+    fake.incidents = fake.incidents.filter((v) => v.incident?.number !== 13);
+    fake.poke({ eventId: 1, incidentNumber: 13 });
+    await until(
+      () =>
+        listData()?.incidents.some((v) => v.incident?.number === 13) === false,
+    );
+    expect(listData()?.incidents).toHaveLength(1);
+    release();
+  });
+
+  it("strips system journal entries so the cache matches excludeSystemEntries", async () => {
+    const { fake, hub, listData } = await setup();
+    const release = hub.watch(1);
+    await until(() => hub.isLive(1));
+    fake.incidents = fake.incidents.map((v) =>
+      v.incident?.number === 12
+        ? makeIncidentView({
+            incident: makeIncident({
+              eventId: 1,
+              number: 12,
+              journalEntries: [
+                makeJournalEntry({ id: 1, systemEntry: false, text: "Note" }),
+                makeJournalEntry({
+                  id: 2,
+                  systemEntry: true,
+                  text: "Changed priority",
+                }),
+              ],
+            }),
+          })
+        : v,
+    );
+    fake.poke({ eventId: 1, incidentNumber: 12 });
+    await until(
+      () =>
+        (listData()?.incidents.find((v) => v.incident?.number === 12)?.incident
+          ?.journalEntries.length ?? -1) === 1,
+    );
+    const entries = listData()?.incidents.find((v) => v.incident?.number === 12)
+      ?.incident?.journalEntries;
+    expect(entries?.map((e) => e.id)).toEqual([1]);
     release();
   });
 
