@@ -254,39 +254,9 @@ the prototype.
 
 ## 7. Model roster and assignment rules
 
-| Tier | Model | Owns |
-|---|---|---|
-| **Design** | Claude Design (claude.ai/design) | Design system, screen prototypes, flows, states, brand assets; the handoff bundle. Iterated in the canvas with Miguel, not in code. |
-| **Architect** | Opus 5 (Fable 5.1 for auth/session/privacy review and the slice briefs where available) | Plan and slice briefs; the foundations (transport, session, data layer, stream client, error model); **every server slice** (contract changes, CORS, stream, push); anything touching authn/authz/privacy; code review of every builder PR (`/code-review`); the plan-09 §7 findings; the Q4 "what people rely on" list with Miguel. |
-| **Builder** | Sonnet 5 | Screen and feature slices implemented against a fixed brief (acceptance criteria, hooks to use, invalidation rules, design bundle, files to touch); their Jest and Playwright specs; Storybook-free component previews (a `/dev` route in dev builds). |
-| **Mechanic** | Haiku 4.5 | CI/Docker/compose/Caddy wiring, `app.json`/`eas.json`, biome/tsconfig, dependency bumps, lint fixes, rename sweeps, inventories and searches, changelog and README chores. |
-
-**Rules**
-
-1. **A brief precedes a builder.** The architect writes the slice brief (in the
-   slice's plan file) before a builder starts: goal, acceptance criteria, screens
-   with design refs, the hooks and invalidations, the files to create/modify,
-   out-of-scope, and the verification steps. A builder that finds the brief
-   wrong stops and reports rather than improvising.
-2. **Contract gaps stop the builder.** If a screen needs a field or RPC the
-   contract lacks, the builder files it in the slice notes and continues with
-   what exists; the architect fixes the proto in a server slice. Clients never
-   work around the contract.
-3. **Security-sensitive code is architect-only.** Transport auth, session
-   storage, refresh, logout, permission gating helpers, privacy handling,
-   anything in `lib/push` or `internal/auth` on the server.
-4. **Review climbs a tier.** Builder PR → architect `/code-review` → Miguel.
-   Architect PR → Fable/second Opus review → Miguel. Mechanic PR → architect
-   skim → Miguel.
-5. **How this runs in Claude Code.** An architect session (this one, or a fresh
-   Opus session pointed at the slice file) writes the brief in plan mode and
-   lands the foundation code itself. Builder work runs as a fresh Sonnet
-   session per slice — or as `Agent` calls with `model: sonnet` from the
-   architect session for slices under ~500 lines — with the brief as the whole
-   prompt. Mechanic tasks run as `Agent` calls with `model: haiku`. Parallel
-   builder slices only where §10 marks them independent; Miguel opts into a
-   multi-agent `Workflow` explicitly when a phase has three or more independent
-   builder slices ready.
+**Moved to the repo-root `CLAUDE.md` ("Model roster") on 2026-09-13** so every session
+loads it; the four tiers (Design, Architect, Builder, Mechanic) and the five numbered
+rules are unchanged, and "§7 rule *n*" references in the slice briefs resolve there.
 
 ## 8. Phases, slices and tasks
 
