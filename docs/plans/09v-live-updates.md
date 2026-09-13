@@ -2,7 +2,7 @@
 
 # 09v — slice 3b.6: live updates
 
-> **Status:** **Built** — 2026-09-12, the next PR in the 3b client stack. The device
+> **Status:** **Merged (#265, 2026-09-13)** — built 2026-09-12, the next PR in the 3b client stack. The device
 > half (a long stream through Caddy on a phone, foreground and background) is owed.
 > **Parent:** [09i-expo-client.md](09i-expo-client.md) (Phase 3, the 3b.6 row)
 > under [09-proto-connect-platform.md](09-proto-connect-platform.md)

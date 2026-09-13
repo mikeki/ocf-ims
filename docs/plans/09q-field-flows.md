@@ -2,7 +2,7 @@
 
 # 09q — D1 and slice 3b.1: "My work", the field app's first screen
 
-> **Status:** **Built** — the picker round ran and chose Segmented (2026-09-11); slice
+> **Status:** **Merged (#256, 2026-09-12)** — the picker round ran and chose Segmented (2026-09-11); slice
 > 3b.1 shipped in #256. Open: `/review-animations`, and a hand check on a real phone.
 > **Parent:** [09i-expo-client.md](09i-expo-client.md) (Phase 3, §6 **D1** and the 3b.1 row)
 > under [09-proto-connect-platform.md](09-proto-connect-platform.md)

@@ -2,7 +2,7 @@
 
 # 09t — Reports: the model decision, and slice 3b.3
 
-> **Status:** **Built** — 2026-09-12. The maintainer answered 09q's open question 4
+> **Status:** **Merged** — 3b.3a #261 and 3b.3b #262, 2026-09-13. The maintainer answered 09q's open question 4
 > (below); this document turns the answer into a model, a server slice (3b.3a,
 > "request a report") and the client slice (3b.3b). Both are built, as a stack of two
 > PRs (3b.3a first); open questions 2 and 3 were taken on their recommendations
