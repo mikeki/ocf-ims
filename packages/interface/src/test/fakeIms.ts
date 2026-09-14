@@ -1,12 +1,14 @@
 // SPDX-License-Identifier: Apache-2.0
 
-import { create, toJson } from "@bufbuild/protobuf";
+import { create, type MessageInitShape, toJson } from "@bufbuild/protobuf";
 import { timestampFromDate } from "@bufbuild/protobuf/wkt";
 import type { ConnectRouter, HandlerContext } from "@connectrpc/connect";
 import { Code, ConnectError } from "@connectrpc/connect";
 import type { Area } from "@ocf-ims/protocol-buffers/ocf/ims/resources/v1/area_pb";
 import { AreaSchema } from "@ocf-ims/protocol-buffers/ocf/ims/resources/v1/area_pb";
+import type { Incident } from "@ocf-ims/protocol-buffers/ocf/ims/resources/v1/incident_pb";
 import {
+  IncidentLocationSchema,
   IncidentPersonSchema,
   IncidentPriority,
   IncidentSchema,
@@ -16,7 +18,10 @@ import type { IncidentType } from "@ocf-ims/protocol-buffers/ocf/ims/resources/v
 import { IncidentTypeSchema } from "@ocf-ims/protocol-buffers/ocf/ims/resources/v1/incident_type_pb";
 import { JournalEntrySchema } from "@ocf-ims/protocol-buffers/ocf/ims/resources/v1/journal_entry_pb";
 import type { Notification } from "@ocf-ims/protocol-buffers/ocf/ims/resources/v1/notification_pb";
+import type { Outcome } from "@ocf-ims/protocol-buffers/ocf/ims/resources/v1/outcome_pb";
+import { OutcomeSchema } from "@ocf-ims/protocol-buffers/ocf/ims/resources/v1/outcome_pb";
 import type { Person } from "@ocf-ims/protocol-buffers/ocf/ims/resources/v1/person_pb";
+import { ParticipationType } from "@ocf-ims/protocol-buffers/ocf/ims/resources/v1/person_pb";
 import type { Report } from "@ocf-ims/protocol-buffers/ocf/ims/resources/v1/report_pb";
 import { ReportSchema } from "@ocf-ims/protocol-buffers/ocf/ims/resources/v1/report_pb";
 import {
@@ -31,9 +36,16 @@ import {
   RefreshTokenResponseSchema,
 } from "@ocf-ims/protocol-buffers/ocf/ims/service/rpc/v1/auth_pb";
 import { ListEventsResponseSchema } from "@ocf-ims/protocol-buffers/ocf/ims/service/rpc/v1/event_pb";
-import type { RequestReportRequest } from "@ocf-ims/protocol-buffers/ocf/ims/service/rpc/v1/incident_pb";
+import type {
+  AttachPersonToIncidentRequest,
+  DetachPersonFromIncidentRequest,
+  RequestReportRequest,
+  UpdateIncidentJournalEntryRequest,
+} from "@ocf-ims/protocol-buffers/ocf/ims/service/rpc/v1/incident_pb";
 import {
+  AttachPersonToIncidentResponseSchema,
   CreateIncidentResponseSchema,
+  DetachPersonFromIncidentResponseSchema,
   GetIncidentResponseSchema,
   type IncidentUpdate,
   IncidentUpdateSchema,
@@ -41,6 +53,7 @@ import {
   IncidentViewSchema,
   ListIncidentsResponseSchema,
   RequestReportResponseSchema,
+  UpdateIncidentJournalEntryResponseSchema,
   type UpdateIncidentRequest,
   UpdateIncidentResponseSchema,
 } from "@ocf-ims/protocol-buffers/ocf/ims/service/rpc/v1/incident_pb";
@@ -53,6 +66,10 @@ import {
   MarkAllNotificationsReadResponseSchema,
   MarkNotificationReadResponseSchema,
 } from "@ocf-ims/protocol-buffers/ocf/ims/service/rpc/v1/notification_pb";
+import {
+  ListOutcomesResponseSchema,
+  ProposeOutcomeResponseSchema,
+} from "@ocf-ims/protocol-buffers/ocf/ims/service/rpc/v1/outcome_pb";
 import { ListPersonnelResponseSchema } from "@ocf-ims/protocol-buffers/ocf/ims/service/rpc/v1/person_pb";
 import { ChangeOwnPasswordResponseSchema } from "@ocf-ims/protocol-buffers/ocf/ims/service/rpc/v1/profile_pb";
 import {
@@ -75,6 +92,7 @@ import {
   WatchEventResponseSchema,
 } from "@ocf-ims/protocol-buffers/ocf/ims/service/rpc/v1/stream_pb";
 import { ImsService } from "@ocf-ims/protocol-buffers/ocf/ims/service/v1/service_pb";
+import { makeOutcome } from "@/test/fixtures";
 
 // A programmable in-memory ImsService for createRouterTransport (plan 09l): the
 // session RPCs with the server's semantics — Login issues an access token and
@@ -147,6 +165,11 @@ export interface FakeIms {
     listPersonnel: ListBehaviour;
     createIncident: ListBehaviour;
     updateIncident: ListBehaviour;
+    attachPersonToIncident: ListBehaviour;
+    detachPersonFromIncident: ListBehaviour;
+    updateIncidentJournalEntry: ListBehaviour;
+    listOutcomes: ListBehaviour;
+    proposeOutcome: ListBehaviour;
     proposeIncidentType: ListBehaviour;
     createArea: ListBehaviour;
     createReport: ListBehaviour;
@@ -180,6 +203,14 @@ export interface FakeIms {
   updateReportRequests: UpdateReportRequest[];
   /** Every RequestReport request received (09t). */
   requestReportRequests: RequestReportRequest[];
+  /** Every AttachPersonToIncident request received (plan 09y). */
+  attachRequests: AttachPersonToIncidentRequest[];
+  /** Every DetachPersonFromIncident request received (plan 09y). */
+  detachRequests: DetachPersonFromIncidentRequest[];
+  /** Every UpdateIncidentJournalEntry request received (plan 09y). */
+  entryUpdateRequests: UpdateIncidentJournalEntryRequest[];
+  /** Programmable ListOutcomes/ProposeOutcome data (plan 09y); seeded via makeOutcome. */
+  outcomes: Outcome[];
   /** Programmable ListEvents data (plan 09n T12); default matches the previous hardcoded response. */
   events: FakeEvent[];
   /** Programmable ListIncidents/GetIncident data (plan 09n T12): a flat list, filtered by `incident.eventId`. */
@@ -228,6 +259,11 @@ export function createFakeIms(options: FakeImsOptions = {}): FakeIms {
       listPersonnel: "ok",
       createIncident: "ok",
       updateIncident: "ok",
+      attachPersonToIncident: "ok",
+      detachPersonFromIncident: "ok",
+      updateIncidentJournalEntry: "ok",
+      listOutcomes: "ok",
+      proposeOutcome: "ok",
       proposeIncidentType: "ok",
       createArea: "ok",
       createReport: "ok",
@@ -278,6 +314,13 @@ export function createFakeIms(options: FakeImsOptions = {}): FakeIms {
     updateRequests: [],
     updateReportRequests: [],
     requestReportRequests: [],
+    attachRequests: [],
+    detachRequests: [],
+    entryUpdateRequests: [],
+    outcomes: [
+      makeOutcome({ id: 1, name: "Resolved on scene" }),
+      makeOutcome({ id: 2, name: "Referred to White Bird" }),
+    ],
     cookieRefreshToken: undefined,
     issueRefreshToken() {
       counter += 1;
@@ -613,11 +656,11 @@ export function createFakeIms(options: FakeImsOptions = {}): FakeIms {
           }
           const now = timestampFromDate(new Date(clock()));
           const incident = view.incident;
+          const withFields = applyFieldWrites(incident, update, now);
           const next = create(IncidentViewSchema, {
             ...view,
             incident: create(IncidentSchema, {
-              ...incident,
-              lastModified: now,
+              ...withFields,
               journalEntries: [
                 ...incident.journalEntries,
                 ...entriesOf(update, now),
@@ -626,6 +669,160 @@ export function createFakeIms(options: FakeImsOptions = {}): FakeIms {
           });
           fake.incidents = fake.incidents.map((v) => (v === view ? next : v));
           return create(UpdateIncidentResponseSchema);
+        },
+        attachPersonToIncident(req, ctx) {
+          record("AttachPersonToIncident", ctx);
+          guard(fake.behaviour.attachPersonToIncident, ctx);
+          requireWriter();
+          fake.attachRequests.push(req);
+          const view = fake.incidents.find(
+            (v) =>
+              v.incident?.eventId === req.eventId &&
+              v.incident?.number === req.incidentNumber,
+          );
+          if (!view?.incident) {
+            throw new ConnectError("incident not found", Code.NotFound);
+          }
+          const person = fake.people.find((p) => p.personId === req.personId);
+          if (!person) {
+            throw new ConnectError("person not found", Code.NotFound);
+          }
+          const incident = view.incident;
+          const attached = incident.people.some(
+            (p) => p.person?.personId === req.personId,
+          );
+          const involvement =
+            req.involvement === "" ? undefined : req.involvement;
+          const row = create(IncidentPersonSchema, {
+            person: {
+              personId: person.personId,
+              handle: person.handle,
+              name: person.name,
+            },
+            involvement,
+            grantedAccess: req.grantedAccess,
+            // has_event_access mirrors whether the person has any standing in
+            // the event at all — a populated participation type.
+            hasEventAccess:
+              person.participationType !== ParticipationType.UNSPECIFIED,
+          });
+          const people = attached
+            ? incident.people.map((p) =>
+                p.person?.personId === req.personId
+                  ? create(IncidentPersonSchema, {
+                      ...p,
+                      involvement,
+                      grantedAccess: req.grantedAccess,
+                    })
+                  : p,
+              )
+            : [...incident.people, row];
+          const next = create(IncidentViewSchema, {
+            ...view,
+            incident: create(IncidentSchema, {
+              ...incident,
+              people,
+              lastModified: timestampFromDate(new Date(clock())),
+            }),
+          });
+          fake.incidents = fake.incidents.map((v) => (v === view ? next : v));
+          return create(AttachPersonToIncidentResponseSchema);
+        },
+        detachPersonFromIncident(req, ctx) {
+          record("DetachPersonFromIncident", ctx);
+          guard(fake.behaviour.detachPersonFromIncident, ctx);
+          requireWriter();
+          fake.detachRequests.push(req);
+          const view = fake.incidents.find(
+            (v) =>
+              v.incident?.eventId === req.eventId &&
+              v.incident?.number === req.incidentNumber,
+          );
+          if (!view?.incident) {
+            throw new ConnectError("incident not found", Code.NotFound);
+          }
+          const incident = view.incident;
+          const next = create(IncidentViewSchema, {
+            ...view,
+            incident: create(IncidentSchema, {
+              ...incident,
+              people: incident.people.filter(
+                (p) => p.person?.personId !== req.personId,
+              ),
+              lastModified: timestampFromDate(new Date(clock())),
+            }),
+          });
+          fake.incidents = fake.incidents.map((v) => (v === view ? next : v));
+          return create(DetachPersonFromIncidentResponseSchema);
+        },
+        updateIncidentJournalEntry(req, ctx) {
+          record("UpdateIncidentJournalEntry", ctx);
+          guard(fake.behaviour.updateIncidentJournalEntry, ctx);
+          requireWriter();
+          fake.entryUpdateRequests.push(req);
+          const view = fake.incidents.find(
+            (v) =>
+              v.incident?.eventId === req.eventId &&
+              v.incident?.number === req.incidentNumber,
+          );
+          if (!view?.incident) {
+            throw new ConnectError("incident not found", Code.NotFound);
+          }
+          const incident = view.incident;
+          const stricken = req.entry?.stricken === true;
+          const next = create(IncidentViewSchema, {
+            ...view,
+            incident: create(IncidentSchema, {
+              ...incident,
+              journalEntries: incident.journalEntries.map((e) =>
+                e.id === req.journalEntryId
+                  ? create(JournalEntrySchema, { ...e, stricken })
+                  : e,
+              ),
+              lastModified: timestampFromDate(new Date(clock())),
+            }),
+          });
+          fake.incidents = fake.incidents.map((v) => (v === view ? next : v));
+          return create(UpdateIncidentJournalEntryResponseSchema);
+        },
+        listOutcomes(_req, ctx) {
+          record("ListOutcomes", ctx);
+          guard(fake.behaviour.listOutcomes, ctx);
+          return create(ListOutcomesResponseSchema, {
+            outcomes: fake.outcomes,
+          });
+        },
+        proposeOutcome(req, ctx) {
+          record("ProposeOutcome", ctx);
+          guard(fake.behaviour.proposeOutcome, ctx);
+          requireWriter();
+          const name = (req.outcome?.name ?? "").trim();
+          if (!name) {
+            throw new ConnectError(
+              "outcome name is required",
+              Code.InvalidArgument,
+            );
+          }
+          // A name collision resolves to the existing outcome.
+          const existing = fake.outcomes.find(
+            (o) => (o.name ?? "").trim().toLowerCase() === name.toLowerCase(),
+          );
+          if (existing) {
+            return create(ProposeOutcomeResponseSchema, {
+              outcomeId: existing.id,
+            });
+          }
+          const id = Math.max(0, ...fake.outcomes.map((o) => o.id)) + 1;
+          fake.outcomes = [
+            ...fake.outcomes,
+            create(OutcomeSchema, {
+              id,
+              name,
+              approved: false,
+              proposer: { personId: fake.user.personId },
+            }),
+          ];
+          return create(ProposeOutcomeResponseSchema, { outcomeId: id });
         },
         proposeIncidentType(req, ctx) {
           record("ProposeIncidentType", ctx);
@@ -1106,6 +1303,96 @@ export function createFakeIms(options: FakeImsOptions = {}): FakeIms {
       keys.length === 1 &&
       keys[0] === "journalEntries"
     );
+  }
+
+  /**
+   * UpdateIncident's field writes, applied with the wire table's presence
+   * semantics (plan 09y): state / priority UNSPECIFIED leave the field; the
+   * optional scalars present = set, "" clears; outcomeId 0 clears; a present
+   * location updates only its set pieces; the Int32List / IncidentRefList
+   * wrappers present-but-empty clear; closed is stamped on the OPEN → CLOSED
+   * transition and cleared on the reverse; lastModified is always bumped.
+   */
+  function applyFieldWrites(
+    incident: Incident,
+    update: IncidentUpdate,
+    now: ReturnType<typeof timestampFromDate>,
+  ): Incident {
+    const next: MessageInitShape<typeof IncidentSchema> = { ...incident };
+    if (
+      update.state !== IncidentState.UNSPECIFIED &&
+      update.state !== incident.state
+    ) {
+      next.state = update.state;
+      next.closed = update.state === IncidentState.CLOSED ? now : undefined;
+    }
+    if (
+      update.priority !== IncidentPriority.UNSPECIFIED &&
+      update.priority !== incident.priority
+    ) {
+      next.priority = update.priority;
+    }
+    if (update.private !== undefined && update.private !== incident.private) {
+      if (
+        !fake.user.admin &&
+        incident.createdBy?.personId !== fake.user.personId
+      ) {
+        throw new ConnectError(
+          "only an admin or the incident's creator may change whether it is private",
+          Code.PermissionDenied,
+        );
+      }
+      next.private = update.private;
+    }
+    if (update.outcomeId !== undefined) {
+      next.outcomeId = update.outcomeId === 0 ? undefined : update.outcomeId;
+    }
+    if (update.started !== undefined) {
+      next.started = update.started;
+    }
+    if (update.summary !== undefined) {
+      next.summary = update.summary === "" ? undefined : update.summary;
+    }
+    if (update.location !== undefined) {
+      const loc = { ...(incident.location ?? {}) };
+      if (update.location.areaSlug !== undefined) {
+        loc.areaSlug =
+          update.location.areaSlug === ""
+            ? undefined
+            : update.location.areaSlug;
+      }
+      if (update.location.description !== undefined) {
+        loc.description =
+          update.location.description === ""
+            ? undefined
+            : update.location.description;
+      }
+      if (update.location.booth !== undefined) {
+        loc.booth =
+          update.location.booth === "" ? undefined : update.location.booth;
+      }
+      next.location = create(IncidentLocationSchema, loc);
+    }
+    if (update.incidentTypeIds !== undefined) {
+      next.incidentTypeIds = [...update.incidentTypeIds.values];
+    }
+    if (update.reports !== undefined) {
+      next.reports = [...update.reports.values];
+    }
+    if (update.linkedIncidents !== undefined) {
+      next.linkedIncidents = update.linkedIncidents.refs.map((r) => ({
+        ...r,
+        eventName:
+          fake.events.find((e) => e.id === r.eventId)?.name ?? r.eventName,
+        summary:
+          fake.incidents.find(
+            (v) =>
+              v.incident?.eventId === r.eventId &&
+              v.incident?.number === r.incidentNumber,
+          )?.incident?.summary ?? "",
+      }));
+    }
+    return create(IncidentSchema, { ...next, lastModified: now });
   }
 
   function issueAccessToken(): {

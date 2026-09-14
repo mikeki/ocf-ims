@@ -270,6 +270,15 @@ export const touchTarget = 44;
  */
 export const ledgerColumn = 58;
 
+/**
+ * The incident editor's ledger row (plan 09y, the Ledger): the label column
+ * every row aligns to, so `label · value · ›` reads as one table down the
+ * page. The only file that may hold this number.
+ */
+export const ledger = {
+  labelWidth: 104,
+} as const;
+
 /** A form stops growing here; on a wide window it sits centred instead. */
 export const formMaxWidth = 420;
 
