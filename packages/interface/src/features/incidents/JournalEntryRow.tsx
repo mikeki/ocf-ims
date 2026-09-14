@@ -2,10 +2,11 @@
 
 import type { JournalEntry } from "@ocf-ims/protocol-buffers/ocf/ims/resources/v1/journal_entry_pb";
 import { Image } from "expo-image";
-import { Pressable, StyleSheet } from "react-native";
+import { Pressable, StyleSheet, View } from "react-native";
 import { PressFeedback } from "@/design/motion";
 import { Box } from "@/design/primitives/Box";
 import { Text } from "@/design/primitives/Text";
+import { TextButton } from "@/design/primitives/TextButton";
 import { useTheme } from "@/design/theme";
 import { pressRetentionOffset } from "@/design/tokens";
 import { useAttachmentSource } from "@/features/incidents/useAttachmentSource";
@@ -22,19 +23,28 @@ import { formatTimestamp, personLabel } from "@/lib/format";
 //
 // An attachment whose media type is an image renders inline (09s), fetched
 // with the session's Bearer; anything else is a file row, never a broken image.
+//
+// The editor (plan 09y criterion 10) adds two marks on the header line: the
+// entry's origin when it came from an attached report, and Strike/Unstrike
+// for a writer on the incident's own non-system entries — the row keeps one
+// shape whether or not the caller lights those.
 
 export interface JournalEntryRowProps {
   entry: JournalEntry;
   /** Where the entry lives, for the attachment route; absent = no images (a report). */
   attachmentOn?: { eventName: string; incidentNumber: number };
   onOpenAttachment?: (entryId: number) => void;
+  /** Set when the entry came from an attached report, not this incident. */
+  report?: number;
+  /** Present only where a writer may strike this entry. */
+  onStrike?: () => void;
 }
 
 /** The inline image's height: fixed, so the journal never reflows as images arrive. */
 export const IMAGE_HEIGHT = 180;
 
 export function JournalEntryRow(props: JournalEntryRowProps) {
-  const { entry, attachmentOn, onOpenAttachment } = props;
+  const { entry, attachmentOn, onOpenAttachment, report, onStrike } = props;
   const theme = useTheme();
   const muted = entry.systemEntry || entry.stricken === true;
   const isImage =
@@ -53,13 +63,27 @@ export function JournalEntryRow(props: JournalEntryRowProps) {
           : theme.colors.borderStrong,
       }}
     >
-      <Box row align="baseline" justify="space-between" gap="sm">
+      <Box row align="baseline" gap="sm">
         <Text variant="label" color="textMuted" numberOfLines={1}>
           {entry.author}
         </Text>
+        {report !== undefined ? (
+          <Text variant="caption" color="textMuted">
+            {`Report #${report}`}
+          </Text>
+        ) : null}
+        <View style={styles.spacer} />
         <Text variant="caption" color="textMuted">
           {formatTimestamp(entry.created)}
         </Text>
+        {onStrike ? (
+          <TextButton
+            variant="caption"
+            label={entry.stricken ? "Unstrike" : "Strike"}
+            onPress={onStrike}
+            testID={`strike-${entry.id}`}
+          />
+        ) : null}
       </Box>
       <Text
         color={muted ? "textMuted" : "text"}
@@ -149,4 +173,5 @@ function AttachedImage(props: {
 
 const styles = StyleSheet.create({
   fill: { width: "100%" },
+  spacer: { flex: 1 },
 });

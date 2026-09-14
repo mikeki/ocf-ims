@@ -1,12 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
-import type { Timestamp } from "@bufbuild/protobuf/wkt";
-import { timestampDate } from "@bufbuild/protobuf/wkt";
-import type { Area } from "@ocf-ims/protocol-buffers/ocf/ims/resources/v1/area_pb";
-import type { Incident } from "@ocf-ims/protocol-buffers/ocf/ims/resources/v1/incident_pb";
-import type { IncidentType } from "@ocf-ims/protocol-buffers/ocf/ims/resources/v1/incident_type_pb";
 import type { IncidentView } from "@ocf-ims/protocol-buffers/ocf/ims/service/rpc/v1/incident_pb";
-import type { ReactNode, RefObject } from "react";
+import type { RefObject } from "react";
 import { useImperativeHandle, useRef, useState } from "react";
 import {
   KeyboardAvoidingView,
@@ -14,7 +9,6 @@ import {
   RefreshControl,
   ScrollView,
   StyleSheet,
-  Switch,
   View,
 } from "react-native";
 import { toAppError } from "@/api/errors";
@@ -29,15 +23,33 @@ import {
   AppendComposer,
   type AppendComposerHandle,
 } from "@/features/compose/AppendComposer";
-import { useEventAccess, useEventName } from "@/features/events/hooks";
+import { useEventName } from "@/features/events/hooks";
+import { Card, Section } from "@/features/incidents/controls/bits";
 import {
-  useAreas,
-  useIncident,
-  useIncidentTypes,
-} from "@/features/incidents/hooks";
-import { JournalEntryRow } from "@/features/incidents/JournalEntryRow";
-import { areaName, typeName } from "@/features/incidents/lookups";
-import { PeopleSection } from "@/features/incidents/PeopleSection";
+  AreaControl,
+  areaLabel,
+  BoothControl,
+  DetailsControl,
+  OutcomeControl,
+  outcomeName,
+  PriorityControl,
+  PrivateControl,
+  StartedControl,
+  StateControl,
+  SummaryControl,
+  TypesControl,
+} from "@/features/incidents/controls/Controls";
+import {
+  ControlWithDone,
+  InPlace,
+} from "@/features/incidents/controls/InPlace";
+import { Journal } from "@/features/incidents/Journal";
+import { LedgerRow } from "@/features/incidents/LedgerRow";
+import { LinksEditor } from "@/features/incidents/LinksEditor";
+import { PeopleEditor } from "@/features/incidents/PeopleEditor";
+import { ReportsEditor } from "@/features/incidents/ReportsEditor";
+import { useEditIncident } from "@/features/incidents/useEditIncident";
+import { useEditorData } from "@/features/incidents/useEditorData";
 import { useLiveEvent } from "@/features/live/useLiveEvent";
 import { EmptyState } from "@/features/shell/EmptyState";
 import { ErrorState } from "@/features/shell/ErrorState";
@@ -49,13 +61,14 @@ import {
   priorityLabel,
   stateLabel,
 } from "@/lib/format";
-import { useSession } from "@/session/provider";
 
-// The incident detail (plan 09n): every read-only section from the journal
-// down, pull-to-refresh, and the system-entries toggle, plus the docked
-// composer when the caller may add to the journal (09r). Navigation
-// (linked-incident presses, back) is the route's job (T6) — this component
-// takes ids and callbacks only.
+// The incident editor, the Ledger (plan 09y): *in place* — the value is the
+// control. Every read-only section from 09n's screen stays, in the same
+// reading order, but for a writer each row is a hard cut to its field's
+// control (LedgerRow) and the summary is the heading with an Edit word.
+// Pull to refresh, the system-entries toggle and the docked composer are
+// unchanged from the 3b screen; the composer moves to the top of the
+// journal's entries (criterion 10), newest first.
 //
 // `chrome` (plan 09x criterion 8) lets the dispatch drawer and the full page
 // embed this screen under their own header: "embedded" drops `ScreenHeader`
@@ -96,18 +109,11 @@ export function IncidentScreen(props: IncidentScreenProps) {
     handle,
   } = props;
   const theme = useTheme();
-  const access = useEventAccess(eventId);
   const eventName = useEventName(eventId);
-  const { state } = useSession();
-  const incidentQuery = useIncident(eventId, number);
+  const data = useEditorData(eventId, number);
+  const edit = useEditIncident(eventId, number);
   useLiveEvent(eventId);
-  const areasQuery = useAreas(eventId, access.readAreas);
-  const typesQuery = useIncidentTypes();
-  const view = incidentQuery.data?.incident;
-  const mayAppend = view?.viewerMayAddJournal === true;
-  const author = state.status === "signedIn" ? state.auth.user : "";
-  const me = state.status === "signedIn" ? state.auth.personId : 0;
-  const owed = view !== undefined && owesReport(view, me);
+  const owed = data.view !== undefined && owesReport(data.view, data.gates.me);
   const [showSystemEntries, setShowSystemEntries] = useState(false);
   const composerRef = useRef<AppendComposerHandle>(null);
   useImperativeHandle(
@@ -132,19 +138,18 @@ export function IncidentScreen(props: IncidentScreenProps) {
           />
         ) : null}
         {renderBody({
-          incidentQuery,
-          areas: areasQuery.data?.areas,
-          types: typesQuery.data?.incidentTypes,
+          data,
+          edit,
           eventId,
           eventName,
           number,
-          mayAsk: access.writeIncidents,
           onBack,
           onOpenIncident,
           onOpenReport,
           onOpenAttachment,
           showSystemEntries,
           onToggleSystemEntries: setShowSystemEntries,
+          composerRef,
         })}
         {owed ? (
           <View
@@ -164,16 +169,6 @@ export function IncidentScreen(props: IncidentScreenProps) {
             />
           </View>
         ) : null}
-        {mayAppend ? (
-          <AppendComposer
-            ref={composerRef}
-            eventId={eventId}
-            number={number}
-            author={author}
-            eventName={eventName}
-            attachFiles={access.attachFiles && eventName !== ""}
-          />
-        ) : null}
       </Box>
     </KeyboardAvoidingView>
   );
@@ -182,31 +177,32 @@ export function IncidentScreen(props: IncidentScreenProps) {
 const styles = StyleSheet.create({
   fill: { flex: 1 },
   dock: { borderTopWidth: StyleSheet.hairlineWidth },
+  wrap: { flexDirection: "row", flexWrap: "wrap", alignItems: "center" },
+  shrink: { flexShrink: 1 },
 });
 
 interface BodyArgs {
-  incidentQuery: ReturnType<typeof useIncident>;
-  areas: Area[] | undefined;
-  types: IncidentType[] | undefined;
+  data: ReturnType<typeof useEditorData>;
+  edit: ReturnType<typeof useEditIncident>;
   eventId: number;
   eventName: string;
   number: number;
-  mayAsk: boolean;
   onBack: () => void;
   onOpenIncident: (number: number) => void;
   onOpenReport: (number: number) => void;
   onOpenAttachment: (entryId: number) => void;
   showSystemEntries: boolean;
   onToggleSystemEntries: (value: boolean) => void;
+  composerRef: RefObject<AppendComposerHandle | null>;
 }
 
-function renderBody(args: BodyArgs): ReactNode {
-  const { incidentQuery, areas, types, number, onBack } = args;
-  if (incidentQuery.isLoading) {
+function renderBody(args: BodyArgs) {
+  const { data, number, onBack } = args;
+  if (data.incidentQuery.isLoading) {
     return <LoadingState />;
   }
-  if (incidentQuery.error) {
-    const error = toAppError(incidentQuery.error);
+  if (data.incidentQuery.error) {
+    const error = toAppError(data.incidentQuery.error);
     if (error.kind === "notFound") {
       return (
         <EmptyState
@@ -220,60 +216,44 @@ function renderBody(args: BodyArgs): ReactNode {
       <ErrorState
         error={error}
         onRetry={() => {
-          void incidentQuery.refetch();
+          void data.incidentQuery.refetch();
         }}
       />
     );
   }
-  const view = incidentQuery.data?.incident;
-  if (!view?.incident) {
+  if (!data.view?.incident) {
     return null;
   }
+  // Keyed by the incident: Prev / Next update the number in place, and an
+  // open row or a half-typed field must not carry over to the next incident.
   return (
     <IncidentDetail
-      view={view}
-      areas={areas}
-      types={types}
-      eventId={args.eventId}
-      eventName={args.eventName}
-      mayAsk={args.mayAsk}
-      onOpenIncident={args.onOpenIncident}
-      onOpenReport={args.onOpenReport}
-      onOpenAttachment={args.onOpenAttachment}
-      refreshing={incidentQuery.isRefetching && !incidentQuery.isLoading}
+      key={args.number}
+      {...args}
+      view={data.view}
+      refreshing={
+        data.incidentQuery.isRefetching && !data.incidentQuery.isLoading
+      }
       onRefresh={() => {
-        void incidentQuery.refetch();
+        void data.incidentQuery.refetch();
       }}
-      showSystemEntries={args.showSystemEntries}
-      onToggleSystemEntries={args.onToggleSystemEntries}
     />
   );
 }
 
-interface IncidentDetailProps {
+interface IncidentDetailProps extends BodyArgs {
   view: IncidentView;
-  areas: Area[] | undefined;
-  types: IncidentType[] | undefined;
-  eventId: number;
-  eventName: string;
-  mayAsk: boolean;
-  onOpenIncident: (number: number) => void;
-  onOpenReport: (number: number) => void;
-  onOpenAttachment: (entryId: number) => void;
   refreshing: boolean;
   onRefresh: () => void;
-  showSystemEntries: boolean;
-  onToggleSystemEntries: (value: boolean) => void;
 }
 
 function IncidentDetail(props: IncidentDetailProps) {
   const {
-    view,
-    areas,
-    types,
+    data,
+    edit,
     eventId,
     eventName,
-    mayAsk,
+    number,
     onOpenIncident,
     onOpenReport,
     onOpenAttachment,
@@ -281,26 +261,29 @@ function IncidentDetail(props: IncidentDetailProps) {
     onRefresh,
     showSystemEntries,
     onToggleSystemEntries,
+    composerRef,
   } = props;
-  const incident = view.incident;
+  const theme = useTheme();
+  const [addingPerson, setAddingPerson] = useState(false);
+  const [addingLink, setAddingLink] = useState(false);
+  const [addingReport, setAddingReport] = useState(false);
+  const incident = props.view.incident;
   if (!incident) {
     return null;
   }
-
+  const may = data.gates.writeIncidents;
   const state = stateLabel(incident.state);
   const priority = priorityLabel(incident.priority);
-  const typeNames =
-    incident.incidentTypeIds.length > 0
-      ? incident.incidentTypeIds.map((id) => typeName(types, id)).join(", ")
-      : "None";
-  const entries = incident.journalEntries
-    .filter((e) => showSystemEntries || !e.systemEntry)
-    .slice()
-    .sort((a, b) => timeOf(a.created) - timeOf(b.created));
+  const control = { data, edit, eventId };
+  const outcome = outcomeName(control);
+  const area = areaLabel(control);
+  const typeNames = incident.incidentTypeIds.map(
+    (id) => data.lookups.types?.find((t) => t.id === id)?.name ?? `Type #${id}`,
+  );
 
   return (
     <ScrollView
-      style={{ flex: 1 }}
+      style={styles.fill}
       keyboardShouldPersistTaps="handled"
       refreshControl={
         <RefreshControl
@@ -312,11 +295,14 @@ function IncidentDetail(props: IncidentDetailProps) {
     >
       <Box p="lg" gap="lg">
         <Box gap="sm">
-          <Box row align="center" gap="sm">
+          <Box row align="center" gap="sm" style={styles.wrap}>
             <Text variant="title" testID="incident-number">
               {`#${incident.number}`}
             </Text>
-            {state ? <Badge label={state.label} tone={state.tone} /> : null}
+            <Badge
+              label={state?.label ?? "Open"}
+              tone={state?.tone ?? "info"}
+            />
             {priority ? (
               <Badge label={priority.label} tone={priority.tone} />
             ) : null}
@@ -324,151 +310,306 @@ function IncidentDetail(props: IncidentDetailProps) {
               <Badge label="Private" tone="restricted" />
             ) : null}
           </Box>
-          <Text variant="heading">{incident.summary || "(no summary)"}</Text>
+          <InPlace
+            enabled={may}
+            value={(edit_) => (
+              <Box row align="flex-start" justify="space-between" gap="md">
+                <Text
+                  variant="heading"
+                  color={incident.summary ? "text" : "textMuted"}
+                  style={styles.shrink}
+                  testID="summary-value"
+                >
+                  {incident.summary ||
+                    (may ? "No summary yet" : "(no summary)")}
+                </Text>
+                {may ? (
+                  <TextButton
+                    label="Edit"
+                    onPress={edit_}
+                    testID="summary-edit"
+                  />
+                ) : null}
+              </Box>
+            )}
+            control={(done) => (
+              <SummaryControl {...control} onDone={done} autoFocus />
+            )}
+          />
         </Box>
 
-        <Card>
-          <Meta>{`Started ${formatTimestamp(incident.started)}`}</Meta>
-          <Meta>
-            {`Created ${formatTimestamp(incident.created)} by ${personLabel(incident.createdBy)}`}
-          </Meta>
-          <Meta>{`Last modified ${formatTimestamp(incident.lastModified)}`}</Meta>
+        <Card testID="details-card">
+          <LedgerRow
+            label="State"
+            may={may}
+            testID="state-value"
+            value={
+              <Badge
+                label={state?.label ?? "Open"}
+                tone={state?.tone ?? "info"}
+              />
+            }
+            control={(done) => <StateControl {...control} onDone={done} />}
+          />
+          <LedgerRow
+            label="Priority"
+            may={may}
+            testID="priority-value"
+            value={
+              priority ? (
+                <Badge label={priority.label} tone={priority.tone} />
+              ) : (
+                <Text>Normal</Text>
+              )
+            }
+            control={(done) => <PriorityControl {...control} onDone={done} />}
+          />
+          <LedgerRow
+            label="Private"
+            may={may}
+            testID="private-value"
+            value={
+              incident.private ? (
+                <Badge label="Private" tone="restricted" />
+              ) : (
+                <Text>No</Text>
+              )
+            }
+            control={(done) => (
+              <ControlWithDone onDone={done}>
+                <PrivateControl {...control} />
+              </ControlWithDone>
+            )}
+          />
+          <LedgerRow
+            label="Outcome"
+            may={may}
+            testID="outcome-value"
+            value={
+              outcome ? (
+                <Text>{outcome}</Text>
+              ) : (
+                <Text color="textMuted">{may ? "Add an outcome" : "None"}</Text>
+              )
+            }
+            control={(done) => (
+              <ControlWithDone onDone={done}>
+                <OutcomeControl {...control} />
+              </ControlWithDone>
+            )}
+          />
+          <LedgerRow
+            label="Started"
+            may={may}
+            testID="started-value"
+            value={<Text>{formatTimestamp(incident.started)}</Text>}
+            control={(done) => (
+              <StartedControl {...control} onDone={done} autoFocus />
+            )}
+          />
+          <LedgerRow
+            label="Created"
+            value={
+              <Text color="textMuted">
+                {`${formatTimestamp(incident.created)} by ${personLabel(incident.createdBy)}`}
+              </Text>
+            }
+          />
+          <LedgerRow
+            label="Modified"
+            value={
+              <Text color="textMuted">
+                {formatTimestamp(incident.lastModified)}
+              </Text>
+            }
+          />
           {incident.closed ? (
-            <Meta>{`Closed ${formatTimestamp(incident.closed)}`}</Meta>
+            <LedgerRow
+              label="Closed"
+              value={
+                <Text color="textMuted">
+                  {formatTimestamp(incident.closed)}
+                </Text>
+              }
+              last
+            />
           ) : null}
         </Card>
 
         <Section title="Location">
-          {locationParts(incident, areas).map((part) => (
-            <Text key={part}>{part}</Text>
-          ))}
-        </Section>
-
-        <Section title="Types">
-          <Text>{typeNames}</Text>
-        </Section>
-
-        <Section title="People">
-          <PeopleSection
-            eventId={eventId}
-            number={incident.number}
-            people={incident.people}
-            mayAsk={mayAsk}
-            onOpenReport={onOpenReport}
+          <LedgerRow
+            label="Area"
+            may={may}
+            testID="area-value"
+            value={
+              area ? (
+                <Text>{area}</Text>
+              ) : (
+                <Text color="textMuted">{may ? "Add an area" : "None"}</Text>
+              )
+            }
+            control={(done) => (
+              <ControlWithDone onDone={done}>
+                <AreaControl {...control} onDone={done} />
+              </ControlWithDone>
+            )}
+          />
+          <LedgerRow
+            label="Details"
+            may={may}
+            testID="details-value"
+            value={
+              incident.location?.description ? (
+                <Text>{incident.location.description}</Text>
+              ) : (
+                <Text color="textMuted">
+                  {may ? "Add location details" : "None"}
+                </Text>
+              )
+            }
+            control={(done) => (
+              <DetailsControl {...control} onDone={done} autoFocus />
+            )}
+          />
+          <LedgerRow
+            label="Booth"
+            may={may}
+            testID="booth-value"
+            value={
+              incident.location?.booth ? (
+                <Text>{incident.location.booth}</Text>
+              ) : (
+                <Text color="textMuted">{may ? "Add a booth" : "None"}</Text>
+              )
+            }
+            control={(done) => (
+              <BoothControl {...control} onDone={done} autoFocus />
+            )}
+            last
           />
         </Section>
 
-        {incident.linkedIncidents.length > 0 ? (
-          <Section title="Linked incidents">
-            {incident.linkedIncidents.map((ref) => (
-              <TextButton
-                key={ref.incidentNumber}
-                label={`#${ref.incidentNumber}`}
-                variant="figure"
-                onPress={() => onOpenIncident(ref.incidentNumber)}
-              />
-            ))}
-          </Section>
-        ) : null}
+        <Section title="Types">
+          <LedgerRow
+            label="Types"
+            may={may}
+            testID="types-value"
+            value={
+              typeNames.length === 0 ? (
+                <Text color="textMuted">{may ? "Add a type" : "None"}</Text>
+              ) : (
+                <View style={[styles.wrap, { gap: theme.spacing.sm }]}>
+                  {typeNames.map((name) => (
+                    <Badge key={name} label={name} tone="info" />
+                  ))}
+                </View>
+              )
+            }
+            control={(done) => (
+              <ControlWithDone onDone={done}>
+                <TypesControl {...control} />
+              </ControlWithDone>
+            )}
+            last
+          />
+        </Section>
 
-        {incident.reports.length > 0 ? (
-          <Section title="Reports">
-            {incident.reports.map((n) => (
+        <Section
+          title="People"
+          right={
+            may && !addingPerson ? (
               <TextButton
-                key={n}
-                label={`Report #${n}`}
-                onPress={() => onOpenReport(n)}
-                testID={`incident-report-${n}`}
+                label="Attach someone…"
+                onPress={() => setAddingPerson(true)}
+                testID="attach-someone-open"
               />
-            ))}
-          </Section>
-        ) : null}
+            ) : null
+          }
+        >
+          <PeopleEditor
+            eventId={eventId}
+            number={incident.number}
+            people={incident.people}
+            mayEdit={may}
+            edit={edit}
+            onOpenReport={onOpenReport}
+            adding={addingPerson}
+            onAddingChange={setAddingPerson}
+            inPlace
+          />
+        </Section>
 
-        <Box gap="sm">
-          <Box row align="center" justify="space-between" gap="md">
-            <Text variant="heading">Journal</Text>
-            <Box row align="center" gap="sm">
-              <Text variant="label" color="textMuted">
-                Show system entries
-              </Text>
-              <Switch
-                accessibilityLabel="Show system entries"
-                value={showSystemEntries}
-                onValueChange={onToggleSystemEntries}
+        <Section
+          title="Linked incidents"
+          right={
+            may && !addingLink ? (
+              <TextButton
+                label="Link an incident…"
+                onPress={() => setAddingLink(true)}
+                testID="links-add-open"
               />
-            </Box>
-          </Box>
-          {entries.length === 0 ? (
-            <Text color="textMuted">No entries yet.</Text>
-          ) : (
-            entries.map((entry) => (
-              <JournalEntryRow
-                key={entry.id}
-                entry={entry}
-                attachmentOn={{ eventName, incidentNumber: incident.number }}
-                onOpenAttachment={onOpenAttachment}
+            ) : null
+          }
+        >
+          <LinksEditor
+            eventId={eventId}
+            links={incident.linkedIncidents}
+            events={data.lookups.events}
+            mayEdit={may}
+            edit={edit}
+            onOpenIncident={onOpenIncident}
+            adding={addingLink}
+            onAddingChange={setAddingLink}
+            inPlace
+          />
+        </Section>
+
+        <Section
+          title="Reports"
+          right={
+            may && !addingReport ? (
+              <TextButton
+                label="Attach a report…"
+                onPress={() => setAddingReport(true)}
+                testID="reports-add-open"
               />
-            ))
-          )}
-        </Box>
+            ) : null
+          }
+        >
+          <ReportsEditor
+            reports={incident.reports}
+            mayEdit={may}
+            edit={edit}
+            onOpenReport={onOpenReport}
+            loaded={data.reportsLoaded}
+            adding={addingReport}
+            onAddingChange={setAddingReport}
+            inPlace
+          />
+        </Section>
+
+        <Journal
+          items={data.journal}
+          showSystem={showSystemEntries}
+          onToggleSystem={onToggleSystemEntries}
+          mayStrike={may}
+          edit={edit}
+          attachmentOn={{ eventName, incidentNumber: incident.number }}
+          onOpenAttachment={onOpenAttachment}
+          composer={
+            data.gates.mayAppend ? (
+              <AppendComposer
+                ref={composerRef}
+                eventId={eventId}
+                number={number}
+                author={data.gates.author}
+                eventName={eventName}
+                attachFiles={data.gates.attachFiles && eventName !== ""}
+              />
+            ) : null
+          }
+        />
       </Box>
     </ScrollView>
   );
-}
-
-/** A block of related read-only content: a surface, ruled off the page. */
-function Card(props: { children: ReactNode }) {
-  const theme = useTheme();
-  return (
-    <Box
-      bg="surface"
-      radius="lg"
-      p="lg"
-      gap="xs"
-      style={{ borderWidth: 1, borderColor: theme.colors.border }}
-    >
-      {props.children}
-    </Box>
-  );
-}
-
-/** A timestamp line. Captions are tabular, so the four of them align. */
-function Meta(props: { children: ReactNode }) {
-  return (
-    <Text variant="caption" color="textMuted">
-      {props.children}
-    </Text>
-  );
-}
-
-function Section(props: { title: string; children: ReactNode }) {
-  return (
-    <Box gap="sm">
-      <Text variant="heading">{props.title}</Text>
-      <Card>{props.children}</Card>
-    </Box>
-  );
-}
-
-/** One line per part: an area, a description, a booth — never a dotted string. */
-function locationParts(
-  incident: Incident,
-  areas: Area[] | undefined,
-): string[] {
-  const parts: string[] = [];
-  const slug = incident.location?.areaSlug;
-  if (slug) {
-    parts.push(areaName(areas, slug) ?? slug);
-  }
-  if (incident.location?.description) {
-    parts.push(incident.location.description);
-  }
-  if (incident.location?.booth) {
-    parts.push(`Booth ${incident.location.booth}`);
-  }
-  return parts.length > 0 ? parts : ["No location"];
-}
-
-function timeOf(ts: Timestamp | undefined): number {
-  return ts ? timestampDate(ts).getTime() : 0;
 }

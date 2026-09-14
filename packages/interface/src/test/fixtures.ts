@@ -20,6 +20,8 @@ import {
   NotificationSchema,
   NotificationType,
 } from "@ocf-ims/protocol-buffers/ocf/ims/resources/v1/notification_pb";
+import type { Outcome } from "@ocf-ims/protocol-buffers/ocf/ims/resources/v1/outcome_pb";
+import { OutcomeSchema } from "@ocf-ims/protocol-buffers/ocf/ims/resources/v1/outcome_pb";
 import type { Report } from "@ocf-ims/protocol-buffers/ocf/ims/resources/v1/report_pb";
 import { ReportSchema } from "@ocf-ims/protocol-buffers/ocf/ims/resources/v1/report_pb";
 import type { IncidentView } from "@ocf-ims/protocol-buffers/ocf/ims/service/rpc/v1/incident_pb";
@@ -105,6 +107,17 @@ export function makeIncidentType(
   return create(IncidentTypeSchema, {
     id: 1,
     name: "Medical",
+    approved: true,
+    ...overrides,
+  });
+}
+
+export function makeOutcome(
+  overrides: MessageInitShape<typeof OutcomeSchema> = {},
+): Outcome {
+  return create(OutcomeSchema, {
+    id: 1,
+    name: "Resolved on scene",
     approved: true,
     ...overrides,
   });

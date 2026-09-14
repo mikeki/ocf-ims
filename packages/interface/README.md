@@ -165,6 +165,8 @@ checks are listed in each brief.
 
 At a window width ≥ 1024 px the incidents route renders a dispatch table inside a
 shell instead of the Board, with a keyboard map and a `?` help sheet (3c.1, [09x](../../docs/plans/09x-dispatch-design.md)).
+The incident screen edits in place — a row's value is its own control, one field
+per request, no Save button (3c.2, [09y](../../docs/plans/09y-incident-editor-design.md)).
 
 ## Layout and rules (09i §5)
 

@@ -2,24 +2,25 @@
 
 import type { RefObject } from "react";
 import { Pressable, StyleSheet, View } from "react-native";
-import { Text } from "@/design/primitives/Text";
 import { TextButton } from "@/design/primitives/TextButton";
 import { useTheme } from "@/design/theme";
-import { drawerShare, touchTarget } from "@/design/tokens";
+import { drawerShare } from "@/design/tokens";
 import { neighboursOf } from "@/features/dispatch/neighbours";
 import type { DispatchQuery } from "@/features/dispatch/useDispatchQuery";
 import {
   IncidentScreen,
   type IncidentScreenHandle,
 } from "@/features/incidents/IncidentScreen";
+import { ScreenHeader } from "@/features/shell/ScreenHeader";
 
 // The drawer (plan 09x criterion 7), promoted from
 // src/prototypes/dispatch/Drawer.tsx: the panel over the table's right two
-// thirds, the scrim, and its own header — "Incidents" closes, the number,
-// prev/next among the visible rows, and "Full page". The body is the 3b
-// incident screen, embedded (criterion 8): `chrome="embedded"` drops its own
-// header, so this one is the only one shown. "Full page" and a second Enter
-// push the real route (criterion 9, wired by the caller's `onFull`).
+// thirds, the scrim, and its own header — `ScreenHeader` (plan 09y criterion
+// 12): "Incidents" closes, the number, prev/next among the visible rows, and
+// "Full page". The body is the incident editor, embedded (criterion 8):
+// `chrome="embedded"` drops its own header, so this one is the only one
+// shown. "Full page" and a second Enter push the real route (criterion 9,
+// wired by the caller's `onFull`).
 
 export interface DrawerProps {
   d: DispatchQuery;
@@ -69,40 +70,33 @@ export function Drawer(props: DrawerProps) {
         ]}
         testID="dispatch-drawer"
       >
-        <View
-          style={[
-            styles.header,
-            {
-              paddingHorizontal: theme.spacing.lg,
-              gap: theme.spacing.md,
-              backgroundColor: theme.colors.surface,
-              borderBottomColor: theme.colors.border,
-            },
-          ]}
-        >
-          <TextButton label="Incidents" onPress={d.close} />
-          <Text variant="figure">{`#${number}`}</Text>
-          <View style={styles.spacer} />
-          {prev !== undefined ? (
-            <TextButton
-              label="‹ Prev"
-              onPress={() => d.open(prev)}
-              testID="dispatch-drawer-prev"
-            />
-          ) : null}
-          {next !== undefined ? (
-            <TextButton
-              label="Next ›"
-              onPress={() => d.open(next)}
-              testID="dispatch-drawer-next"
-            />
-          ) : null}
-          <TextButton
-            label="Full page"
-            onPress={onFull}
-            testID="dispatch-drawer-full"
-          />
-        </View>
+        <ScreenHeader
+          title={`#${number}`}
+          back={{ label: "Incidents", onPress: d.close }}
+          right={
+            <View style={styles.nav}>
+              {prev !== undefined ? (
+                <TextButton
+                  label="‹ Prev"
+                  onPress={() => d.open(prev)}
+                  testID="dispatch-drawer-prev"
+                />
+              ) : null}
+              {next !== undefined ? (
+                <TextButton
+                  label="Next ›"
+                  onPress={() => d.open(next)}
+                  testID="dispatch-drawer-next"
+                />
+              ) : null}
+              <TextButton
+                label="Full page"
+                onPress={onFull}
+                testID="dispatch-drawer-full"
+              />
+            </View>
+          }
+        />
         <View style={styles.fill}>
           <IncidentScreen
             chrome="embedded"
@@ -131,11 +125,5 @@ const styles = StyleSheet.create({
     bottom: 0,
     borderLeftWidth: StyleSheet.hairlineWidth,
   },
-  header: {
-    flexDirection: "row",
-    alignItems: "center",
-    minHeight: touchTarget,
-    borderBottomWidth: StyleSheet.hairlineWidth,
-  },
-  spacer: { flex: 1 },
+  nav: { flexDirection: "row", alignItems: "center", gap: 6 },
 });

@@ -11,9 +11,10 @@ import { makeIncident, makeIncidentView } from "@/test/fixtures";
 import { createTestRuntime, renderWithProviders } from "@/test/harness";
 import { createMemoryRefreshTokenStore } from "@/test/storage";
 
-// The incident's People with request states and the ask (plan 09t), through
-// the screen that hosts it, plus the docked "File your report" for the
-// person asked.
+// The People editor (plan 09y criterion 9), through the screen that hosts
+// it: a person's request state (report filed / requested / ask — folded
+// from the 09t PeopleSection spec) plus the actions line — involvement,
+// ask for a report, detach — and attaching someone new.
 
 const ME = 42;
 
@@ -40,15 +41,21 @@ function populate(fake: FakeIms) {
         summary: "Lost child",
         reports: [38],
         people: [
-          { person: { personId: 12, handle: "Ray" }, involvement: "witness" },
+          {
+            person: { personId: 12, handle: "Ray" },
+            involvement: "witness",
+            hasEventAccess: true,
+          },
           {
             person: { personId: 13, handle: "Trung" },
+            hasEventAccess: true,
             reportRequested: timestampFromDate(
               new Date("2026-08-15T16:00:00Z"),
             ),
           },
           {
             person: { personId: 11, handle: "Priya" },
+            hasEventAccess: true,
             reportRequested: timestampFromDate(
               new Date("2026-08-15T15:00:00Z"),
             ),
@@ -89,7 +96,7 @@ function renderIncident(
   );
 }
 
-describe("PeopleSection", () => {
+describe("PeopleEditor", () => {
   it("shows each person's request state and opens a delivered report", async () => {
     const fake = createFakeIms();
     populate(fake);
@@ -99,15 +106,16 @@ describe("PeopleSection", () => {
     await screen.findByTestId("incident-number");
     expect(screen.getByText("Report requested")).toBeTruthy();
     expect(screen.getByText("Report filed")).toBeTruthy();
-    await fireEvent.press(screen.getByTestId("person-report-11"));
+    await fireEvent.press(screen.getByText("R-38"));
     expect(onOpenReport).toHaveBeenCalledWith(38);
-    // A reader may not ask.
+    // A reader may not ask, attach or detach.
     expect(screen.queryByTestId("ask-report-12")).toBeNull();
-    expect(screen.queryByTestId("ask-someone-open")).toBeNull();
+    expect(screen.queryByTestId("attach-someone-open")).toBeNull();
+    expect(screen.queryByTestId("detach-12")).toBeNull();
     expect(screen.queryByTestId("file-your-report")).toBeNull();
   });
 
-  it("lets a writer ask an attached person, and someone new, for a report", async () => {
+  it("lets a writer ask an attached person for a report", async () => {
     const fake = createFakeIms({ user: { writeIncidents: true } });
     populate(fake);
     const runtime = await signedInRuntime(fake);
@@ -126,13 +134,59 @@ describe("PeopleSection", () => {
         "Ask again",
       ),
     );
+  });
 
-    await fireEvent.press(screen.getByTestId("ask-someone-open"));
-    await typeInto("ask-someone", "tru");
-    // Trung is already on it; the picker still finds him, and a repeat re-asks.
-    await fireEvent.press(await screen.findByTestId("ask-someone-13"));
-    await waitFor(() => expect(fake.requestReportRequests).toHaveLength(2));
-    expect(fake.requestReportRequests[1]?.personId).toBe(13);
+  it("lets a writer set a person's involvement", async () => {
+    const fake = createFakeIms({ user: { writeIncidents: true } });
+    populate(fake);
+    const runtime = await signedInRuntime(fake);
+    await renderIncident(runtime);
+    await screen.findByTestId("incident-number");
+
+    // Trung has no involvement yet: the word reads "Add involvement".
+    await fireEvent.press(screen.getByTestId("involvement-open-13"));
+    await typeInto("involvement-13", "Witness");
+    await fireEvent(screen.getByTestId("involvement-13"), "blur");
+
+    await waitFor(() => expect(fake.attachRequests).toHaveLength(1));
+    expect(fake.attachRequests[0]).toMatchObject({
+      personId: 13,
+      involvement: "Witness",
+    });
+  });
+
+  it("lets a writer detach a person", async () => {
+    const fake = createFakeIms({ user: { writeIncidents: true } });
+    populate(fake);
+    const runtime = await signedInRuntime(fake);
+    await renderIncident(runtime);
+    await screen.findByTestId("incident-number");
+
+    await fireEvent.press(screen.getByTestId("detach-12"));
+    await waitFor(() => expect(fake.detachRequests).toHaveLength(1));
+    expect(fake.detachRequests[0]).toMatchObject({
+      personId: 12,
+      incidentNumber: 214,
+    });
+  });
+
+  it("lets a writer attach someone new with no involvement and no grant", async () => {
+    const fake = createFakeIms({ user: { writeIncidents: true } });
+    populate(fake);
+    const runtime = await signedInRuntime(fake);
+    await renderIncident(runtime);
+    await screen.findByTestId("incident-number");
+
+    await fireEvent.press(screen.getByTestId("attach-someone-open"));
+    await typeInto("attach-someone", "tru");
+    await fireEvent.press(await screen.findByTestId("attach-someone-13"));
+
+    await waitFor(() => expect(fake.attachRequests).toHaveLength(1));
+    expect(fake.attachRequests[0]).toMatchObject({
+      personId: 13,
+      grantedAccess: false,
+    });
+    expect(fake.attachRequests[0]?.involvement).toBeUndefined();
   });
 
   it("docks File your report for the person asked, until they deliver", async () => {

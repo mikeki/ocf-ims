@@ -94,6 +94,22 @@ The dispatch table (plan 09x, 3c.1):
 - Colour: **Open** carries `info`, **High** carries `danger`, a private row carries `restricted`; **Normal** wears no badge.
 - A hidden column stays searched — hiding only changes what is drawn.
 
+## The editor
+
+The incident editor, the Ledger (plan 09y, 3c.2):
+
+- A row is its own control: `label · value · ›` in one aligned label column
+  (`ledger.labelWidth`); a press swaps the value for the field in place, the
+  label staying put, and a settled save, an unchanged blur, Done or a
+  same-value press swaps it back.
+- The colour language on a control is the read screen's: State wears `info`
+  (Open) or `neutral` (Closed), Priority wears `danger` (High), `neutral`
+  (Low) or no badge (Normal), Private wears `restricted`; the selected
+  segment carries the tone, the rest `border`.
+- Save on change, one field per request: a control sends only its own field
+  the moment it settles (a blur, a selection, a toggle) — there is no Save
+  button anywhere in the editor.
+
 ## Motion budget
 
 The whole budget, from `tokens.motion`:
