@@ -2,8 +2,8 @@
 
 # 09z — The 3c.3 round: reports on a wide window
 
-> **Status:** Brief written 2026-09-14; the round surface next (stacked PR), then the
-> pick, then the 3c.3 acceptance criteria here.
+> **Status:** Brief written and the round surface built 2026-09-14 (§ What was built);
+> the pick is the maintainer's, then the 3c.3 acceptance criteria here.
 > **Parent:** [09i-expo-client.md](09i-expo-client.md) (Phase 3, §6 **D2** and the 3c.3 row)
 > under [09-proto-connect-platform.md](09-proto-connect-platform.md)
 > **Follows:** [09x](09x-dispatch-design.md) (the shell, the table, the drawer, the page —
@@ -151,6 +151,61 @@ with `git show 88d4152:packages/interface/src/prototypes/dispatch/Picker.tsx`; t
 surface was never committed, but its `useEditIncident` / `SavingField` landed in
 `src/features/incidents/` and are the pattern for the report's `useEditReport`.
 
+### What was built — the surface (2026-09-14)
+
+`app/(dev)/reports.tsx` + `src/prototypes/reports/` (throwaway, outside the session
+gates, no server, deleted in the 3c.3 PR). Run it with `pnpm -F @ocf-ims/interface start`
+(never `CI=1`) and open `http://localhost:8081/reports?v=1` (`1`/`2`/`3` or `←`/`→` flip
+the picker). The band above the stage takes the shape-independent decisions: pane
+(drawer / page / phone), a fixed stage width (1024 / 1440 / 400 / fit), scheme, the viewer
+(dispatcher / reporter / crew leader / admin — the runtime is rebuilt per viewer), the
+report (R-7 linked to #47 with the six entries; R-12 standalone; R-3 the viewer's own;
+R-15 linked to the private #48), and the pokes ("New entry on R-7 now"; "in 3 s" so you
+can be typing when it lands — through the real live hub). The shell copy carries the
+Reports item and New report; the table (§ The table) is the 3c.1 table retyped on
+`ReportView` with Unlinked · Linked · All; the drawer and the page carry the real
+`ScreenHeader`; only the pane's body is the variant.
+
+The data layer is real: the same runtime over `createRouterTransport` and
+`createFakeIms()` the Jest harness uses. The wrapper (`fake.ts`) gives `UpdateReport` the
+plain-Report presence semantics, a 300 ms delay and a summary write that always fails
+(Unavailable), and adds the `UpdateReportJournalEntry` handler the stock fake lacks.
+`useEditReport.ts` is § One field, one request as code and is what the winner promotes
+whichever it is; `SavingField` is reused from 3c.2.
+
+Built by two builder Agents in sequence (the harness, fixtures, fake, table and chrome:
+163 calls / 357K — over the budget again; the three panes: 109 calls / 231K).
+
+**Found by building it, not by reading it:**
+
+1. **`ReportComposer` forwards no ref** (`AppendComposer` does), so `a` scrolls the
+   composer into view instead of focusing it. 3c.3 gives `ReportComposer` the same
+   `forwardRef` / `focus()` shape.
+2. **No photo control on reports**: `ReportComposer` has no attach prop; the surface
+   shows an "Add photo" word that logs. 3c.3 adds `PhotoAttach` to it (decision 4).
+3. **Report attachments have no client source**: `useAttachmentSource` is keyed by
+   incident number and `JournalEntryRow` renders no image for a report ("absent = no
+   images (a report)"). The server's report attachment route exists; the client's blob
+   helper (`src/api/blobs.ts`, architect-tier) needs a report-addressed source before a
+   report's photo can render at all. **A 3c.3 criterion, architect-built.**
+4. **Strike's gate is derivable, not on the wire per entry**: `may_add_journal_entry`
+   admits the creator, a writer and an admin, but only a writer / admin may strike
+   another's entry. The client rule: strike on the viewer's own entries when
+   `may_add_journal_entry`; on others' only with `writeIncidents` (the writer role; an
+   admin has it through the bypass). The server refuses the rest. No proto change.
+5. **The Ledger's Incident row carries two meanings** — open the incident, and edit the
+   link — so `LedgerRow`'s row-wide press could not be used; Link… / Detach are their
+   own words on the row and the number opens. The criteria should keep that split.
+6. **`HelpSheet` is dispatch-worded** ("New incident"); the surface shows nothing on
+   `?`. 3c.3 parameterises the sheet or adds a report one.
+7. Companion's incident excerpt shows the raw area slug (no lookup pulled in) — a
+   surface shortcut, not a finding for the slice.
+
+Verified with the surface in the tree: `typecheck`, `lint`, Jest (50 suites, 365 tests)
+green; `export:web` builds; the smoke e2e passes. The maintainer's hand pass (the three
+variants at 1024 drawer / 1440 page / 400, both schemes, the four viewers, the poke while
+editing, the failing save, R-15's "Not visible to you", reduced motion) is the round.
+
 ### Decisions the round must also take (shape-independent, but only visible when run)
 
 1. **The phone.** The 3b.3 `ReportScreen` is one component on three surfaces. The
@@ -251,7 +306,7 @@ staging.
 ## Checklist
 
 - [x] Brief written; the contract verified (2026-09-14)
-- [ ] The surface built, verified and the scripted walk green
+- [x] The surface built and verified (2026-09-14; § What was built) — the hand pass is the maintainer's
 - [ ] The round run; the pick, the reasons and the six decisions recorded
 - [ ] The 3c.3 acceptance criteria written
 - [ ] The winner promoted, reviewed, the surface deleted — the 3c.3 PR

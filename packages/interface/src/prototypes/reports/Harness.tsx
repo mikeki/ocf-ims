@@ -85,7 +85,12 @@ const VARIANTS: {
   { name: "Companion", Component: Companion },
 ];
 
-const REPORT_NUMBERS: Record<string, number> = { R7: 7, R12: 12, R3: 3 };
+const REPORT_NUMBERS: Record<string, number> = {
+  R7: 7,
+  R12: 12,
+  R3: 3,
+  R15: 15,
+};
 
 interface HarnessParams {
   v?: string;
@@ -116,7 +121,9 @@ export function Harness() {
       ? params.viewer
       : "dispatcher";
   const reportKey =
-    params.report === "R12" || params.report === "R3" ? params.report : "R7";
+    params.report === "R12" || params.report === "R3" || params.report === "R15"
+      ? params.report
+      : "R7";
   const reportNumber = REPORT_NUMBERS[reportKey] ?? 7;
   const fixedWidth = Number.parseInt(params.w ?? "", 10);
   const width =
@@ -182,6 +189,7 @@ export function Harness() {
         { key: "R7", label: "R-7" },
         { key: "R12", label: "R-12" },
         { key: "R3", label: "R-3" },
+        { key: "R15", label: "R-15" },
       ],
       current: reportKey,
       onSelect: (k) => setParam("report", k === "R7" ? undefined : k),

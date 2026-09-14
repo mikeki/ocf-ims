@@ -1,27 +1,16 @@
 // SPDX-License-Identifier: Apache-2.0
 
-import { StyleSheet, View } from "react-native";
-import { Text } from "@/design/primitives/Text";
-import { useTheme } from "@/design/theme";
+import { AccountBody } from "@/prototypes/reports/accountParts";
 import type { ReportPaneProps } from "@/prototypes/reports/types";
 
-// Variant stub (docs/plans/09z-reports-design.md § The prototype round,
-// "Account"): the report as a page — a title, a byline, dated paragraphs
-// oldest first, a thin controls strip. Left to the second builder; this
-// renders only its name so the round's harness, table and chrome are
-// reviewable before the three panes exist.
+// Variant (docs/plans/09z-reports-design.md § The prototype round,
+// "Account"): the report as a document, read start to end — a title, a
+// byline, one thin controls strip (the incident link, Edit summary, History
+// / Stricken), the entries as dated paragraphs oldest first with no card
+// chrome and no row borders, the composer at the end. The body itself lives
+// in accountParts.tsx so Companion's left column renders the exact same
+// thing (see that file's header note for the two findings it hit).
 
-export function Account(_props: ReportPaneProps) {
-  const theme = useTheme();
-  return (
-    <View style={[styles.fill, { backgroundColor: theme.colors.background }]}>
-      <Text variant="heading" align="center">
-        Account
-      </Text>
-    </View>
-  );
+export function Account(props: ReportPaneProps) {
+  return <AccountBody {...props} />;
 }
-
-const styles = StyleSheet.create({
-  fill: { flex: 1, alignItems: "center", justifyContent: "center" },
-});

@@ -185,10 +185,8 @@ export const INCIDENT_47_VIEW: IncidentView = makeIncidentView({
  * Incident #48: private, not created by the viewer, kept OUT of every
  * viewer's `fake.incidents` (data.ts, Harness.tsx) so `GetIncident` answers
  * NotFound for it (§ The prototype round) — the shape a Companion-style
- * column's "Not visible to you" state would read against. No report links
- * to it among the round's three fixtures; a second builder wanting to
- * exercise that column live will need to link a fixture report to this
- * number themselves (a finding, not built here — see the builder's report).
+ * column's "Not visible to you" state would read against. R-15 (below) links
+ * to it, so the column reads live for the two viewers who see that report.
  */
 export const PRIVATE_INCIDENT_48: Incident = makeIncident({
   eventId: EVENT.id,
@@ -323,6 +321,34 @@ export const R3: Report = create(ReportSchema, {
   ],
 });
 
+// R-15: linked to the private incident #48 — visible only to dispatcher and
+// admin (§ The three panes, Companion) so a Companion-style right column's
+// "Not visible to you" state can be judged live: #48 itself is never in any
+// viewer's `fake.incidents` (its own comment above), so `GetIncident(48)`
+// 404s even for the two viewers who can see this report.
+export const R15: Report = create(ReportSchema, {
+  event: EVENT.name,
+  number: 15,
+  created: day("20:16:00"),
+  createdBy: logan,
+  summary: "Camp dispute reported near the north gate",
+  incident: 48,
+  journalEntries: [
+    entry({
+      id: 1501,
+      created: day("20:16:00"),
+      author: "logan",
+      text: "Filed after being flagged down by a neighboring camp about raised voices.",
+    }),
+    entry({
+      id: 1502,
+      created: day("20:19:00"),
+      author: "logan",
+      text: "Handed off to Ops for the night; nothing further from this end.",
+    }),
+  ],
+});
+
 interface Identity {
   personId: number;
   handle: string;
@@ -410,7 +436,11 @@ export function reportsForViewer(viewer: Viewer): ReportView[] {
   if (viewer === "reporter") {
     return [viewOf(R3, viewer)];
   }
-  return [viewOf(R7, viewer), viewOf(R12, viewer), viewOf(R3, viewer)];
+  const base = [viewOf(R7, viewer), viewOf(R12, viewer), viewOf(R3, viewer)];
+  if (viewer === "dispatcher" || viewer === "admin") {
+    return [...base, viewOf(R15, viewer)];
+  }
+  return base;
 }
 
 /** Incident #47 is the only one ever in a viewer's `fake.incidents` — #48 stays out (its own comment above). */
