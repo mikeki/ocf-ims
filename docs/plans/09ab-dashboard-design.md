@@ -2,8 +2,9 @@
 
 # 09ab — The 3c.5 round: the dashboard on a wide window
 
-> **Status:** Brief written 2026-09-15; the round surface next, then the pick, then the
-> 3c.5 acceptance criteria here.
+> **Status:** Brief written and the round surface built and walked in a browser
+> 2026-09-15 (§ What was built); the pick is the maintainer's, then the 3c.5 acceptance
+> criteria here.
 > **Parent:** [09i-expo-client.md](09i-expo-client.md) (Phase 3, §6 **D2**, the 3c.5 row and
 > open question 3, the chart library) under
 > [09-proto-connect-platform.md](09-proto-connect-platform.md)
@@ -155,6 +156,61 @@ deleted in the 3c.5 PR. The 09z / 09aa surfaces are the harness pattern (`Picker
 verbatim, the band, `runtime.ts`, the shell copy); the fake gains a `getMetrics`
 override with a "next refresh changes" and a "next refresh fails" switch.
 
+### What was built — the surface (2026-09-15)
+
+`app/(dev)/dashboard.tsx` + `src/prototypes/dashboard/` (throwaway, outside the session
+gates, no server, deleted in the 3c.5 PR). Run it with `pnpm -F @ocf-ims/interface start`
+(never `CI=1`) and open `http://localhost:8081/dashboard?v=1` (`1`/`2`/`3` or `←`/`→`
+flip the picker). The band takes the width (1024 / 1440 / fit), the scheme, the viewer
+(writer; reporter — no `writeIncidents`), the event (Fair 2026; Empty event) and two
+one-shot switches, "Next refresh changes three numbers" and "Next refresh fails".
+
+The fixture is the brief's: 180 incidents over 8 days, 40 areas, 9 follow-ups, avg. close
+2 h 14 m. The fake answers `GetMetrics` (the stock fake has none), PermissionDenied for the
+reporter. `useMetrics.ts` (the read, `keepPreviousData`, `changedKeys` diffed between
+successful answers and cleared on the next one or after 60 s) and `useAutoRefresh.ts` are
+what the winner promotes; `StatTile`, `BarList`, `DayColumns`, `FollowUps` and `Toolbar`
+are shared by all three variants, which differ only in layout.
+
+Built by one builder Agent (96 calls / 203K) and a mark-spec fix pass on the same agent
+(17 calls). **Walked in Chrome** at 1440 and 1024, light and dark: the three variants, the
+changed marks after a refresh that moves open / one area / today, a failing refresh
+(numbers kept, "Couldn't refresh — Retry" in the toolbar), the reporter (Not found, no
+Dashboard item), the empty event — the console clean. No horizontal scroll at 1024.
+
+**Found by running it, not by reading it:**
+
+1. **The first cut broke the brief's own mark spec** and every check passed: eight
+   per-day columns each filled a ~170 px slot, and the list bars filled their rows. A
+   column is now 20 px centred in its slot on a hairline baseline with a day tick under
+   each, and a list bar is 10 px in a 20 px row. **3c.5 criterion:** the column and bar
+   thickness are named in the criteria as token values, and a spec asserts the column's
+   width does not grow with the slot.
+2. **Decision 2 has its evidence:** View bars and columns read as charts at both widths
+   and in dark. No chart library, no SVG.
+3. **A card directly inside a vertical `ScrollView` took its `flexBasis` as a height**
+   (RN's basis follows the main axis), leaving empty space under Per day. The card sits in
+   a row container as its siblings do.
+4. **Normal priority has no tone** (it wears no badge anywhere), but a bar needs a colour.
+   The surface uses `neutral`, the same as Low. **3c.5 criterion:** name Normal's bar
+   colour explicitly.
+5. **A failed first load is not the gate.** PermissionDenied renders Not found; any other
+   failure with no data yet renders "Couldn't load" with Retry. **3c.5 criterion:** both
+   copies, and a mid-session failure keeps the numbers (toolbar message only).
+6. **Switching events must reset the diff**, or every card shows the changed mark. The
+   surface keys the body by event.
+7. **The hero figure has no type step:** Shift's Open is `title` × 2.25 through a token.
+   If Shift wins, a `hero` step goes into `tokens.ts` with a DESIGN.md line, not a
+   multiplier.
+8. Shift's four-up grid truncated long area and type names in the side-by-side layout;
+   its bar lists stack the label above the bar. The Board and Tables keep the side-by-side
+   rows.
+9. The gate maps onto the fake's existing `writeIncidents`, so unlike the roster round no
+   `GetAuthStatus` override was needed.
+
+Verified with the surface in the tree: typecheck, biome, Jest (50 suites, 365 tests),
+`export:web` and the smoke e2e green; the route walked in Chrome with a clean console.
+
 ### Decisions the round must also take (shape-independent, but only visible when run)
 
 1. **The phone.** E15's phone tabs have no Dashboard. Recommendation: **wide only**; a
@@ -223,7 +279,7 @@ staging.
 ## Checklist
 
 - [x] Brief written; the contract verified; the chart-library question answered as a recommendation (2026-09-15)
-- [ ] The surface built, loaded in a browser, verified
+- [x] The surface built, loaded in a browser, verified (2026-09-15; § What was built)
 - [ ] The round run; the pick, the reasons and the six decisions recorded
 - [ ] The 3c.5 acceptance criteria written
 - [ ] The winner promoted, reviewed, the surface deleted — the 3c.5 PR
