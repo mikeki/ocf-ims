@@ -42,6 +42,11 @@ import { ReportDrawer } from "@/prototypes/reports/ReportDrawer";
 import { ReportFilterBar } from "@/prototypes/reports/ReportFilterBar";
 import { ReportPage } from "@/prototypes/reports/ReportPage";
 import { ReportTable } from "@/prototypes/reports/ReportTable";
+import {
+  createSurfaceQueryClient,
+  createSurfaceRuntime,
+  type SurfaceRuntime,
+} from "@/prototypes/reports/runtime";
 import { Shell } from "@/prototypes/reports/Shell";
 import type {
   ReportPaneHandle,
@@ -53,11 +58,6 @@ import { useKeyboardMap } from "@/prototypes/reports/useKeyboardMap";
 import { useReportQuery } from "@/prototypes/reports/useReportQuery";
 import { SessionProvider } from "@/session/provider";
 import { createFakeIms } from "@/test/fakeIms";
-import {
-  createTestQueryClient,
-  createTestRuntime,
-  type TestRuntime,
-} from "@/test/harness";
 import { createMemoryRefreshTokenStore } from "@/test/storage";
 
 // The 3c.3 round's harness (docs/plans/09z-reports-design.md § The prototype
@@ -394,17 +394,19 @@ function StageBody(props: StageBodyProps) {
             total={reports.length}
             onHelp={() => setHelp(true)}
           />
-          <ReportTable q={q} onRowPress={(n) => q.open(n)} />
-          <ReportDrawer
-            q={q}
-            eventId={EVENT.id}
-            viewer={viewer}
-            Variant={Variant}
-            onFull={onFull}
-            onOpenIncident={onOpenIncident}
-            onCreateIncident={onCreateIncident}
-            handle={handleRef}
-          />
+          <View style={styles.fill}>
+            <ReportTable q={q} onRowPress={(n) => q.open(n)} />
+            <ReportDrawer
+              q={q}
+              eventId={EVENT.id}
+              viewer={viewer}
+              Variant={Variant}
+              onFull={onFull}
+              onOpenIncident={onOpenIncident}
+              onCreateIncident={onCreateIncident}
+              handle={handleRef}
+            />
+          </View>
         </>
       )}
     </Shell>
@@ -467,11 +469,11 @@ function PhonePane(props: PhonePaneProps) {
 }
 
 // --- The runtime: the same real runtime + createFakeIms() the Jest harness
-// uses (src/test/harness.tsx), rebuilt whenever the viewer changes. ---
+// uses (./runtime.ts), rebuilt whenever the viewer changes. ---
 
 interface ReportsRuntime {
-  runtime: TestRuntime;
-  queryClient: ReturnType<typeof createTestQueryClient>;
+  runtime: SurfaceRuntime;
+  queryClient: ReturnType<typeof createSurfaceQueryClient>;
 }
 
 function useReportsRuntime(viewer: Viewer): ReportsRuntime | undefined {
@@ -486,8 +488,8 @@ function useReportsRuntime(viewer: Viewer): ReportsRuntime | undefined {
     fake.incidents = incidentsForViewer();
     fake.reports = reportsForViewer(viewer);
     const store = createMemoryRefreshTokenStore(fake.issueRefreshToken());
-    const runtime = createTestRuntime({ fake, store, platform: "native" });
-    const queryClient = createTestQueryClient();
+    const runtime = createSurfaceRuntime(fake, store);
+    const queryClient = createSurfaceQueryClient();
     void runtime.session.bootstrap().then(() => {
       if (!cancelled) {
         setState({ runtime, queryClient });

@@ -198,11 +198,17 @@ Built by two builder Agents in sequence (the harness, fixtures, fake, table and 
    own words on the row and the number opens. The criteria should keep that split.
 6. **`HelpSheet` is dispatch-worded** ("New incident"); the surface shows nothing on
    `?`. 3c.3 parameterises the sheet or adds a report one.
-7. Companion's incident excerpt shows the raw area slug (no lookup pulled in) — a
+7. **A surface must not import `@/test/harness`.** It loads
+   `@testing-library/react-native`, which throws `expect is not defined` in a browser and
+   takes the router down with it; typecheck, Jest, `export:web` and the smoke e2e all
+   passed over it. The surface builds its runtime in `runtime.ts` instead, and a surface
+   is not verified until it has loaded in a browser with a clean console.
+8. Companion's incident excerpt shows the raw area slug (no lookup pulled in) — a
    surface shortcut, not a finding for the slice.
 
 Verified with the surface in the tree: `typecheck`, `lint`, Jest (50 suites, 365 tests)
-green; `export:web` builds; the smoke e2e passes. The maintainer's hand pass (the three
+green; `export:web` builds; the smoke e2e passes; loaded in Chrome at 1440 with a clean
+console on Ledger, Account and Companion (R-7, and R-15's "Not visible to you"). The maintainer's hand pass (the three
 variants at 1024 drawer / 1440 page / 400, both schemes, the four viewers, the poke while
 editing, the failing save, R-15's "Not visible to you", reduced motion) is the round.
 
