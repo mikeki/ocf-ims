@@ -183,7 +183,7 @@ export function useRoster(eventId: number): Roster {
           patchPerson(personId, () => before);
         }
         mark(personId, { pending: false, error: toAppError(e) });
-        throw e;
+        // The error lives on the row (errorFor); the menus fire and forget.
       } finally {
         await settle();
       }
@@ -247,7 +247,7 @@ export function useRoster(eventId: number): Roster {
         mark(personId, { pending: false });
       } catch (e) {
         mark(personId, { pending: false, error: toAppError(e) });
-        throw e;
+        // The error lives on the row (errorFor); the menus fire and forget.
       } finally {
         await settle();
       }
@@ -269,7 +269,7 @@ export function useRoster(eventId: number): Roster {
         mark(personId, { pending: false });
       } catch (e) {
         mark(personId, { pending: false, error: toAppError(e) });
-        throw e;
+        // The error lives on the row (errorFor); the menus fire and forget.
       } finally {
         await settle();
       }

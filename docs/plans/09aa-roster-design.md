@@ -2,8 +2,9 @@
 
 # 09aa — The 3c.4 round: the roster on a wide window
 
-> **Status:** Brief written 2026-09-14; the round surface next, then the pick, then the
-> 3c.4 acceptance criteria here.
+> **Status:** Brief written 2026-09-14; the round surface built and walked in a browser
+> 2026-09-15 (§ What was built); the pick is the maintainer's, then the 3c.4 acceptance
+> criteria here.
 > **Parent:** [09i-expo-client.md](09i-expo-client.md) (Phase 3, §6 **D2** and the 3c.4 row)
 > under [09-proto-connect-platform.md](09-proto-connect-platform.md)
 > **Follows:** [09x](09x-dispatch-design.md) (the shell, the table, the drawer, the page —
@@ -140,6 +141,76 @@ starting point; `createFakeIms()` gains `listPersonnel` modes, `setPersonPartici
 `removePersonFromEvent`, `createPerson`, `listMyCrews`, `setMyCrewMembership` in the
 surface's `fake.ts` wrapper (the stock fake has only the typeahead).
 
+### What was built — the surface (2026-09-15)
+
+`app/(dev)/people.tsx` + `src/prototypes/people/` (throwaway, outside the session gates,
+no server, deleted in the 3c.4 PR). Run it with `pnpm -F @ocf-ims/interface start` (never
+`CI=1`) and open `http://localhost:8081/people?v=1` (`1`/`2`/`3` or `←`/`→` flip the
+picker). The band takes the width (1024 / 1440 / fit), the scheme, the viewer (admin;
+inviter — a crew leader leading two crews; writer-inviter) and "Fail the next role
+change". A 64-person roster over three crews; the shell copy carries People, My crews
+(for a leader) and Add person; the profile card opens in the drawer (`open=`).
+
+The fake (`fake.ts`) implements every `ListPersonnel` mode with the wire's field gating,
+`SetPersonParticipation` with the ceiling, `RemovePersonFromEvent`, `CreatePerson` (an
+inviter's create is a reporter), `ListMyCrews` / `SetMyCrewMembership`, and a
+`GetAuthStatus` carrying `invite_reporters`. `useRoster.ts` is § One field, one request as
+code and is what the winner promotes.
+
+Built by a builder Agent (the harness, fixtures, fake, card and Table: 138 calls / 306K),
+a second that died on a usage limit with Ladder / Directory / Add person / My crews
+written but unwired (finished and fixed by the architect), and a fix pass (122 calls /
+172K). **Walked in Chrome** at 1440 and 1024, light and dark, as the admin and the
+inviter: the capped menus, a role change that lands and one that fails, Add person by
+`n`, My crews, Esc, the Ladder's move menu — the console clean.
+
+**Found by running it, not by reading it** (each one passed typecheck, Jest, the export
+and the smoke e2e):
+
+1. **A surface must not import `@/test/harness`** — it loads
+   `@testing-library/react-native` and the router dies with `expect is not defined` (the
+   same finding as 09z). The surface has its own `runtime.ts`.
+2. **RN Web renders `accessibilityRole="button"` as a real `<button>`.** A roster row that
+   opens the card and also holds the role menu nested a `<button>` in a `<button>`
+   (invalid HTML; a screen reader flattens the menu into the row). **3c.4 criterion:** the
+   row's press target and the role menu are siblings — never a menu inside a
+   button-role row.
+3. **An absolutely positioned menu inside a FlatList cell paints under the next cell**, so
+   no option could be pressed. The open cell raises its `zIndex` through a
+   `CellRendererComponent` — which must be a **stable** component reading the open row from
+   context: an inline one changes identity, remounts every cell and closes the menu it
+   just opened. **3c.4 criterion:** the menu renders in a portal / `Modal` anchored to the
+   trigger, or the stable raised cell; either way, a test presses an option of the last
+   visible row.
+4. **A fire-and-forget write must not rethrow.** The hook recorded the error on the row
+   and rethrew, and the menu's `void roster.setRole(…)` became an uncaught rejection (the
+   red box) instead of the message at the control. The promoted hook returns; the error
+   lives in `errorFor`.
+5. **A key that opens something with an autofocused field must `preventDefault`**, or the
+   key types into it (`n` left an "n" in Add person's search). **The shipped dispatch map
+   has the same shape:** `n` opens the new-incident form, whose summary autofocuses, with
+   no `preventDefault` (`src/features/dispatch/useKeyboardMap.ts`). Whether the letter
+   lands depends on navigation timing — a staging check for the maintainer, and a one-line
+   fix if it does.
+6. **Esc on a side panel** needed a capture-phase listener above the variant's own map.
+   The real slice's keyboard map owns an overlay stack (panel, then drawer).
+7. **RN Web's `View` types carry no drag props**, so the Ladder has no drag; "Move to…" on
+   every card is the only move. If the Ladder wins, a drag is a later Gesture Handler
+   choice, never the only path.
+8. **The Ladder scrolls sideways at 1024** (five columns ≥ 180 px): its stated cost,
+   measured.
+9. **`RemovePersonFromEvent` carries no rung.** Remove's two forms (Not present, Ejected)
+   are `SetPersonParticipation` writes; `RemovePersonFromEvent` drops the row. **3c.4
+   criterion:** the client sets the rung and does not call `RemovePersonFromEvent`.
+10. **The stock fake has only the typeahead** — no `all` / `person_ids` / `show_all`
+    modes, none of the writes, no `invite_reporters` on `FakeUser`. Promotion moves the
+    surface's handlers into `src/test/fakeIms.ts`.
+11. Fixture only: RN Web percent-encodes a `utf8` SVG data URI itself, so a pre-encoded
+    one fails to load and the avatar falls back to its initial.
+
+Verified with the surface in the tree: typecheck, biome, Jest (50 suites, 365 tests),
+`export:web` and the smoke e2e green; the route walked in Chrome with a clean console.
+
 ### Decisions the round must also take (shape-independent, but only visible when run)
 
 1. **The phone.** E15 has no People tab; templ's page is used from the tent, not the
@@ -204,7 +275,7 @@ empty roster, reduced motion. Nothing goes to staging.
 ## Checklist
 
 - [x] Brief written; the contract verified (2026-09-14)
-- [ ] The surface built, verified and the scripted walk green
+- [x] The surface built, walked in a browser and verified (2026-09-15; § What was built)
 - [ ] The round run; the pick, the reasons and the six decisions recorded
 - [ ] The 3c.4 acceptance criteria written
 - [ ] The winner promoted, reviewed, the surface deleted — the 3c.4 PR

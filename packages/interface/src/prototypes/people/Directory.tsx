@@ -2,7 +2,8 @@
 
 import type { Person } from "@ocf-ims/protocol-buffers/ocf/ims/resources/v1/person_pb";
 import { ParticipationType } from "@ocf-ims/protocol-buffers/ocf/ims/resources/v1/person_pb";
-import { useMemo, useRef, useState } from "react";
+import type { CellRendererProps } from "@react-native/virtualized-lists";
+import { useContext, useMemo, useRef, useState } from "react";
 import { FlatList, Pressable, StyleSheet, TextInput, View } from "react-native";
 import { PressFeedback } from "@/design/motion";
 import { Badge } from "@/design/primitives/Badge";
@@ -11,6 +12,7 @@ import { useTheme } from "@/design/theme";
 import { pressRetentionOffset, touchTarget } from "@/design/tokens";
 import { EmptyState } from "@/features/shell/EmptyState";
 import { Avatar } from "@/prototypes/people/Avatar";
+import { OpenMenuContext } from "@/prototypes/people/openMenu";
 import { PeopleHelpSheet } from "@/prototypes/people/PeopleHelpSheet";
 import { matches } from "@/prototypes/people/peopleQuery";
 import { rungLabel } from "@/prototypes/people/roles";
@@ -87,6 +89,10 @@ export function Directory(props: RosterPaneProps) {
   const [help, setHelp] = useState(false);
   const [selected, setSelected] = useState<ReadonlySet<string>>(new Set());
   const listRef = useRef<FlatList<Person>>(null);
+  // The row whose role-chip menu is open, so its cell can be raised above
+  // the next row (09aa fix: FlatList cells are later siblings that
+  // otherwise paint over an open menu).
+  const [openMenuFor, setOpenMenuFor] = useState<number | undefined>(undefined);
 
   const toggleFacet = (key: string) => {
     setSelected((prev) => {
@@ -188,111 +194,119 @@ export function Directory(props: RosterPaneProps) {
   });
 
   return (
-    <View style={styles.fill}>
-      <Toolbar
-        total={people.length}
-        shown={filtered.length}
-        query={query}
-        search={search}
-        onHelp={() => setHelp(true)}
-      />
-      {filtered.length === 0 ? (
-        <EmptyState
-          title={people.length === 0 ? "No one on this roster" : "No matches"}
-          message={
-            people.length === 0
-              ? "Nobody has been added to this event yet."
-              : "Nothing matches the search and the facets."
-          }
+    <OpenMenuContext.Provider value={openMenuFor}>
+      <View style={styles.fill}>
+        <Toolbar
+          total={people.length}
+          shown={filtered.length}
+          query={query}
+          search={search}
+          onHelp={() => setHelp(true)}
         />
-      ) : (
-        <View style={styles.body}>
-          <View
-            style={[
-              styles.rail,
-              { width: RAIL_WIDTH, borderRightColor: theme.colors.border },
-            ]}
-          >
-            <View style={{ padding: theme.spacing.md, gap: theme.spacing.lg }}>
-              <FacetGroup
-                title="Role"
-                options={roleFacets}
-                selected={selected}
-                onToggle={toggleFacet}
-              />
-              <FacetGroup
-                title="Crew"
-                options={crewFacets}
-                selected={selected}
-                onToggle={toggleFacet}
-              />
-              <FacetGroup
-                title="Can sign in"
-                options={accessFacets}
-                selected={selected}
-                onToggle={toggleFacet}
-              />
+        {filtered.length === 0 ? (
+          <EmptyState
+            title={people.length === 0 ? "No one on this roster" : "No matches"}
+            message={
+              people.length === 0
+                ? "Nobody has been added to this event yet."
+                : "Nothing matches the search and the facets."
+            }
+          />
+        ) : (
+          <View style={styles.body}>
+            <View
+              style={[
+                styles.rail,
+                { width: RAIL_WIDTH, borderRightColor: theme.colors.border },
+              ]}
+            >
+              <View
+                style={{ padding: theme.spacing.md, gap: theme.spacing.lg }}
+              >
+                <FacetGroup
+                  title="Role"
+                  options={roleFacets}
+                  selected={selected}
+                  onToggle={toggleFacet}
+                />
+                <FacetGroup
+                  title="Crew"
+                  options={crewFacets}
+                  selected={selected}
+                  onToggle={toggleFacet}
+                />
+                <FacetGroup
+                  title="Can sign in"
+                  options={accessFacets}
+                  selected={selected}
+                  onToggle={toggleFacet}
+                />
+              </View>
+            </View>
+            <FlatList
+              ref={listRef}
+              style={styles.fill}
+              data={filtered}
+              keyExtractor={(p) => String(p.personId)}
+              getItemLayout={(_, index) => ({
+                length: ROW_HEIGHT,
+                offset: ROW_HEIGHT * index,
+                index,
+              })}
+              onScrollToIndexFailed={(info) => {
+                listRef.current?.scrollToOffset({
+                  offset: info.averageItemLength * info.index,
+                  animated: false,
+                });
+              }}
+              CellRendererComponent={CellRenderer}
+              renderItem={({ item }) => (
+                <Row
+                  person={item}
+                  viewer={viewer}
+                  roster={roster}
+                  selected={item.personId === query.selectedId}
+                  onPress={() => onOpen(item.personId)}
+                  onMenuOpenChange={(open) =>
+                    setOpenMenuFor(open ? item.personId : undefined)
+                  }
+                />
+              )}
+              testID="people-directory-list"
+            />
+            <View
+              style={[
+                styles.letters,
+                {
+                  width: LETTER_COLUMN_WIDTH,
+                  borderLeftColor: theme.colors.border,
+                },
+              ]}
+            >
+              {letters.map((letter) => (
+                <Pressable
+                  key={letter}
+                  accessibilityRole="button"
+                  accessibilityLabel={`Jump to ${letter}`}
+                  onPress={() => jumpTo(letter)}
+                  pressRetentionOffset={pressRetentionOffset}
+                  testID={`people-directory-letter-${letter}`}
+                >
+                  {({ pressed }) => (
+                    <PressFeedback pressed={pressed} style={styles.letter}>
+                      <Text variant="caption" color="primary">
+                        {letter}
+                      </Text>
+                    </PressFeedback>
+                  )}
+                </Pressable>
+              ))}
             </View>
           </View>
-          <FlatList
-            ref={listRef}
-            style={styles.fill}
-            data={filtered}
-            keyExtractor={(p) => String(p.personId)}
-            getItemLayout={(_, index) => ({
-              length: ROW_HEIGHT,
-              offset: ROW_HEIGHT * index,
-              index,
-            })}
-            onScrollToIndexFailed={(info) => {
-              listRef.current?.scrollToOffset({
-                offset: info.averageItemLength * info.index,
-                animated: false,
-              });
-            }}
-            renderItem={({ item }) => (
-              <Row
-                person={item}
-                viewer={viewer}
-                roster={roster}
-                selected={item.personId === query.selectedId}
-                onPress={() => onOpen(item.personId)}
-              />
-            )}
-            testID="people-directory-list"
-          />
-          <View
-            style={[
-              styles.letters,
-              {
-                width: LETTER_COLUMN_WIDTH,
-                borderLeftColor: theme.colors.border,
-              },
-            ]}
-          >
-            {letters.map((letter) => (
-              <Pressable
-                key={letter}
-                accessibilityRole="button"
-                accessibilityLabel={`Jump to ${letter}`}
-                onPress={() => jumpTo(letter)}
-                pressRetentionOffset={pressRetentionOffset}
-                testID={`people-directory-letter-${letter}`}
-              >
-                {({ pressed }) => (
-                  <PressFeedback pressed={pressed} style={styles.letter}>
-                    <Text variant="caption" color="primary">
-                      {letter}
-                    </Text>
-                  </PressFeedback>
-                )}
-              </Pressable>
-            ))}
-          </View>
-        </View>
-      )}
-      <PeopleHelpSheet open={help} onClose={() => setHelp(false)} />
-    </View>
+        )}
+        <PeopleHelpSheet open={help} onClose={() => setHelp(false)} />
+      </View>
+    </OpenMenuContext.Provider>
   );
 }
 
@@ -344,20 +358,6 @@ function Toolbar(props: {
       <Text variant="caption" color="textMuted">
         {`${props.shown} of ${props.total}`}
       </Text>
-      <Pressable
-        accessibilityRole="button"
-        onPress={props.query.onAddPerson}
-        pressRetentionOffset={pressRetentionOffset}
-        testID="people-add"
-      >
-        {({ pressed }) => (
-          <PressFeedback pressed={pressed}>
-            <Text variant="label" color="primary">
-              Add person
-            </Text>
-          </PressFeedback>
-        )}
-      </Pressable>
       <Pressable
         accessibilityRole="button"
         onPress={props.onHelp}
@@ -446,10 +446,11 @@ interface RowProps {
   roster: RosterPaneProps["roster"];
   selected: boolean;
   onPress: () => void;
+  onMenuOpenChange: (open: boolean) => void;
 }
 
 function Row(props: RowProps) {
-  const { person, viewer, roster, selected, onPress } = props;
+  const { person, viewer, roster, selected, onPress, onMenuOpenChange } = props;
   const theme = useTheme();
   const label = displayLabel(person);
 
@@ -499,7 +500,12 @@ function Row(props: RowProps) {
               </Text>
             ) : null}
           </View>
-          <RoleChip person={person} viewer={viewer} roster={roster} />
+          <RoleChip
+            person={person}
+            viewer={viewer}
+            roster={roster}
+            onOpenChange={onMenuOpenChange}
+          />
           <View
             style={[
               styles.fill,
@@ -533,14 +539,20 @@ function RoleChip(props: {
   person: Person;
   viewer: RosterPaneProps["viewer"];
   roster: RosterPaneProps["roster"];
+  onOpenChange: (open: boolean) => void;
 }) {
-  const { person, viewer, roster } = props;
+  const { person, viewer, roster, onOpenChange } = props;
   const theme = useTheme();
   const [open, setOpen] = useState(false);
   const rungs = rungsFor(viewer, person);
   const pending = roster.pendingFor(person.personId);
   const error = roster.errorFor(person.personId);
   const label = rungLabel(person.participationType);
+
+  const setOpenState = (next: boolean) => {
+    setOpen(next);
+    onOpenChange(next);
+  };
 
   if (rungs.length === 0) {
     return <Badge label={label} tone="neutral" />;
@@ -554,7 +566,7 @@ function RoleChip(props: {
         accessibilityState={{ expanded: open, busy: pending }}
         onPress={(e) => {
           e.stopPropagation();
-          setOpen((o) => !o);
+          setOpenState(!open);
         }}
         pressRetentionOffset={pressRetentionOffset}
         testID={`people-directory-row-${person.personId}-role`}
@@ -585,7 +597,7 @@ function RoleChip(props: {
               accessibilityRole="menuitem"
               onPress={(e) => {
                 e.stopPropagation();
-                setOpen(false);
+                setOpenState(false);
                 void roster.setRole(person.personId, rung);
               }}
               pressRetentionOffset={pressRetentionOffset}
@@ -624,6 +636,7 @@ const styles = StyleSheet.create({
   },
   search: { minWidth: 320, borderWidth: 1, outlineWidth: 0 },
   spacer: { flex: 1 },
+  raisedCell: { zIndex: 1 },
   body: { flex: 1, flexDirection: "row" },
   rail: { borderRightWidth: StyleSheet.hairlineWidth },
   row: {
@@ -661,3 +674,21 @@ const styles = StyleSheet.create({
     justifyContent: "center",
   },
 });
+
+function CellRenderer({
+  item,
+  style,
+  children,
+  onLayout,
+}: CellRendererProps<Person>) {
+  const openMenuFor = useContext(OpenMenuContext);
+  const raised = item.personId === openMenuFor;
+  return (
+    <View
+      style={[style, raised ? styles.raisedCell : null]}
+      onLayout={onLayout}
+    >
+      {children}
+    </View>
+  );
+}

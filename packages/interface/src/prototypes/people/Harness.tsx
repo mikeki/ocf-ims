@@ -7,6 +7,7 @@ import { useLocalSearchParams, useRouter } from "expo-router";
 import type { ComponentType, ReactNode } from "react";
 import { useEffect, useState } from "react";
 import {
+  Platform,
   Pressable,
   Text as RNText,
   StyleSheet,
@@ -233,11 +234,12 @@ interface StageBodyProps extends StageProps {
 // occupies, so all three stay mutually exclusive: opening one closes the
 // other two. Neither is URL state like `q.open`/`q.sel` (09x finding 1's own
 // `setParams`-ordering concern doesn't apply to an ephemeral overlay), so
-// it's local to this component — the one gap that leaves is Esc: the
-// keyboard map's own Esc path only fires `close()` when `query.open` (the
-// URL param) is set, so it does not dismiss these two overlays on its own
-// (recorded in the round's report; the scrim and the panel's own back
-// control both still close them).
+// it's local to this component. That leaves Esc: the keyboard map's own Esc
+// path (usePeopleKeyboardMap.ts, run inside the active variant) only fires
+// `close()` when `query.open` (the URL param) is set, so on its own it never
+// dismisses these two overlays (09aa fix) — a capture-phase listener here,
+// live only while an overlay is open, closes it first and stops the event
+// before it also reaches the variant's own bubble-phase Esc handling.
 type Overlay = "addPerson" | "myCrews" | undefined;
 
 function StageBody(props: StageBodyProps) {
@@ -267,6 +269,22 @@ function StageBody(props: StageBodyProps) {
     setOverlay(undefined);
     q.open(personId);
   };
+
+  useEffect(() => {
+    if (!overlay || Platform.OS !== "web" || typeof window === "undefined") {
+      return undefined;
+    }
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") {
+        e.stopPropagation();
+        setOverlay(undefined);
+      }
+    };
+    // Capture phase: runs before the active variant's own bubble-phase Esc
+    // handler (usePeopleKeyboardMap.ts) sees the event at all.
+    window.addEventListener("keydown", onKey, true);
+    return () => window.removeEventListener("keydown", onKey, true);
+  }, [overlay]);
 
   const query: PeopleQueryControls = {
     selectedId: q.query.sel,

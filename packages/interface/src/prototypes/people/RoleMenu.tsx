@@ -28,13 +28,28 @@ export interface RoleMenuProps {
   pending?: boolean;
   error?: AppError;
   testID?: string;
+  /** Told when the menu opens or closes, so the row/card can raise itself above its neighbours (09aa fix: the row below was painting over the open menu). */
+  onOpenChange?: (open: boolean) => void;
 }
 
 export function RoleMenu(props: RoleMenuProps) {
-  const { person, rungs, onSelect, pending = false, error, testID } = props;
+  const {
+    person,
+    rungs,
+    onSelect,
+    pending = false,
+    error,
+    testID,
+    onOpenChange,
+  } = props;
   const theme = useTheme();
   const [open, setOpen] = useState(false);
   const current = person.participationType;
+
+  const setOpenState = (next: boolean) => {
+    setOpen(next);
+    onOpenChange?.(next);
+  };
 
   if (rungs.length === 0) {
     return (
@@ -54,7 +69,7 @@ export function RoleMenu(props: RoleMenuProps) {
           // Sits on a table row that opens the card on its own press (web
           // click bubbling) — this stops the row from hearing it too.
           e.stopPropagation();
-          setOpen((o) => !o);
+          setOpenState(!open);
         }}
         pressRetentionOffset={pressRetentionOffset}
         testID={testID}
@@ -93,7 +108,7 @@ export function RoleMenu(props: RoleMenuProps) {
                 accessibilityState={{ selected }}
                 onPress={(e) => {
                   e.stopPropagation();
-                  setOpen(false);
+                  setOpenState(false);
                   onSelect(rung);
                 }}
                 pressRetentionOffset={pressRetentionOffset}

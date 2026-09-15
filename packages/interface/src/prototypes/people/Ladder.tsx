@@ -82,6 +82,10 @@ export function Ladder(props: RosterPaneProps) {
   const theme = useTheme();
   // `?` is local state, like the Table's own copy (§ Keyboard).
   const [help, setHelp] = useState(false);
+  // The card whose "Move to…" menu is open, so its wrapper can be raised
+  // above the card below it (09aa fix: mapped cards in a column are later
+  // siblings that otherwise paint over an open menu).
+  const [openMenuFor, setOpenMenuFor] = useState<number | undefined>(undefined);
 
   const filtered = useMemo(
     () => people.filter((p) => matches(p, search)),
@@ -161,6 +165,10 @@ export function Ladder(props: RosterPaneProps) {
               roster={roster}
               selectedId={query.selectedId}
               onOpen={onOpen}
+              openMenuFor={openMenuFor}
+              onMenuOpenChange={(personId, open) =>
+                setOpenMenuFor(open ? personId : undefined)
+              }
             />
           ))}
         </ScrollView>
@@ -220,20 +228,6 @@ function Toolbar(props: {
       </Text>
       <Pressable
         accessibilityRole="button"
-        onPress={props.query.onAddPerson}
-        pressRetentionOffset={pressRetentionOffset}
-        testID="people-add"
-      >
-        {({ pressed }) => (
-          <PressFeedback pressed={pressed}>
-            <Text variant="label" color="primary">
-              Add person
-            </Text>
-          </PressFeedback>
-        )}
-      </Pressable>
-      <Pressable
-        accessibilityRole="button"
         onPress={props.onHelp}
         pressRetentionOffset={pressRetentionOffset}
       >
@@ -257,10 +251,22 @@ interface ColumnProps {
   roster: RosterPaneProps["roster"];
   selectedId: number | undefined;
   onOpen: (personId: number) => void;
+  openMenuFor: number | undefined;
+  onMenuOpenChange: (personId: number, open: boolean) => void;
 }
 
 function Column(props: ColumnProps) {
-  const { label, fillable, people, viewer, roster, selectedId, onOpen } = props;
+  const {
+    label,
+    fillable,
+    people,
+    viewer,
+    roster,
+    selectedId,
+    onOpen,
+    openMenuFor,
+    onMenuOpenChange,
+  } = props;
   const theme = useTheme();
   return (
     <View
@@ -300,14 +306,21 @@ function Column(props: ColumnProps) {
           </Text>
         ) : (
           people.map((person) => (
-            <Card
+            <View
               key={person.personId}
-              person={person}
-              viewer={viewer}
-              roster={roster}
-              selected={person.personId === selectedId}
-              onPress={() => onOpen(person.personId)}
-            />
+              style={person.personId === openMenuFor ? styles.raisedCard : null}
+            >
+              <Card
+                person={person}
+                viewer={viewer}
+                roster={roster}
+                selected={person.personId === selectedId}
+                onPress={() => onOpen(person.personId)}
+                onMenuOpenChange={(open) =>
+                  onMenuOpenChange(person.personId, open)
+                }
+              />
+            </View>
           ))
         )}
       </ScrollView>
@@ -321,10 +334,11 @@ interface CardProps {
   roster: RosterPaneProps["roster"];
   selected: boolean;
   onPress: () => void;
+  onMenuOpenChange: (open: boolean) => void;
 }
 
 function Card(props: CardProps) {
-  const { person, viewer, roster, selected, onPress } = props;
+  const { person, viewer, roster, selected, onPress, onMenuOpenChange } = props;
   const theme = useTheme();
   const rungs = rungsFor(viewer, person);
   const label = person.name || person.handle || `Person #${person.personId}`;
@@ -394,6 +408,7 @@ function Card(props: CardProps) {
             onSelect={(rung) => void roster.setRole(person.personId, rung)}
             pending={roster.pendingFor(person.personId)}
             error={roster.errorFor(person.personId)?.message}
+            onOpenChange={onMenuOpenChange}
           />
         </PressFeedback>
       )}
@@ -407,6 +422,7 @@ interface MoveMenuProps {
   onSelect: (rung: ParticipationType) => void;
   pending: boolean;
   error: string | undefined;
+  onOpenChange: (open: boolean) => void;
 }
 
 /**
@@ -422,9 +438,14 @@ interface MoveMenuProps {
  * menu is the ONLY way to move a card, not a "twin" of a working drag.
  */
 function MoveMenu(props: MoveMenuProps) {
-  const { person, rungs, onSelect, pending, error } = props;
+  const { person, rungs, onSelect, pending, error, onOpenChange } = props;
   const theme = useTheme();
   const [open, setOpen] = useState(false);
+
+  const setOpenState = (next: boolean) => {
+    setOpen(next);
+    onOpenChange(next);
+  };
 
   if (rungs.length === 0) {
     return null;
@@ -438,7 +459,7 @@ function MoveMenu(props: MoveMenuProps) {
         accessibilityState={{ expanded: open, busy: pending }}
         onPress={(e) => {
           e.stopPropagation();
-          setOpen((o) => !o);
+          setOpenState(!open);
         }}
         pressRetentionOffset={pressRetentionOffset}
         testID={`people-ladder-card-${person.personId}-move`}
@@ -471,7 +492,7 @@ function MoveMenu(props: MoveMenuProps) {
               accessibilityRole="menuitem"
               onPress={(e) => {
                 e.stopPropagation();
-                setOpen(false);
+                setOpenState(false);
                 onSelect(rung);
               }}
               pressRetentionOffset={pressRetentionOffset}
@@ -523,6 +544,7 @@ const styles = StyleSheet.create({
   card: {
     borderWidth: StyleSheet.hairlineWidth,
   },
+  raisedCard: { zIndex: 1 },
   row: { flexDirection: "row", alignItems: "center" },
   menu: {
     position: "absolute",
