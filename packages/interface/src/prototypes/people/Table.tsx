@@ -250,6 +250,7 @@ function SectionHeader(props: { label: string; count: number }) {
           paddingHorizontal: theme.spacing.lg,
           paddingVertical: theme.spacing.xs,
           backgroundColor: theme.colors.surfaceSunken,
+          borderBottomColor: theme.colors.border,
         },
       ]}
     >
