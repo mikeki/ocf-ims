@@ -275,8 +275,9 @@ function PersonRow(props: PersonRowProps) {
   const label = person.name || person.handle || `Person #${person.personId}`;
 
   return (
+    // Not role="button": RN Web renders that as <button>, and this row holds
+    // the role menu's own button (09aa finding).
     <Pressable
-      accessibilityRole="button"
       accessibilityState={{ selected }}
       accessibilityLabel={label}
       onPress={onPress}
@@ -300,11 +301,14 @@ function PersonRow(props: PersonRowProps) {
           ]}
         >
           <View
-            style={[styles.row, { width: NAME_WIDTH, gap: theme.spacing.sm }]}
+            style={[
+              styles.inline,
+              { width: NAME_WIDTH, gap: theme.spacing.sm },
+            ]}
           >
             <Avatar person={person} size={32} />
             <View style={{ flexShrink: 1 }}>
-              <View style={[styles.row, { gap: theme.spacing.xs }]}>
+              <View style={[styles.inline, { gap: theme.spacing.xs }]}>
                 <Text variant="body" numberOfLines={1}>
                   {label}
                 </Text>
@@ -332,7 +336,7 @@ function PersonRow(props: PersonRowProps) {
           <View
             style={[
               styles.flexCell,
-              styles.row,
+              styles.inline,
               { flexWrap: "wrap", gap: theme.spacing.xs },
             ]}
           >
@@ -378,4 +382,5 @@ const styles = StyleSheet.create({
     borderBottomWidth: StyleSheet.hairlineWidth,
   },
   flexCell: { flex: 1, minWidth: 0 },
+  inline: { flexDirection: "row", alignItems: "center" },
 });

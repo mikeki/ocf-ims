@@ -25,11 +25,13 @@ import { useSession } from "@/session/provider";
 export interface ShellProps {
   eventId: number;
   onAddPerson: () => void;
+  /** Absent when the viewer leads no crew for this event (§ What to build 4: "the word is absent"). */
+  onMyCrews?: () => void;
   children: ReactNode;
 }
 
 export function Shell(props: ShellProps) {
-  const { eventId, onAddPerson, children } = props;
+  const { eventId, onAddPerson, onMyCrews, children } = props;
   const theme = useTheme();
   const { state, signOut } = useSession();
   const eventName = useEventName(eventId) || `Event ${eventId}`;
@@ -72,6 +74,13 @@ export function Shell(props: ShellProps) {
         </View>
         <View style={styles.spacer} />
         {stream}
+        {onMyCrews ? (
+          <TextButton
+            label="My crews"
+            onPress={onMyCrews}
+            testID="shell-my-crews"
+          />
+        ) : null}
         <Button label="Add person" variant="secondary" onPress={onAddPerson} />
         <View style={[styles.row, { gap: theme.spacing.sm }]}>
           <Text variant="label" color="textMuted" numberOfLines={1}>

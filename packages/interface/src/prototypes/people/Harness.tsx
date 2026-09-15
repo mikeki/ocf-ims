@@ -4,7 +4,7 @@ import { useQuery } from "@connectrpc/connect-query";
 import type { Person } from "@ocf-ims/protocol-buffers/ocf/ims/resources/v1/person_pb";
 import { ImsService } from "@ocf-ims/protocol-buffers/ocf/ims/service/v1/service_pb";
 import { useLocalSearchParams, useRouter } from "expo-router";
-import type { ComponentType } from "react";
+import type { ComponentType, ReactNode } from "react";
 import { useEffect, useState } from "react";
 import {
   Pressable,
@@ -15,7 +15,10 @@ import {
 } from "react-native";
 import { ApiProvider } from "@/api/providers";
 import { useTheme } from "@/design/theme";
+import { drawerShare } from "@/design/tokens";
+import { ScreenHeader } from "@/features/shell/ScreenHeader";
 import { Splash } from "@/features/shell/Splash";
+import { AddPerson } from "@/prototypes/people/AddPerson";
 import { Directory } from "@/prototypes/people/Directory";
 import {
   CREWS,
@@ -26,8 +29,14 @@ import {
 } from "@/prototypes/people/data";
 import { type PeopleFake, wrapPeopleFake } from "@/prototypes/people/fake";
 import { Ladder } from "@/prototypes/people/Ladder";
+import { MyCrews } from "@/prototypes/people/MyCrews";
 import { PeopleDrawer } from "@/prototypes/people/PeopleDrawer";
 import { Picker } from "@/prototypes/people/Picker";
+import {
+  createSurfaceQueryClient,
+  createSurfaceRuntime,
+  type SurfaceRuntime,
+} from "@/prototypes/people/runtime";
 import { Shell } from "@/prototypes/people/Shell";
 import { Table } from "@/prototypes/people/Table";
 import type {
@@ -39,11 +48,6 @@ import { usePeopleQuery } from "@/prototypes/people/usePeopleQuery";
 import { useRoster } from "@/prototypes/people/useRoster";
 import { SessionProvider } from "@/session/provider";
 import { createFakeIms } from "@/test/fakeIms";
-import {
-  createTestQueryClient,
-  createTestRuntime,
-  type TestRuntime,
-} from "@/test/harness";
 import { createMemoryRefreshTokenStore } from "@/test/storage";
 
 // The 3c.4 round's harness (docs/plans/09aa-roster-design.md § The
@@ -224,13 +228,45 @@ interface StageBodyProps extends StageProps {
   people: Person[];
 }
 
+// Add person and My crews (docs/plans/09aa-roster-design.md § What to build
+// 3, 4) both render in the same side-panel slot the profile drawer already
+// occupies, so all three stay mutually exclusive: opening one closes the
+// other two. Neither is URL state like `q.open`/`q.sel` (09x finding 1's own
+// `setParams`-ordering concern doesn't apply to an ephemeral overlay), so
+// it's local to this component — the one gap that leaves is Esc: the
+// keyboard map's own Esc path only fires `close()` when `query.open` (the
+// URL param) is set, so it does not dismiss these two overlays on its own
+// (recorded in the round's report; the scrim and the panel's own back
+// control both still close them).
+type Overlay = "addPerson" | "myCrews" | undefined;
+
 function StageBody(props: StageBodyProps) {
   const { viewer, Variant, people } = props;
   const roster = useRoster(EVENT.id);
   const q = usePeopleQuery(people);
+  const myCrewsQuery = useQuery(ImsService.method.listMyCrews, {
+    eventId: EVENT.id,
+  });
+  const crews = myCrewsQuery.data?.crews ?? [];
 
-  const onAddPerson = () =>
-    console.info("[3c.4 round] Add person — not built in this half");
+  const [overlay, setOverlay] = useState<Overlay>(undefined);
+
+  const onAddPerson = () => {
+    q.close();
+    setOverlay("addPerson");
+  };
+  const onMyCrews =
+    crews.length > 0
+      ? () => {
+          q.close();
+          setOverlay("myCrews");
+        }
+      : undefined;
+  const closeOverlay = () => setOverlay(undefined);
+  const openPerson = (personId: number) => {
+    setOverlay(undefined);
+    q.open(personId);
+  };
 
   const query: PeopleQueryControls = {
     selectedId: q.query.sel,
@@ -243,31 +279,104 @@ function StageBody(props: StageBodyProps) {
   };
 
   return (
-    <Shell eventId={EVENT.id} onAddPerson={onAddPerson}>
+    <Shell eventId={EVENT.id} onAddPerson={onAddPerson} onMyCrews={onMyCrews}>
       <Variant
         people={people}
         viewer={viewer}
         roster={roster}
-        onOpen={q.open}
+        onOpen={openPerson}
         search={q.query.q}
         query={query}
       />
       <PeopleDrawer
-        person={q.opened}
+        person={overlay ? undefined : q.opened}
         viewer={viewer}
         roster={roster}
         onClose={q.close}
       />
+      {overlay === "addPerson" ? (
+        <SidePanel title="Add person" onClose={closeOverlay}>
+          <AddPerson
+            eventId={EVENT.id}
+            viewer={viewer}
+            roster={roster}
+            onClose={closeOverlay}
+          />
+        </SidePanel>
+      ) : null}
+      {overlay === "myCrews" ? (
+        <SidePanel title="My crews" onClose={closeOverlay}>
+          <MyCrews
+            eventId={EVENT.id}
+            crews={crews}
+            people={people}
+            roster={roster}
+          />
+        </SidePanel>
+      ) : null}
     </Shell>
   );
 }
+
+// The same panel/scrim chrome as `PeopleDrawer.tsx` (that file is out of
+// this round's edit list, so this is its own small copy rather than a
+// generalized export) for the two overlays that aren't a person's profile.
+function SidePanel(props: {
+  title: string;
+  onClose: () => void;
+  children: ReactNode;
+}) {
+  const theme = useTheme();
+  return (
+    <View style={StyleSheet.absoluteFill}>
+      <Pressable
+        accessibilityLabel={`Close ${props.title.toLowerCase()}`}
+        onPress={props.onClose}
+        style={[
+          sidePanelStyles.scrim,
+          { backgroundColor: theme.colors.overlay },
+        ]}
+      />
+      <View
+        style={[
+          sidePanelStyles.panel,
+          theme.elevation[2],
+          {
+            width: `${drawerShare * 100}%`,
+            backgroundColor: theme.colors.background,
+            borderLeftColor: theme.colors.borderStrong,
+          },
+        ]}
+        testID="people-side-panel"
+      >
+        <ScreenHeader
+          title={props.title}
+          back={{ label: "People", onPress: props.onClose }}
+        />
+        <View style={sidePanelStyles.fill}>{props.children}</View>
+      </View>
+    </View>
+  );
+}
+
+const sidePanelStyles = StyleSheet.create({
+  fill: { flex: 1 },
+  scrim: { position: "absolute", top: 0, left: 0, right: 0, bottom: 0 },
+  panel: {
+    position: "absolute",
+    top: 0,
+    right: 0,
+    bottom: 0,
+    borderLeftWidth: StyleSheet.hairlineWidth,
+  },
+});
 
 // --- The runtime: the same real runtime + createFakeIms() the Jest harness
 // uses (src/test/harness.tsx), rebuilt whenever the viewer changes. ---
 
 interface RosterRuntime {
-  runtime: TestRuntime;
-  queryClient: ReturnType<typeof createTestQueryClient>;
+  runtime: SurfaceRuntime;
+  queryClient: ReturnType<typeof createSurfaceQueryClient>;
   fake: PeopleFake;
 }
 
@@ -284,8 +393,8 @@ function useRosterRuntime(viewer: Viewer): RosterRuntime | undefined {
     fake.people = PEOPLE;
     fake.crews = CREWS;
     const store = createMemoryRefreshTokenStore(fake.issueRefreshToken());
-    const runtime = createTestRuntime({ fake, store, platform: "native" });
-    const queryClient = createTestQueryClient();
+    const runtime = createSurfaceRuntime(fake, store);
+    const queryClient = createSurfaceQueryClient();
     void runtime.session.bootstrap().then(() => {
       if (!cancelled) {
         setState({ runtime, queryClient, fake });
