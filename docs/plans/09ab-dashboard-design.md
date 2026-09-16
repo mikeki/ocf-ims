@@ -4,7 +4,7 @@
 
 > **Status:** Brief written and the round surface built and walked in a browser
 > 2026-09-15 (§ What was built); **Board picked 2026-09-16** (§ The pick); the 3c.5 acceptance criteria
-> next.
+> written the same day — the builders' brief.
 > **Parent:** [09i-expo-client.md](09i-expo-client.md) (Phase 3, §6 **D2**, the 3c.5 row and
 > open question 3, the chart library) under
 > [09-proto-connect-platform.md](09-proto-connect-platform.md)
@@ -269,7 +269,110 @@ Nothing on the phone changes.
 
 ## 3c.5 acceptance criteria (the builder's list, after the pick)
 
-_Written after the pick._
+Written 2026-09-16, the day of the pick. **The brief for the builder is this section plus
+"The rules the winner inherits" above; the surface (`src/prototypes/dashboard/`) is the
+reference implementation and the Board is the shape — copy its files into place and edit,
+do not retype them.** Rule 2 applies: no contract gap is expected (the wire above is
+verified); one found stops the builder and is filed in the slice notes. The slice is one
+PR; it runs past the `Agent` ceiling with its specs, so it is **two builders in sequence**:
+the first lands the data layer, the fake and the shared pieces (criteria 1–7); the second
+the screen, the route, the shell item, the deletion and the specs (criteria 8–15).
+
+### The data layer and the shared pieces (builder 1)
+
+1. **`useMetrics(eventId, interval)`** lands as `src/features/dashboard/useMetrics.ts`,
+   the surface's file: `useQuery(getMetrics, { eventId })` with `refetchInterval` from the
+   preference (`false` when Off), `refetchOnWindowFocus: true`, `placeholderData:
+   keepPreviousData`; exposes `metrics`, `refresh()`, `isRefreshing`, `lastError`
+   (`AppError` of the last failed refetch while data is held; cleared on the next success)
+   and `changedKeys` — the card keys whose data differs between the last two successful
+   answers, cleared on the next success or after 60 s. Pokes from the live hub do not
+   touch it.
+2. **`useAutoRefresh()`** lands as `src/features/dashboard/useAutoRefresh.ts`: Off · 30 s ·
+   1 min · 5 min, persisted under `dashboard.autoRefresh` through the app's storage
+   helper (`@/api/persist`'s `AsyncStorageLike`, as other per-device preferences do — grep
+   `statePreference.ts` in dispatch for the precedent), default Off, every read and write
+   in try/catch.
+3. **The fake** gains `GetMetrics` in `src/test/fakeIms.ts`: `fake.metrics` (a `Metrics`
+   per event id, `undefined` → the empty aggregate), `behaviours.getMetrics` ("ok" /
+   "unavailable" / "forbidden"), `getMetricsRequests`, `generated_at` set on each answer.
+   `src/test/fixtures.ts` gains `makeMetrics(overrides)` built from the surface's
+   `buildFairMetrics` (the 180-incident event) and `makeEmptyMetrics()`.
+4. **`StatTile`** (`src/features/dashboard/StatTile.tsx`): label, value in **proportional**
+   figures (never the tabular `figure` step), optional caption, "—" for an unset value,
+   the changed mark: an `info` dot with `spacing.xs` from the label while its key is in
+   `changedKeys`; a hard cut.
+5. **`BarList`** (`src/features/dashboard/BarList.tsx`): rows of label · bar · count. The
+   bar is a `View` `barThickness` tall (a `chart.barThickness` token = 10 in `tokens.ts`,
+   the one token this slice adds, with `chart.columnWidth` = 20 and `chart.plotHeight` =
+   160 beside it — the three named in DESIGN.md's new "Charts" paragraph), centred in a
+   `spacing.xl` row, width `count / max` of the track, 4 px radius on the data end only;
+   `color` a theme colour; `sorted`, `limit` with an "N more" `TextButton` expanding in
+   place, `caption`. Labels and counts in `text` / `textMuted`; tabular figures in the
+   count column only. Never truncates a label: the label column wraps.
+6. **`DayColumns`** (`src/features/dashboard/DayColumns.tsx`): one `chart.columnWidth`
+   column per `by_day` entry centred in an equal slot, `chart.plotHeight` tall, a hairline
+   `border` baseline with the day-of-month under each column, the latest and the busiest
+   day labelled above their columns, a press / hover readout line (date · count), a
+   **Table** word swapping the chart for a date · count list (a hard cut). The container
+   includes the tick band (no inner scroll).
+7. **`FollowUps`** (`src/features/dashboard/FollowUps.tsx`): rows of `figure` number ·
+   summary, press → `onOpen(number)`; "No follow-ups owed" when empty.
+
+### The screen (builder 2)
+
+8. **`DashboardScreen`** (`src/features/dashboard/DashboardScreen.tsx`) is the surface's
+   Board: the toolbar (Refresh, "Updated n min ago" on a 30 s clock from `generated_at`,
+   the auto-refresh chips, and "Couldn't refresh — Retry" in the toolbar on a failed
+   refetch while the numbers stay), the KPI row (Total, Open, Closed, Avg. time to close
+   "of n" / "No incidents closed yet"), then the two-column grid of cards: Priority
+   (bars in the priority tones: High `danger`, Normal and Low `neutral`) · Category;
+   Type (top 10) · Area (top 10, "Top 10 areas" caption); Per day across both; Roles
+   (ladder order, "People, not incidents") · Open follow-ups. Cards are the same chrome
+   (`surface`, `border` hairline, `radii.lg`, `spacing.lg` padding); a card in a
+   vertical `ScrollView` is wrapped in a row (09ab finding 3). Below 1024 the grid is one
+   column.
+9. **The states.** Loading (`LoadingState`) only before the first answer; PermissionDenied
+   → `EmptyState` "Not found" (never a 403 message); any other failure with no data →
+   `EmptyState` "Couldn't load" with Retry; the empty event renders every card with its
+   empty line. Switching events resets the diff (the body is keyed by event).
+10. **The route** `app/(app)/events/[eventId]/dashboard.tsx`: inside `Shell` on a wide
+    window; on a phone the same screen without the shell, one column, with a
+    `ScreenHeader` back to the Board — wide only is the design decision, the URL still
+    works. A follow-up opens `/events/[eventId]/incidents?open=N` (decision 4; the 3c.1
+    drawer's URL state) — the builder verifies a cold `open=` load renders (09y
+    finding 1) and files it if not.
+11. **The shell item.** `Shell.tsx` gets **Dashboard** after Reports, shown when
+    `access.writeIncidents`, active on the route; the item order Incidents · Reports ·
+    People · Dashboard · Alerts stays whatever of them exist when this merges.
+12. **Keyboard.** `r` refreshes, `?` opens the dashboard's own help sheet (a
+    `HelpSheet` parameterised by its rows — the dispatch one is incident-worded; make
+    `rows` a prop if 3c.3 has not already).
+13. **Gating and privacy** per the rules above; no `refetchOnWindowFocus` storm (the
+    interval alone re-arms after a focus refetch).
+14. **The surface is deleted**: `app/(dev)/dashboard.tsx` and `src/prototypes/dashboard/`
+    (Picker, Harness, Shell, Tables, Shift, data, fake, runtime with them); `Picker.tsx`
+    is duplicated in the two other surfaces and is not this slice's to touch.
+15. **Specs** in `__tests__/features/dashboard/`: `useMetrics` (interval on / off,
+    `changedKeys` between two answers and cleared after 60 s under fake timers, a failed
+    refetch keeps data and sets `lastError`), `useAutoRefresh` (persists, default Off,
+    storage throwing), `BarList` (limit + "N more", never truncates), `DayColumns` (the
+    two labels, the Table swap), `DashboardScreen` (the four states, the changed mark
+    after a second answer, the failing refresh keeps the numbers, the follow-up press
+    path, the reporter's Not found, the phone header) and the route's shell item
+    (present for a writer, absent for a reporter). 09i §9 passes; `/review-animations`
+    says Approve (the only motion is press feedback).
+
+### The promotion map
+
+| Surface (`src/prototypes/dashboard/`) | Lands as | What changes |
+|---|---|---|
+| `useMetrics.ts`, `useAutoRefresh.ts` | `src/features/dashboard/` | Storage through `@/api/persist`; the interval type exported |
+| `StatTile.tsx`, `BarList.tsx`, `DayColumns.tsx`, `FollowUps.tsx`, `Toolbar.tsx`, `format.ts` | `src/features/dashboard/` | Sizes from the three `chart` tokens; `BarList` drops `stacked` (Shift's) |
+| `Board.tsx` | `DashboardScreen.tsx` | The states, the route callbacks; the card wrapper row |
+| `fake.ts` (`GetMetrics`) | `src/test/fakeIms.ts` | The behaviours and the request log |
+| `data.ts` | `src/test/fixtures.ts` | `makeMetrics`, `makeEmptyMetrics` |
+| `Harness.tsx`, `Shell.tsx`, `Picker.tsx`, `Tables.tsx`, `Shift.tsx`, `runtime.ts`, `types.ts`, `app/(dev)/dashboard.tsx` | deleted | |
 
 ## Out of scope
 
@@ -292,7 +395,7 @@ staging.
 - [x] Brief written; the contract verified; the chart-library question answered as a recommendation (2026-09-15)
 - [x] The surface built, loaded in a browser, verified (2026-09-15; § What was built)
 - [x] The round run; Board picked, the decisions recorded (2026-09-16; § The pick)
-- [ ] The 3c.5 acceptance criteria written
+- [x] The 3c.5 acceptance criteria written (2026-09-16)
 - [ ] The winner promoted, reviewed, the surface deleted — the 3c.5 PR
 
 ## Open questions
