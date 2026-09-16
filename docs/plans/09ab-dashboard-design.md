@@ -3,8 +3,8 @@
 # 09ab — The 3c.5 round: the dashboard on a wide window
 
 > **Status:** Brief written and the round surface built and walked in a browser
-> 2026-09-15 (§ What was built); the pick is the maintainer's, then the 3c.5 acceptance
-> criteria here.
+> 2026-09-15 (§ What was built); **Board picked 2026-09-16** (§ The pick); the 3c.5 acceptance criteria
+> next.
 > **Parent:** [09i-expo-client.md](09i-expo-client.md) (Phase 3, §6 **D2**, the 3c.5 row and
 > open question 3, the chart library) under
 > [09-proto-connect-platform.md](09-proto-connect-platform.md)
@@ -211,6 +211,17 @@ Dashboard item), the empty event — the console clean. No horizontal scroll at 
 Verified with the surface in the tree: typecheck, biome, Jest (50 suites, 365 tests),
 `export:web` and the smoke e2e green; the route walked in Chrome with a clean console.
 
+### The pick — Board (2026-09-16)
+
+The maintainer picked **Board**: the whole event on one screen, every card the same
+chrome — the shape dispatch already knows from templ, done in the client's language. The
+decisions, as they stand: (1) wide only; (2) **no chart library** — the bars and columns
+are Views (the round is the evidence); (3) the hard-cut changed mark, no glow;
+(4) a follow-up opens the incident table with the incident in the drawer
+(`…/incidents?open=N`); (5) Area shows its top 10 with "N more" expanding in place;
+(6) Per day labels the latest and the busiest, the rest on hover / press. Tables and
+Shift stay in the surface until the 3c.5 PR deletes it.
+
 ### Decisions the round must also take (shape-independent, but only visible when run)
 
 1. **The phone.** E15's phone tabs have no Dashboard. Recommendation: **wide only**; a
@@ -280,7 +291,7 @@ staging.
 
 - [x] Brief written; the contract verified; the chart-library question answered as a recommendation (2026-09-15)
 - [x] The surface built, loaded in a browser, verified (2026-09-15; § What was built)
-- [ ] The round run; the pick, the reasons and the six decisions recorded
+- [x] The round run; Board picked, the decisions recorded (2026-09-16; § The pick)
 - [ ] The 3c.5 acceptance criteria written
 - [ ] The winner promoted, reviewed, the surface deleted — the 3c.5 PR
 
