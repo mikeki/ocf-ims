@@ -221,7 +221,10 @@ Dee · For someone else") is too quiet for the thing a reporter does when writin
 another ranger's account. The second cut gives the composer an **On behalf of** row in the
 Ledger's own `label · value · ›` language at the top of the composer card — "On behalf of ·
 Yourself (Dee) ›" — a press opens the person picker in place, the value becomes the name,
-Send reads "Send for Kai", and the sticky-per-event rule (09t) is unchanged.
+Send reads "Send for Kai", and the sticky-per-event rule (09t) is unchanged. **Built and
+walked in Chrome 2026-09-16** (`LedgerComposer.tsx`, a surface copy of `ReportComposer`;
+the row is a `LedgerRow` whose control is the `PersonPicker`, which carries its own
+Clear — the same mechanism as the incident's rows).
 
 The decisions, as they stand: (1) the phone gets the Ledger at 400 px; (2) newest first
 with the composer on top, as the incident; (3) the link control stays the number field
