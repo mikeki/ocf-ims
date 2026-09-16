@@ -3,8 +3,8 @@
 # 09aa — The 3c.4 round: the roster on a wide window
 
 > **Status:** Brief written 2026-09-14; the round surface built and walked in a browser
-> 2026-09-15 (§ What was built); the pick is the maintainer's, then the 3c.4 acceptance
-> criteria here.
+> 2026-09-15 (§ What was built); **Ladder picked 2026-09-16** (§ The pick: a drag and a hovercard
+> in the second cut); the 3c.4 acceptance criteria next.
 > **Parent:** [09i-expo-client.md](09i-expo-client.md) (Phase 3, §6 **D2** and the 3c.4 row)
 > under [09-proto-connect-platform.md](09-proto-connect-platform.md)
 > **Follows:** [09x](09x-dispatch-design.md) (the shell, the table, the drawer, the page —
@@ -211,6 +211,34 @@ and the smoke e2e):
 Verified with the surface in the tree: typecheck, biome, Jest (50 suites, 365 tests),
 `export:web` and the smoke e2e green; the route walked in Chrome with a clean console.
 
+### The pick — Ladder (2026-09-16)
+
+The maintainer picked **Ladder**, with two asks:
+
+1. **Drag people between the columns.** The round's Ladder had only the "Move to…" menu
+   (finding 7). The second cut adds the drag: a card is picked up from its grip, follows
+   the pointer as a ghost (transform only, a shared value), the column under the pointer
+   lights as the target — or reads as not a target where the ceiling forbids it — and the
+   drop is a hard cut (the card is in its new column, the write is the same
+   `SetPersonParticipation`); a drop outside any column springs the ghost home
+   (`{ duration: 400, dampingRatio: 0.8 }`, a hard cut under reduced motion). The menu
+   stays as the twin for the keyboard and for touch. **This is the first drag in the
+   client and needs a DESIGN.md amendment** (the motion budget says "nothing here is
+   dragged"): one line for the drag, its spring on snap-back only, and the menu twin.
+   Web first through pointer events in the surface; the slice uses Gesture Handler.
+2. **A hovercard instead of the drawer.** The 66 % drawer is mostly empty for six lines.
+   A card's details open in a **hovercard** anchored to the card — on hover (web, after a
+   short delay) and on press (touch) — with the profile card's content: the picture,
+   name, handle, role, crews, wristband, email / phone when sent, the admin shield, and
+   Remove from event. Esc or a press outside closes it. The drawer stays only for Add
+   person and My crews.
+
+The decisions, as they stand: (1) wide only; (2) the role changes by drag or by the
+card's menu; (3) the hovercard, not the drawer; (4) the search filters every column;
+(5) pictures at 32 px on the card, larger in the hovercard, an initial when absent;
+(6) the wristband in the hovercard only. Table and Directory stay in the surface until the
+3c.4 PR deletes it.
+
 ### Decisions the round must also take (shape-independent, but only visible when run)
 
 1. **The phone.** E15 has no People tab; templ's page is used from the tent, not the
@@ -276,7 +304,7 @@ empty roster, reduced motion. Nothing goes to staging.
 
 - [x] Brief written; the contract verified (2026-09-14)
 - [x] The surface built, walked in a browser and verified (2026-09-15; § What was built)
-- [ ] The round run; the pick, the reasons and the six decisions recorded
+- [x] The round run; Ladder picked, the reasons and the six decisions recorded (2026-09-16; § The pick)
 - [ ] The 3c.4 acceptance criteria written
 - [ ] The winner promoted, reviewed, the surface deleted — the 3c.4 PR
 
