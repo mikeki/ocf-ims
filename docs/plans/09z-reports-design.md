@@ -3,7 +3,7 @@
 # 09z — The 3c.3 round: reports on a wide window
 
 > **Status:** Brief written and the round surface built 2026-09-14 (§ What was built);
-> the pick is the maintainer's, then the 3c.3 acceptance criteria here.
+> **Ledger picked 2026-09-16** (§ The pick); the 3c.3 acceptance criteria next.
 > **Parent:** [09i-expo-client.md](09i-expo-client.md) (Phase 3, §6 **D2** and the 3c.3 row)
 > under [09-proto-connect-platform.md](09-proto-connect-platform.md)
 > **Follows:** [09x](09x-dispatch-design.md) (the shell, the table, the drawer, the page —
@@ -212,6 +212,24 @@ console on Ledger, Account and Companion (R-7, and R-15's "Not visible to you").
 variants at 1024 drawer / 1440 page / 400, both schemes, the four viewers, the poke while
 editing, the failing save, R-15's "Not visible to you", reduced motion) is the round.
 
+### The pick — Ledger (2026-09-16)
+
+The maintainer picked **Ledger**: the incident is a Ledger (09y), so a report is one too,
+and the two are iterated together later. One ask for now: **make it more visible that an
+entry can be sent on behalf of someone else.** The composer's footer caption ("Posting as
+Dee · For someone else") is too quiet for the thing a reporter does when writing up
+another ranger's account. The second cut gives the composer an **On behalf of** row in the
+Ledger's own `label · value · ›` language at the top of the composer card — "On behalf of ·
+Yourself (Dee) ›" — a press opens the person picker in place, the value becomes the name,
+Send reads "Send for Kai", and the sticky-per-event rule (09t) is unchanged.
+
+The decisions, as they stand: (1) the phone gets the Ledger at 400 px; (2) newest first
+with the composer on top, as the incident; (3) the link control stays the number field
+with Link… / Detach as their own words (finding 5); (4) photos on the composer — 3c.3
+(finding 2); (5) strike on the entry's header line; (6) Create an incident from this
+report stays under the link row. Account and Companion are kept in the surface until the
+3c.3 PR deletes it.
+
 ### Decisions the round must also take (shape-independent, but only visible when run)
 
 1. **The phone.** The 3b.3 `ReportScreen` is one component on three surfaces. The
@@ -313,7 +331,7 @@ staging.
 
 - [x] Brief written; the contract verified (2026-09-14)
 - [x] The surface built and verified (2026-09-14; § What was built) — the hand pass is the maintainer's
-- [ ] The round run; the pick, the reasons and the six decisions recorded
+- [x] The round run; Ledger picked, the reasons and the six decisions recorded (2026-09-16; § The pick)
 - [ ] The 3c.3 acceptance criteria written
 - [ ] The winner promoted, reviewed, the surface deleted — the 3c.3 PR
 
