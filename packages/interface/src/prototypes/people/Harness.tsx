@@ -184,7 +184,12 @@ export function Harness() {
             blobs={runtime.runtime.blobs}
           >
             <SessionProvider session={runtime.runtime.session}>
-              <Stage key={viewer} viewer={viewer} Variant={variant.Component} />
+              <Stage
+                key={viewer}
+                viewer={viewer}
+                Variant={variant.Component}
+                variantName={variant.name}
+              />
             </SessionProvider>
           </ApiProvider>
         )}
@@ -203,10 +208,11 @@ export function Harness() {
 interface StageProps {
   viewer: Viewer;
   Variant: ComponentType<RosterPaneProps>;
+  variantName: VariantName;
 }
 
 function Stage(props: StageProps) {
-  const { viewer, Variant } = props;
+  const { viewer, Variant, variantName } = props;
   const listQuery = useQuery(ImsService.method.listPersonnel, {
     eventId: EVENT.id,
     all: true,
@@ -222,7 +228,14 @@ function Stage(props: StageProps) {
     return <Splash />;
   }
   const people = listQuery.data?.people ?? [];
-  return <StageBody viewer={viewer} Variant={Variant} people={people} />;
+  return (
+    <StageBody
+      viewer={viewer}
+      Variant={Variant}
+      variantName={variantName}
+      people={people}
+    />
+  );
 }
 
 interface StageBodyProps extends StageProps {
@@ -243,7 +256,7 @@ interface StageBodyProps extends StageProps {
 type Overlay = "addPerson" | "myCrews" | undefined;
 
 function StageBody(props: StageBodyProps) {
-  const { viewer, Variant, people } = props;
+  const { viewer, Variant, variantName, people } = props;
   const roster = useRoster(EVENT.id);
   const q = usePeopleQuery(people);
   const myCrewsQuery = useQuery(ImsService.method.listMyCrews, {
@@ -306,12 +319,14 @@ function StageBody(props: StageBodyProps) {
         search={q.query.q}
         query={query}
       />
-      <PeopleDrawer
-        person={overlay ? undefined : q.opened}
-        viewer={viewer}
-        roster={roster}
-        onClose={q.close}
-      />
+      {variantName === "Ladder" ? null : (
+        <PeopleDrawer
+          person={overlay ? undefined : q.opened}
+          viewer={viewer}
+          roster={roster}
+          onClose={q.close}
+        />
+      )}
       {overlay === "addPerson" ? (
         <SidePanel title="Add person" onClose={closeOverlay}>
           <AddPerson
