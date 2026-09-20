@@ -1,0 +1,268 @@
+<!-- SPDX-License-Identifier: Apache-2.0 -->
+
+# 09z — The 3c.3 round: reports on a wide window
+
+> **Status:** Brief written 2026-09-14; the round surface next (stacked PR), then the
+> pick, then the 3c.3 acceptance criteria here.
+> **Parent:** [09i-expo-client.md](09i-expo-client.md) (Phase 3, §6 **D2** and the 3c.3 row)
+> under [09-proto-connect-platform.md](09-proto-connect-platform.md)
+> **Follows:** [09x](09x-dispatch-design.md) (the shell, the table, the drawer, the page —
+> 3c.1) and [09y](09y-incident-editor-design.md) (the Ledger — 3c.2). The report model
+> and the phone's report screen are [09t](09t-reports.md) (3b.3).
+> **Owner:** Design (the round, run by the maintainer) → Architect (this brief, the rules,
+> the criteria after the pick) → Builder (3c.3).
+> **The skills:** Emil Kowalski's skills govern all UI work — `prototype` for the round,
+> `animate-expo` for anything that moves, `review-animations` before the PR is called done.
+> **Last updated:** 2026-09-14
+
+## Objective
+
+A report is somebody's account of what happened (09t). Dispatch reads them for two
+reasons: to **review** what a ranger wrote about an incident it is working, and to
+**find a home** for an account that arrived on its own — link it to the incident it
+belongs to, or raise an incident from it. templ gives dispatch a reports table (Report# ·
+IMS# · Brief Description · Created · Created by; search with regex; show-days and
+show-rows menus; `n` new, `/` search, `m` search across events) and a report page
+(number, an editable IMS# field with a link, created by, an editable summary, the
+instructions accordion, the journal with history / stricken toggles, the on-behalf-of
+composer, attach file). The phone client has the Board's Reports segment and the 3b.3
+report screen; a wide window has neither a reports list nor a shell around the report.
+
+**The table is not up for design.** It is the 3c.1 table with the report columns, the
+same filter bar, drawer, page, URL state and keyboard map (§ The table). **What is open is
+the pane:** what a report *is* in the dispatcher's hands — a record like the incident, a
+document to be read, or a companion to the incident it belongs to.
+
+## What is already true on the wire (verified 2026-09-14)
+
+- `ListReports(event_id, exclude_system_entries)` → `ReportView[]`; `GetReport` → one.
+  `ReportView` = `Report` + `may_edit_summary` + `may_add_journal_entry`. `Report` =
+  `event`, `number`, `created`, `created_by?` (`PersonRef`), `summary?` (≤ 1024),
+  `incident?` (the linked incident number; unset = standalone), `journal_entries[]`.
+- **Scoping is the server's.** `ListReports` answers the reports the caller may read:
+  everything with `EventReadAllReports`; own (creator or a previous entry author) with
+  `EventReadOwnReports`; plus the crew's reports for a crew leader with
+  `EventReadCrewReports` (`crewReportNumberSet`, 10c). `GetReport` applies the same
+  three-way test and answers 404 outside it. **Nothing on the wire says which rule
+  admitted a report** — the client cannot tell "my crew's" from "mine"; the crew-leader
+  review read is simply the table showing what the server answered.
+- `UpdateReport(event_id, report_number, report)` takes a plain `Report`. `summary`
+  present = edit it (creator or admin only, else PermissionDenied); `incident` present
+  and > 0 links, present and ≤ 0 detaches, absent leaves it (the visit-field convention;
+  a change writes a system entry, a same-value write does not; a nonexistent incident is
+  404); `journal_entries` present = append (creator, writer or admin). The write gate is
+  `EventWriteAllReports` or `EventWriteOwnReports` + the ownership floor. So the three
+  writes the pane makes are three shapes of one RPC: summary, link, entry.
+- `UpdateReportJournalEntry` = strike / unstrike; a reporter may strike only their own
+  entries, a writer or admin any (plan 90 M1). **The client has never called it** — the
+  fake has no handler; the round adds one.
+- Attachments: `POST /ims/api/events/{eventName}/reports/{n}/attachments` (REST,
+  Bearer), the same gate as the write plus the ownership floor; served by the 3b.4
+  blob helper. The report composer has no photo control yet (09t said it comes with the
+  helper; it did not).
+- `CreateReport` is 3b.3's form; unchanged here. **No proto change is needed.**
+
+## What the client is today
+
+- `features/board/ReportScreen.tsx` (3b.3, phone): `ScreenHeader` "R-n", the summary as
+  read-only text, created by, the incident as a row that opens it — or, for a writer with
+  no link, *Attach to incident* (a number field + Attach) and *Create an incident from
+  this report* — then "Journal", the entries oldest first through `JournalEntryRow`, and
+  the docked `ReportComposer` (on-behalf-of folded in the footer, sticky per event) when
+  `may_add_journal_entry`. No summary edit, no strike, no history / stricken toggles, no
+  photo, no detach.
+- `/events/[eventId]/reports/[number]` renders that screen at every width, without the
+  shell. `/reports/new` is the 3b.3 form (a modal). The Board's Reports segment is the
+  phone list. `IncidentScreen`'s Reports section (3c.2 `ReportsEditor`) opens a report
+  through `onOpenReport` → that route.
+- The shell (`features/shell/Shell.tsx`) has Incidents and Alerts; 09x criterion 2 left
+  a Reports item to this slice. The dispatch pieces this slice reuses are `Table`
+  (`columns.ts`, `IncidentRow`), `FilterBar`, `Drawer`, `IncidentPage`, `useDispatchQuery`
+  + `query.ts` (URL state, `open=` / `sel=`), `useKeyboardMap`, `neighbours.ts`. They are
+  typed on the incident `Row`; § The table says how the report table shares them.
+
+## The table (fixed by 3c.1; the round shows it, does not vary it)
+
+- Reached from the shell's **Reports** item, at `/events/[eventId]/reports` (a new
+  index route; the phone keeps the Board — the route renders `BoardScreen` on the
+  Reports segment below 1024, as `/incidents` renders the Board).
+- Columns: **Report#** (fixed, tabular) · **IMS#** (fixed; the number, or "—") ·
+  **Summary** (flexible) · **Created** (fixed, the minute clock) · **Created by**
+  (fixed). Sort on any, default Report# descending. Row density, hover, the selected and
+  opened marks, live rows and the number-as-a-column rule are 3c.1's.
+- The filter bar: the search field (summary, created by, the entries' text — templ's
+  regex `/…/` form included, it is a rule people rely on), the chips **Unlinked · Linked
+  · All** where the incident table has Open · Closed · All (an unlinked report is the one
+  that needs dispatch), sort. No priority / type / area / people menus. The URL carries
+  `q`, `link`, `sort`, `dir`, `sel`, `open` exactly as 09x's does.
+- The keyboard map is 09x's: `j` `k` move, Enter opens in the drawer, Enter again the
+  page, Esc closes, `/` search, `n` new report (with `writeReports`), `a` the composer,
+  `h` history, `?` help. A bare number in the search is a jump to R-n.
+- **New report** in the shell's action slot when `writeReports` (the 3b.3 form).
+- Search across events (templ `m`) is out of scope; it goes on the 3c.6 list.
+
+## The prototype round (the maintainer's to run)
+
+Dispatch is chosen; the pane is chosen (09x: the drawer at 66 % of the content width,
+~676 px at 1024, the page centred at 720). The Ledger is chosen for the incident (09y).
+**What is open is the report pane**, and the three shapes below are the three honest
+answers to what a report is on a dispatcher's screen. Each is judged in the drawer at
+1024 and on the page at 1440 with the same fixture reports.
+
+| Variant | Axis | The claim it makes | What it costs |
+|---|---|---|---|
+| **Ledger** | *A record* — the incident's shape, shorter | The 3c.2 Ledger applied as is: the summary as the heading with Edit (creator / admin), a Details card of `label · value · ›` rows (incident, created, created by), the journal newest first with the composer at its top, the on-behalf-of in the composer's footer, strike on the entry's header line, the history / stricken toggles. The incident row is the link control: a press is a hard cut to a number field with Detach; unlinked reads "None · Link…". | Nothing here is new, which is also its cost: a report reads like a small incident, and the thing dispatch does most with one — read the account start to end — is fighting a newest-first journal built for a live incident. |
+| **Account** | *A document* — read start to end | The report as a page: the summary as a title, a byline (`created by · created · R-n`, "on behalf of" on each entry that has one), the entries as dated paragraphs oldest first with no card chrome and no row borders, the composer at the end where the account continues. The controls live in one thin strip under the byline: the incident link (the number as a `TextButton`, Link… / Detach), Edit summary, History / Stricken toggles. Strike is hover-only on web, a long-press on native. | The strip is a new piece of chrome and must read as controls without becoming a toolbar. Newest first is lost, so a long report puts the newest entry a scroll away; `a` still jumps. The phone must decide whether its 3b screen becomes this. |
+| **Companion** | *Beside its incident* — review is comparison | The pane splits: the report (Account's body) on the left, the linked incident on the right as a read-only column — its summary, state · priority · area marks, and its journal filtered to the same hours — so the dispatcher reads the account against the record. Unlinked, the right column is the link control itself: a search over the incident table (summary, number) whose result row links on press, above "Create an incident from this report". | At 1024 in the drawer two columns are ~330 px each; the right one is a real second incident fetch (`GetIncident`, 404 when private → the column says "Not visible to you"). On the page (720) it is barely wider. The phone stacks the columns, which is the Ledger's report screen plus an incident excerpt below. |
+
+Every variant shows, with fixture data: **R-7** linked to #47, by a reporter, six entries
+(one on behalf of another person, one with a photo, one stricken, two system entries —
+"Changed summary", "Linked to incident #47"); **R-12** standalone by a reporter, two
+entries — the one dispatch must find a home for; **R-3** the viewer's own (a reporter's
+view: `may_edit_summary`, `may_add_journal_entry`, no other reports in the table);
+**a poke arriving while the summary is being edited** (a new entry lands on R-7, the
+half-typed summary stays); **a save that fails** (the summary write answers Unavailable:
+the field keeps the typed value, the error at the field, nothing else greys out); the
+crew leader's view (three reports in the table, every one read-only: no composer, no
+Edit, no link control, no New report); the empty table; reduced motion on. At **1024
+(drawer) and 1440 (page)**, both schemes, and a **400 px pass** on each (decision 1).
+
+**How to run it:**
+
+```
+/prototype 3c.3 — the report pane for plan 09i (docs/plans/09z-reports-design.md).
+Three variants on the axes in that file's prototype-round table: Ledger, Account,
+Companion. Dispatch is chosen, the pane is chosen, the Ledger is chosen for incidents —
+diverge on WHAT A REPORT IS IN THE PANE, not on colour, the table or the drawer; read
+tokens through useTheme() and reuse the existing primitives, LedgerRow, SavingField,
+JournalEntryRow, ReportComposer, PersonPicker. Do not modify src/design/* or the
+existing src/features/*. Dev-only Expo Router route outside the session gates, the
+report table (§ The table, copied into the surface with report columns) inside the real
+Shell, the variant rendered inside the 3c.1 Drawer and page chrome at 1024 and 1440;
+fixtures plus createFakeIms(), no server. Saves are fake and per field (the fake answers
+after 300 ms, the summary configured to fail). Motion: only PressFeedback and StateFade
+from src/design/motion.tsx — a value becoming a control is a hard cut; nothing enters
+with an animation on a list.
+```
+
+The surface lives at `app/(dev)/reports.tsx` + `src/prototypes/reports/` and is deleted
+in the 3c.3 PR. The 09x harness (`Picker.tsx`, `Harness.tsx`, the stage) is recoverable
+with `git show 88d4152:packages/interface/src/prototypes/dispatch/Picker.tsx`; the 09y
+surface was never committed, but its `useEditIncident` / `SavingField` landed in
+`src/features/incidents/` and are the pattern for the report's `useEditReport`.
+
+### Decisions the round must also take (shape-independent, but only visible when run)
+
+1. **The phone.** The 3b.3 `ReportScreen` is one component on three surfaces. The
+   recommendation is the same as 09y's: the phone gets the winner at 400 px, the write
+   gate unchanged. If Companion wins, the phone gets its stacked form.
+2. **The journal's order.** Newest first (the incident's, 09y decision 4) or oldest
+   first (an account). The round decides per the winner; the toggles and the composer
+   position follow it.
+3. **The link control's shape.** A number field (templ, the phone today) or a search over
+   the incident table (Companion). Whichever wins, a nonexistent number reads as the
+   404 at the field and linking a private incident the viewer cannot see is refused by
+   the server the same way — the control must show that without leaking anything.
+4. **Photos on reports.** The upload route exists; `PhotoAttach` is the 3b.4 helper.
+   Recommendation: the report composer gets the same photo control the incident's has,
+   in this slice, in every variant.
+5. **Strike's visibility.** 09y finding 5 says the word is loud; 3c.2 hid it on the
+   header line. The round shows Ledger's placement and Account's hover-only form.
+6. **Create an incident from this report** stays (09t): a `TextButton` under the link
+   control in every variant, opening the incident form with the report set.
+
+## The rules the winner inherits (shape-independent)
+
+### One field, one request
+
+`useEditReport` mirrors `useEditIncident`: `setSummary`, `setIncident` (a number or
+`0` to detach), `strike(entryId, stricken)`; each a plain `Report` (or entry) carrying
+only that field; optimistic per field; the error at the control; on settle invalidate
+`GetReport`, `ListReports` and — when the link changed — the incident's `GetIncident`
+and `ListIncidents`. Text saves on blur and on Enter; the link on Enter / a result
+press; strike on press.
+
+### A poke never overwrites an unsaved field
+
+`SavingField` as promoted in 3c.2, unchanged: the fetched value lands while a field is
+not being edited; a field being edited keeps its text through a refetch.
+
+### Gating
+
+`may_edit_summary` gates Edit; `may_add_journal_entry` gates the composer and strike (the
+server refuses a reporter striking another's entry — the client hides the control on
+entries not authored by the viewer unless `writeReports`); the link control needs
+`writeReports` (the write gate) — a reporter with own-only write may link their own
+report, as templ allows. A viewer with none of these sees a page without controls and
+without hints of them (no chevrons, no Edit word, no "Link…"). The table's New report
+needs `writeReports`.
+
+### The crew leader's read
+
+Nothing marks a crew's report. The table shows what `ListReports` answered; the pane
+shows what `GetReport` answered; a crew leader with no write bit sees the read-only
+shape. If the fair wants "my crew's" as a filter, that is a `ReportView` field and a
+server slice — an open question, not a client workaround.
+
+### Keyboard
+
+09x's map on the table; in the pane `a` focuses the composer, `h` toggles history,
+Esc closes the drawer, Enter on the number field links. Nothing new.
+
+### Motion
+
+Press feedback only. A value becoming a control, a toggle, the drawer's columns
+appearing — hard cuts. Reduced motion drops the press scale.
+
+### Privacy
+
+A report linked to an incident the viewer may not read shows the number as text (it is
+on the report the server answered) and the row does not open — the press answers the
+404 as "Not visible to you" where the incident would render, never a 403, never the
+summary. Companion's right column obeys the same rule.
+
+### The phone is not regressed
+
+`ReportScreen`'s 3b.3 behaviours (the composer with on-behalf-of, attach, create an
+incident, `dismissTo` back) stay; the phone's Jest specs stay green untouched except
+where a behaviour is deliberately changed by a decision above.
+
+## 3c.3 acceptance criteria (the builder's list, after the pick)
+
+_Written after the pick._
+
+## Out of scope
+
+- Search across events (templ `m`) — 3c.6's list.
+- Editing an entry's text, deleting an entry, removing an attachment — no route.
+- A "my crew's" filter — needs a `ReportView` field (open question 2).
+- Any proto change.
+- The roster and the dashboard — 3c.4 / 3c.5, their own rounds.
+
+## Verification (for the round)
+
+`pnpm -F @ocf-ims/interface typecheck`, `pnpm lint`, `pnpm -F @ocf-ims/interface test`
+unchanged and green with the throwaway surface in the tree; `export:web` builds; the
+smoke e2e passes. Hand: the three variants in the drawer at 1024 and on the page at 1440
+in both schemes, the 400 px pass, the poke-while-editing case, the failing save, the
+reporter's view, the crew leader's view, the empty table, reduced motion. Nothing goes to
+staging.
+
+## Checklist
+
+- [x] Brief written; the contract verified (2026-09-14)
+- [ ] The surface built, verified and the scripted walk green
+- [ ] The round run; the pick, the reasons and the six decisions recorded
+- [ ] The 3c.3 acceptance criteria written
+- [ ] The winner promoted, reviewed, the surface deleted — the 3c.3 PR
+
+## Open questions
+
+1. **Does the phone get the winner?** Recommendation: yes (decision 1).
+2. **"My crew's" as a filter.** Only if crew leaders ask; a `ReportView.crew_visible`
+   (or the crew name) is a small server slice.
+3. **Days filter.** templ's show-days menu has no analogue on the dispatch table; the
+   reports table starts without one (sort by Created covers the shift). Add if asked.
+4. **Enter-to-submit on the report composer.** templ deliberately has none on reports
+   (6k); the client's `ReportComposer` follows that. Unchanged here; 3c.6 owns the
+   preference.
