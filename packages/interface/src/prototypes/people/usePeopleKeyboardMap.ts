@@ -118,6 +118,8 @@ export function usePeopleKeyboardMap(deps: PeopleKeyboardMapDeps): void {
           }
           break;
         case "n":
+          // The panel focuses its search field; the key must not type into it.
+          e.preventDefault();
           d.onAddPerson?.();
           break;
         case "?":

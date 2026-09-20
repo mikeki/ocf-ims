@@ -2,8 +2,9 @@
 
 # 09aa — The 3c.4 round: the roster on a wide window
 
-> **Status:** Brief written 2026-09-14; the round surface next, then the pick, then the
-> 3c.4 acceptance criteria here.
+> **Status:** Brief written 2026-09-14; the round surface built and walked in a browser
+> 2026-09-15 (§ What was built); **Ladder picked 2026-09-16** (§ The pick: a drag and a hovercard
+> in the second cut); the 3c.4 acceptance criteria next.
 > **Parent:** [09i-expo-client.md](09i-expo-client.md) (Phase 3, §6 **D2** and the 3c.4 row)
 > under [09-proto-connect-platform.md](09-proto-connect-platform.md)
 > **Follows:** [09x](09x-dispatch-design.md) (the shell, the table, the drawer, the page —
@@ -140,6 +141,145 @@ starting point; `createFakeIms()` gains `listPersonnel` modes, `setPersonPartici
 `removePersonFromEvent`, `createPerson`, `listMyCrews`, `setMyCrewMembership` in the
 surface's `fake.ts` wrapper (the stock fake has only the typeahead).
 
+### What was built — the surface (2026-09-15)
+
+`app/(dev)/people.tsx` + `src/prototypes/people/` (throwaway, outside the session gates,
+no server, deleted in the 3c.4 PR). Run it with `pnpm -F @ocf-ims/interface start` (never
+`CI=1`) and open `http://localhost:8081/people?v=1` (`1`/`2`/`3` or `←`/`→` flip the
+picker). The band takes the width (1024 / 1440 / fit), the scheme, the viewer (admin;
+inviter — a crew leader leading two crews; writer-inviter) and "Fail the next role
+change". A 64-person roster over three crews; the shell copy carries People, My crews
+(for a leader) and Add person; the profile card opens in the drawer (`open=`).
+
+The fake (`fake.ts`) implements every `ListPersonnel` mode with the wire's field gating,
+`SetPersonParticipation` with the ceiling, `RemovePersonFromEvent`, `CreatePerson` (an
+inviter's create is a reporter), `ListMyCrews` / `SetMyCrewMembership`, and a
+`GetAuthStatus` carrying `invite_reporters`. `useRoster.ts` is § One field, one request as
+code and is what the winner promotes.
+
+Built by a builder Agent (the harness, fixtures, fake, card and Table: 138 calls / 306K),
+a second that died on a usage limit with Ladder / Directory / Add person / My crews
+written but unwired (finished and fixed by the architect), and a fix pass (122 calls /
+172K). **Walked in Chrome** at 1440 and 1024, light and dark, as the admin and the
+inviter: the capped menus, a role change that lands and one that fails, Add person by
+`n`, My crews, Esc, the Ladder's move menu — the console clean.
+
+**Found by running it, not by reading it** (each one passed typecheck, Jest, the export
+and the smoke e2e):
+
+1. **A surface must not import `@/test/harness`** — it loads
+   `@testing-library/react-native` and the router dies with `expect is not defined` (the
+   same finding as 09z). The surface has its own `runtime.ts`.
+2. **RN Web renders `accessibilityRole="button"` as a real `<button>`.** A roster row that
+   opens the card and also holds the role menu nested a `<button>` in a `<button>`
+   (invalid HTML; a screen reader flattens the menu into the row). **3c.4 criterion:** the
+   row's press target and the role menu are siblings — never a menu inside a
+   button-role row.
+3. **An absolutely positioned menu inside a FlatList cell paints under the next cell**, so
+   no option could be pressed. The open cell raises its `zIndex` through a
+   `CellRendererComponent` — which must be a **stable** component reading the open row from
+   context: an inline one changes identity, remounts every cell and closes the menu it
+   just opened. **3c.4 criterion:** the menu renders in a portal / `Modal` anchored to the
+   trigger, or the stable raised cell; either way, a test presses an option of the last
+   visible row.
+4. **A fire-and-forget write must not rethrow.** The hook recorded the error on the row
+   and rethrew, and the menu's `void roster.setRole(…)` became an uncaught rejection (the
+   red box) instead of the message at the control. The promoted hook returns; the error
+   lives in `errorFor`.
+5. **A key that opens something with an autofocused field must `preventDefault`**, or the
+   key types into it (`n` left an "n" in Add person's search). **The shipped dispatch map
+   has the same shape:** `n` opens the new-incident form, whose summary autofocuses, with
+   no `preventDefault` (`src/features/dispatch/useKeyboardMap.ts`). Whether the letter
+   lands depends on navigation timing — a staging check for the maintainer, and a one-line
+   fix if it does.
+6. **Esc on a side panel** needed a capture-phase listener above the variant's own map.
+   The real slice's keyboard map owns an overlay stack (panel, then drawer).
+7. **RN Web's `View` types carry no drag props**, so the Ladder has no drag; "Move to…" on
+   every card is the only move. If the Ladder wins, a drag is a later Gesture Handler
+   choice, never the only path.
+8. **The Ladder scrolls sideways at 1024** (five columns ≥ 180 px): its stated cost,
+   measured.
+9. **`RemovePersonFromEvent` carries no rung.** Remove's two forms (Not present, Ejected)
+   are `SetPersonParticipation` writes; `RemovePersonFromEvent` drops the row. **3c.4
+   criterion:** the client sets the rung and does not call `RemovePersonFromEvent`.
+10. **The stock fake has only the typeahead** — no `all` / `person_ids` / `show_all`
+    modes, none of the writes, no `invite_reporters` on `FakeUser`. Promotion moves the
+    surface's handlers into `src/test/fakeIms.ts`.
+11. Fixture only: RN Web percent-encodes a `utf8` SVG data URI itself, so a pre-encoded
+    one fails to load and the avatar falls back to its initial.
+
+Verified with the surface in the tree: typecheck, biome, Jest (50 suites, 365 tests),
+`export:web` and the smoke e2e green; the route walked in Chrome with a clean console.
+
+### The pick — Ladder (2026-09-16)
+
+The maintainer picked **Ladder**, with two asks:
+
+1. **Drag people between the columns.** The round's Ladder had only the "Move to…" menu
+   (finding 7). The second cut adds the drag: a card is picked up from its grip, follows
+   the pointer as a ghost (transform only, a shared value), the column under the pointer
+   lights as the target — or reads as not a target where the ceiling forbids it — and the
+   drop is a hard cut (the card is in its new column, the write is the same
+   `SetPersonParticipation`); a drop outside any column springs the ghost home
+   (`{ duration: 400, dampingRatio: 0.8 }`, a hard cut under reduced motion). The menu
+   stays as the twin for the keyboard and for touch. **This is the first drag in the
+   client and needs a DESIGN.md amendment** (the motion budget says "nothing here is
+   dragged"): one line for the drag, its spring on snap-back only, and the menu twin.
+   Web first through pointer events in the surface; the slice uses Gesture Handler.
+2. **A hovercard instead of the drawer.** The 66 % drawer is mostly empty for six lines.
+   A card's details open in a **hovercard** anchored to the card — on hover (web, after a
+   short delay) and on press (touch) — with the profile card's content: the picture,
+   name, handle, role, crews, wristband, email / phone when sent, the admin shield, and
+   Remove from event. Esc or a press outside closes it. The drawer stays only for Add
+   person and My crews.
+
+The decisions, as they stand: (1) wide only; (2) the role changes by drag or by the
+card's menu; (3) the hovercard, not the drawer; (4) the search filters every column;
+(5) pictures at 32 px on the card, larger in the hovercard, an initial when absent;
+(6) the wristband in the hovercard only. Table and Directory stay in the surface until the
+3c.4 PR deletes it.
+
+**The second cut, built and walked in Chrome (2026-09-16).** `Ladder.tsx` gained the drag
+(a `Grip` on every movable card, `onPointerDown` / a full-stage overlay for move and up,
+a Reanimated ghost on a shared-value transform, the column rects measured on layout, the
+target column lit, the snap-back spring through `scheduleOnRN`, a hard cut under reduced
+motion) and `Hovercard.tsx` replaced the drawer (the profile card's content in a
+`spacing.xl × 16` popover beside the card, opening after `motion.stateFade × 1.5` of
+hover, closing `× 0.75` after the pointer leaves both, pinned by a press or Enter, closed
+by Esc or a press outside; `sel` and the pin move together, so `j` / `k` walk from the
+pinned card). A builder Agent built it (typecheck, biome, Jest green); the walk found
+six more things, numbered on from the list above:
+
+12. **A pointer drag starts a native text selection.** The compatibility `mousedown`
+    that follows `pointerdown` begins a selection, and it then paints across every column
+    the drag crosses. `preventDefault()` on the grip's `pointerdown` stops it (RN's
+    `userSelect` style is typed on `Text` only, so it cannot be put on the stage).
+13. **The ceiling needs a cue while dragging.** The target column lit, but nothing said
+    FC/BUM would refuse an inviter's drop until the ghost sprang home. Columns outside
+    `allowedRungs` (not the source) dim to 0.5 for the drag's duration — a hard cut.
+14. **A committed drop leaves the pointer resting on the moved card, and the reflow
+    fires leave / enter pairs there without any movement** — the hovercard opened right
+    after every drop. Hover is suppressed from the drop point until the pointer has moved
+    a click's worth (a document `pointermove` listener), then the hover the card
+    reported meanwhile is replayed.
+15. **react-native-web's `useHover` binds the leave listener when the hover starts**
+    (`useHover/index.js`: `hoverStart` adds the move and leave listeners), so `onHoverOut`
+    ran the closure captured *before* the hovercard opened — `hovercard` was `undefined`,
+    no close was scheduled, and a hover-opened card stuck at 1024 (it worked at "Fit"
+    only by timing). **3c.4 criterion:** every hover handler reads the hovercard through
+    a ref (`hovercardRef`), never through state, and has stable identity.
+16. **A press inside the hover-open delay was downgraded by the pending hover timer**
+    (`openHovercard(id, false)` fired 300 ms after the pin), so Esc cleared `sel` instead
+    of closing the card. Pinning clears both hover timers.
+17. `pointerEvents` as a prop is deprecated on RN Web (a console warning); it is a style.
+    The surface's shared `Picker.tsx` still carries one — not this slice's file.
+
+**Decision revised:** the drag stays on **pointer events**, not Gesture Handler. The
+roster is wide only (decision 1), `View`'s pointer props are typed and shipped, the menu
+is the twin for touch and the keyboard, and the slice adds no native dependency (an
+`npx expo install` appends plugins to `app.json`). Gesture Handler is the phone roster's
+question, if 3c.6 ever asks it.
+
 ### Decisions the round must also take (shape-independent, but only visible when run)
 
 1. **The phone.** E15 has no People tab; templ's page is used from the tent, not the
@@ -185,7 +325,148 @@ as "no email".
 
 ## 3c.4 acceptance criteria (the builder's list, after the pick)
 
-_Written after the pick._
+Written 2026-09-16, the day of the pick and its second cut. **The brief for the builder
+is this section plus "The rules the winner inherits" above; the surface
+(`src/prototypes/people/`) is the reference implementation and the Ladder with the drag
+and the hovercard is the shape — copy its files into place and edit, do not retype
+them.** Rule 2 applies: no contract gap is expected (the wire above is verified); one
+found stops the builder and is filed in the slice notes. The slice is one PR; it runs
+past the `Agent` ceiling with its specs, so it is **two builders in sequence**: the first
+lands the data layer, the fake, the fixtures and the shared pieces (criteria 1–8); the
+second the screen, the panels, the route, the shell item, the DESIGN.md amendment, the
+deletion and the specs (criteria 9–18).
+
+### The data layer and the shared pieces (builder 1)
+
+1. **The viewer comes from the session, not a band.** `src/features/people/roles.ts`
+   lands the surface's `roles.ts` and the ceiling from `useRoster.ts` (`rungsFor`,
+   `mayRemove`, `rungLabel`, `sectionsFor`, `orderFor`) with the surface's `Viewer`
+   replaced by a `RosterAccess` derived once per screen from `GetAuthStatus`:
+   `isAdmin(auth)` and `eventAccess(auth, eventId).inviteReporters` /
+   `.writeIncidents` (`@/lib/permissions` — architect-tier, read only). Admin: every
+   rung, every row; inviter: Reporter / Volunteer / Public, no menu and no grip on a
+   writer's or a crew leader's card. The client never offers a rung it would not send
+   (§ Gating).
+2. **`useRoster(eventId)`** lands as `src/features/people/useRoster.ts`, the surface's
+   interface unchanged: `setRole`, `remove` (a `SetPersonParticipation` write — never
+   `RemovePersonFromEvent`, finding 9), `enrol`, `create`, `addToCrew`, `removeFromCrew`,
+   `errorFor`, `pendingFor`; optimistic on the card, the error at the control, **never
+   rethrown** (finding 4); `ListPersonnel` (every mode) and `ListMyCrews` invalidated on
+   settle.
+3. **`peopleQuery.ts` / `usePeopleQuery.ts`** land in `src/features/people/`: `q`, `sel`,
+   `open` in the URL through `setParams` (never `router.replace`, which remounts), the
+   `matches` / `visiblePeople` filter across every column (decision 4).
+4. **The fake** gains the surface's handlers in `src/test/fakeIms.ts`: every
+   `ListPersonnel` mode (`query`, `person_ids`, `all` + `event_id`, `show_all`) with the
+   wire's field gating, `SetPersonParticipation` with the ceiling, `CreatePerson` (an
+   inviter's create is a reporter), `ListMyCrews` / `SetMyCrewMembership`,
+   `invite_reporters` on `FakeUser`, behaviours (`setParticipation: "ok" | "forbidden" |
+   "unavailable"`) and request logs. `src/test/fixtures.ts` gains `makePerson(overrides)`
+   and `makeRoster(n)` built from the surface's `data.ts` (the raw-SVG avatar,
+   finding 11).
+5. **`Avatar`** (`src/features/people/Avatar.tsx`): the picture through the blob helper
+   at 32 px on a card and 64 px in the hovercard, the initial in `surfaceSunken` when
+   absent (decision 5).
+6. **`ProfileCard`** (`src/features/people/ProfileCard.tsx`): picture, name, handle, the
+   role control (the same `RoleMenu`), crews, wristband, email / phone **only when
+   present on the wire** (their labels never appear otherwise, § Privacy), the admin
+   shield, Remove from event behind a confirm (decision 2).
+7. **`RoleMenu`** (`src/features/people/RoleMenu.tsx`) with `openMenu.ts`'s context: the
+   rungs from `rungsFor`, a write on pick with no confirm, the error line under the
+   control; **a sibling of the card's press target, never inside a button-role
+   element** (finding 2); the open card raised above the cards after it (finding 3).
+8. **`PeopleHelpSheet`** becomes the parameterised `HelpSheet` (`rows` prop — 3c.3
+   criterion 4 lands it first; if 3c.4 merges first, this slice adds the prop) with the
+   roster's rows: `/` search, `j` `k` walk, Enter opens (pins) the card, Esc closes /
+   clears, `n` Add person, `?` help, and the drag's line ("Drag a card by its grip, or
+   Move to…").
+
+### The screen (builder 2)
+
+9. **`PeopleScreen`** (`src/features/people/PeopleScreen.tsx`) is the surface's Ladder:
+   the toolbar (search with `/`, "n of m", Keys `?`), five columns FC/BUM · Crew leader
+   · Reporter · Volunteer · Public with counts, `MIN_COLUMN_WIDTH` and the sideways
+   scroll at 1024 (finding 8), a card per person (avatar, name, handle, the crew chips,
+   the admin chip, "No login" for a name-only person, the `Move to…` menu where the
+   ceiling allows). Wide only (decision 1): below 1024 the route renders
+   `EmptyState` "Open the roster on a wider window" under a `ScreenHeader`.
+10. **The drag.** A `Grip` on every card the viewer may move; `pointerdown` on it
+    `preventDefault`s (finding 12) and picks the card up; a full-stage overlay takes
+    move / up / cancel; the ghost is an `Animated.View` on a transform-only shared
+    value with `pointerEvents` in its **style** (finding 17); the column under the
+    pointer lights (`surfaceRaised`, `borderStrong`) when it is in `allowedRungs`,
+    columns outside the ceiling dim to 0.5 for the drag's duration (finding 13), a
+    hard cut both; a drop on a lit column is a hard cut plus `roster.setRole`; a drop
+    anywhere else springs the ghost home (`{ duration: 400, dampingRatio: 0.8 }`,
+    `scheduleOnRN` clears the state when it lands; a hard cut under reduced motion). A
+    drag that moved never opens the card on release (`dragMovedRef`). Pointer events,
+    not Gesture Handler (the revised decision above).
+11. **The hovercard** (`src/features/people/Hovercard.tsx`): `ProfileCard` in a
+    `spacing.xl × 16` popover beside the card (flipped left when it would not fit,
+    clamped to the stage, `maxHeight` to the stage's bottom); opens after
+    `motion.stateFade × 1.5` of hover and closes `× 0.75` after the pointer has left both
+    the card and the popover; a press or Enter pins it (`sel` and the pin move
+    together); Esc, a press outside, or `j` / `k` to another card closes it. **Every hover
+    handler reads `hovercardRef`, never state** (finding 15); pinning clears the hover
+    timers (finding 16); after a committed drop hover is suppressed until the pointer
+    has moved `spacing.sm` from the drop point, then replayed (finding 14). On touch a
+    press pins; there is no hover.
+12. **Add person** (`src/features/people/AddPerson.tsx`) in the drawer: search-first
+    over `ListPersonnel{query}` (enrol an existing person at Reporter, or the rung
+    picked), then the create form (name, handle, email, the rung — an inviter's create
+    is a reporter); errors at the field. **My crews** (`MyCrews.tsx`) for a crew leader
+    (`ListMyCrews` non-empty): the crew's members, add by search, remove with a confirm.
+    The drawer is the 3c.1 `Drawer`; the roster's keyboard map owns the overlay stack
+    (panel, then hovercard, then selection, then search — finding 6) and `n`
+    `preventDefault`s (finding 5).
+13. **The route** `app/(app)/events/[eventId]/people.tsx`: inside `Shell`; gated by
+    `isAdmin(auth) || access.inviteReporters`, else `EmptyState` "Not found" (never a
+    403 message); `ListPersonnel{ all: true, event_id }` — `show_all` only for the admin's
+    "Show everyone" word in the toolbar.
+14. **The shell item.** `Shell.tsx` gets **People** after Reports (before Dashboard when
+    3c.5 lands), shown on `isAdmin(auth) || access.inviteReporters`, active on the
+    route; the order Incidents · Reports · People · Dashboard · Alerts.
+15. **DESIGN.md amendment** (the first drag in the client): in "Motion budget" the
+    "No springs, no haptics" line becomes **"One drag."** — the roster's Ladder moves a
+    card between columns from its grip, the ghost follows the pointer by transform
+    only, the drop is a hard cut, and a drop nowhere springs the ghost home
+    (`{ duration: 400, dampingRatio: 0.8 }`, a hard cut under reduced motion); no other
+    drag, no haptics; the "Move to…" menu is the drag's twin for the keyboard and
+    touch. "Reduced motion … reaches motion in exactly two places" becomes three (the
+    snap-back). `/review-animations` must say Approve with that amendment in place.
+16. **Gating and privacy** per the rules above; the surface's `Viewer` band, `data.ts`
+    identities and "Fail the next role change" become fake behaviours in the specs.
+17. **The surface is deleted**: `app/(dev)/people.tsx` and `src/prototypes/people/`
+    (Picker, Harness, Shell, Table, Directory, PeopleDrawer, data, fake, runtime with
+    them); `Picker.tsx` is duplicated in the two other surfaces and is not this slice's
+    to touch.
+18. **Specs** in `__tests__/features/people/`: `roles` (the ceiling per access, the
+    section order), `useRoster` (optimistic + settle, a forbidden write leaves the error
+    at the card and never rejects, invalidations), `peopleQuery` (parse / serialize,
+    `matches`), `RoleMenu` (an option of the **last** card is pressable — finding 3),
+    `ProfileCard` (email / phone labels absent when absent; the shield for the admin
+    only), `Hovercard` (opens after the delay, closes after leave, pin survives leave,
+    Esc and outside close, a press inside the delay stays pinned), the drag (pointer
+    events on the grip: a drop on an allowed column calls `setRole` once and opens
+    nothing; a drop on a dimmed column calls nothing; reduced motion clears without a
+    spring), `PeopleScreen` (the inviter sees no writer rung, grip or contact field; the
+    admin's "Show everyone"; the narrow-window state; Not found for a plain writer), Add
+    person (enrol vs create, the inviter's rung), My crews, and the route's shell item
+    (present for an inviter, absent for a plain writer). 09i §9 passes.
+
+### The promotion map
+
+| Surface (`src/prototypes/people/`) | Lands as | What changes |
+|---|---|---|
+| `roles.ts`, `useRoster.ts` (`rungsFor`, `mayRemove`) | `src/features/people/roles.ts` | `Viewer` → `RosterAccess` from `@/lib/permissions` |
+| `useRoster.ts` | `src/features/people/useRoster.ts` | Real `useMutation` + invalidations; nothing else |
+| `peopleQuery.ts`, `usePeopleQuery.ts`, `usePeopleKeyboardMap.ts` | `src/features/people/` | `setParams`; the overlay stack |
+| `Avatar.tsx`, `ProfileCard.tsx`, `RoleMenu.tsx`, `openMenu.ts`, `Hovercard.tsx`, `AddPerson.tsx`, `MyCrews.tsx` | `src/features/people/` | The blob helper for pictures; the 3c.1 `Drawer` for the panels |
+| `Ladder.tsx` | `PeopleScreen.tsx` | The toolbar, the states, the route callbacks; `Viewer` → access |
+| `PeopleHelpSheet.tsx` | `HelpSheet` rows | Parameterised sheet |
+| `fake.ts` | `src/test/fakeIms.ts` | The modes, the writes, the behaviours, `invite_reporters` |
+| `data.ts` | `src/test/fixtures.ts` | `makePerson`, `makeRoster` |
+| `Harness.tsx`, `Shell.tsx`, `Picker.tsx`, `Table.tsx`, `Directory.tsx`, `PeopleDrawer.tsx`, `runtime.ts`, `types.ts`, `app/(dev)/people.tsx` | deleted | |
 
 ## Out of scope
 
@@ -204,8 +485,8 @@ empty roster, reduced motion. Nothing goes to staging.
 ## Checklist
 
 - [x] Brief written; the contract verified (2026-09-14)
-- [ ] The surface built, verified and the scripted walk green
-- [ ] The round run; the pick, the reasons and the six decisions recorded
+- [x] The surface built, walked in a browser and verified (2026-09-15; § What was built)
+- [x] The round run; Ladder picked, the reasons and the six decisions recorded (2026-09-16; § The pick)
 - [ ] The 3c.4 acceptance criteria written
 - [ ] The winner promoted, reviewed, the surface deleted — the 3c.4 PR
 

@@ -10,7 +10,6 @@ import { Field } from "@/design/primitives/Field";
 import { Text } from "@/design/primitives/Text";
 import { TextButton } from "@/design/primitives/TextButton";
 import { useTheme } from "@/design/theme";
-import { ReportComposer } from "@/features/compose/ReportComposer";
 import { useEventAccess, useEventName } from "@/features/events/hooks";
 import { Card, saveErrorText } from "@/features/incidents/controls/bits";
 import { JournalEntryRow } from "@/features/incidents/JournalEntryRow";
@@ -23,6 +22,7 @@ import {
   myHandle,
   ToggleRow,
 } from "@/prototypes/reports/accountParts";
+import { LedgerComposer } from "@/prototypes/reports/LedgerComposer";
 import type { ReportPaneProps } from "@/prototypes/reports/types";
 import { useSession } from "@/session/provider";
 
@@ -250,7 +250,7 @@ export function Ledger(props: ReportPaneProps) {
                 overflow: "hidden",
               }}
             >
-              <ReportComposer
+              <LedgerComposer
                 eventId={eventId}
                 number={report.number}
                 author={own}

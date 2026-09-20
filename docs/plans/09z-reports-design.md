@@ -3,7 +3,7 @@
 # 09z — The 3c.3 round: reports on a wide window
 
 > **Status:** Brief written and the round surface built 2026-09-14 (§ What was built);
-> the pick is the maintainer's, then the 3c.3 acceptance criteria here.
+> **Ledger picked 2026-09-16** (§ The pick); the 3c.3 acceptance criteria written the same day.
 > **Parent:** [09i-expo-client.md](09i-expo-client.md) (Phase 3, §6 **D2** and the 3c.3 row)
 > under [09-proto-connect-platform.md](09-proto-connect-platform.md)
 > **Follows:** [09x](09x-dispatch-design.md) (the shell, the table, the drawer, the page —
@@ -212,6 +212,27 @@ console on Ledger, Account and Companion (R-7, and R-15's "Not visible to you").
 variants at 1024 drawer / 1440 page / 400, both schemes, the four viewers, the poke while
 editing, the failing save, R-15's "Not visible to you", reduced motion) is the round.
 
+### The pick — Ledger (2026-09-16)
+
+The maintainer picked **Ledger**: the incident is a Ledger (09y), so a report is one too,
+and the two are iterated together later. One ask for now: **make it more visible that an
+entry can be sent on behalf of someone else.** The composer's footer caption ("Posting as
+Dee · For someone else") is too quiet for the thing a reporter does when writing up
+another ranger's account. The second cut gives the composer an **On behalf of** row in the
+Ledger's own `label · value · ›` language at the top of the composer card — "On behalf of ·
+Yourself (Dee) ›" — a press opens the person picker in place, the value becomes the name,
+Send reads "Send for Kai", and the sticky-per-event rule (09t) is unchanged. **Built and
+walked in Chrome 2026-09-16** (`LedgerComposer.tsx`, a surface copy of `ReportComposer`;
+the row is a `LedgerRow` whose control is the `PersonPicker`, which carries its own
+Clear — the same mechanism as the incident's rows).
+
+The decisions, as they stand: (1) the phone gets the Ledger at 400 px; (2) newest first
+with the composer on top, as the incident; (3) the link control stays the number field
+with Link… / Detach as their own words (finding 5); (4) photos on the composer — 3c.3
+(finding 2); (5) strike on the entry's header line; (6) Create an incident from this
+report stays under the link row. Account and Companion are kept in the surface until the
+3c.3 PR deletes it.
+
 ### Decisions the round must also take (shape-independent, but only visible when run)
 
 1. **The phone.** The 3b.3 `ReportScreen` is one component on three surfaces. The
@@ -290,7 +311,120 @@ where a behaviour is deliberately changed by a decision above.
 
 ## 3c.3 acceptance criteria (the builder's list, after the pick)
 
-_Written after the pick._
+Written 2026-09-16, the day of the pick. **The brief for the builder is this section plus
+"The rules the winner inherits" above; the surface (`src/prototypes/reports/`) is the
+reference implementation and the second-cut Ledger is the shape — copy its files into
+place and edit, do not retype them.** Rule 2 applies: no contract gap is expected; one
+found stops the builder and is filed in the slice notes. The slice is one PR and runs past
+the `Agent` ceiling: **an architect prerequisite, then two builders in sequence** — the
+architect lands the report attachment source first (criterion 0, security-tier file); the
+first builder lands the data layer, the fake and the composer changes (criteria 1–6); the
+second the table, the pane, the routes, the shell item, the deletion and the specs
+(criteria 7–16).
+
+### The prerequisite (architect)
+
+0. **A report-addressed attachment source.** `src/api/blobs.ts` gains
+   `reportAttachmentUrl(eventName, number, entryId)` and `uploadReportAttachment(args)`
+   over `/ims/api/events/{event}/reports/{n}/attachments` (the same Bearer + fetch shape
+   as the incident pair); `useAttachmentSource` takes `{ kind: "incident" | "report",
+   number }` instead of a bare number; `JournalEntryRow`'s `attachmentOn` becomes that
+   object, so a report's photo renders on the report and an attached report's photo
+   renders on the incident (today "absent = no images (a report)"). `FakeBlobs` mirrors
+   both. Specs for the URL shape and the upload gate.
+
+### The data layer and the composer (builder 1)
+
+1. **`useEditReport(eventId, number)`** lands as `src/features/reports/useEditReport.ts`,
+   the surface's file: `setSummary(text)`, `setIncident(number | 0)` (0 detaches),
+   `strike(entryId, stricken)`; each a plain `Report` (or entry) carrying only that
+   field; optimistic per field on the cached `GetReport`, the error at the control via
+   `status(field)`, on settle invalidate `GetReport`, `ListReports` and — when the link
+   changed — `GetIncident` / `ListIncidents` for the old and new incident.
+2. **The fake** (`src/test/fakeIms.ts`) gains the surface's `UpdateReport` presence
+   semantics (summary present = edit; incident present & > 0 links, ≤ 0 detaches, absent
+   unchanged; a changed link appends the system entry; journal entries append) with
+   `behaviours.updateReport` per shape, and the `UpdateReportJournalEntry` handler
+   (`stricken` only; a reporter on another's entry → PermissionDenied). `fixtures.ts`
+   gains `makeReportView` with the `may_*` flags.
+3. **`ReportComposer`** (`src/features/compose/ReportComposer.tsx`) gains: `forwardRef` with
+   `focus()` (as `AppendComposer`); the **On behalf of** row from the surface's
+   `LedgerComposer` at the top of the card — a `LedgerRow` "On behalf of · Yourself (Dee)
+   ›" that is a hard cut to the `PersonPicker`, "Clear" reverting to the author, Send
+   reading "Send for <name>" with a pick; the sticky-per-event rule unchanged; the footer
+   keeps only the restored-draft caption; and **`PhotoAttach`** (3b.4) uploading through
+   `uploadReportAttachment` after the entry lands (decision 4). The phone's report specs
+   are updated for the row, not loosened.
+4. **`HelpSheet`** (`src/features/dispatch/HelpSheet.tsx`) takes its rows as a prop; the
+   dispatch caller passes today's rows; the reports table passes its own.
+5. **`JournalEntryRow`** shows Strike / Unstrike on the header line when `onStrike` is set;
+   the report pane sets it per the strike gate (own entries with `may_add_journal_entry`;
+   others' only with `writeIncidents`).
+6. **`ListReports` search text** — `reportQuery.ts`'s `matches` (summary, created by, the
+   entries' text, the `/regex/` form) lands in `src/features/reports/reportQuery.ts` with
+   `parseQuery` / `serializeQuery` for `q`, `link`, `sort`, `dir`, `sel`, `open`.
+
+### The table, the pane, the routes (builder 2)
+
+7. **`ReportsScreen`** (`src/features/reports/ReportsScreen.tsx`, with `ReportRow`,
+   `reportColumns.ts`, `useReportQuery.ts`, `ReportFilterBar.tsx`, `useReportKeyboardMap.ts`
+   from the surface): the 3c.1 table typed on `ReportView` — Report# · IMS# ("—" when
+   unlinked) · Summary · Created · Created by; sort on any, Report# desc by default; the
+   chips Unlinked · Linked · All (`link=`); no other filters; a bare number jumps to R-n;
+   `j` `k` Enter Esc `/` `n` `a` `h` `?` as 09x; live rows through the hub's report
+   pokes; the drawer (66 %) and the full page.
+8. **The pane is the Ledger** — `features/board/ReportScreen.tsx` grows into it (one
+   component on three surfaces, as `IncidentScreen` did): the summary as the heading with
+   **Edit** for `may_edit_summary` (a hard cut to `SavingField`, saves on blur / Enter,
+   the failing save keeps the text with the error under the field); the Details card of
+   rows Incident (the number opens it; for `writeReports` the words **Link…** / **Detach**
+   beside it — a number field on Link…, Enter links; 404 at the field for a missing number;
+   a private incident the viewer cannot read is a number that does not open, "Not visible
+   to you" where it would render), Created, Created by; **Create an incident from this
+   report** under the card when unlinked (`writeIncidents`); the journal newest first in a
+   `border` box with History / Stricken toggles on its heading line and the composer at
+   its top (criterion 3); a viewer with no flags sees no chevron, no Edit, no Link…, no
+   composer.
+9. **`ReportDrawer` / `ReportPage`** (`src/features/reports/`): the real `ScreenHeader`
+   (back "Reports", `R-n`, Prev / Next / Full page); the page centred at `pageMaxWidth`;
+   the keyboard `a` focuses the composer through the ref, `h` toggles history.
+10. **Routes.** `app/(app)/events/[eventId]/reports/index.tsx` — the table in the shell on
+    a wide window, the Board's Reports segment on a phone; `reports/[number].tsx` gains the
+    wide branch (Shell + ReportPage). `IncidentScreen`'s Reports section and `ReportsEditor`
+    open a report through the same route.
+11. **The shell item** Reports after Incidents, always shown (the server scopes the list);
+    **New report** in the action slot when `writeReports`.
+12. **Gating and privacy** per the rules above: the strike gate (criterion 5), the link
+    control on `writeReports`, no hint of a withheld control; a linked incident the viewer
+    cannot read never leaks past its number.
+13. **The phone is not regressed**: the 3b.3 behaviours (attach, create an incident,
+    `dismissTo` back, the composer with the row) stay; existing Board and report specs pass
+    with the row's new testIDs.
+14. **The surface is deleted**: `app/(dev)/reports.tsx`, `src/prototypes/reports/`
+    (Account, Companion, accountParts, the harness with them).
+15. **Specs** in `__tests__/features/reports/`: `useEditReport` (three field shapes, the
+    optimistic patch and its revert, the invalidations incl. the incident's on a link
+    change), `reportQuery` (regex, bare number, URL round trip), `ReportsScreen` (the
+    chips, sort, `open=`, the keys, the live poke), the pane (Edit for the creator and
+    not the dispatcher, the failing summary, Link… / Detach and the 404 at the field,
+    strike per gate, the toggles, newest first, the reader's view without controls,
+    "Not visible to you"), the composer's On behalf of row (pick, Send for, Clear) and
+    the photo upload through the report route.
+16. 09i §9 passes; `/review-animations` says Approve.
+
+### The promotion map
+
+| Surface (`src/prototypes/reports/`) | Lands as | What changes |
+|---|---|---|
+| `useEditReport.ts` | `src/features/reports/useEditReport.ts` | `status(field)` as `useEditIncident` |
+| `reportQuery.ts`, `reportColumns.ts`, `useReportQuery.ts`, `ReportRow.tsx`, `ReportTable.tsx`, `ReportFilterBar.tsx`, `useKeyboardMap.ts`, `neighbours.ts` | `src/features/reports/` (`ReportTable` → `ReportsScreen`) | Over the real hub; the help sheet's rows |
+| `ReportDrawer.tsx`, `ReportPage.tsx` | `src/features/reports/` | The real `ReportScreen` as the body |
+| `Ledger.tsx` | `features/board/ReportScreen.tsx` | The states and callbacks stay the screen's |
+| `LedgerComposer.tsx` | `features/compose/ReportComposer.tsx` | The row, the ref, `PhotoAttach` |
+| `fake.ts` | `src/test/fakeIms.ts` | The behaviours; the delay dropped |
+| `data.ts` | `src/test/fixtures.ts` | `makeReportView` only |
+| `Shell.tsx` (the item) | `src/features/shell/Shell.tsx` | One item, one action |
+| `Harness.tsx`, `Picker.tsx`, `runtime.ts`, `types.ts`, `Account.tsx`, `Companion.tsx`, `accountParts.tsx`, `app/(dev)/reports.tsx` | deleted | |
 
 ## Out of scope
 
@@ -313,8 +447,8 @@ staging.
 
 - [x] Brief written; the contract verified (2026-09-14)
 - [x] The surface built and verified (2026-09-14; § What was built) — the hand pass is the maintainer's
-- [ ] The round run; the pick, the reasons and the six decisions recorded
-- [ ] The 3c.3 acceptance criteria written
+- [x] The round run; Ledger picked, the reasons and the six decisions recorded (2026-09-16; § The pick)
+- [x] The 3c.3 acceptance criteria written (2026-09-16)
 - [ ] The winner promoted, reviewed, the surface deleted — the 3c.3 PR
 
 ## Open questions

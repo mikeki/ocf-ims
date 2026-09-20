@@ -75,11 +75,18 @@ export function Shell(props: ShellProps) {
         <View style={styles.spacer} />
         {stream}
         {onMyCrews ? (
-          <TextButton
-            label="My crews"
-            onPress={onMyCrews}
-            testID="shell-my-crews"
-          />
+          // TextButton's own root hugs `alignSelf: "flex-start"` (it never
+          // stretches to fill a row) — that also pins it to the row's top
+          // edge here, so a plain View (no `alignSelf` of its own) sits in
+          // the row instead and re-centers on this bar's `alignItems:
+          // "center"` (09aa fix: it read as riding the top edge).
+          <View>
+            <TextButton
+              label="My crews"
+              onPress={onMyCrews}
+              testID="shell-my-crews"
+            />
+          </View>
         ) : null}
         <Button label="Add person" variant="secondary" onPress={onAddPerson} />
         <View style={[styles.row, { gap: theme.spacing.sm }]}>

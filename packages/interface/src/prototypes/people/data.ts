@@ -23,8 +23,22 @@ import type { Viewer } from "@/prototypes/people/types";
 
 export const EVENT = { id: 1, name: "OCF 2026" } as const;
 
-const ONE_PX_PNG =
-  "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=";
+// Fixture content, not a style (a `1x1` PNG used to render as a solid
+// circle — 09aa fix): a small inline head-and-shoulders silhouette, a few
+// background tints so rows visibly differ from one another.
+const AVATAR_TINTS = ["#9CA3AF", "#A78BFA", "#F59E0B", "#34D399"];
+
+function avatarDataUri(personId: number): string {
+  const tint = AVATAR_TINTS[personId % AVATAR_TINTS.length];
+  const svg =
+    `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">` +
+    `<rect width="64" height="64" fill="${tint}"/>` +
+    `<circle cx="32" cy="24" r="12" fill="#ffffff" fill-opacity="0.85"/>` +
+    `<path d="M8 60c0-14 10.7-24 24-24s24 10 24 24" fill="#ffffff" fill-opacity="0.85"/>` +
+    `</svg>`;
+  // Raw, not encodeURIComponent: RN Web encodes a utf8 SVG data URI itself.
+  return `data:image/svg+xml;utf8,${svg}`;
+}
 
 interface CrewMeta {
   slug: string;
@@ -74,7 +88,7 @@ function build(seed: Seed): Person {
       : undefined,
     profilePictureUrl: seed.picture
       ? seed.id % 2 === 0
-        ? ONE_PX_PNG
+        ? avatarDataUri(seed.id)
         : `/blobs/people/${seed.id}/picture.jpg`
       : undefined,
     wristband: seed.wristband

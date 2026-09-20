@@ -1,7 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import type { Person } from "@ocf-ims/protocol-buffers/ocf/ims/resources/v1/person_pb";
-import { useMemo, useState } from "react";
+import type { CellRendererProps } from "@react-native/virtualized-lists";
+import { useContext, useMemo, useState } from "react";
 import { FlatList, Pressable, StyleSheet, TextInput, View } from "react-native";
 import { PressFeedback } from "@/design/motion";
 import { Badge } from "@/design/primitives/Badge";
@@ -10,6 +11,7 @@ import { useTheme } from "@/design/theme";
 import { pressRetentionOffset, touchTarget } from "@/design/tokens";
 import { EmptyState } from "@/features/shell/EmptyState";
 import { Avatar } from "@/prototypes/people/Avatar";
+import { OpenMenuContext } from "@/prototypes/people/openMenu";
 import { PeopleHelpSheet } from "@/prototypes/people/PeopleHelpSheet";
 import { matches } from "@/prototypes/people/peopleQuery";
 import { RoleMenu } from "@/prototypes/people/RoleMenu";
@@ -40,6 +42,10 @@ export function Table(props: RosterPaneProps) {
   // `?` is local state, like dispatch's own table (§ Keyboard) — it never
   // needs to survive a variant switch or a reload.
   const [help, setHelp] = useState(false);
+  // The row whose RoleMenu is open, so its cell can be raised above the
+  // next row (09aa fix: FlatList cells are later siblings that otherwise
+  // paint over an open menu).
+  const [openMenuFor, setOpenMenuFor] = useState<number | undefined>(undefined);
 
   const filtered = useMemo(
     () => people.filter((p) => matches(p, search)),
@@ -82,46 +88,54 @@ export function Table(props: RosterPaneProps) {
   }, [sections]);
 
   return (
-    <View style={styles.fill}>
-      <Toolbar
-        total={people.length}
-        shown={filtered.length}
-        query={query}
-        search={search}
-        onHelp={() => setHelp(true)}
-      />
-      <ColumnHeader />
-      <FlatList
-        style={styles.fill}
-        data={rows}
-        keyExtractor={(row) => row.key}
-        renderItem={({ item }) =>
-          item.type === "header" ? (
-            <SectionHeader label={item.label} count={item.count} />
-          ) : (
-            <PersonRow
-              person={item.person}
-              viewer={viewer}
-              roster={roster}
-              selected={item.person.personId === query.selectedId}
-              onPress={() => onOpen(item.person.personId)}
+    <OpenMenuContext.Provider value={openMenuFor}>
+      <View style={styles.fill}>
+        <Toolbar
+          total={people.length}
+          shown={filtered.length}
+          query={query}
+          search={search}
+          onHelp={() => setHelp(true)}
+        />
+        <ColumnHeader />
+        <FlatList
+          style={styles.fill}
+          data={rows}
+          keyExtractor={(row) => row.key}
+          CellRendererComponent={CellRenderer}
+          renderItem={({ item }) =>
+            item.type === "header" ? (
+              <SectionHeader label={item.label} count={item.count} />
+            ) : (
+              <PersonRow
+                person={item.person}
+                viewer={viewer}
+                roster={roster}
+                selected={item.person.personId === query.selectedId}
+                onPress={() => onOpen(item.person.personId)}
+                onMenuOpenChange={(open) =>
+                  setOpenMenuFor(open ? item.person.personId : undefined)
+                }
+              />
+            )
+          }
+          ListEmptyComponent={
+            <EmptyState
+              title={
+                people.length === 0 ? "No one on this roster" : "No matches"
+              }
+              message={
+                people.length === 0
+                  ? "Nobody has been added to this event yet."
+                  : "Nothing matches this search."
+              }
             />
-          )
-        }
-        ListEmptyComponent={
-          <EmptyState
-            title={people.length === 0 ? "No one on this roster" : "No matches"}
-            message={
-              people.length === 0
-                ? "Nobody has been added to this event yet."
-                : "Nothing matches this search."
-            }
-          />
-        }
-        testID="people-table"
-      />
-      <PeopleHelpSheet open={help} onClose={() => setHelp(false)} />
-    </View>
+          }
+          testID="people-table"
+        />
+        <PeopleHelpSheet open={help} onClose={() => setHelp(false)} />
+      </View>
+    </OpenMenuContext.Provider>
   );
 }
 
@@ -173,20 +187,6 @@ function Toolbar(props: {
       <Text variant="caption" color="textMuted">
         {`${props.shown} of ${props.total}`}
       </Text>
-      <Pressable
-        accessibilityRole="button"
-        onPress={props.query.onAddPerson}
-        pressRetentionOffset={pressRetentionOffset}
-        testID="people-add"
-      >
-        {({ pressed }) => (
-          <PressFeedback pressed={pressed}>
-            <Text variant="label" color="primary">
-              Add person
-            </Text>
-          </PressFeedback>
-        )}
-      </Pressable>
       <Pressable
         accessibilityRole="button"
         onPress={props.onHelp}
@@ -267,10 +267,11 @@ interface PersonRowProps {
   roster: RosterPaneProps["roster"];
   selected: boolean;
   onPress: () => void;
+  onMenuOpenChange: (open: boolean) => void;
 }
 
 function PersonRow(props: PersonRowProps) {
-  const { person, viewer, roster, selected, onPress } = props;
+  const { person, viewer, roster, selected, onPress, onMenuOpenChange } = props;
   const theme = useTheme();
   const rungs = rungsFor(viewer, person);
   const label = person.name || person.handle || `Person #${person.personId}`;
@@ -332,6 +333,7 @@ function PersonRow(props: PersonRowProps) {
               pending={roster.pendingFor(person.personId)}
               error={roster.errorFor(person.personId)}
               testID={`people-row-${person.personId}-role`}
+              onOpenChange={onMenuOpenChange}
             />
           </View>
           <View
@@ -368,6 +370,7 @@ const styles = StyleSheet.create({
     borderBottomWidth: StyleSheet.hairlineWidth,
   },
   search: { width: 220, borderWidth: 1, outlineWidth: 0 },
+  raisedCell: { zIndex: 1 },
   spacer: { flex: 1 },
   columnHeader: {
     flexDirection: "row",
@@ -385,3 +388,21 @@ const styles = StyleSheet.create({
   flexCell: { flex: 1, minWidth: 0 },
   inline: { flexDirection: "row", alignItems: "center" },
 });
+
+function CellRenderer({
+  item,
+  style,
+  children,
+  onLayout,
+}: CellRendererProps<Row>) {
+  const openMenuFor = useContext(OpenMenuContext);
+  const raised = item.type === "person" && item.person.personId === openMenuFor;
+  return (
+    <View
+      style={[style, raised ? styles.raisedCell : null]}
+      onLayout={onLayout}
+    >
+      {children}
+    </View>
+  );
+}
