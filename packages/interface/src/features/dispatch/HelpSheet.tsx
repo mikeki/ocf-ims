@@ -14,16 +14,13 @@ import { useTheme } from "@/design/theme";
 export interface HelpSheetProps {
   open: boolean;
   onClose: () => void;
-  writeIncidents: boolean;
+  /** [key, what] pairs, in display order. */
+  rows: [string, string][];
 }
 
-export function HelpSheet(props: HelpSheetProps) {
-  const { open, onClose, writeIncidents } = props;
-  const theme = useTheme();
-  if (!open) {
-    return null;
-  }
-  const keys: [string, string][] = [
+/** The incident table's rows; `n` only appears when it is actually bound (`writeIncidents`). */
+export function dispatchHelpRows(writeIncidents: boolean): [string, string][] {
+  return [
     ["/", "Focus the search"],
     [
       "Enter (in search)",
@@ -40,6 +37,14 @@ export function HelpSheet(props: HelpSheetProps) {
     ...(writeIncidents ? ([["n", "New incident"]] as [string, string][]) : []),
     ["?", "This sheet"],
   ];
+}
+
+export function HelpSheet(props: HelpSheetProps) {
+  const { open, onClose, rows } = props;
+  const theme = useTheme();
+  if (!open) {
+    return null;
+  }
   return (
     <StateFade style={StyleSheet.absoluteFill}>
       <Pressable
@@ -60,7 +65,7 @@ export function HelpSheet(props: HelpSheetProps) {
             style={[styles.sheet, theme.elevation[2]]}
           >
             <Text variant="heading">Keyboard</Text>
-            {keys.map(([key, what]) => (
+            {rows.map(([key, what]) => (
               <View key={key} style={[styles.row, { gap: theme.spacing.lg }]}>
                 <View style={styles.key}>
                   <Text variant="figure">{key}</Text>

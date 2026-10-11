@@ -6,7 +6,7 @@ import { StyleSheet, View } from "react-native";
 import { toAppError } from "@/api/errors";
 import { Drawer } from "@/features/dispatch/Drawer";
 import { FilterBar } from "@/features/dispatch/FilterBar";
-import { HelpSheet } from "@/features/dispatch/HelpSheet";
+import { dispatchHelpRows, HelpSheet } from "@/features/dispatch/HelpSheet";
 import type { Lookups } from "@/features/dispatch/query";
 import { serializeQuery } from "@/features/dispatch/query";
 import { Table } from "@/features/dispatch/Table";
@@ -159,7 +159,7 @@ export function DispatchScreen(props: DispatchScreenProps) {
       <HelpSheet
         open={help}
         onClose={() => setHelp(false)}
-        writeIncidents={access.writeIncidents}
+        rows={dispatchHelpRows(access.writeIncidents)}
       />
     </View>
   );

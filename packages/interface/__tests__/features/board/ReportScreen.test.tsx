@@ -94,14 +94,14 @@ describe("ReportScreen", () => {
     const runtime = await signedInRuntime(fake);
     await renderReport(runtime);
     await screen.findByTestId("report-composer");
-    expect(screen.getByText("Posting as Dee")).toBeTruthy();
+    expect(screen.getByText("Yourself (Dee)")).toBeTruthy();
 
-    await fireEvent.press(screen.getByTestId("report-on-behalf-of-toggle"));
+    await fireEvent.press(screen.getByTestId("report-on-behalf-of-row"));
     await typeInto("composer-on-behalf-of", "pri");
     await fireEvent.press(
       await screen.findByTestId("composer-on-behalf-of-11"),
     );
-    expect(screen.getByText("On behalf of Priya")).toBeTruthy();
+    expect(screen.getByText("Send for Priya")).toBeTruthy();
 
     await typeInto("report-append-text", "Then the parent arrived.");
     await fireEvent.press(screen.getByTestId("report-append-send"));

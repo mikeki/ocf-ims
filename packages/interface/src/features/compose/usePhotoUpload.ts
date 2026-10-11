@@ -14,7 +14,17 @@ import { type PickedPhoto, usePhotoPicker } from "@/features/compose/photo";
 // posts; a failure keeps the chip with the server's words and Retry. After an
 // upload the incident and the list refetch — no optimistic entry.
 
-export function usePhotoUpload(eventId: number, eventName: string) {
+export interface PhotoOwner {
+  /** Whose attachment route the upload takes; incident by default. */
+  kind: "incident" | "report";
+}
+
+export function usePhotoUpload(
+  eventId: number,
+  eventName: string,
+  owner: PhotoOwner = { kind: "incident" },
+) {
+  const kind = owner.kind;
   const blobs = useBlobs();
   const picker = usePhotoPicker();
   const transport = useTransport();
@@ -36,38 +46,60 @@ export function usePhotoUpload(eventId: number, eventName: string) {
       setPending({ photo, progress: 0 });
       try {
         const file = await picker.toUpload(photo);
-        await blobs.uploadIncidentAttachment({
+        const args = {
           eventName,
           number,
           file,
-          onProgress: (fraction) => setPending({ photo, progress: fraction }),
-        });
+          onProgress: (fraction: number) =>
+            setPending({ photo, progress: fraction }),
+        };
+        if (kind === "report") {
+          await blobs.uploadReportAttachment(args);
+        } else {
+          await blobs.uploadIncidentAttachment(args);
+        }
       } catch (e) {
         const error = toAppError(e);
         setPending({ photo, error: error.message });
         return false;
       }
       setPending(undefined);
-      await Promise.all([
-        queryClient.invalidateQueries({
-          queryKey: createConnectQueryKey({
-            schema: ImsService.method.getIncident,
-            transport,
-            input: { eventId, incidentNumber: number },
-            cardinality: "finite",
-          }),
-        }),
-        queryClient.invalidateQueries({
-          queryKey: createConnectQueryKey({
-            schema: ImsService.method.listIncidents,
-            transport,
-            cardinality: "finite",
-          }),
-        }),
-      ]);
+      const invalidations =
+        kind === "report"
+          ? [
+              createConnectQueryKey({
+                schema: ImsService.method.getReport,
+                transport,
+                input: { eventId, reportNumber: number },
+                cardinality: "finite",
+              }),
+              createConnectQueryKey({
+                schema: ImsService.method.listReports,
+                transport,
+                cardinality: "finite",
+              }),
+            ]
+          : [
+              createConnectQueryKey({
+                schema: ImsService.method.getIncident,
+                transport,
+                input: { eventId, incidentNumber: number },
+                cardinality: "finite",
+              }),
+              createConnectQueryKey({
+                schema: ImsService.method.listIncidents,
+                transport,
+                cardinality: "finite",
+              }),
+            ];
+      await Promise.all(
+        invalidations.map((queryKey) =>
+          queryClient.invalidateQueries({ queryKey }),
+        ),
+      );
       return true;
     },
-    [pending, picker, blobs, eventName, eventId, transport, queryClient],
+    [pending, picker, blobs, eventName, eventId, kind, transport, queryClient],
   );
 
   return { pending, pick, clear, upload };

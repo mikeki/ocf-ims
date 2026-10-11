@@ -6,7 +6,7 @@ import { StyleSheet, View } from "react-native";
 import { TextButton } from "@/design/primitives/TextButton";
 import { useTheme } from "@/design/theme";
 import { pageMaxWidth } from "@/design/tokens";
-import { HelpSheet } from "@/features/dispatch/HelpSheet";
+import { dispatchHelpRows, HelpSheet } from "@/features/dispatch/HelpSheet";
 import { neighboursOf } from "@/features/dispatch/neighbours";
 import {
   applyQuery,
@@ -200,7 +200,7 @@ export function IncidentPage(props: IncidentPageProps) {
       <HelpSheet
         open={help}
         onClose={() => setHelp(false)}
-        writeIncidents={false}
+        rows={dispatchHelpRows(false)}
       />
     </View>
   );
