@@ -487,7 +487,7 @@ empty roster, reduced motion. Nothing goes to staging.
 - [x] Brief written; the contract verified (2026-09-14)
 - [x] The surface built, walked in a browser and verified (2026-09-15; § What was built)
 - [x] The round run; Ladder picked, the reasons and the six decisions recorded (2026-09-16; § The pick)
-- [ ] The 3c.4 acceptance criteria written
+- [x] The 3c.4 acceptance criteria written (2026-09-16)
 - [ ] The winner promoted, reviewed, the surface deleted — the 3c.4 PR
 
 ## Open questions
