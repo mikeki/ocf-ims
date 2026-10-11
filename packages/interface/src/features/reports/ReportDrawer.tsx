@@ -1,62 +1,38 @@
 // SPDX-License-Identifier: Apache-2.0
 
-import { useQuery } from "@connectrpc/connect-query";
-import { ImsService } from "@ocf-ims/protocol-buffers/ocf/ims/service/v1/service_pb";
-import type { ComponentType, RefObject } from "react";
+import type { RefObject } from "react";
 import { Pressable, StyleSheet, View } from "react-native";
-import { toAppError } from "@/api/errors";
 import { TextButton } from "@/design/primitives/TextButton";
 import { useTheme } from "@/design/theme";
 import { drawerShare } from "@/design/tokens";
-import { EmptyState } from "@/features/shell/EmptyState";
-import { ErrorState } from "@/features/shell/ErrorState";
-import { LoadingState } from "@/features/shell/LoadingState";
+import {
+  ReportScreen,
+  type ReportScreenHandle,
+} from "@/features/board/ReportScreen";
+import { neighboursOf } from "@/features/reports/neighbours";
+import type { ReportQuery } from "@/features/reports/useReportQuery";
 import { ScreenHeader } from "@/features/shell/ScreenHeader";
-import { neighboursOf } from "@/prototypes/reports/neighbours";
-import type {
-  ReportPaneHandle,
-  ReportPaneProps,
-  Viewer,
-} from "@/prototypes/reports/types";
-import { useEditReport } from "@/prototypes/reports/useEditReport";
-import type { ReportQuery } from "@/prototypes/reports/useReportQuery";
 
-// The report drawer (docs/plans/09z-reports-design.md § The prototype
-// round), a retyped copy of src/features/dispatch/Drawer.tsx's shape: the
-// panel over the table's right two thirds, the scrim, its own `ScreenHeader`
-// — back "Reports", the number, prev/next among the visible rows, and "Full
-// page". The body is the round's variant, chosen by the caller.
+// The report drawer (plan 09z criterion 9), shaped as
+// src/features/dispatch/Drawer.tsx: the panel over the table's right two
+// thirds, the scrim, its own `ScreenHeader` (back "Reports", the number,
+// prev / next among the visible rows, "Full page"). The body is the Ledger,
+// embedded.
 
 export interface ReportDrawerProps {
   q: ReportQuery;
   eventId: number;
-  viewer: Viewer;
-  Variant: ComponentType<ReportPaneProps>;
   onFull: () => void;
   onOpenIncident: (number: number) => void;
-  onCreateIncident: () => void;
-  handle?: RefObject<ReportPaneHandle | null>;
+  onCreateIncident: (summary: string) => void;
+  handle?: RefObject<ReportScreenHandle | null>;
 }
 
 export function ReportDrawer(props: ReportDrawerProps) {
-  const {
-    q,
-    eventId,
-    viewer,
-    Variant,
-    onFull,
-    onOpenIncident,
-    onCreateIncident,
-    handle,
-  } = props;
+  const { q, eventId, onFull, onOpenIncident, onCreateIncident, handle } =
+    props;
   const theme = useTheme();
   const opened = q.opened;
-  const edit = useEditReport(eventId, opened?.report.number ?? 0);
-  const view = useQuery(
-    ImsService.method.getReport,
-    { eventId, reportNumber: opened?.report.number ?? 0 },
-    { enabled: opened !== undefined },
-  );
   if (!opened) {
     return null;
   }
@@ -110,23 +86,16 @@ export function ReportDrawer(props: ReportDrawerProps) {
           }
         />
         <View style={styles.fill}>
-          {view.isLoading ? (
-            <LoadingState />
-          ) : view.isError ? (
-            <ErrorState error={toAppError(view.error)} onRetry={view.refetch} />
-          ) : !view.data?.report?.report ? (
-            <EmptyState title="Not found" />
-          ) : (
-            <Variant
-              view={view.data.report}
-              eventId={eventId}
-              edit={edit}
-              viewer={viewer}
-              onOpenIncident={onOpenIncident}
-              onCreateIncident={onCreateIncident}
-              handle={handle}
-            />
-          )}
+          <ReportScreen
+            key={number}
+            chrome="embedded"
+            eventId={eventId}
+            number={number}
+            onBack={q.close}
+            onOpenIncident={onOpenIncident}
+            onCreateIncident={onCreateIncident}
+            handle={handle}
+          />
         </View>
       </View>
     </View>

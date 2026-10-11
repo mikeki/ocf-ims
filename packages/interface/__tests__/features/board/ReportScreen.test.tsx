@@ -119,7 +119,7 @@ describe("ReportScreen", () => {
     populate(fake, 214, false);
     const runtime = await signedInRuntime(fake);
     await renderReport(runtime);
-    await screen.findByTestId("report-number");
+    await screen.findByTestId("ledger-summary-value");
     expect(screen.queryByTestId("report-composer")).toBeNull();
   });
 
@@ -129,23 +129,29 @@ describe("ReportScreen", () => {
     const runtime = await signedInRuntime(fake);
     const onOpenIncident = jest.fn();
     await renderReport(runtime, { onOpenIncident });
-    await fireEvent.press(await screen.findByTestId("report-incident-link"));
+    await fireEvent.press(await screen.findByTestId("ledger-incident-open"));
     expect(onOpenIncident).toHaveBeenCalledWith(214);
-    expect(screen.queryByTestId("attach-incident")).toBeNull();
+    expect(screen.queryByTestId("ledger-incident-link-open")).toBeNull();
   });
 
-  it("lets a writer attach an unattached report by number, with only the link on the wire", async () => {
+  it("lets a writer link an unlinked report by number, with only the link on the wire", async () => {
+    // Was the attach-by-number field of 3b.3; the Ledger's Link… is the same
+    // control (09z criterion 8), its number field and Link word replacing
+    // `attach-incident` / `attach-incident-go`.
     const fake = createFakeIms({ user: { writeIncidents: true } });
     populate(fake);
     const runtime = await signedInRuntime(fake);
     await renderReport(runtime);
-    await typeInto("attach-incident", "214");
-    await fireEvent.press(screen.getByTestId("attach-incident-go"));
+    await fireEvent.press(
+      await screen.findByTestId("ledger-incident-link-open"),
+    );
+    await typeInto("ledger-link-field", "214");
+    await fireEvent.press(screen.getByTestId("ledger-link-go"));
     await waitFor(() => expect(fake.updateReportRequests).toHaveLength(1));
     const sent = fake.updateReportRequests[0]?.report;
     expect(sent?.incident).toBe(214);
     expect(sent?.journalEntries).toHaveLength(0);
-    expect(await screen.findByTestId("report-incident-link")).toBeTruthy();
+    expect(await screen.findByTestId("ledger-incident-open")).toBeTruthy();
   });
 
   it("hands the summary to the incident form for create-an-incident-from-this-report", async () => {
@@ -154,19 +160,30 @@ describe("ReportScreen", () => {
     const runtime = await signedInRuntime(fake);
     const onCreateIncident = jest.fn();
     await renderReport(runtime, { onCreateIncident });
-    await fireEvent.press(
-      await screen.findByTestId("create-incident-from-report"),
-    );
+    await fireEvent.press(await screen.findByTestId("ledger-create-incident"));
     expect(onCreateIncident).toHaveBeenCalledWith("What I saw");
   });
 
-  it("shows a reporter no attach controls on an unattached report", async () => {
+  it("offers a reporter Link… but not create-an-incident on an unlinked report", async () => {
+    // 3b.3 gated attaching on writeIncidents; the Ledger gates the link on
+    // writeReports (09z § Gating) and keeps create-an-incident on writeIncidents.
     const fake = createFakeIms({ user: { writeReports: true } });
     populate(fake);
     const runtime = await signedInRuntime(fake);
     await renderReport(runtime);
-    await screen.findByTestId("report-number");
-    expect(screen.queryByTestId("attach-incident")).toBeNull();
-    expect(screen.queryByTestId("create-incident-from-report")).toBeNull();
+    await screen.findByTestId("ledger-summary-value");
+    expect(screen.getByTestId("ledger-incident-link-open")).toBeTruthy();
+    expect(screen.queryByTestId("ledger-create-incident")).toBeNull();
+  });
+
+  it("shows the photo control in the composer when the caller may attach files", async () => {
+    const fake = createFakeIms({
+      user: { writeReports: true, attachFiles: true },
+    });
+    populate(fake, 214);
+    const runtime = await signedInRuntime(fake);
+    await renderReport(runtime);
+    await screen.findByTestId("report-composer");
+    expect(screen.getByTestId("photo-add")).toBeTruthy();
   });
 });

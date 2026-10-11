@@ -15,9 +15,9 @@ import {
   type Row,
   serializeQuery,
   toRows,
-} from "@/prototypes/reports/reportQuery";
+} from "@/features/reports/reportQuery";
 
-// The report table's URL state and its actions, a retyped copy of
+// The report table's URL state and its actions, shaped as
 // src/features/dispatch/useDispatchQuery.ts: no stored preference (the
 // incident table's "state" chip remembers across sessions; the round's brief
 // does not ask the same of "link", so every mount starts at the default,

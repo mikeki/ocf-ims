@@ -2,7 +2,10 @@
 
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { ReportScreen } from "@/features/board/ReportScreen";
+import { ReportPage } from "@/features/reports/ReportPage";
 import { EmptyState } from "@/features/shell/EmptyState";
+import { useLayoutMode } from "@/features/shell/layoutMode";
+import { Shell } from "@/features/shell/Shell";
 
 export default function ReportRoute() {
   const router = useRouter();
@@ -12,9 +15,18 @@ export default function ReportRoute() {
   }>();
   const eventId = Number.parseInt(rawEvent, 10);
   const number = Number.parseInt(rawNumber, 10);
+  const mode = useLayoutMode();
 
   if (!Number.isFinite(eventId) || eventId <= 0 || !Number.isFinite(number)) {
     return <EmptyState title="Not found" />;
+  }
+
+  if (mode === "wide") {
+    return (
+      <Shell eventId={eventId}>
+        <ReportPage eventId={eventId} number={number} />
+      </Shell>
+    );
   }
 
   return (

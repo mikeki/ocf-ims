@@ -6,11 +6,11 @@ import { PressFeedback } from "@/design/motion";
 import { Text } from "@/design/primitives/Text";
 import { useTheme } from "@/design/theme";
 import { pressRetentionOffset } from "@/design/tokens";
+import type { Column } from "@/features/reports/reportColumns";
+import type { Row } from "@/features/reports/reportQuery";
 import { formatShortTime, personLabel } from "@/lib/format";
-import type { Column } from "@/prototypes/reports/reportColumns";
-import type { Row } from "@/prototypes/reports/reportQuery";
 
-// The one report row, a retyped copy of src/features/dispatch/IncidentRow.tsx:
+// The one report row, shaped as src/features/dispatch/IncidentRow.tsx:
 // one line, a fixed height (the list windows on it), Report# in the ledger
 // column. No state / priority colour language — a report carries neither.
 

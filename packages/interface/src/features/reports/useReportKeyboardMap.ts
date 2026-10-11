@@ -4,10 +4,10 @@ import { useFocusEffect } from "expo-router";
 import type { RefObject } from "react";
 import { useCallback, useEffect, useRef } from "react";
 import { Platform, type TextInput } from "react-native";
-import type { Query, Row } from "@/prototypes/reports/reportQuery";
-import type { ReportPaneHandle } from "@/prototypes/reports/types";
+import type { ReportScreenHandle } from "@/features/board/ReportScreen";
+import type { Query, Row } from "@/features/reports/reportQuery";
 
-// The report table's keyboard map, a retyped copy of
+// The report table's keyboard map, shaped as
 // src/features/dispatch/useKeyboardMap.ts (its own `handle` is pinned to
 // `IncidentScreenHandle`, so it does not fit here as-is): web only, gated on
 // `useFocusEffect` (09x finding 2), suppressed while an input has focus
@@ -32,10 +32,10 @@ export interface KeyboardMapDeps {
   /** Absent on the page: no search field there. */
   searchRef?: RefObject<TextInput | null>;
   /** The open report's composer / system-entries controls; bound while `query.open` is set. */
-  handle?: RefObject<ReportPaneHandle | null>;
+  handle?: RefObject<ReportScreenHandle | null>;
 }
 
-export function useKeyboardMap(deps: KeyboardMapDeps): void {
+export function useReportKeyboardMap(deps: KeyboardMapDeps): void {
   const focused = useRef(true);
   useFocusEffect(
     useCallback(() => {

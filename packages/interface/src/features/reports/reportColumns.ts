@@ -1,18 +1,13 @@
 // SPDX-License-Identifier: Apache-2.0
 
-import { spacing } from "@/design/tokens";
-import type { SortKey } from "@/prototypes/reports/reportQuery";
+import { spacing, reportColumn as width } from "@/design/tokens";
+import type { SortKey } from "@/features/reports/reportQuery";
 
-// The report table's columns (docs/plans/09z-reports-design.md § The table),
-// a retyped copy of src/features/dispatch/columns.ts: Report# and IMS# are
-// fixed ledger-style figure columns, Created and Created by are fixed,
-// Summary is the one that yields. There is no hide order — five columns at
-// the drawer's ~676px already fit without dropping any (unlike the incident
-// table's nine) — so `columnsFor` only ever shrinks the summary.
-//
-// These widths are prototype-local, not promoted tokens (src/design/ is out
-// of bounds for this round): they echo the shape of `dispatch` in
-// src/design/tokens.ts without adding to it.
+// The report table's columns (plan 09z criterion 7): Report# and IMS# are
+// fixed ledger-style figure columns, Created and Created by are fixed, Summary
+// is the one that yields. There is no hide order: five columns at the
+// drawer's width fit without dropping any, so `columnsFor` only ever returns
+// them all.
 
 export interface Column {
   key: SortKey;
@@ -22,20 +17,12 @@ export interface Column {
   align?: "left" | "right";
 }
 
-const width = {
-  number: 64,
-  incidentNumber: 64,
-  created: 84,
-  createdBy: 140,
-  summaryMin: 200,
-} as const;
-
 export const COLUMNS: readonly Column[] = [
   { key: "number", label: "Report#", width: width.number, align: "right" },
   {
     key: "incident",
     label: "IMS#",
-    width: width.incidentNumber,
+    width: width.incident,
     align: "right",
   },
   { key: "summary", label: "Summary" },

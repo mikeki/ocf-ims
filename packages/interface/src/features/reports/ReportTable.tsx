@@ -12,18 +12,18 @@ import { PressFeedback } from "@/design/motion";
 import { Text } from "@/design/primitives/Text";
 import { useTheme } from "@/design/theme";
 import { pressRetentionOffset } from "@/design/tokens";
-import { EmptyState } from "@/features/shell/EmptyState";
-import { ReportRow, rowHeight } from "@/prototypes/reports/ReportRow";
-import { type Column, columnsFor } from "@/prototypes/reports/reportColumns";
+import { ReportRow, rowHeight } from "@/features/reports/ReportRow";
+import { type Column, columnsFor } from "@/features/reports/reportColumns";
 import {
   clearFilters,
   defaultDir,
   isFiltered,
   type SortKey,
-} from "@/prototypes/reports/reportQuery";
-import type { ReportQuery } from "@/prototypes/reports/useReportQuery";
+} from "@/features/reports/reportQuery";
+import type { ReportQuery } from "@/features/reports/useReportQuery";
+import { EmptyState } from "@/features/shell/EmptyState";
 
-// The report table, a retyped copy of src/features/dispatch/Table.tsx: fixed
+// The report table, shaped as src/features/dispatch/Table.tsx: fixed
 // height rows with `getItemLayout`, a header that sorts with a visible
 // direction, and the same scroll bookkeeping (moved only when the keyboard
 // walks the selection off the edge, never by a poke or a row's own data

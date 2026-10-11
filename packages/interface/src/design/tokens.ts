@@ -304,6 +304,15 @@ export const dispatch = {
   summaryMin: 200,
 } as const;
 
+/** The report table's fixed column widths (plan 09z criterion 7); the summary yields. */
+export const reportColumn = {
+  number: 64,
+  incident: 64,
+  created: 84,
+  createdBy: 140,
+  summaryMin: 200,
+} as const;
+
 /** The drawer's share of the content width (plan 09x criterion 7). */
 export const drawerShare = 0.66;
 

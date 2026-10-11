@@ -22,11 +22,22 @@ export type FakeRouterParams = Record<string, string | undefined>;
 
 let params: FakeRouterParams = {};
 const listeners = new Set<() => void>();
+let pathname = "/";
 export const pushed: unknown[] = [];
+
+/** The path `usePathname` answers; reset to "/" by `resetFakeRouter`. */
+export function setFakePathname(next: string): void {
+  pathname = next;
+}
+
+export function usePathname(): string {
+  return pathname;
+}
 
 /** Call in `beforeEach`: a fresh URL and an empty push log for the next test. */
 export function resetFakeRouter(initial: FakeRouterParams = {}): void {
   params = { ...initial };
+  pathname = "/";
   pushed.length = 0;
   for (const listener of listeners) {
     listener();
