@@ -3,6 +3,7 @@
 import type { JournalEntry } from "@ocf-ims/protocol-buffers/ocf/ims/resources/v1/journal_entry_pb";
 import { Image } from "expo-image";
 import { Pressable, StyleSheet, View } from "react-native";
+import type { AttachmentOwner } from "@/api/blobs";
 import { PressFeedback } from "@/design/motion";
 import { Box } from "@/design/primitives/Box";
 import { Text } from "@/design/primitives/Text";
@@ -29,10 +30,15 @@ import { formatTimestamp, personLabel } from "@/lib/format";
 // for a writer on the incident's own non-system entries — the row keeps one
 // shape whether or not the caller lights those.
 
+/** The event and the owner (incident or report) whose route serves the entry's file. */
+export interface AttachmentOn extends AttachmentOwner {
+  eventName: string;
+}
+
 export interface JournalEntryRowProps {
   entry: JournalEntry;
-  /** Where the entry lives, for the attachment route; absent = no images (a report). */
-  attachmentOn?: { eventName: string; incidentNumber: number };
+  /** Where the entry lives, for the attachment route; absent = no images. */
+  attachmentOn?: AttachmentOn;
   onOpenAttachment?: (entryId: number) => void;
   /** Set when the entry came from an attached report, not this incident. */
   report?: number;
@@ -95,8 +101,7 @@ export function JournalEntryRow(props: JournalEntryRowProps) {
       </Text>
       {entry.attachment && isImage && attachmentOn ? (
         <AttachedImage
-          eventName={attachmentOn.eventName}
-          incidentNumber={attachmentOn.incidentNumber}
+          on={attachmentOn}
           entryId={entry.id}
           name={entry.attachment.id}
           onPress={
@@ -125,16 +130,15 @@ export function JournalEntryRow(props: JournalEntryRowProps) {
 }
 
 function AttachedImage(props: {
-  eventName: string;
-  incidentNumber: number;
+  on: AttachmentOn;
   entryId: number;
   name: string;
   onPress?: () => void;
 }) {
   const theme = useTheme();
   const source = useAttachmentSource(
-    props.eventName,
-    props.incidentNumber,
+    props.on.eventName,
+    props.on,
     props.entryId,
   );
   const image = (

@@ -5,21 +5,34 @@ import type { Refresher } from "@/api/refresh";
 import type { AccessTokenCache } from "@/api/tokens";
 import { PROACTIVE_REFRESH_WINDOW_MS } from "@/api/transport";
 
-// The blob helper (plan 09s): the client's one authenticated non-Connect
-// path — the two plain-HTTP attachment routes. Built beside the transport
-// from the same token cache and refresher, so it inherits the session
-// contract: the Bearer from the cache, a proactive refresh inside the window,
-// one refresh-and-replay on a 401. Upload goes over XMLHttpRequest for its
-// progress events (fetch reports nothing while a body uploads). Nothing else
-// in the client may build a URL under /ims/api/.
+// The blob helper (plan 09s, report-addressed in 09z criterion 0): the
+// client's one authenticated non-Connect path — the plain-HTTP attachment
+// routes, an upload and a download pair each for incidents and for reports.
+// Built beside the transport from the same token cache and refresher, so it
+// inherits the session contract: the Bearer from the cache, a proactive
+// refresh inside the window, one refresh-and-replay on a 401. Upload goes
+// over XMLHttpRequest for its progress events (fetch reports nothing while a
+// body uploads). Nothing else in the client may build a URL under /ims/api/.
 
 /** A file to upload: `{uri, name, type}` on native, a Blob + name on web. */
 export type UploadFile =
   | { readonly uri: string; readonly name: string; readonly type: string }
   | { readonly blob: Blob; readonly name: string };
 
+/**
+ * Where an attachment lives: the incident or the report whose journal holds
+ * the entry. The server gates each route on that owner (the incident's
+ * visibility, the report's three-way read), so a client never addresses a
+ * report's entry through the incident route or the reverse.
+ */
+export interface AttachmentOwner {
+  readonly kind: "incident" | "report";
+  readonly number: number;
+}
+
 export interface UploadArgs {
   eventName: string;
+  /** The incident or report number, per the method called. */
   number: number;
   file: UploadFile;
   /** 0..1, monotone. */
@@ -29,14 +42,21 @@ export interface UploadArgs {
 
 export interface Blobs {
   uploadIncidentAttachment(args: UploadArgs): Promise<{ entryId: number }>;
-  /** The download URL for an entry's file (an address, never fetched without the headers below). */
+  uploadReportAttachment(args: UploadArgs): Promise<{ entryId: number }>;
+  /** The download URL for an incident entry's file (an address, never fetched without the headers below). */
   attachmentUrl(eventName: string, number: number, entryId: number): string;
+  /** The download URL for a report entry's file. */
+  reportAttachmentUrl(
+    eventName: string,
+    number: number,
+    entryId: number,
+  ): string;
   /** The Authorization header for a download, after a proactive refresh if the token is close to expiry. */
   authHeaders(): Promise<Record<string, string>>;
   /** Web: the bytes, for an object URL — a browser image cannot carry a header. */
   fetchAttachment(
     eventName: string,
-    number: number,
+    on: AttachmentOwner,
     entryId: number,
     signal?: AbortSignal,
   ): Promise<Blob>;
@@ -57,6 +77,12 @@ export const UPLOAD_PART = "imsAttachment";
 /** The response header carrying the new journal entry's id. */
 export const ENTRY_HEADER = "IMS-Journal-Entry-Number";
 
+/** The path segment under the event for each owner kind. */
+const SEGMENT: Record<AttachmentOwner["kind"], string> = {
+  incident: "incidents",
+  report: "reports",
+};
+
 export function createBlobs(deps: BlobsDeps): Blobs {
   const window = deps.proactiveWindowMs ?? PROACTIVE_REFRESH_WINDOW_MS;
   const makeXhr = deps.xhr ?? (() => new XMLHttpRequest());
@@ -75,8 +101,9 @@ export function createBlobs(deps: BlobsDeps): Blobs {
     return bearer();
   };
 
-  const incidentRoute = (eventName: string, number: number): string =>
-    `${deps.baseUrl}/ims/api/events/${encodeURIComponent(eventName)}/incidents/${number}/attachments`;
+  /** `/ims/api/events/{event}/{incidents|reports}/{n}/attachments`. */
+  const route = (eventName: string, on: AttachmentOwner): string =>
+    `${deps.baseUrl}/ims/api/events/${encodeURIComponent(eventName)}/${SEGMENT[on.kind]}/${on.number}/attachments`;
 
   const send = (
     url: string,
@@ -129,33 +156,43 @@ export function createBlobs(deps: BlobsDeps): Blobs {
       xhr.send(form);
     });
 
+  /** The upload contract, once: proactive refresh, one replay on a 401, the entry id from the header. */
+  const upload = async (
+    kind: AttachmentOwner["kind"],
+    args: UploadArgs,
+  ): Promise<{ entryId: number }> => {
+    const url = route(args.eventName, { kind, number: args.number });
+    let auth = await prepare();
+    let res = await send(url, args, auth);
+    if (res.status === 401) {
+      const outcome = await deps.refresher.refresh();
+      if (outcome.kind === "refreshed") {
+        auth = bearer();
+        res = await send(url, args, auth);
+      }
+    }
+    if (res.status === 204 || res.status === 200) {
+      const entryId = Number.parseInt(res.entry ?? "", 10);
+      if (!Number.isFinite(entryId)) {
+        throw httpStatusError(
+          500,
+          "The server did not say which entry it made",
+        );
+      }
+      args.onProgress?.(1);
+      return { entryId };
+    }
+    throw httpStatusError(res.status, res.text.trim());
+  };
+
   return {
-    async uploadIncidentAttachment(args) {
-      const url = incidentRoute(args.eventName, args.number);
-      let auth = await prepare();
-      let res = await send(url, args, auth);
-      if (res.status === 401) {
-        const outcome = await deps.refresher.refresh();
-        if (outcome.kind === "refreshed") {
-          auth = bearer();
-          res = await send(url, args, auth);
-        }
-      }
-      if (res.status === 204 || res.status === 200) {
-        const entryId = Number.parseInt(res.entry ?? "", 10);
-        if (!Number.isFinite(entryId)) {
-          throw httpStatusError(
-            500,
-            "The server did not say which entry it made",
-          );
-        }
-        args.onProgress?.(1);
-        return { entryId };
-      }
-      throw httpStatusError(res.status, res.text.trim());
-    },
+    uploadIncidentAttachment: (args) => upload("incident", args),
+    uploadReportAttachment: (args) => upload("report", args),
     attachmentUrl(eventName, number, entryId) {
-      return `${incidentRoute(eventName, number)}/${entryId}`;
+      return `${route(eventName, { kind: "incident", number })}/${entryId}`;
+    },
+    reportAttachmentUrl(eventName, number, entryId) {
+      return `${route(eventName, { kind: "report", number })}/${entryId}`;
     },
     async authHeaders(): Promise<Record<string, string>> {
       const auth = await prepare();
@@ -165,8 +202,8 @@ export function createBlobs(deps: BlobsDeps): Blobs {
       }
       return headers;
     },
-    async fetchAttachment(eventName, number, entryId, signal) {
-      const url = `${incidentRoute(eventName, number)}/${entryId}`;
+    async fetchAttachment(eventName, on, entryId, signal) {
+      const url = `${route(eventName, on)}/${entryId}`;
       const get = async (auth: string | undefined) =>
         fetchImpl(url, {
           headers: auth ? { Authorization: auth } : {},

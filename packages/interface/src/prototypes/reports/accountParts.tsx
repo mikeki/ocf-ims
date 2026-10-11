@@ -113,7 +113,7 @@ function ReportAttachmentThumbnail(props: {
   const theme = useTheme();
   const source = useAttachmentSource(
     props.eventName,
-    props.incidentNumber,
+    { kind: "incident", number: props.incidentNumber },
     props.entry.id,
   );
   if (!source) {

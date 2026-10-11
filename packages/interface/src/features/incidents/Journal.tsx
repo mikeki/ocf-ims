@@ -6,7 +6,10 @@ import { Box } from "@/design/primitives/Box";
 import { Text } from "@/design/primitives/Text";
 import { useTheme } from "@/design/theme";
 import { FieldError } from "@/features/incidents/controls/bits";
-import { JournalEntryRow } from "@/features/incidents/JournalEntryRow";
+import {
+  type AttachmentOn,
+  JournalEntryRow,
+} from "@/features/incidents/JournalEntryRow";
 import type { EditIncident } from "@/features/incidents/useEditIncident";
 import type { JournalItem } from "@/features/incidents/useEditorData";
 
@@ -24,7 +27,8 @@ export interface JournalProps {
   onToggleSystem: (value: boolean) => void;
   mayStrike: boolean;
   edit: EditIncident;
-  attachmentOn: { eventName: string; incidentNumber: number };
+  /** The incident's own route; an attached report's entries take the report route (09z criterion 0). */
+  attachmentOn: AttachmentOn;
   onOpenAttachment: (entryId: number) => void;
   /** Rendered under the header, before the entries. */
   composer?: ReactNode;
@@ -80,8 +84,18 @@ export function Journal(props: JournalProps) {
             key={`${item.report ?? "i"}-${item.entry.id}`}
             entry={item.entry}
             report={item.report}
-            attachmentOn={item.report === undefined ? attachmentOn : undefined}
-            onOpenAttachment={onOpenAttachment}
+            attachmentOn={
+              item.report === undefined
+                ? attachmentOn
+                : {
+                    eventName: attachmentOn.eventName,
+                    kind: "report",
+                    number: item.report,
+                  }
+            }
+            onOpenAttachment={
+              item.report === undefined ? onOpenAttachment : undefined
+            }
             onStrike={
               mayStrike && item.report === undefined && !item.entry.systemEntry
                 ? () => {

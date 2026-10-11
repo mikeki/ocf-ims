@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import { Image } from "expo-image";
+import type { AttachmentOwner } from "@/api/blobs";
 import { Box } from "@/design/primitives/Box";
 import { useTheme } from "@/design/theme";
 import { useAttachmentSource } from "@/features/incidents/useAttachmentSource";
@@ -11,19 +12,19 @@ import { ScreenHeader } from "@/features/shell/ScreenHeader";
 
 export interface AttachmentScreenProps {
   eventName: string;
-  incidentNumber: number;
+  on: AttachmentOwner;
   entryId: number;
   onClose: () => void;
 }
 
 export function AttachmentScreen(props: AttachmentScreenProps) {
-  const { eventName, incidentNumber, entryId, onClose } = props;
+  const { eventName, on, entryId, onClose } = props;
   const theme = useTheme();
-  const source = useAttachmentSource(eventName, incidentNumber, entryId);
+  const source = useAttachmentSource(eventName, on, entryId);
   return (
     <Box flex={1} bg="background">
       <ScreenHeader
-        title={`#${incidentNumber} photo`}
+        title={`${on.kind === "report" ? "R-" : "#"}${on.number} photo`}
         back={{ label: "Close", onPress: onClose }}
       />
       <Box flex={1} justify="center">

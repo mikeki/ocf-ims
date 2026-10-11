@@ -594,7 +594,11 @@ function IncidentDetail(props: IncidentDetailProps) {
           onToggleSystem={onToggleSystemEntries}
           mayStrike={may}
           edit={edit}
-          attachmentOn={{ eventName, incidentNumber: incident.number }}
+          attachmentOn={{
+            eventName,
+            kind: "incident",
+            number: incident.number,
+          }}
           onOpenAttachment={onOpenAttachment}
           composer={
             data.gates.mayAppend ? (

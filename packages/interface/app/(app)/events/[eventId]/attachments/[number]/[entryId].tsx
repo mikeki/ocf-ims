@@ -34,7 +34,7 @@ export default function AttachmentRoute() {
       {eventName ? (
         <AttachmentScreen
           eventName={eventName}
-          incidentNumber={number}
+          on={{ kind: "incident", number }}
           entryId={entryId}
           onClose={() => {
             router.dismissTo(`/events/${eventId}/incidents/${number}`);

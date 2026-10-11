@@ -202,7 +202,15 @@ function ReportDetail(props: ReportDetailProps) {
             <Text color="textMuted">No entries yet.</Text>
           ) : (
             entries.map((entry) => (
-              <JournalEntryRow key={entry.id} entry={entry} />
+              <JournalEntryRow
+                key={entry.id}
+                entry={entry}
+                attachmentOn={{
+                  eventName: report.event,
+                  kind: "report",
+                  number: report.number,
+                }}
+              />
             ))
           )}
         </Box>

@@ -2,13 +2,16 @@
 
 import { useEffect, useState } from "react";
 import { Platform } from "react-native";
+import type { AttachmentOwner } from "@/api/blobs";
 import { useBlobs } from "@/api/providers";
 
 // What an image component is given for an attachment (plan 09s): on native
 // the route's URL plus the Authorization header (refreshed first when the
 // token is near expiry — an image component cannot retry a 401); on web the
 // bytes fetched with the Bearer and handed over as an object URL, revoked on
-// unmount, since a browser image cannot carry a header.
+// unmount, since a browser image cannot carry a header. The owner (09z
+// criterion 0) picks the route: an incident's entry through the incident
+// route, a report's through the report route, whichever screen shows it.
 
 export interface AttachmentSource {
   uri: string;
@@ -17,9 +20,10 @@ export interface AttachmentSource {
 
 export function useAttachmentSource(
   eventName: string,
-  incidentNumber: number,
+  on: AttachmentOwner,
   entryId: number,
 ): AttachmentSource | undefined {
+  const { kind, number } = on;
   const blobs = useBlobs();
   const [source, setSource] = useState<AttachmentSource | undefined>(undefined);
 
@@ -31,7 +35,7 @@ export function useAttachmentSource(
       if (Platform.OS === "web") {
         const bytes = await blobs.fetchAttachment(
           eventName,
-          incidentNumber,
+          { kind, number },
           entryId,
           controller.signal,
         );
@@ -45,7 +49,10 @@ export function useAttachmentSource(
       const headers = await blobs.authHeaders();
       if (!cancelled) {
         setSource({
-          uri: blobs.attachmentUrl(eventName, incidentNumber, entryId),
+          uri:
+            kind === "report"
+              ? blobs.reportAttachmentUrl(eventName, number, entryId)
+              : blobs.attachmentUrl(eventName, number, entryId),
           headers,
         });
       }
@@ -59,7 +66,7 @@ export function useAttachmentSource(
         URL.revokeObjectURL(objectUrl);
       }
     };
-  }, [blobs, eventName, incidentNumber, entryId]);
+  }, [blobs, eventName, kind, number, entryId]);
 
   return source;
 }

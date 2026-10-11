@@ -267,7 +267,7 @@ export function Ledger(props: ReportPaneProps) {
                 entry={entry}
                 attachmentOn={
                   report.incident
-                    ? { eventName, incidentNumber: report.incident }
+                    ? { eventName, kind: "incident", number: report.incident }
                     : undefined
                 }
                 onStrike={
