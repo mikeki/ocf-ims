@@ -4,8 +4,14 @@ import { create, type MessageInitShape, toJson } from "@bufbuild/protobuf";
 import { timestampFromDate } from "@bufbuild/protobuf/wkt";
 import type { ConnectRouter, HandlerContext } from "@connectrpc/connect";
 import { Code, ConnectError } from "@connectrpc/connect";
+import { PersonRefSchema } from "@ocf-ims/protocol-buffers/ocf/ims/common/v1/person_ref_pb";
 import type { Area } from "@ocf-ims/protocol-buffers/ocf/ims/resources/v1/area_pb";
 import { AreaSchema } from "@ocf-ims/protocol-buffers/ocf/ims/resources/v1/area_pb";
+import type { Crew } from "@ocf-ims/protocol-buffers/ocf/ims/resources/v1/crew_pb";
+import {
+  CrewMemberSchema,
+  CrewSchema,
+} from "@ocf-ims/protocol-buffers/ocf/ims/resources/v1/crew_pb";
 import type { Incident } from "@ocf-ims/protocol-buffers/ocf/ims/resources/v1/incident_pb";
 import {
   IncidentLocationSchema,
@@ -21,7 +27,11 @@ import type { Notification } from "@ocf-ims/protocol-buffers/ocf/ims/resources/v
 import type { Outcome } from "@ocf-ims/protocol-buffers/ocf/ims/resources/v1/outcome_pb";
 import { OutcomeSchema } from "@ocf-ims/protocol-buffers/ocf/ims/resources/v1/outcome_pb";
 import type { Person } from "@ocf-ims/protocol-buffers/ocf/ims/resources/v1/person_pb";
-import { ParticipationType } from "@ocf-ims/protocol-buffers/ocf/ims/resources/v1/person_pb";
+import {
+  ParticipationType,
+  PersonCrewSchema,
+  PersonSchema,
+} from "@ocf-ims/protocol-buffers/ocf/ims/resources/v1/person_pb";
 import type { Report } from "@ocf-ims/protocol-buffers/ocf/ims/resources/v1/report_pb";
 import { ReportSchema } from "@ocf-ims/protocol-buffers/ocf/ims/resources/v1/report_pb";
 import {
@@ -35,6 +45,11 @@ import {
   LogoutResponseSchema,
   RefreshTokenResponseSchema,
 } from "@ocf-ims/protocol-buffers/ocf/ims/service/rpc/v1/auth_pb";
+import {
+  ListMyCrewsResponseSchema,
+  type SetMyCrewMembershipRequest,
+  SetMyCrewMembershipResponseSchema,
+} from "@ocf-ims/protocol-buffers/ocf/ims/service/rpc/v1/crew_pb";
 import { ListEventsResponseSchema } from "@ocf-ims/protocol-buffers/ocf/ims/service/rpc/v1/event_pb";
 import type {
   AttachPersonToIncidentRequest,
@@ -70,7 +85,14 @@ import {
   ListOutcomesResponseSchema,
   ProposeOutcomeResponseSchema,
 } from "@ocf-ims/protocol-buffers/ocf/ims/service/rpc/v1/outcome_pb";
-import { ListPersonnelResponseSchema } from "@ocf-ims/protocol-buffers/ocf/ims/service/rpc/v1/person_pb";
+import {
+  type CreatePersonRequest,
+  CreatePersonResponseSchema,
+  type ListPersonnelRequest,
+  ListPersonnelResponseSchema,
+  type SetPersonParticipationRequest,
+  SetPersonParticipationResponseSchema,
+} from "@ocf-ims/protocol-buffers/ocf/ims/service/rpc/v1/person_pb";
 import { ChangeOwnPasswordResponseSchema } from "@ocf-ims/protocol-buffers/ocf/ims/service/rpc/v1/profile_pb";
 import {
   RegisterPushDeviceResponseSchema,
@@ -131,6 +153,8 @@ export interface FakeUser {
   writeReports: boolean;
   /** Drives AccessForEvent.attachFiles (09s); a writer has it too. */
   attachFiles: boolean;
+  /** Drives AccessForEvent.inviteReporters (an admin always has it): the roster's inviter (53a). */
+  inviteReporters: boolean;
 }
 
 /** The minimal shape ListEvents needs — enough to build an Event via create(). */
@@ -188,6 +212,9 @@ export interface FakeIms {
     registerPushDevice: ListBehaviour;
     unregisterPushDevice: ListBehaviour;
     watchEvent: ListBehaviour;
+    setParticipation: ListBehaviour;
+    createPerson: ListBehaviour;
+    setMyCrewMembership: ListBehaviour;
   };
   /** The WatchEvent streams open right now (09v). */
   openStreams: WatchEventRequest[];
@@ -202,8 +229,18 @@ export interface FakeIms {
   notifications: Notification[];
   /** The Expo push tokens registered for the user (09u). */
   pushDevices: string[];
-  /** Programmable ListPersonnel{query} data (09r); the typeahead matches handle and name. */
+  /** Programmable ListPersonnel data (09r; the roster modes, 09aa); every mode reads it, with the wire's field gating. */
   people: Person[];
+  /** The crews ListMyCrews filters by the caller's leadership and SetMyCrewMembership edits (09aa). */
+  crews: Crew[];
+  /** Every ListPersonnel request received (09aa). */
+  listPersonnelRequests: ListPersonnelRequest[];
+  /** Every SetPersonParticipation request received, refused ones included (09aa). */
+  setParticipationRequests: SetPersonParticipationRequest[];
+  /** Every CreatePerson request received (09aa). */
+  createPersonRequests: CreatePersonRequest[];
+  /** Every SetMyCrewMembership request received (09aa). */
+  setMyCrewMembershipRequests: SetMyCrewMembershipRequest[];
   /** Every UpdateIncident request received, for wire-shape assertions (09r). */
   updateRequests: UpdateIncidentRequest[];
   /** Every UpdateReport request received (09t). */
@@ -282,6 +319,9 @@ export function createFakeIms(options: FakeImsOptions = {}): FakeIms {
       registerPushDevice: "ok",
       unregisterPushDevice: "ok",
       watchEvent: "ok",
+      setParticipation: "ok",
+      createPerson: "ok",
+      setMyCrewMembership: "ok",
     },
     openStreams: [],
     streamRequests: [],
@@ -310,6 +350,7 @@ export function createFakeIms(options: FakeImsOptions = {}): FakeIms {
       writeIncidents: false,
       writeReports: false,
       attachFiles: false,
+      inviteReporters: false,
       ...options.user,
     },
     events: [{ id: 1, name: "2026" }],
@@ -318,6 +359,11 @@ export function createFakeIms(options: FakeImsOptions = {}): FakeIms {
     areas: [],
     incidentTypes: [],
     people: [],
+    crews: [],
+    listPersonnelRequests: [],
+    setParticipationRequests: [],
+    createPersonRequests: [],
+    setMyCrewMembershipRequests: [],
     updateRequests: [],
     updateReportRequests: [],
     requestReportRequests: [],
@@ -562,19 +608,207 @@ export function createFakeIms(options: FakeImsOptions = {}): FakeIms {
         },
         listPersonnel(req, ctx) {
           record("ListPersonnel", ctx);
+          fake.listPersonnelRequests.push(req);
           guard(fake.behaviour.listPersonnel, ctx);
-          // The server's typeahead answers nothing below two characters.
-          const q = (req.query ?? "").trim().toLowerCase();
-          if (q.length < 2) {
-            return create(ListPersonnelResponseSchema, { people: [] });
+          const view = {
+            viewerId: fake.user.personId,
+            admin: fake.user.admin,
+            eventScoped: req.eventId !== undefined,
+          };
+          // Precedence, highest first (ListPersonnelRequest's own doc
+          // comment): query, then person_ids, then all, then the directory.
+          if (req.query !== undefined) {
+            // The server's typeahead answers nothing below two characters.
+            const q = req.query.trim().toLowerCase();
+            if (q.length < 2) {
+              return create(ListPersonnelResponseSchema, { people: [] });
+            }
+            return create(ListPersonnelResponseSchema, {
+              people: fake.people
+                .filter(
+                  (p) =>
+                    (p.handle ?? "").toLowerCase().includes(q) ||
+                    (p.name ?? "").toLowerCase().includes(q),
+                )
+                .map((p) => shapePerson(p, view)),
+            });
           }
+          if (req.personIds.length > 0) {
+            return create(ListPersonnelResponseSchema, {
+              people: fake.people
+                .filter((p) => req.personIds.includes(p.personId))
+                .map((p) => shapePerson(p, view)),
+            });
+          }
+          if (req.all) {
+            // The event roster (event_id set, show_all false) opens to an
+            // inviter; the global listing and show_all stay admin-only.
+            const isEventRoster = view.eventScoped && !req.showAll;
+            if (
+              !fake.user.admin &&
+              !(isEventRoster && fake.user.inviteReporters)
+            ) {
+              throw new ConnectError("not allowed", Code.PermissionDenied);
+            }
+            return create(ListPersonnelResponseSchema, {
+              people: fake.people.map((p) => shapePerson(p, view)),
+            });
+          }
+          // None set: the login directory, identity and picture only.
           return create(ListPersonnelResponseSchema, {
-            people: fake.people.filter(
-              (p) =>
-                (p.handle ?? "").toLowerCase().includes(q) ||
-                (p.name ?? "").toLowerCase().includes(q),
+            people: fake.people.map((p) =>
+              create(PersonSchema, {
+                personId: p.personId,
+                handle: p.handle,
+                name: p.name,
+                hasPassword: p.hasPassword,
+                profilePictureUrl: p.profilePictureUrl,
+              }),
             ),
           });
+        },
+        setPersonParticipation(req, ctx) {
+          record("SetPersonParticipation", ctx);
+          fake.setParticipationRequests.push(req);
+          guard(fake.behaviour.setParticipation, ctx);
+          const admin = fake.user.admin;
+          if (!admin && !fake.user.inviteReporters) {
+            throw new ConnectError("not allowed", Code.PermissionDenied);
+          }
+          const target = fake.people.find((p) => p.personId === req.personId);
+          if (!target) {
+            throw new ConnectError("person not found", Code.NotFound);
+          }
+          // The ceiling (53b): an inviter sends reporter / volunteer / public
+          // / not_present, and never on a target already above it.
+          if (
+            !admin &&
+            (aboveCeiling(target.participationType) ||
+              aboveCeiling(req.participationType) ||
+              req.participationType === ParticipationType.EJECTED)
+          ) {
+            throw new ConnectError(
+              "You may not modify a writer or crew leader",
+              Code.PermissionDenied,
+            );
+          }
+          fake.people = fake.people.map((p) =>
+            p.personId === req.personId
+              ? create(PersonSchema, {
+                  ...p,
+                  participationType: req.participationType,
+                  wristband: req.wristband || undefined,
+                })
+              : p,
+          );
+          return create(SetPersonParticipationResponseSchema);
+        },
+        createPerson(req, ctx) {
+          record("CreatePerson", ctx);
+          fake.createPersonRequests.push(req);
+          guard(fake.behaviour.createPerson, ctx);
+          const admin = fake.user.admin;
+          if (!admin && !fake.user.inviteReporters) {
+            throw new ConnectError("not allowed", Code.PermissionDenied);
+          }
+          // An inviter's create lands as a reporter, whatever rung it asked for.
+          const participationType = admin
+            ? req.participationType
+            : ParticipationType.REPORTER;
+          const person = create(PersonSchema, {
+            personId: Math.max(100, ...fake.people.map((p) => p.personId)) + 1,
+            handle: req.handle || undefined,
+            name: req.name || undefined,
+            email: req.email || undefined,
+            phone: req.phone || undefined,
+            hasPassword: req.password !== "" || req.useDefaultPassword,
+            wristband: req.wristband || undefined,
+            participationType:
+              req.eventId !== undefined
+                ? participationType
+                : ParticipationType.UNSPECIFIED,
+            crews: [],
+          });
+          fake.people = [...fake.people, person];
+          return create(CreatePersonResponseSchema, { person });
+        },
+        listMyCrews(_req, ctx) {
+          record("ListMyCrews", ctx);
+          guard("ok", ctx);
+          return create(ListMyCrewsResponseSchema, {
+            crews: fake.crews.filter((c) =>
+              c.members.some(
+                (m) => m.person?.personId === fake.user.personId && m.isLeader,
+              ),
+            ),
+          });
+        },
+        setMyCrewMembership(req, ctx) {
+          record("SetMyCrewMembership", ctx);
+          fake.setMyCrewMembershipRequests.push(req);
+          guard(fake.behaviour.setMyCrewMembership, ctx);
+          // Leaders are admin-managed (3d.2); a leader adds / removes plain members.
+          if (!fake.user.admin && req.isLeader) {
+            throw new ConnectError(
+              "leaders are admin-managed",
+              Code.PermissionDenied,
+            );
+          }
+          const crew = fake.crews.find((c) => c.slug === req.crewSlug);
+          if (!crew) {
+            throw new ConnectError("crew not found", Code.NotFound);
+          }
+          const leads = crew.members.some(
+            (m) => m.person?.personId === fake.user.personId && m.isLeader,
+          );
+          if (!fake.user.admin && !leads) {
+            throw new ConnectError(
+              "not this crew's leader",
+              Code.PermissionDenied,
+            );
+          }
+          const person = fake.people.find((p) => p.personId === req.personId);
+          const others = crew.members.filter(
+            (m) => m.person?.personId !== req.personId,
+          );
+          const members = req.remove
+            ? others
+            : [
+                ...others,
+                create(CrewMemberSchema, {
+                  person: create(PersonRefSchema, {
+                    personId: req.personId,
+                    handle: person?.handle,
+                    name: person?.name,
+                  }),
+                  isLeader: req.isLeader,
+                }),
+              ];
+          fake.crews = fake.crews.map((c) =>
+            c.slug === req.crewSlug ? create(CrewSchema, { ...c, members }) : c,
+          );
+          // The roster's own crew chips follow My crews.
+          if (person) {
+            const rest = person.crews.filter(
+              (c) => c.crewSlug !== req.crewSlug,
+            );
+            const crews = req.remove
+              ? rest
+              : [
+                  ...rest,
+                  create(PersonCrewSchema, {
+                    crewName: crew.name ?? req.crewSlug,
+                    crewSlug: req.crewSlug,
+                    isLeader: req.isLeader,
+                  }),
+                ];
+            fake.people = fake.people.map((p) =>
+              p.personId === req.personId
+                ? create(PersonSchema, { ...p, crews })
+                : p,
+            );
+          }
+          return create(SetMyCrewMembershipResponseSchema);
         },
         createIncident(req, ctx) {
           record("CreateIncident", ctx);
@@ -1538,6 +1772,34 @@ export function createFakeIms(options: FakeImsOptions = {}): FakeIms {
       readAreas: fake.user.readAreas,
       attachFiles:
         fake.user.admin || fake.user.writeIncidents || fake.user.attachFiles,
+      inviteReporters: fake.user.admin || fake.user.inviteReporters,
+    });
+  }
+
+  /** The ceiling's top (53b): writer and crew leader are above an inviter. */
+  function aboveCeiling(rung: ParticipationType): boolean {
+    return (
+      rung === ParticipationType.WRITER ||
+      rung === ParticipationType.CREW_LEADER
+    );
+  }
+
+  /** The wire's field gating: email / phone for an admin viewer or the caller's own row, is_admin admin-only, the event columns only with event_id. */
+  function shapePerson(
+    person: Person,
+    view: { viewerId: number; admin: boolean; eventScoped: boolean },
+  ): Person {
+    const own = person.personId === view.viewerId;
+    return create(PersonSchema, {
+      ...person,
+      email: view.admin || own ? person.email : undefined,
+      phone: view.admin || own ? person.phone : undefined,
+      isAdmin: view.admin ? person.isAdmin : false,
+      wristband: view.eventScoped ? person.wristband : undefined,
+      participationType: view.eventScoped
+        ? person.participationType
+        : ParticipationType.UNSPECIFIED,
+      crews: view.eventScoped ? person.crews : [],
     });
   }
 
