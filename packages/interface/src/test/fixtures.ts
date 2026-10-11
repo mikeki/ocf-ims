@@ -16,6 +16,10 @@ import { IncidentTypeSchema } from "@ocf-ims/protocol-buffers/ocf/ims/resources/
 import type { JournalEntry } from "@ocf-ims/protocol-buffers/ocf/ims/resources/v1/journal_entry_pb";
 import { JournalEntrySchema } from "@ocf-ims/protocol-buffers/ocf/ims/resources/v1/journal_entry_pb";
 import {
+  type Metrics,
+  MetricsSchema,
+} from "@ocf-ims/protocol-buffers/ocf/ims/resources/v1/metrics_pb";
+import {
   type Notification,
   NotificationSchema,
   NotificationType,
@@ -33,6 +37,7 @@ import type { IncidentView } from "@ocf-ims/protocol-buffers/ocf/ims/service/rpc
 import { IncidentViewSchema } from "@ocf-ims/protocol-buffers/ocf/ims/service/rpc/v1/incident_pb";
 import type { ReportView } from "@ocf-ims/protocol-buffers/ocf/ims/service/rpc/v1/report_pb";
 import { ReportViewSchema } from "@ocf-ims/protocol-buffers/ocf/ims/service/rpc/v1/report_pb";
+import { buildEmptyMetrics, buildFairMetrics } from "@/test/metricsData";
 import { PEOPLE as ROSTER_PEOPLE } from "@/test/rosterData";
 
 // Fixture builders for the incidents feature's tests (plan 09n T12):
@@ -184,4 +189,22 @@ export function makeRoster(n: number): Person[] {
     );
   }
   return out;
+}
+
+// The dashboard's aggregate (plan 09ab, builder 1): makeMetrics() is the
+// 180-incident, 8-day event of metricsData.ts; overrides replace any field.
+// makeEmptyMetrics() is the aggregate of an event with no incidents.
+
+export function makeMetrics(
+  overrides: MessageInitShape<typeof MetricsSchema> = {},
+): Metrics {
+  // The fair is already built messages; overrides may be plain init shapes.
+  return create(MetricsSchema, {
+    ...buildFairMetrics(),
+    ...overrides,
+  } as MessageInitShape<typeof MetricsSchema>);
+}
+
+export function makeEmptyMetrics(eventId = 0, event = ""): Metrics {
+  return buildEmptyMetrics(eventId, event);
 }

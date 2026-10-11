@@ -110,6 +110,17 @@ The incident editor, the Ledger (plan 09y, 3c.2):
   the moment it settles (a blur, a selection, a toggle) — there is no Save
   button anywhere in the editor.
 
+## Charts
+
+The dashboard draws bars and columns as plain Views; there is no chart library.
+Three tokens in `tokens.ts` (`chart`) are the whole mark spec: a bar is
+`barThickness` (10) tall, centred in a `spacing.xl` row and rounded 4 px on its
+data end only; a day column is `columnWidth` (20) wide, centred in an equal slot
+of a plot `plotHeight` (160) tall, standing on a hairline `border` baseline.
+Every chart is an addition to a table: each mark prints its label and count, and
+each chart has its own table. A mark is one colour from the theme; switching a
+chart to its table, expanding "N more" and the changed dot are hard cuts.
+
 ## Motion budget
 
 The whole budget, from `tokens.motion`:

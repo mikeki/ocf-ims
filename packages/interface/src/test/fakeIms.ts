@@ -23,6 +23,8 @@ import {
 import type { IncidentType } from "@ocf-ims/protocol-buffers/ocf/ims/resources/v1/incident_type_pb";
 import { IncidentTypeSchema } from "@ocf-ims/protocol-buffers/ocf/ims/resources/v1/incident_type_pb";
 import { JournalEntrySchema } from "@ocf-ims/protocol-buffers/ocf/ims/resources/v1/journal_entry_pb";
+import type { Metrics } from "@ocf-ims/protocol-buffers/ocf/ims/resources/v1/metrics_pb";
+import { MetricsSchema } from "@ocf-ims/protocol-buffers/ocf/ims/resources/v1/metrics_pb";
 import type { Notification } from "@ocf-ims/protocol-buffers/ocf/ims/resources/v1/notification_pb";
 import type { Outcome } from "@ocf-ims/protocol-buffers/ocf/ims/resources/v1/outcome_pb";
 import { OutcomeSchema } from "@ocf-ims/protocol-buffers/ocf/ims/resources/v1/outcome_pb";
@@ -77,6 +79,10 @@ import {
   ProposeIncidentTypeResponseSchema,
 } from "@ocf-ims/protocol-buffers/ocf/ims/service/rpc/v1/incident_type_pb";
 import {
+  type GetMetricsRequest,
+  GetMetricsResponseSchema,
+} from "@ocf-ims/protocol-buffers/ocf/ims/service/rpc/v1/metrics_pb";
+import {
   ListNotificationsResponseSchema,
   MarkAllNotificationsReadResponseSchema,
   MarkNotificationReadResponseSchema,
@@ -115,7 +121,7 @@ import {
   WatchEventResponseSchema,
 } from "@ocf-ims/protocol-buffers/ocf/ims/service/rpc/v1/stream_pb";
 import { ImsService } from "@ocf-ims/protocol-buffers/ocf/ims/service/v1/service_pb";
-import { makeOutcome } from "@/test/fixtures";
+import { makeEmptyMetrics, makeOutcome } from "@/test/fixtures";
 
 // A programmable in-memory ImsService for createRouterTransport (plan 09l): the
 // session RPCs with the server's semantics — Login issues an access token and
@@ -215,6 +221,7 @@ export interface FakeIms {
     setParticipation: ListBehaviour;
     createPerson: ListBehaviour;
     setMyCrewMembership: ListBehaviour;
+    getMetrics: ListBehaviour;
   };
   /** The WatchEvent streams open right now (09v). */
   openStreams: WatchEventRequest[];
@@ -233,6 +240,10 @@ export interface FakeIms {
   people: Person[];
   /** The crews ListMyCrews filters by the caller's leadership and SetMyCrewMembership edits (09aa). */
   crews: Crew[];
+  /** Programmable GetMetrics data: a Metrics per event id; an event with none answers the empty aggregate. */
+  metrics: Record<number, Metrics | undefined>;
+  /** Every GetMetrics request received. */
+  getMetricsRequests: GetMetricsRequest[];
   /** Every ListPersonnel request received (09aa). */
   listPersonnelRequests: ListPersonnelRequest[];
   /** Every SetPersonParticipation request received, refused ones included (09aa). */
@@ -322,6 +333,7 @@ export function createFakeIms(options: FakeImsOptions = {}): FakeIms {
       setParticipation: "ok",
       createPerson: "ok",
       setMyCrewMembership: "ok",
+      getMetrics: "ok",
     },
     openStreams: [],
     streamRequests: [],
@@ -360,6 +372,8 @@ export function createFakeIms(options: FakeImsOptions = {}): FakeIms {
     incidentTypes: [],
     people: [],
     crews: [],
+    metrics: {},
+    getMetricsRequests: [],
     listPersonnelRequests: [],
     setParticipationRequests: [],
     createPersonRequests: [],
@@ -1389,6 +1403,25 @@ export function createFakeIms(options: FakeImsOptions = {}): FakeIms {
           });
           fake.incidents = fake.incidents.map((v) => (v === view ? next : v));
           return create(RequestReportResponseSchema);
+        },
+        getMetrics(req, ctx) {
+          record("GetMetrics", ctx);
+          fake.getMetricsRequests.push(req);
+          guard(fake.behaviour.getMetrics, ctx);
+          requireWriter();
+          const held = fake.metrics[req.eventId];
+          const base =
+            held ??
+            makeEmptyMetrics(
+              req.eventId,
+              fake.events.find((e) => e.id === req.eventId)?.name,
+            );
+          // The server stamps each answer with the moment it computed it.
+          const metrics = create(MetricsSchema, {
+            ...base,
+            generatedAt: timestampFromDate(new Date(clock())),
+          });
+          return create(GetMetricsResponseSchema, { metrics });
         },
         listNotifications(_req, ctx) {
           record("ListNotifications", ctx);

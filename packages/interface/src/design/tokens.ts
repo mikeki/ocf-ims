@@ -321,6 +321,18 @@ export const roster = {
   menuMinWidth: 160,
 } as const;
 
+/**
+ * The dashboard's chart marks (plan 09ab, builder 1). Bars and columns are
+ * plain Views, no chart library: a bar is `barThickness` tall, a column is
+ * `columnWidth` wide, and the day chart's plot is `plotHeight` tall. DESIGN.md
+ * § Charts.
+ */
+export const chart = {
+  barThickness: 10,
+  columnWidth: 20,
+  plotHeight: 160,
+} as const;
+
 /** The drawer's share of the content width (plan 09x criterion 7). */
 export const drawerShare = 0.66;
 
