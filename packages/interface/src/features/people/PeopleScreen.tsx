@@ -1,11 +1,13 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import { create } from "@bufbuild/protobuf";
+import { useQuery } from "@connectrpc/connect-query";
 import type { Person } from "@ocf-ims/protocol-buffers/ocf/ims/resources/v1/person_pb";
 import {
   ParticipationType,
   PersonSchema,
 } from "@ocf-ims/protocol-buffers/ocf/ims/resources/v1/person_pb";
+import { ImsService } from "@ocf-ims/protocol-buffers/ocf/ims/service/v1/service_pb";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   Platform,
@@ -23,38 +25,43 @@ import Animated, {
   withSpring,
 } from "react-native-reanimated";
 import { scheduleOnRN } from "react-native-worklets";
+import { toAppError } from "@/api/errors";
 import { PressFeedback } from "@/design/motion";
 import { Badge } from "@/design/primitives/Badge";
 import { Text } from "@/design/primitives/Text";
+import { TextButton } from "@/design/primitives/TextButton";
 import { useTheme } from "@/design/theme";
 import { pressRetentionOffset, touchTarget } from "@/design/tokens";
+import { SidePanel } from "@/features/dispatch/Drawer";
+import { HelpSheet } from "@/features/dispatch/HelpSheet";
+import { AddPerson } from "@/features/people/AddPerson";
+import { Avatar } from "@/features/people/Avatar";
+import { Hovercard, type Rect } from "@/features/people/Hovercard";
+import { MyCrews } from "@/features/people/MyCrews";
+import { peopleHelpRows } from "@/features/people/peopleHelp";
+import { matches } from "@/features/people/peopleQuery";
+import {
+  type RosterAccess,
+  rungLabel,
+  rungsFor,
+  useRosterAccess,
+} from "@/features/people/roles";
+import { usePeopleKeyboardMap } from "@/features/people/usePeopleKeyboardMap";
+import { usePeopleQuery } from "@/features/people/usePeopleQuery";
+import { type Roster, useRoster } from "@/features/people/useRoster";
 import { EmptyState } from "@/features/shell/EmptyState";
-import { Avatar } from "@/prototypes/people/Avatar";
-import { Hovercard, type Rect } from "@/prototypes/people/Hovercard";
-import { PeopleHelpSheet } from "@/prototypes/people/PeopleHelpSheet";
-import { matches } from "@/prototypes/people/peopleQuery";
-import { rungLabel } from "@/prototypes/people/roles";
-import type { RosterPaneProps } from "@/prototypes/people/types";
-import { usePeopleKeyboardMap } from "@/prototypes/people/usePeopleKeyboardMap";
-import { rungsFor } from "@/prototypes/people/useRoster";
+import { ErrorState } from "@/features/shell/ErrorState";
+import { LoadingState } from "@/features/shell/LoadingState";
 
-// The Ladder variant (docs/plans/09aa-roster-design.md § The prototype
-// round): standing as a place — five columns (writers · crew leaders ·
-// reporters · volunteers · public), each a vertically scrolling stack of
-// cards; the count in the header; a name-only person (`has_password` false)
-// sits in their rung's column, dimmed, never a separate block (unlike the
-// Table's "No login" section — there is no sixth column here). The search
-// filters every column (decision 4).
-//
-// The second cut (the maintainer's pick, plus two asks): a pointer drag
-// between columns, and a hovercard in place of the person drawer. The "Move
-// to…" menu on every card stays as the twin control the first cut's own
-// header note promised once a working drag existed — MoveMenu below is
-// unchanged. The drag is pointer-only (web first): `View`/`Pressable` type
-// `onPointerDown`/`onPointerMove`/`onPointerUp`/`onPointerCancel` (checked
-// against `ViewPropTypes.d.ts`'s own `PointerEventProps`) and Reanimated 4 is
-// installed; Gesture Handler is not, and this file must not add it — native
-// touch drag is that slice's job, not this one's.
+// The roster (docs/plans/09aa-roster-design.md § The pick): the Ladder, five
+// columns (FC/BUM, crew leaders, reporters, volunteers, public), each a
+// vertically scrolling stack of cards; the count in the header; a name-only
+// person sits in their rung's column, dimmed and marked "No login". The
+// search filters every column. A card moves between columns by a pointer
+// drag from its grip (the client's one drag, DESIGN.md "Motion budget") or by
+// its "Move to…" menu, the drag's twin for the keyboard and touch. A card's
+// details open in a hovercard. Add person and My crews open in the side
+// panel. Wide windows only; the route answers the narrow case.
 
 const COLUMN_TYPES: ParticipationType[] = [
   ParticipationType.WRITER,
@@ -128,8 +135,164 @@ interface HovercardState {
   anchor: Rect;
 }
 
-export function Ladder(props: RosterPaneProps) {
-  const { people, viewer, roster, search, query } = props;
+/** What the roster's keyboard map, search box and selection need of the URL query. */
+interface PeopleControls {
+  selectedId?: number;
+  onSelect(personId: number | undefined): void;
+  onSearchChange(text: string): void;
+  onAddPerson(): void;
+  searchRef: ReturnType<typeof usePeopleQuery>["searchRef"];
+}
+
+export interface PeopleScreenProps {
+  eventId: number;
+}
+
+type Panel = "addPerson" | "myCrews" | undefined;
+
+export function PeopleScreen(props: PeopleScreenProps) {
+  const { eventId } = props;
+  const access = useRosterAccess(eventId);
+  // "Show everyone" is the admin's word alone; the server refuses it otherwise.
+  const [showAll, setShowAll] = useState(false);
+  const list = useQuery(ImsService.method.listPersonnel, {
+    eventId,
+    all: true,
+    showAll: access.admin && showAll,
+  });
+  // 09y finding 1: setParams (inside usePeopleQuery's effects) must not run
+  // before this screen has mounted.
+  const [ready, setReady] = useState(false);
+  useEffect(() => setReady(true), []);
+
+  if (list.isLoading || !ready) {
+    return <LoadingState />;
+  }
+  if (list.error) {
+    const error = toAppError(list.error);
+    if (error.kind === "forbidden" || error.kind === "notFound") {
+      return <EmptyState title="Not found" />;
+    }
+    return (
+      <ErrorState
+        error={error}
+        onRetry={() => {
+          void list.refetch();
+        }}
+      />
+    );
+  }
+  return (
+    <PeopleBody
+      eventId={eventId}
+      access={access}
+      people={list.data?.people ?? []}
+      showAll={showAll}
+      onToggleShowAll={access.admin ? () => setShowAll((v) => !v) : undefined}
+    />
+  );
+}
+
+interface PeopleBodyProps {
+  eventId: number;
+  access: RosterAccess;
+  people: Person[];
+  showAll: boolean;
+  onToggleShowAll: (() => void) | undefined;
+}
+
+function PeopleBody(props: PeopleBodyProps) {
+  const { eventId, access, people, showAll, onToggleShowAll } = props;
+  const roster = useRoster(eventId);
+  const q = usePeopleQuery(people);
+  const myCrews = useQuery(ImsService.method.listMyCrews, { eventId });
+  const crews = myCrews.data?.crews ?? [];
+  const [panel, setPanel] = useState<Panel>(undefined);
+  const openPanel = (next: Panel) => {
+    q.close();
+    setPanel(next);
+  };
+  const controls: PeopleControls = {
+    selectedId: q.query.sel,
+    onSelect: q.select,
+    onSearchChange: (text) => q.setQuery({ q: text }),
+    onAddPerson: () => openPanel("addPerson"),
+    searchRef: q.searchRef,
+  };
+  return (
+    <View style={styles.fill}>
+      <Ladder
+        people={people}
+        access={access}
+        roster={roster}
+        search={q.query.q}
+        query={controls}
+        panelOpen={panel !== undefined}
+        onClosePanel={() => setPanel(undefined)}
+        showAll={showAll}
+        onToggleShowAll={onToggleShowAll}
+        onMyCrews={crews.length > 0 ? () => openPanel("myCrews") : undefined}
+      />
+      {panel === "addPerson" ? (
+        <SidePanel
+          title="Add person"
+          back={{ label: "People", onPress: () => setPanel(undefined) }}
+          closeLabel="Close add person"
+          testID="people-side-panel"
+        >
+          <AddPerson
+            eventId={eventId}
+            access={access}
+            roster={roster}
+            onClose={() => setPanel(undefined)}
+          />
+        </SidePanel>
+      ) : null}
+      {panel === "myCrews" ? (
+        <SidePanel
+          title="My crews"
+          back={{ label: "People", onPress: () => setPanel(undefined) }}
+          closeLabel="Close my crews"
+          testID="people-side-panel"
+        >
+          <MyCrews
+            eventId={eventId}
+            crews={crews}
+            people={people}
+            roster={roster}
+          />
+        </SidePanel>
+      ) : null}
+    </View>
+  );
+}
+
+interface LadderProps {
+  people: Person[];
+  access: RosterAccess;
+  roster: Roster;
+  search: string;
+  query: PeopleControls;
+  panelOpen: boolean;
+  onClosePanel: () => void;
+  showAll: boolean;
+  onToggleShowAll: (() => void) | undefined;
+  onMyCrews: (() => void) | undefined;
+}
+
+function Ladder(props: LadderProps) {
+  const {
+    people,
+    access,
+    roster,
+    search,
+    query,
+    panelOpen,
+    onClosePanel,
+    showAll,
+    onToggleShowAll,
+    onMyCrews,
+  } = props;
   const theme = useTheme();
   const reducedMotion = useReducedMotion();
   // `?` is local state, like the Table's own copy (§ Keyboard).
@@ -208,7 +371,7 @@ export function Ladder(props: RosterPaneProps) {
     [people, search],
   );
 
-  const settable = useMemo(() => rungsFor(viewer, probePerson()), [viewer]);
+  const settable = useMemo(() => rungsFor(access, probePerson()), [access]);
 
   const columns = useMemo(
     () =>
@@ -265,6 +428,13 @@ export function Ladder(props: RosterPaneProps) {
     hovercardRef.current = undefined;
     setHovercard(undefined);
   }, [clearHoverTimers]);
+
+  // A side panel over the roster takes the hovercard with it.
+  useEffect(() => {
+    if (panelOpen) {
+      closeHovercard();
+    }
+  }, [panelOpen, closeHovercard]);
 
   // Pinning keeps `sel` and the hovercard in lockstep, exactly as
   // `usePeopleQuery#open` keeps `sel`/`open` together for the Table and
@@ -444,7 +614,7 @@ export function Ladder(props: RosterPaneProps) {
 
   const startDrag = useCallback(
     (person: Person, clientX: number, clientY: number) => {
-      const rungs = rungsFor(viewer, person);
+      const rungs = rungsFor(access, person);
       if (rungs.length === 0) {
         return;
       }
@@ -471,7 +641,7 @@ export function Ladder(props: RosterPaneProps) {
         });
       });
     },
-    [viewer, closeHovercard, translateX, translateY],
+    [access, closeHovercard, translateX, translateY],
   );
 
   const onDragMove = useCallback(
@@ -580,6 +750,8 @@ export function Ladder(props: RosterPaneProps) {
     close: closeHovercard,
     onAddPerson: query.onAddPerson,
     searchRef: query.searchRef,
+    panel: panelOpen,
+    closePanel: onClosePanel,
   });
 
   return (
@@ -590,6 +762,9 @@ export function Ladder(props: RosterPaneProps) {
         query={query}
         search={search}
         onHelp={() => setHelp(true)}
+        onMyCrews={onMyCrews}
+        showAll={showAll}
+        onToggleShowAll={onToggleShowAll}
       />
       {filtered.length === 0 ? (
         <EmptyState
@@ -602,6 +777,7 @@ export function Ladder(props: RosterPaneProps) {
         />
       ) : (
         <View
+          testID="people-stage"
           ref={stageRef}
           onLayout={() =>
             stageRef.current?.measureInWindow((x, y, width, height) => {
@@ -636,7 +812,7 @@ export function Ladder(props: RosterPaneProps) {
                   !dragging.allowedRungs.includes(column.type)
                 }
                 people={column.people}
-                viewer={viewer}
+                access={access}
                 roster={roster}
                 selectedId={query.selectedId}
                 draggingPersonId={dragging?.personId}
@@ -655,6 +831,7 @@ export function Ladder(props: RosterPaneProps) {
           </ScrollView>
           {dragging ? (
             <View
+              testID="people-drag-overlay"
               style={styles.dragOverlay}
               onPointerMove={onDragMove}
               onPointerUp={onDragEnd}
@@ -663,6 +840,7 @@ export function Ladder(props: RosterPaneProps) {
           ) : null}
           {dragging && draggingPerson && dragStartRef.current ? (
             <Animated.View
+              testID="people-drag-ghost"
               style={[
                 styles.card,
                 styles.ghost,
@@ -688,7 +866,7 @@ export function Ladder(props: RosterPaneProps) {
           {hovercard && hovercardPerson ? (
             <Hovercard
               person={hovercardPerson}
-              viewer={viewer}
+              access={access}
               roster={roster}
               anchor={{
                 x: hovercard.anchor.x - stageRectRef.current.x,
@@ -709,7 +887,11 @@ export function Ladder(props: RosterPaneProps) {
           ) : null}
         </View>
       )}
-      <PeopleHelpSheet open={help} onClose={() => setHelp(false)} />
+      <HelpSheet
+        open={help}
+        onClose={() => setHelp(false)}
+        rows={peopleHelpRows(true)}
+      />
     </View>
   );
 }
@@ -717,9 +899,12 @@ export function Ladder(props: RosterPaneProps) {
 function Toolbar(props: {
   total: number;
   shown: number;
-  query: RosterPaneProps["query"];
+  query: PeopleControls;
   search: string;
   onHelp: () => void;
+  onMyCrews: (() => void) | undefined;
+  showAll: boolean;
+  onToggleShowAll: (() => void) | undefined;
 }) {
   const theme = useTheme();
   return (
@@ -762,6 +947,25 @@ function Toolbar(props: {
       <Text variant="caption" color="textMuted">
         {`${props.shown} of ${props.total}`}
       </Text>
+      {props.onToggleShowAll ? (
+        <TextButton
+          label={props.showAll ? "Show the event" : "Show everyone"}
+          onPress={props.onToggleShowAll}
+          testID="people-show-all"
+        />
+      ) : null}
+      {props.onMyCrews ? (
+        <TextButton
+          label="My crews"
+          onPress={props.onMyCrews}
+          testID="people-my-crews"
+        />
+      ) : null}
+      <TextButton
+        label="Add person  n"
+        onPress={props.query.onAddPerson}
+        testID="people-add"
+      />
       <Pressable
         accessibilityRole="button"
         onPress={props.onHelp}
@@ -787,8 +991,8 @@ interface ColumnProps {
   // Outside the viewer's ceiling for the person being dragged.
   dimmed: boolean;
   people: Person[];
-  viewer: RosterPaneProps["viewer"];
-  roster: RosterPaneProps["roster"];
+  access: RosterAccess;
+  roster: Roster;
   selectedId: number | undefined;
   draggingPersonId: number | undefined;
   onOpen: (personId: number) => void;
@@ -809,7 +1013,7 @@ function Column(props: ColumnProps) {
     highlighted,
     dimmed,
     people,
-    viewer,
+    access,
     roster,
     selectedId,
     draggingPersonId,
@@ -827,6 +1031,7 @@ function Column(props: ColumnProps) {
   return (
     <View
       ref={ref}
+      testID={`people-column-${type}`}
       onLayout={() =>
         ref.current?.measureInWindow((x, y, width, height) =>
           onRect(type, { x, y, width, height }),
@@ -878,7 +1083,7 @@ function Column(props: ColumnProps) {
             >
               <Card
                 person={person}
-                viewer={viewer}
+                access={access}
                 roster={roster}
                 selected={person.personId === selectedId}
                 beingDragged={person.personId === draggingPersonId}
@@ -901,8 +1106,8 @@ function Column(props: ColumnProps) {
 
 interface CardProps {
   person: Person;
-  viewer: RosterPaneProps["viewer"];
-  roster: RosterPaneProps["roster"];
+  access: RosterAccess;
+  roster: Roster;
   selected: boolean;
   beingDragged: boolean;
   onPress: () => void;
@@ -916,7 +1121,7 @@ interface CardProps {
 function Card(props: CardProps) {
   const {
     person,
-    viewer,
+    access,
     roster,
     selected,
     beingDragged,
@@ -928,7 +1133,7 @@ function Card(props: CardProps) {
     cardRef,
   } = props;
   const theme = useTheme();
-  const rungs = rungsFor(viewer, person);
+  const rungs = rungsFor(access, person);
   const label = person.name || person.handle || `Person #${person.personId}`;
   const dimmed = !person.hasPassword || beingDragged;
 
@@ -964,6 +1169,7 @@ function Card(props: CardProps) {
           <View style={styles.cardBody}>
             {rungs.length > 0 ? (
               <Grip
+                testID={`people-ladder-card-${person.personId}-grip`}
                 onPointerDown={(clientX, clientY) =>
                   onDragStart(person, clientX, clientY)
                 }
@@ -1002,6 +1208,9 @@ function CardContent(props: { person: Person }) {
               {label}
             </Text>
             {person.isAdmin ? <Badge label="Admin" tone="restricted" /> : null}
+            {!person.hasPassword ? (
+              <Badge label="No login" tone="neutral" />
+            ) : null}
           </View>
           {person.handle && person.name ? (
             <Text variant="caption" color="textMuted" numberOfLines={1}>
@@ -1033,6 +1242,7 @@ function CardContent(props: { person: Person }) {
  * the brief's own fallback it is skipped rather than cast around.
  */
 function Grip(props: {
+  testID: string;
   onPointerDown: (clientX: number, clientY: number) => void;
 }) {
   return (
@@ -1048,6 +1258,7 @@ function Grip(props: {
       }}
       pressRetentionOffset={pressRetentionOffset}
       style={styles.grip}
+      testID={props.testID}
     >
       {({ pressed }) => (
         <PressFeedback pressed={pressed} style={styles.gripFill}>
@@ -1072,8 +1283,8 @@ interface MoveMenuProps {
 /**
  * "Move to…", the Ladder's twin to the drag (§ The drag: "the menu stays as
  * the twin"): a hard-cut list of the rungs `rungsFor` offers, same mechanics
- * as `RoleMenu` (open/close with no animation, `stopPropagation` so the
- * card's own press — which opens the hovercard — never also fires) but its
+ * as `RoleMenu` (open/close with no animation; a nested Pressable owns
+ * its press, so the card's — which opens the hovercard — never also fires) but its
  * own trigger, since the brief's control reads "Move to…" rather than the
  * current rung.
  */
@@ -1097,10 +1308,7 @@ function MoveMenu(props: MoveMenuProps) {
         accessibilityRole="button"
         accessibilityLabel={`Move ${person.name || person.handle || `person ${person.personId}`}`}
         accessibilityState={{ expanded: open, busy: pending }}
-        onPress={(e) => {
-          e.stopPropagation();
-          setOpenState(!open);
-        }}
+        onPress={() => setOpenState(!open)}
         pressRetentionOffset={pressRetentionOffset}
         testID={`people-ladder-card-${person.personId}-move`}
       >
@@ -1130,8 +1338,7 @@ function MoveMenu(props: MoveMenuProps) {
             <Pressable
               key={rung}
               accessibilityRole="menuitem"
-              onPress={(e) => {
-                e.stopPropagation();
+              onPress={() => {
                 setOpenState(false);
                 onSelect(rung);
               }}

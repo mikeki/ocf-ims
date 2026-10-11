@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 
-import type { RefObject } from "react";
+import type { ReactNode, RefObject } from "react";
 import { Pressable, StyleSheet, View } from "react-native";
 import { TextButton } from "@/design/primitives/TextButton";
 import { useTheme } from "@/design/theme";
@@ -52,10 +52,69 @@ export function Drawer(props: DrawerProps) {
   const { prev, next } = neighboursOf(d.visible, number);
 
   return (
+    <SidePanel
+      title={`#${number}`}
+      back={{ label: "Incidents", onPress: d.close }}
+      closeLabel="Close the incident"
+      testID="dispatch-drawer"
+      right={
+        <View style={[styles.nav, { gap: theme.spacing.sm }]}>
+          {prev !== undefined ? (
+            <TextButton
+              label="‹ Prev"
+              onPress={() => d.open(prev)}
+              testID="dispatch-drawer-prev"
+            />
+          ) : null}
+          {next !== undefined ? (
+            <TextButton
+              label="Next ›"
+              onPress={() => d.open(next)}
+              testID="dispatch-drawer-next"
+            />
+          ) : null}
+          <TextButton
+            label="Full page"
+            onPress={onFull}
+            testID="dispatch-drawer-full"
+          />
+        </View>
+      }
+    >
+      <IncidentScreen
+        chrome="embedded"
+        handle={handle}
+        eventId={eventId}
+        number={number}
+        onBack={d.close}
+        onOpenIncident={d.open}
+        onOpenReport={onOpenReport}
+        onFileReport={() => onFileReport(number)}
+        onOpenAttachment={(entryId) => onOpenAttachment(number, entryId)}
+      />
+    </SidePanel>
+  );
+}
+
+export interface SidePanelProps {
+  title: string;
+  back: { label: string; onPress: () => void };
+  /** The scrim's accessible name. */
+  closeLabel: string;
+  testID: string;
+  right?: ReactNode;
+  children: ReactNode;
+}
+
+/** The panel over the right two thirds with its scrim and header: any body (the roster's Add person and My crews use it too). */
+export function SidePanel(props: SidePanelProps) {
+  const { title, back, closeLabel, testID, right, children } = props;
+  const theme = useTheme();
+  return (
     <View style={StyleSheet.absoluteFill}>
       <Pressable
-        accessibilityLabel="Close the incident"
-        onPress={d.close}
+        accessibilityLabel={closeLabel}
+        onPress={back.onPress}
         style={[styles.scrim, { backgroundColor: theme.colors.overlay }]}
       />
       <View
@@ -68,48 +127,10 @@ export function Drawer(props: DrawerProps) {
             borderLeftColor: theme.colors.borderStrong,
           },
         ]}
-        testID="dispatch-drawer"
+        testID={testID}
       >
-        <ScreenHeader
-          title={`#${number}`}
-          back={{ label: "Incidents", onPress: d.close }}
-          right={
-            <View style={[styles.nav, { gap: theme.spacing.sm }]}>
-              {prev !== undefined ? (
-                <TextButton
-                  label="‹ Prev"
-                  onPress={() => d.open(prev)}
-                  testID="dispatch-drawer-prev"
-                />
-              ) : null}
-              {next !== undefined ? (
-                <TextButton
-                  label="Next ›"
-                  onPress={() => d.open(next)}
-                  testID="dispatch-drawer-next"
-                />
-              ) : null}
-              <TextButton
-                label="Full page"
-                onPress={onFull}
-                testID="dispatch-drawer-full"
-              />
-            </View>
-          }
-        />
-        <View style={styles.fill}>
-          <IncidentScreen
-            chrome="embedded"
-            handle={handle}
-            eventId={eventId}
-            number={number}
-            onBack={d.close}
-            onOpenIncident={d.open}
-            onOpenReport={onOpenReport}
-            onFileReport={() => onFileReport(number)}
-            onOpenAttachment={(entryId) => onOpenAttachment(number, entryId)}
-          />
-        </View>
+        <ScreenHeader title={title} back={back} right={right} />
+        <View style={styles.fill}>{children}</View>
       </View>
     </View>
   );

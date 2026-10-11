@@ -8,7 +8,7 @@ import {
 } from "@ocf-ims/protocol-buffers/ocf/ims/resources/v1/person_pb";
 import { useEffect, useMemo, useState } from "react";
 import { Pressable, ScrollView, StyleSheet, Switch, View } from "react-native";
-import { type AppError, toAppError } from "@/api/errors";
+import type { AppError } from "@/api/errors";
 import { PressFeedback } from "@/design/motion";
 import { Badge } from "@/design/primitives/Badge";
 import { Button } from "@/design/primitives/Button";
@@ -19,15 +19,13 @@ import { useTheme } from "@/design/theme";
 import { pressRetentionOffset, touchTarget } from "@/design/tokens";
 import { PasswordField } from "@/features/auth/PasswordField";
 import { useMentionSearch } from "@/features/compose/hooks";
-import { Avatar } from "@/prototypes/people/Avatar";
-import { identityFor } from "@/prototypes/people/data";
-import { rungLabel } from "@/prototypes/people/roles";
-import type { Viewer } from "@/prototypes/people/types";
+import { Avatar } from "@/features/people/Avatar";
 import {
-  type CreatePersonForm,
-  type Roster,
+  type RosterAccess,
+  rungLabel,
   rungsFor,
-} from "@/prototypes/people/useRoster";
+} from "@/features/people/roles";
+import type { CreatePersonForm, Roster } from "@/features/people/useRoster";
 
 // Add person (docs/plans/09aa-roster-design.md § What is fixed, § What to
 // build 3): search-first over `ListPersonnel(query)` — reusing
@@ -43,7 +41,7 @@ import {
 
 export interface AddPersonProps {
   eventId: number;
-  viewer: Viewer;
+  access: RosterAccess;
   roster: Roster;
   onClose: () => void;
 }
@@ -54,7 +52,7 @@ type Stage =
   | { kind: "created"; person: Person };
 
 export function AddPerson(props: AddPersonProps) {
-  const { eventId, viewer, roster, onClose } = props;
+  const { eventId, access, roster, onClose } = props;
   const theme = useTheme();
   const [query, setQuery] = useState("");
   const [stage, setStage] = useState<Stage>({ kind: "search" });
@@ -63,6 +61,24 @@ export function AddPerson(props: AddPersonProps) {
   );
   const trimmed = query.trim();
   const hits = useMentionSearch(eventId, trimmed);
+  // An admin may enrol at a rung other than Reporter; an inviter never sees
+  // the choice (the ceiling stops at Reporter and below).
+  const [enrolRung, setEnrolRung] = useState(ParticipationType.REPORTER);
+  const enrolOptions = useMemo(
+    () =>
+      access.admin
+        ? rungsFor(
+            access,
+            create(PersonSchema, {
+              personId: -1,
+              hasPassword: true,
+              participationType: ParticipationType.UNSPECIFIED,
+              crews: [],
+            }),
+          )
+        : [],
+    [access],
+  );
 
   if (stage.kind === "created") {
     return (
@@ -80,9 +96,10 @@ export function AddPerson(props: AddPersonProps) {
   if (stage.kind === "create") {
     return (
       <CreateForm
-        viewer={viewer}
+        access={access}
         seed={stage.seed}
         onCancel={() => setStage({ kind: "search" })}
+        error={roster.createError}
         onCreate={async (form) => {
           const created = await roster.create(form);
           if (created) {
@@ -111,6 +128,26 @@ export function AddPerson(props: AddPersonProps) {
         autoFocus
         testID="add-person-search"
       />
+      {enrolOptions.length > 0 ? (
+        <View style={{ gap: theme.spacing.sm }}>
+          <Text variant="label" color="textMuted">
+            Enrol as
+          </Text>
+          <View
+            style={[styles.row, { flexWrap: "wrap", gap: theme.spacing.sm }]}
+          >
+            {enrolOptions.map((option) => (
+              <Chip
+                key={option}
+                label={rungLabel(option)}
+                selected={option === enrolRung}
+                onPress={() => setEnrolRung(option)}
+                testID={`add-person-enrol-rung-${option}`}
+              />
+            ))}
+          </View>
+        </View>
+      ) : null}
       {trimmed.length < 2 ? (
         <Text variant="caption" color="textMuted">
           Type at least two letters to search the roster.
@@ -134,6 +171,11 @@ export function AddPerson(props: AddPersonProps) {
               key={person.personId}
               person={person}
               roster={roster}
+              rung={
+                access.admin && rungsFor(access, person).includes(enrolRung)
+                  ? enrolRung
+                  : ParticipationType.REPORTER
+              }
               enrolled={enrolledIds.has(person.personId)}
               onEnrolled={() =>
                 setEnrolledIds((prev) => {
@@ -144,6 +186,11 @@ export function AddPerson(props: AddPersonProps) {
               }
             />
           ))}
+          <TextButton
+            label="Create a new person"
+            onPress={() => setStage({ kind: "create", seed: trimmed })}
+            testID="add-person-create"
+          />
         </View>
       )}
     </ScrollView>
@@ -153,10 +200,11 @@ export function AddPerson(props: AddPersonProps) {
 function Hit(props: {
   person: Person;
   roster: Roster;
+  rung: ParticipationType;
   enrolled: boolean;
   onEnrolled: () => void;
 }) {
-  const { person, roster, enrolled, onEnrolled } = props;
+  const { person, roster, rung, enrolled, onEnrolled } = props;
   const theme = useTheme();
   const label = person.name || person.handle || `Person #${person.personId}`;
   const pending = roster.pendingFor(person.personId);
@@ -187,7 +235,7 @@ function Hit(props: {
       </View>
       {enrolled ? (
         <Text variant="label" color="success">
-          Enrolled as Reporter
+          {`Enrolled as ${rungLabel(rung)}`}
         </Text>
       ) : (
         <TextButton
@@ -197,7 +245,7 @@ function Hit(props: {
               return;
             }
             void roster
-              .enrol(person.personId)
+              .enrol(person.personId, rung)
               .then(onEnrolled)
               .catch(() => undefined);
           }}
@@ -214,18 +262,49 @@ function Hit(props: {
 }
 
 interface CreateFormProps {
-  viewer: Viewer;
+  access: RosterAccess;
   seed: string;
   onCancel: () => void;
+  /** `roster.createError`: the last failed create, shown at its field. */
+  error: AppError | undefined;
   onCreate: (form: CreatePersonForm) => Promise<void>;
 }
 
 type PasswordMode = "default" | "explicit";
 
+const FIELD_OF: Record<string, string> = {
+  handle: "fairName",
+  name: "legalName",
+  email: "email",
+  phone: "phone",
+  password: "password",
+};
+
+function serverFieldErrors(error: AppError | undefined): {
+  fields: Record<string, string>;
+  general: string | undefined;
+} {
+  const fields: Record<string, string> = {};
+  if (!error) {
+    return { fields, general: undefined };
+  }
+  for (const v of error.violations) {
+    const key = FIELD_OF[v.field.split(/[.[]/).pop() ?? ""];
+    if (key && !fields[key]) {
+      fields[key] = v.message;
+    }
+  }
+  if (error.kind === "conflict") {
+    fields.fairName = error.message;
+  }
+  const general = Object.keys(fields).length > 0 ? undefined : error.message;
+  return { fields, general };
+}
+
 function CreateForm(props: CreateFormProps) {
-  const { viewer, seed, onCancel, onCreate } = props;
+  const { access, seed, error, onCancel, onCreate } = props;
   const theme = useTheme();
-  const admin = identityFor(viewer).admin;
+  const admin = access.admin;
 
   const [fairName, setFairName] = useState(seed);
   const [legalName, setLegalName] = useState("");
@@ -237,7 +316,6 @@ function CreateForm(props: CreateFormProps) {
   const [showPassword, setShowPassword] = useState(false);
   const [rung, setRung] = useState<ParticipationType>();
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
-  const [submitError, setSubmitError] = useState<AppError>();
   const [submitting, setSubmitting] = useState(false);
 
   // The exact ceiling `SetPersonParticipation` would enforce on this row
@@ -248,7 +326,7 @@ function CreateForm(props: CreateFormProps) {
     () =>
       admin
         ? rungsFor(
-            viewer,
+            access,
             create(PersonSchema, {
               personId: -1,
               hasPassword: signIn,
@@ -258,7 +336,7 @@ function CreateForm(props: CreateFormProps) {
             }),
           )
         : [],
-    [admin, viewer, signIn],
+    [admin, access, signIn],
   );
 
   useEffect(() => {
@@ -271,6 +349,10 @@ function CreateForm(props: CreateFormProps) {
         : rungOptions[0];
     });
   }, [rungOptions]);
+
+  // The server's refusal lands at the field it names (a protovalidate
+  // violation, or a taken handle); anything else is the form's one line.
+  const serverFields = serverFieldErrors(error);
 
   const submit = async () => {
     const errors: Record<string, string> = {};
@@ -289,7 +371,6 @@ function CreateForm(props: CreateFormProps) {
     if (Object.keys(errors).length > 0) {
       return;
     }
-    setSubmitError(undefined);
     setSubmitting(true);
     try {
       await onCreate({
@@ -301,8 +382,6 @@ function CreateForm(props: CreateFormProps) {
         useDefaultPassword: signIn && passwordMode === "default",
         participationType: admin ? rung : undefined,
       });
-    } catch (e) {
-      setSubmitError(toAppError(e));
     } finally {
       setSubmitting(false);
     }
@@ -320,13 +399,14 @@ function CreateForm(props: CreateFormProps) {
         label="Fair name"
         value={fairName}
         onChangeText={setFairName}
-        error={fieldErrors.fairName}
+        error={fieldErrors.fairName ?? serverFields.fields.fairName}
         testID="add-person-fair-name"
       />
       <Field
         label="Legal name"
         value={legalName}
         onChangeText={setLegalName}
+        error={serverFields.fields.legalName}
         testID="add-person-legal-name"
       />
       <Field
@@ -336,7 +416,7 @@ function CreateForm(props: CreateFormProps) {
         keyboardType="email-address"
         autoCapitalize="none"
         autoCorrect={false}
-        error={fieldErrors.email}
+        error={fieldErrors.email ?? serverFields.fields.email}
         testID="add-person-email"
       />
       <Field
@@ -344,6 +424,7 @@ function CreateForm(props: CreateFormProps) {
         value={phone}
         onChangeText={setPhone}
         keyboardType="phone-pad"
+        error={serverFields.fields.phone}
         testID="add-person-phone"
       />
 
@@ -385,7 +466,7 @@ function CreateForm(props: CreateFormProps) {
                 onChangeText={setPassword}
                 shown={showPassword}
                 onToggleShown={() => setShowPassword((s) => !s)}
-                error={fieldErrors.password}
+                error={fieldErrors.password ?? serverFields.fields.password}
                 testID="add-person-password"
               />
             ) : null}
@@ -418,9 +499,9 @@ function CreateForm(props: CreateFormProps) {
         </Text>
       )}
 
-      {submitError ? (
+      {serverFields.general ? (
         <Text variant="caption" color="danger" testID="add-person-error">
-          {submitError.message}
+          {serverFields.general}
         </Text>
       ) : null}
 

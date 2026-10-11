@@ -187,8 +187,6 @@ describe("useRoster", () => {
     const runtime = await runtimeOver(fake);
     const { result } = await setup(runtime);
     await waitFor(() => expect(result.current.list.data).toBeDefined());
-    const queryClient = createTestQueryClient();
-    expect(queryClient).toBeDefined();
     await act(async () => {
       await result.current.roster.addToCrew("sanctuary", 7);
     });

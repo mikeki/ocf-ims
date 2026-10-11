@@ -124,10 +124,14 @@ The whole budget, from `tokens.motion`:
 - **Screen transitions are the platform's**, never rebuilt in JS — but under
   reduced motion they become a cross-fade (`useScreenAnimation()`, passed to every
   `<Stack>` as `animation`). iOS does that on its own; Android and web do not.
-- **No springs, no haptics** in v0: nothing here is dragged and nothing snaps.
+- **One drag.** The roster's Ladder moves a card between columns from its grip:
+  the ghost follows the pointer by transform only, the drop is a hard cut, and a
+  drop nowhere springs the ghost home (`{ duration: 400, dampingRatio: 0.8 }`, a
+  hard cut under reduced motion). No other drag, no haptics. "Move to…" is the
+  drag's twin for the keyboard and touch.
 - **Reduced motion drops the scale** and keeps opacity, and ships with the
-  animation rather than after it. It reaches motion in exactly two places: the
-  press scale and the screen transition.
+  animation rather than after it. It reaches motion in exactly three places: the
+  press scale, the screen transition and the drag's snap-back.
 
 ## Accessibility floor
 

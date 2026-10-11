@@ -5,9 +5,9 @@ import { useRef } from "react";
 import { StyleSheet, View } from "react-native";
 import { useTheme } from "@/design/theme";
 import { touchTarget } from "@/design/tokens";
-import { ProfileCard } from "@/prototypes/people/ProfileCard";
-import type { Viewer } from "@/prototypes/people/types";
-import type { Roster } from "@/prototypes/people/useRoster";
+import { ProfileCard } from "@/features/people/ProfileCard";
+import type { RosterAccess } from "@/features/people/roles";
+import type { Roster } from "@/features/people/useRoster";
 
 // The hovercard (the 3c.4 round's second cut, replacing the person drawer
 // for the Ladder): `ProfileCard`'s own content in a popover anchored to the
@@ -26,7 +26,7 @@ export interface Rect {
 
 export interface HovercardProps {
   person: Person;
-  viewer: Viewer;
+  access: RosterAccess;
   roster: Roster;
   /** The anchor card's rect, already stage-local. */
   anchor: Rect;
@@ -49,7 +49,7 @@ const MIN_VISIBLE_HEIGHT = touchTarget * 4;
 export function Hovercard(props: HovercardProps) {
   const {
     person,
-    viewer,
+    access,
     roster,
     anchor,
     stageSize,
@@ -113,7 +113,7 @@ export function Hovercard(props: HovercardProps) {
       ]}
       testID={`people-hovercard-${person.personId}`}
     >
-      <ProfileCard person={person} viewer={viewer} roster={roster} />
+      <ProfileCard person={person} access={access} roster={roster} />
     </View>
   );
 }

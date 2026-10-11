@@ -62,4 +62,38 @@ describe("Shell", () => {
     await fireEvent.press(await screen.findByText("New report"));
     expect(pushed).toContain("/events/1/reports/new");
   });
+
+  it("shows People after Reports for an inviter and navigates to the roster", async () => {
+    await renderShell(
+      createFakeIms({ user: { inviteReporters: true } }),
+      "/events/1/incidents",
+    );
+    await screen.findByTestId("shell-nav-people");
+    await fireEvent.press(screen.getByTestId("shell-nav-people"));
+    expect(pushed).toContain("/events/1/people");
+  });
+
+  it("shows People for an admin, active on the roster route", async () => {
+    await renderShell(
+      createFakeIms({ user: { admin: true } }),
+      "/events/1/people",
+    );
+    await screen.findByTestId("shell-nav-people");
+    expect(screen.getByTestId("shell-nav-people").props.accessibilityRole).toBe(
+      "text",
+    );
+    // Incidents is a link again, not the active marker.
+    await fireEvent.press(screen.getByTestId("shell-nav-incidents"));
+    expect(pushed).toContain("/events/1/incidents");
+  });
+
+  it("has no People item for a plain writer", async () => {
+    await renderShell(
+      createFakeIms({ user: { writeIncidents: true, writeReports: true } }),
+      "/events/1/incidents",
+    );
+    // GetAuthStatus has answered once New incident is there.
+    await screen.findByText("New incident");
+    expect(screen.queryByTestId("shell-nav-people")).toBeNull();
+  });
 });
