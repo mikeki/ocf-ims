@@ -34,7 +34,7 @@ describe("JournalEntryRow attachments", () => {
     await waitFor(() =>
       expect(image.props.source).toEqual([
         {
-          uri: blobs.attachmentUrl("Fair 2026", 214, 7),
+          uri: blobs.attachmentUrl("Fair 2026", on, 7),
           headers: { Authorization: "Bearer fake" },
         },
       ]),
@@ -80,7 +80,11 @@ describe("JournalEntryRow attachments", () => {
     await waitFor(() =>
       expect(image.props.source).toEqual([
         {
-          uri: blobs.reportAttachmentUrl("Fair 2026", 3, 11),
+          uri: blobs.attachmentUrl(
+            "Fair 2026",
+            { kind: "report", number: 3 },
+            11,
+          ),
           headers: { Authorization: "Bearer fake" },
         },
       ]),

@@ -18,12 +18,16 @@ export interface AttachmentSource {
   headers?: Record<string, string>;
 }
 
+/** The event and the owner (incident or report) whose route serves an entry's file. */
+export interface AttachmentOn extends AttachmentOwner {
+  eventName: string;
+}
+
 export function useAttachmentSource(
-  eventName: string,
-  on: AttachmentOwner,
+  on: AttachmentOn,
   entryId: number,
 ): AttachmentSource | undefined {
-  const { kind, number } = on;
+  const { eventName, kind, number } = on;
   const blobs = useBlobs();
   const [source, setSource] = useState<AttachmentSource | undefined>(undefined);
 
@@ -49,10 +53,7 @@ export function useAttachmentSource(
       const headers = await blobs.authHeaders();
       if (!cancelled) {
         setSource({
-          uri:
-            kind === "report"
-              ? blobs.reportAttachmentUrl(eventName, number, entryId)
-              : blobs.attachmentUrl(eventName, number, entryId),
+          uri: blobs.attachmentUrl(eventName, { kind, number }, entryId),
           headers,
         });
       }

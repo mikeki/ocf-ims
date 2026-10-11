@@ -485,3 +485,66 @@ func TestCrewLeaderDerivedAccess(t *testing.T) {
 	require.NoError(t, resp.Body.Close())
 	assert.Equal(t, []int32{crewReport}, reportNumbers(daveReports), "a member sees only their own report")
 }
+
+// TestCrewLeaderReadsCrewReportAttachment pins the report attachment download to
+// the same read gate as GetReport (09z criterion 0, the client's first use of the
+// route): a derived crew leader downloads a file on a crew member's report, and
+// is refused one on a report outside the crew; the member downloads his own.
+func TestCrewLeaderReadsCrewReportAttachment(t *testing.T) {
+	t.Parallel()
+	ctx := t.Context()
+	admin := ApiHelper{t: t, serverURL: shared.serverURL, jwt: jwtForAdmin(ctx, t)}
+	erin := ApiHelper{t: t, serverURL: shared.serverURL, jwt: jwtForErin(t, ctx)}   // crew LEADER, no participation row
+	dave := ApiHelper{t: t, serverURL: shared.serverURL, jwt: jwtForDave(t, ctx)}   // crew MEMBER + reporter
+	alice := ApiHelper{t: t, serverURL: shared.serverURL, jwt: jwtForAlice(t, ctx)} // reporter OUTSIDE the crew
+
+	eventName := makeEvent(ctx, t, admin)
+
+	slug, resp := admin.editCrew(ctx, eventName, imsjson.Crew{Name: new("Gate")})
+	require.Equal(t, http.StatusNoContent, resp.StatusCode)
+	require.NoError(t, resp.Body.Close())
+	_, resp = admin.editCrew(ctx, eventName, imsjson.Crew{Slug: slug, Member: &imsjson.CrewMemberEdit{PersonID: davePersonID}})
+	require.Equal(t, http.StatusNoContent, resp.StatusCode)
+	require.NoError(t, resp.Body.Close())
+	_, resp = admin.editCrew(ctx, eventName, imsjson.Crew{Slug: slug, Member: &imsjson.CrewMemberEdit{PersonID: erinPersonID, IsLeader: true}})
+	require.Equal(t, http.StatusNoContent, resp.StatusCode)
+	require.NoError(t, resp.Body.Close())
+	resp = admin.setParticipation(ctx, davePersonID, eventName, personapi.SetParticipationRequest{ParticipationType: "reporter"})
+	require.Equal(t, http.StatusNoContent, resp.StatusCode)
+	require.NoError(t, resp.Body.Close())
+	resp = admin.setParticipation(ctx, alicePersonID, eventName, personapi.SetParticipationRequest{ParticipationType: "reporter"})
+	require.Equal(t, http.StatusNoContent, resp.StatusCode)
+	require.NoError(t, resp.Body.Close())
+
+	// Each reporter files a bare report (no journal entry of their own) and puts a
+	// file on it: the upload's ownership floor is the creator, not journal authorship.
+	crewReport := dave.newReportSuccess(ctx, imsjson.Report{Event: eventName})
+	fileBytes := []byte("a photo, allegedly")
+	crewFile, resp := dave.attachFileToReport(ctx, eventName, crewReport, fileBytes)
+	require.NoError(t, resp.Body.Close())
+	require.Equal(t, http.StatusNoContent, resp.StatusCode, "the creator of a bare report may attach to it")
+	otherReport := alice.newReportSuccess(ctx, imsjson.Report{Event: eventName})
+	otherFile, resp := alice.attachFileToReport(ctx, eventName, otherReport, []byte("not for the crew"))
+	require.NoError(t, resp.Body.Close())
+	require.Equal(t, http.StatusNoContent, resp.StatusCode)
+
+	// The member reads his own file.
+	got, resp := dave.getReportAttachment(ctx, eventName, crewReport, crewFile)
+	require.NoError(t, resp.Body.Close())
+	assert.Equal(t, http.StatusOK, resp.StatusCode, "a creator reads the file on their own report")
+	assert.Equal(t, fileBytes, got)
+
+	// The crew leader reads the crew member's file, exactly as GetReport admits the report...
+	got, resp = erin.getReportAttachment(ctx, eventName, crewReport, crewFile)
+	require.NoError(t, resp.Body.Close())
+	assert.Equal(t, http.StatusOK, resp.StatusCode, "a crew leader reads a file on a crew member's report")
+	assert.Equal(t, fileBytes, got)
+
+	// ...and is refused the outside report's file, as GetReport refuses the report.
+	_, resp = erin.getReportAttachment(ctx, eventName, otherReport, otherFile)
+	require.NoError(t, resp.Body.Close())
+	assert.Equal(t, http.StatusForbidden, resp.StatusCode, "a crew leader does not read a non-member's file")
+	_, resp = dave.getReportAttachment(ctx, eventName, otherReport, otherFile)
+	require.NoError(t, resp.Body.Close())
+	assert.Equal(t, http.StatusForbidden, resp.StatusCode, "a plain member does not read another's file")
+}

@@ -3,14 +3,16 @@
 import type { JournalEntry } from "@ocf-ims/protocol-buffers/ocf/ims/resources/v1/journal_entry_pb";
 import { Image } from "expo-image";
 import { Pressable, StyleSheet, View } from "react-native";
-import type { AttachmentOwner } from "@/api/blobs";
 import { PressFeedback } from "@/design/motion";
 import { Box } from "@/design/primitives/Box";
 import { Text } from "@/design/primitives/Text";
 import { TextButton } from "@/design/primitives/TextButton";
 import { useTheme } from "@/design/theme";
 import { pressRetentionOffset } from "@/design/tokens";
-import { useAttachmentSource } from "@/features/incidents/useAttachmentSource";
+import {
+  type AttachmentOn,
+  useAttachmentSource,
+} from "@/features/incidents/useAttachmentSource";
 import { formatTimestamp, personLabel } from "@/lib/format";
 
 // One entry in an incident's journal (plan 09n): author + timestamp, the
@@ -30,10 +32,7 @@ import { formatTimestamp, personLabel } from "@/lib/format";
 // for a writer on the incident's own non-system entries — the row keeps one
 // shape whether or not the caller lights those.
 
-/** The event and the owner (incident or report) whose route serves the entry's file. */
-export interface AttachmentOn extends AttachmentOwner {
-  eventName: string;
-}
+export type { AttachmentOn };
 
 export interface JournalEntryRowProps {
   entry: JournalEntry;
@@ -136,11 +135,7 @@ function AttachedImage(props: {
   onPress?: () => void;
 }) {
   const theme = useTheme();
-  const source = useAttachmentSource(
-    props.on.eventName,
-    props.on,
-    props.entryId,
-  );
+  const source = useAttachmentSource(props.on, props.entryId);
   const image = (
     <Image
       testID={`attachment-image-${props.entryId}`}

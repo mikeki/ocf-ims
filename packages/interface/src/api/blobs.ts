@@ -43,12 +43,10 @@ export interface UploadArgs {
 export interface Blobs {
   uploadIncidentAttachment(args: UploadArgs): Promise<{ entryId: number }>;
   uploadReportAttachment(args: UploadArgs): Promise<{ entryId: number }>;
-  /** The download URL for an incident entry's file (an address, never fetched without the headers below). */
-  attachmentUrl(eventName: string, number: number, entryId: number): string;
-  /** The download URL for a report entry's file. */
-  reportAttachmentUrl(
+  /** The download URL for an entry's file on its owner (an address, never fetched without the headers below). */
+  attachmentUrl(
     eventName: string,
-    number: number,
+    on: AttachmentOwner,
     entryId: number,
   ): string;
   /** The Authorization header for a download, after a proactive refresh if the token is close to expiry. */
@@ -188,11 +186,8 @@ export function createBlobs(deps: BlobsDeps): Blobs {
   return {
     uploadIncidentAttachment: (args) => upload("incident", args),
     uploadReportAttachment: (args) => upload("report", args),
-    attachmentUrl(eventName, number, entryId) {
-      return `${route(eventName, { kind: "incident", number })}/${entryId}`;
-    },
-    reportAttachmentUrl(eventName, number, entryId) {
-      return `${route(eventName, { kind: "report", number })}/${entryId}`;
+    attachmentUrl(eventName, on, entryId) {
+      return `${route(eventName, on)}/${entryId}`;
     },
     async authHeaders(): Promise<Record<string, string>> {
       const auth = await prepare();

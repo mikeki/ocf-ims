@@ -218,7 +218,9 @@ describe("blobs.uploadIncidentAttachment", () => {
   it("builds the download address and its headers from the same cache", async () => {
     const t = setup();
     await t.signIn();
-    expect(t.blobs.attachmentUrl("Fair 2026", 214, 57)).toBe(
+    expect(
+      t.blobs.attachmentUrl("Fair 2026", { kind: "incident", number: 214 }, 57),
+    ).toBe(
       "https://ims.test/ims/api/events/Fair%202026/incidents/214/attachments/57",
     );
     expect(await t.blobs.authHeaders()).toEqual({
@@ -298,13 +300,17 @@ describe("blobs.uploadReportAttachment", () => {
     expect(FakeXhr.sent[0]?.url).toContain("/reports/9/attachments");
   });
 
-  it("builds the report download address beside the incident one", async () => {
+  it("builds the download address per owner", async () => {
     const t = setup();
     await t.signIn();
-    expect(t.blobs.reportAttachmentUrl("Fair 2026", 3, 58)).toBe(
+    expect(
+      t.blobs.attachmentUrl("Fair 2026", { kind: "report", number: 3 }, 58),
+    ).toBe(
       "https://ims.test/ims/api/events/Fair%202026/reports/3/attachments/58",
     );
-    expect(t.blobs.attachmentUrl("Fair 2026", 214, 57)).toBe(
+    expect(
+      t.blobs.attachmentUrl("Fair 2026", { kind: "incident", number: 214 }, 57),
+    ).toBe(
       "https://ims.test/ims/api/events/Fair%202026/incidents/214/attachments/57",
     );
   });

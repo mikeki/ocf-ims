@@ -42,6 +42,33 @@ func ownsReport(report imsdb.Report, entries []imsjson.JournalEntry, callerPerso
 	return containsAuthor(entries, callerHandle)
 }
 
+// mayReadLimitedReport is the per-report half of the report read gate for a
+// caller WITHOUT EventReadAllReports (the event-level gate — one of the three
+// read bits — is the caller's to check first). It admits the report when the
+// caller owns it (EventReadOwnReports + ownsReport) or, as a crew leader, it is
+// their crew's (EventReadCrewReports + crewReportNumberSet, 10c). GetReport,
+// ListReports' scoping and the report attachment download share it, so a
+// reader GetReport admits is never refused the report's files (09z criterion 0
+// surfaced the drift: the download once tested journal authorship alone).
+func mayReadLimitedReport(
+	ctx context.Context, imsDBQ *store.DBQ, eventID, reportNumber int32,
+	report imsdb.Report, entries []imsjson.JournalEntry,
+	eventPermissions authz.EventPermissionMask, callerPersonID int32, callerHandle string,
+) (bool, *herr.HTTPError) {
+	if eventPermissions&authz.EventReadOwnReports != 0 &&
+		ownsReport(report, entries, callerPersonID, callerHandle) {
+		return true, nil
+	}
+	if eventPermissions&authz.EventReadCrewReports != 0 {
+		crewReportNums, errHTTP := crewReportNumberSet(ctx, imsDBQ, eventID, callerPersonID)
+		if errHTTP != nil {
+			return false, errHTTP
+		}
+		return crewReportNums[reportNumber], nil
+	}
+	return false, nil
+}
+
 func containsAuthor(entries []imsjson.JournalEntry, author string) bool {
 	for _, e := range entries {
 		if e.Author == author {

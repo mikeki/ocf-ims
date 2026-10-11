@@ -265,11 +265,11 @@ export function Ledger(props: ReportPaneProps) {
               <JournalEntryRow
                 key={entry.id}
                 entry={entry}
-                attachmentOn={
-                  report.incident
-                    ? { eventName, kind: "incident", number: report.incident }
-                    : undefined
-                }
+                attachmentOn={{
+                  eventName,
+                  kind: "report",
+                  number: report.number,
+                }}
                 onStrike={
                   canStrike(entry, mayAppend, viewer, own)
                     ? () => {

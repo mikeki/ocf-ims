@@ -874,18 +874,12 @@ func (s Service) GetReport(
 	reportRow := imsdb.ReportsRow(report)
 
 	if limitedAccess {
-		callerPersonID := claims.PersonID()
-		ownVisible := eventPermissions&authz.EventReadOwnReports != 0 &&
-			ownsReport(reportRow.Report, journalEntries, callerPersonID, claims.PersonHandle())
-		crewVisible := false
-		if !ownVisible && eventPermissions&authz.EventReadCrewReports != 0 {
-			crewReportNums, errHTTP := crewReportNumberSet(ctx, s.ImsDBQ, event.ID, callerPersonID)
-			if errHTTP != nil {
-				return nil, server.HerrToConnect(errHTTP)
-			}
-			crewVisible = crewReportNums[reportNumber]
+		visible, errHTTP := mayReadLimitedReport(ctx, s.ImsDBQ, event.ID, reportNumber,
+			reportRow.Report, journalEntries, eventPermissions, claims.PersonID(), claims.PersonHandle())
+		if errHTTP != nil {
+			return nil, server.HerrToConnect(errHTTP)
 		}
-		if !ownVisible && !crewVisible {
+		if !visible {
 			return nil, connect.NewError(connect.CodePermissionDenied,
 				errors.New("the requestor does not have permission to access this particular Report"))
 		}
