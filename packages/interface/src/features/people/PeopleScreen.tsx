@@ -31,7 +31,11 @@ import { Badge } from "@/design/primitives/Badge";
 import { Text } from "@/design/primitives/Text";
 import { TextButton } from "@/design/primitives/TextButton";
 import { useTheme } from "@/design/theme";
-import { pressRetentionOffset, touchTarget } from "@/design/tokens";
+import {
+  pressRetentionOffset,
+  roster as rosterTokens,
+  touchTarget,
+} from "@/design/tokens";
 import { SidePanel } from "@/features/dispatch/Drawer";
 import { HelpSheet } from "@/features/dispatch/HelpSheet";
 import { AddPerson } from "@/features/people/AddPerson";
@@ -39,7 +43,7 @@ import { Avatar } from "@/features/people/Avatar";
 import { Hovercard, type Rect } from "@/features/people/Hovercard";
 import { MyCrews } from "@/features/people/MyCrews";
 import { peopleHelpRows } from "@/features/people/peopleHelp";
-import { matches } from "@/features/people/peopleQuery";
+import { displayName, matches } from "@/features/people/peopleQuery";
 import {
   type RosterAccess,
   rungLabel,
@@ -95,9 +99,6 @@ const DIMMED_COLUMN_OPACITY = 0.5;
  * header note).
  */
 const GRIP_WIDTH = touchTarget * 0.5;
-
-/** The drop's snap-back, exactly the brief's own spring: not in `theme.motion`, which owns press feedback and state-fade durations only. */
-const SNAP_BACK_SPRING = { duration: 400, dampingRatio: 0.8 } as const;
 
 /**
  * A person shaped only to ask `rungsFor` which rungs this viewer could EVER
@@ -203,7 +204,7 @@ interface PeopleBodyProps {
 
 function PeopleBody(props: PeopleBodyProps) {
   const { eventId, access, people, showAll, onToggleShowAll } = props;
-  const roster = useRoster(eventId);
+  const roster = useRoster(eventId, { showAll: access.admin && showAll });
   const q = usePeopleQuery(people);
   const myCrews = useQuery(ImsService.method.listMyCrews, { eventId });
   const crews = myCrews.data?.crews ?? [];
@@ -322,6 +323,7 @@ function Ladder(props: LadderProps) {
   // or a pick-up), columns via their own `onLayout`.
   const cardRefs = useRef(new Map<number, View>());
   const columnRectsRef = useRef(new Map<ParticipationType, Rect>());
+  const columnRefs = useRef(new Map<ParticipationType, View>());
   const stageRef = useRef<View>(null);
   const stageRectRef = useRef<Rect>({ x: 0, y: 0, width: 0, height: 0 });
   const hovercardRectRef = useRef<Rect | undefined>(undefined);
@@ -365,6 +367,7 @@ function Ladder(props: LadderProps) {
   const hoverOpenDelay = theme.motion.stateFade * 1.5;
   const hoverCloseDelay = theme.motion.stateFade * 0.75;
   const dragClickThreshold = theme.spacing.sm;
+  const snapBack = theme.motion.snapBack;
 
   const filtered = useMemo(
     () => people.filter((p) => matches(p, search)),
@@ -506,22 +509,24 @@ function Ladder(props: LadderProps) {
     [dragging, hoverOpenDelay, openHovercard],
   );
 
-  // Lifts the post-drop suppression once the pointer has moved a click's
-  // worth, then replays the hover the card under it reported meanwhile.
-  useEffect(() => {
+  // A committed drop leaves suppression armed; this listens for the pointer
+  // to move a click's worth, lifts it, replays the hover the card under the
+  // pointer reported meanwhile, and detaches — it exists only after a drop.
+  const stopWatchingRef = useRef<(() => void) | undefined>(undefined);
+  const watchPointerAfterDrop = useCallback(() => {
     if (typeof document === "undefined") {
       return;
     }
+    stopWatchingRef.current?.();
     const onMove = (e: PointerEvent) => {
       const from = suppressHoverRef.current;
-      if (!from) {
-        return;
-      }
       if (
+        from &&
         Math.hypot(e.clientX - from.x, e.clientY - from.y) <= dragClickThreshold
       ) {
         return;
       }
+      stop();
       suppressHoverRef.current = undefined;
       const pending = pendingHoverRef.current;
       pendingHoverRef.current = undefined;
@@ -529,9 +534,14 @@ function Ladder(props: LadderProps) {
         handleCardHoverIn(pending);
       }
     };
+    const stop = () => {
+      document.removeEventListener("pointermove", onMove);
+      stopWatchingRef.current = undefined;
+    };
     document.addEventListener("pointermove", onMove);
-    return () => document.removeEventListener("pointermove", onMove);
+    stopWatchingRef.current = stop;
   }, [dragClickThreshold, handleCardHoverIn]);
+  useEffect(() => () => stopWatchingRef.current?.(), []);
 
   const handleCardHoverOut = useCallback(
     (personId: number) => {
@@ -612,6 +622,31 @@ function Ladder(props: LadderProps) {
     return () => window.removeEventListener("pointerdown", onDown);
   }, [hovercard, closeHovercard]);
 
+  // The Ladder scrolls sideways, so a rect measured at layout is stale after
+  // a scroll: re-measure every column and the stage (no state) at pick-up and
+  // on each scroll event.
+  const remeasure = useCallback(() => {
+    stageRef.current?.measureInWindow((x, y, width, height) => {
+      stageRectRef.current = { x, y, width, height };
+    });
+    for (const [type, el] of columnRefs.current) {
+      el.measureInWindow((x, y, width, height) => {
+        columnRectsRef.current.set(type, { x, y, width, height });
+      });
+    }
+  }, []);
+
+  const registerColumnRef = useCallback(
+    (type: ParticipationType, el: View | null) => {
+      if (el) {
+        columnRefs.current.set(type, el);
+      } else {
+        columnRefs.current.delete(type);
+      }
+    },
+    [],
+  );
+
   const startDrag = useCallback(
     (person: Person, clientX: number, clientY: number) => {
       const rungs = rungsFor(access, person);
@@ -623,6 +658,7 @@ function Ladder(props: LadderProps) {
         return;
       }
       closeHovercard();
+      remeasure();
       cardEl.measureInWindow((x, y, width, height) => {
         dragStartRef.current = {
           clientX,
@@ -641,7 +677,7 @@ function Ladder(props: LadderProps) {
         });
       });
     },
-    [access, closeHovercard, translateX, translateY],
+    [access, closeHovercard, remeasure, translateX, translateY],
   );
 
   const onDragMove = useCallback(
@@ -698,6 +734,7 @@ function Ladder(props: LadderProps) {
         // A hard cut: no animation plays on a successful drop.
         const personId = dragging.personId;
         suppressHoverRef.current = lastPointerRef.current;
+        watchPointerAfterDrop();
         clear();
         void roster.setRole(personId, hit);
         return;
@@ -708,9 +745,9 @@ function Ladder(props: LadderProps) {
         clear();
         return;
       }
-      translateX.set(withSpring(0, SNAP_BACK_SPRING));
+      translateX.set(withSpring(0, snapBack));
       translateY.set(
-        withSpring(0, SNAP_BACK_SPRING, (finished) => {
+        withSpring(0, snapBack, (finished) => {
           "worklet";
           if (finished) {
             scheduleOnRN(clear);
@@ -718,7 +755,15 @@ function Ladder(props: LadderProps) {
         }),
       );
     },
-    [dragging, reducedMotion, roster, translateX, translateY],
+    [
+      dragging,
+      reducedMotion,
+      roster,
+      translateX,
+      translateY,
+      snapBack,
+      watchPointerAfterDrop,
+    ],
   );
 
   const onDragEnd = useCallback(
@@ -794,6 +839,8 @@ function Ladder(props: LadderProps) {
               { gap: theme.spacing.md, padding: theme.spacing.md },
             ]}
             testID="people-ladder"
+            onScroll={remeasure}
+            scrollEventThrottle={16}
           >
             {columns.map((column) => (
               <Column
@@ -822,6 +869,7 @@ function Ladder(props: LadderProps) {
                   setOpenMenuFor(open ? personId : undefined)
                 }
                 onRect={(type, rect) => columnRectsRef.current.set(type, rect)}
+                registerColumnRef={registerColumnRef}
                 onDragStart={startDrag}
                 onCardHoverIn={handleCardHoverIn}
                 onCardHoverOut={handleCardHoverOut}
@@ -860,7 +908,7 @@ function Ladder(props: LadderProps) {
                 },
               ]}
             >
-              <CardContent person={draggingPerson} />
+              <CardContent person={draggingPerson} access={access} />
             </Animated.View>
           ) : null}
           {hovercard && hovercardPerson ? (
@@ -890,7 +938,7 @@ function Ladder(props: LadderProps) {
       <HelpSheet
         open={help}
         onClose={() => setHelp(false)}
-        rows={peopleHelpRows(true)}
+        rows={peopleHelpRows()}
       />
     </View>
   );
@@ -999,6 +1047,7 @@ interface ColumnProps {
   openMenuFor: number | undefined;
   onMenuOpenChange: (personId: number, open: boolean) => void;
   onRect: (type: ParticipationType, rect: Rect) => void;
+  registerColumnRef: (type: ParticipationType, el: View | null) => void;
   onDragStart: (person: Person, clientX: number, clientY: number) => void;
   onCardHoverIn: (personId: number) => void;
   onCardHoverOut: (personId: number) => void;
@@ -1021,6 +1070,7 @@ function Column(props: ColumnProps) {
     openMenuFor,
     onMenuOpenChange,
     onRect,
+    registerColumnRef,
     onDragStart,
     onCardHoverIn,
     onCardHoverOut,
@@ -1030,7 +1080,10 @@ function Column(props: ColumnProps) {
   const ref = useRef<View>(null);
   return (
     <View
-      ref={ref}
+      ref={(el) => {
+        ref.current = el;
+        registerColumnRef(type, el);
+      }}
       testID={`people-column-${type}`}
       onLayout={() =>
         ref.current?.measureInWindow((x, y, width, height) =>
@@ -1134,8 +1187,8 @@ function Card(props: CardProps) {
   } = props;
   const theme = useTheme();
   const rungs = rungsFor(access, person);
-  const label = person.name || person.handle || `Person #${person.personId}`;
-  const dimmed = !person.hasPassword || beingDragged;
+  const label = displayName(person);
+  const dimmed = (access.admin && !person.hasPassword) || beingDragged;
 
   return (
     // Not role="button": RN Web renders that as <button>, and this row holds
@@ -1176,7 +1229,7 @@ function Card(props: CardProps) {
               />
             ) : null}
             <View style={[styles.cardContent, { gap: theme.spacing.xs }]}>
-              <CardContent person={person} />
+              <CardContent person={person} access={access} />
               <MoveMenu
                 person={person}
                 rungs={rungs}
@@ -1194,10 +1247,10 @@ function Card(props: CardProps) {
 }
 
 /** The card's own content — the avatar row and the crew chips — shared with the drag's ghost (§ The drag: "same Card body"). */
-function CardContent(props: { person: Person }) {
-  const { person } = props;
+function CardContent(props: { person: Person; access: RosterAccess }) {
+  const { person, access } = props;
   const theme = useTheme();
-  const label = person.name || person.handle || `Person #${person.personId}`;
+  const label = displayName(person);
   return (
     <>
       <View style={[styles.row, { gap: theme.spacing.sm }]}>
@@ -1208,7 +1261,7 @@ function CardContent(props: { person: Person }) {
               {label}
             </Text>
             {person.isAdmin ? <Badge label="Admin" tone="restricted" /> : null}
-            {!person.hasPassword ? (
+            {access.admin && !person.hasPassword ? (
               <Badge label="No login" tone="neutral" />
             ) : null}
           </View>
@@ -1306,7 +1359,7 @@ function MoveMenu(props: MoveMenuProps) {
     <View>
       <Pressable
         accessibilityRole="button"
-        accessibilityLabel={`Move ${person.name || person.handle || `person ${person.personId}`}`}
+        accessibilityLabel={`Move ${displayName(person)}`}
         accessibilityState={{ expanded: open, busy: pending }}
         onPress={() => setOpenState(!open)}
         pressRetentionOffset={pressRetentionOffset}
@@ -1376,7 +1429,7 @@ const styles = StyleSheet.create({
     alignItems: "center",
     borderBottomWidth: StyleSheet.hairlineWidth,
   },
-  search: { width: 220, borderWidth: 1, outlineWidth: 0 },
+  search: { width: rosterTokens.searchWidth, borderWidth: 1, outlineWidth: 0 },
   spacer: { flex: 1 },
   stageWrap: { flex: 1 },
   stage: { flexDirection: "row", alignItems: "flex-start" },
@@ -1415,13 +1468,13 @@ const styles = StyleSheet.create({
     position: "absolute",
     top: "100%",
     left: 0,
-    minWidth: 160,
+    minWidth: rosterTokens.menuMinWidth,
     borderWidth: 1,
     zIndex: 10,
     overflow: "hidden",
   },
   option: {
-    minHeight: touchTarget - 8,
+    minHeight: touchTarget,
     justifyContent: "center",
   },
 });

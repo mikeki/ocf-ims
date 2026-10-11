@@ -21,8 +21,7 @@ const inviter: RosterAccess = {
 
 const roster: Roster = {
   setRole: async () => undefined,
-  remove: async () => undefined,
-  enrol: async () => undefined,
+  enrol: async () => true,
   create: async () => undefined,
   createError: undefined,
   addToCrew: async () => undefined,
@@ -70,7 +69,7 @@ describe("ProfileCard — privacy", () => {
   });
 
   it("says No login for a name-only person, never 'no email'", async () => {
-    await show(makePerson({ hasPassword: false }), inviter);
+    await show(makePerson({ hasPassword: false }), admin);
     expect(screen.getByText("No login")).toBeOnTheScreen();
   });
 });

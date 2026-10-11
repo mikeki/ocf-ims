@@ -168,6 +168,6 @@ function Initial(props: { person: Person; size: number }) {
 }
 
 function initialFor(person: Person): string {
-  const name = person.handle || person.name || "";
+  const name = person.name || person.handle || "";
   return name.slice(0, 1).toUpperCase() || "?";
 }

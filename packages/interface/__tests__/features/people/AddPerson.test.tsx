@@ -87,6 +87,46 @@ describe("AddPerson", () => {
     );
   });
 
+  it("a refused enrol keeps Enrol pressable and shows the error beside it", async () => {
+    const fake = await setup({ admin: true }, ADMIN);
+    fake.behaviour.setParticipation = "forbidden";
+    await fireEvent.changeText(screen.getByTestId("add-person-search"), "rita");
+    await fireEvent.press(await screen.findByTestId("add-person-enrol-21"));
+    await waitFor(() => expect(fake.setParticipationRequests).toHaveLength(1));
+    await screen.findByText("You can't do that here.");
+    expect(screen.queryByText(/Enrolled as/)).toBeNull();
+    expect(screen.getByTestId("add-person-enrol-21")).toBeOnTheScreen();
+  });
+
+  it("an inviter enrols a hit at Reporter, the admin's chosen rung going as chosen (hits carry no has_password)", async () => {
+    const fake = await setup({ admin: true }, ADMIN);
+    await fireEvent.press(
+      screen.getByTestId(`add-person-enrol-rung-${ParticipationType.WRITER}`),
+    );
+    await fireEvent.changeText(screen.getByTestId("add-person-search"), "rita");
+    await fireEvent.press(await screen.findByTestId("add-person-enrol-21"));
+    await waitFor(() => expect(fake.setParticipationRequests).toHaveLength(1));
+    expect(fake.setParticipationRequests[0]?.participationType).toBe(
+      ParticipationType.WRITER,
+    );
+  });
+
+  it("shows a hit already on the roster as such, with no Enrol", async () => {
+    const { fake, runtime } = await signedIn({ admin: true });
+    fake.people = [
+      makePerson({
+        personId: 22,
+        handle: "vera",
+        name: "Vera Volunteer",
+        participationType: ParticipationType.VOLUNTEER,
+      }),
+    ];
+    await renderRoster(runtime, <Panel access={ADMIN} />);
+    await fireEvent.changeText(screen.getByTestId("add-person-search"), "vera");
+    await screen.findByText("On the roster as Volunteer");
+    expect(screen.queryByTestId("add-person-enrol-22")).toBeNull();
+  });
+
   it("creates a new person when nobody matches, the admin choosing the rung", async () => {
     const fake = await setup({ admin: true }, ADMIN);
     await fireEvent.changeText(

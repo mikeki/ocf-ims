@@ -82,6 +82,18 @@ export async function layoutColumns(): Promise<void> {
   }
 }
 
+/** Slides every column's stubbed rect by `dx`, as a sideways scroll of the Ladder would; nothing is re-laid-out. */
+export function shiftColumns(dx: number): void {
+  for (const [i, rung] of COLUMN_RUNGS.entries()) {
+    setRect(`people-column-${rung}`, {
+      x: i * COLUMN_WIDTH + dx,
+      y: 0,
+      width: COLUMN_WIDTH,
+      height: COLUMN_HEIGHT,
+    });
+  }
+}
+
 /** The x at the middle of the column holding `rung`. */
 export function columnX(rung: ParticipationType): number {
   return COLUMN_RUNGS.indexOf(rung) * COLUMN_WIDTH + COLUMN_WIDTH / 2;

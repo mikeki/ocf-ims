@@ -74,7 +74,7 @@ function holdSetParticipation(base: Transport, gate: Promise<void>): Transport {
   };
 }
 
-function setup(runtime: Runtime) {
+function setup(runtime: Runtime, showAll = false) {
   const queryClient = createTestQueryClient();
   const Wrapper = ({ children }: { children: ReactNode }) => (
     <ThemeProvider scheme="light">
@@ -88,8 +88,9 @@ function setup(runtime: Runtime) {
       const list = useQuery(ImsService.method.listPersonnel, {
         eventId: 1,
         all: true,
+        showAll,
       });
-      const roster = useRoster(1);
+      const roster = useRoster(1, { showAll });
       return { list, roster };
     },
     { wrapper: Wrapper },
@@ -174,12 +175,45 @@ describe("useRoster", () => {
     const { result } = await setup(runtime);
     await waitFor(() => expect(result.current.list.data).toBeDefined());
     await act(async () => {
-      await result.current.roster.remove(7, ParticipationType.NOT_PRESENT);
+      await result.current.roster.setRole(7, ParticipationType.NOT_PRESENT);
     });
     expect(fake.setParticipationRequests[0]?.participationType).toBe(
       ParticipationType.NOT_PRESENT,
     );
     expect(fake.callsOf("RemovePersonFromEvent")).toHaveLength(0);
+  });
+
+  it("under Show everyone a role change sends the existing wristband and patches the visible list", async () => {
+    const fake = rosterFake();
+    fake.people[0] = makePerson({
+      personId: 7,
+      handle: "ray",
+      wristband: "W-77",
+      participationType: ParticipationType.REPORTER,
+    });
+    const runtime = await runtimeOver(fake);
+    const { result } = await setup(runtime, true);
+    await waitFor(() => expect(result.current.list.data).toBeDefined());
+    await act(async () => {
+      await result.current.roster.setRole(7, ParticipationType.VOLUNTEER);
+    });
+    expect(fake.setParticipationRequests[0]?.wristband).toBe("W-77");
+    expect(result.current.roster.errorFor(7)).toBeUndefined();
+    await waitFor(() =>
+      expect(rungOf(result, 7)).toBe(ParticipationType.VOLUNTEER),
+    );
+  });
+
+  it("refuses to write a person it has not read, rather than clearing their wristband", async () => {
+    const fake = rosterFake();
+    const runtime = await runtimeOver(fake);
+    const { result } = await setup(runtime);
+    await waitFor(() => expect(result.current.list.data).toBeDefined());
+    await act(async () => {
+      await result.current.roster.setRole(999, ParticipationType.VOLUNTEER);
+    });
+    expect(fake.setParticipationRequests).toHaveLength(0);
+    expect(result.current.roster.errorFor(999)).toBeDefined();
   });
 
   it("invalidates ListMyCrews and every ListPersonnel mode on settle", async () => {

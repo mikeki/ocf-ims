@@ -10,7 +10,12 @@ import type { AppError } from "@/api/errors";
 import { PressFeedback } from "@/design/motion";
 import { Text } from "@/design/primitives/Text";
 import { useTheme } from "@/design/theme";
-import { pressRetentionOffset, touchTarget } from "@/design/tokens";
+import {
+  pressRetentionOffset,
+  roster,
+  spacing,
+  touchTarget,
+} from "@/design/tokens";
 import { rungLabel } from "@/features/people/roles";
 
 // The roster's one edit (docs/plans/09aa-roster-design.md § What is fixed):
@@ -154,20 +159,20 @@ const styles = StyleSheet.create({
   trigger: {
     flexDirection: "row",
     alignItems: "center",
-    gap: 4,
-    minHeight: touchTarget - 12,
+    gap: spacing.sm,
+    minHeight: spacing.xxl,
   },
   menu: {
     position: "absolute",
     top: "100%",
     left: 0,
-    minWidth: 160,
+    minWidth: roster.menuMinWidth,
     borderWidth: 1,
     zIndex: 10,
     overflow: "hidden",
   },
   option: {
-    minHeight: touchTarget - 8,
+    minHeight: touchTarget,
     justifyContent: "center",
   },
 });

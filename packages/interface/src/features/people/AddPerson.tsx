@@ -16,10 +16,11 @@ import { Field } from "@/design/primitives/Field";
 import { Text } from "@/design/primitives/Text";
 import { TextButton } from "@/design/primitives/TextButton";
 import { useTheme } from "@/design/theme";
-import { pressRetentionOffset, touchTarget } from "@/design/tokens";
+import { pressRetentionOffset, spacing } from "@/design/tokens";
 import { PasswordField } from "@/features/auth/PasswordField";
 import { useMentionSearch } from "@/features/compose/hooks";
 import { Avatar } from "@/features/people/Avatar";
+import { displayName } from "@/features/people/peopleQuery";
 import {
   type RosterAccess,
   rungLabel,
@@ -171,11 +172,9 @@ export function AddPerson(props: AddPersonProps) {
               key={person.personId}
               person={person}
               roster={roster}
-              rung={
-                access.admin && rungsFor(access, person).includes(enrolRung)
-                  ? enrolRung
-                  : ParticipationType.REPORTER
-              }
+              // The hit carries no has_password: the admin's rung goes as
+              // chosen (the server holds the ceiling), an inviter's is Reporter.
+              rung={access.admin ? enrolRung : ParticipationType.REPORTER}
               enrolled={enrolledIds.has(person.personId)}
               onEnrolled={() =>
                 setEnrolledIds((prev) => {
@@ -206,7 +205,12 @@ function Hit(props: {
 }) {
   const { person, roster, rung, enrolled, onEnrolled } = props;
   const theme = useTheme();
-  const label = person.name || person.handle || `Person #${person.personId}`;
+  const label = displayName(person);
+  const onRoster =
+    !enrolled &&
+    person.participationType !== ParticipationType.UNSPECIFIED &&
+    person.participationType !== ParticipationType.NOT_PRESENT &&
+    person.participationType !== ParticipationType.EJECTED;
   const pending = roster.pendingFor(person.personId);
   const error = roster.errorFor(person.personId);
 
@@ -233,7 +237,11 @@ function Hit(props: {
           </Text>
         ) : null}
       </View>
-      {enrolled ? (
+      {onRoster ? (
+        <Text variant="label" color="textMuted">
+          {`On the roster as ${rungLabel(person.participationType)}`}
+        </Text>
+      ) : enrolled ? (
         <Text variant="label" color="success">
           {`Enrolled as ${rungLabel(rung)}`}
         </Text>
@@ -244,10 +252,11 @@ function Hit(props: {
             if (pending) {
               return;
             }
-            void roster
-              .enrol(person.personId, rung)
-              .then(onEnrolled)
-              .catch(() => undefined);
+            void roster.enrol(person.personId, rung).then((ok) => {
+              if (ok) {
+                onEnrolled();
+              }
+            });
           }}
           testID={`add-person-enrol-${person.personId}`}
         />
@@ -602,7 +611,7 @@ const styles = StyleSheet.create({
   content: { flexGrow: 1 },
   row: { flexDirection: "row", alignItems: "center" },
   chip: {
-    minHeight: touchTarget - 12,
+    minHeight: spacing.xxl,
     justifyContent: "center",
     borderWidth: 1,
   },

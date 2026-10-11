@@ -140,6 +140,20 @@ describe("PeopleScreen", () => {
     expect(screen.queryByText("Show everyone")).toBeNull();
   });
 
+  it("an inviter is told nothing of logins: no No login badge, and a Reporter rung on the name-only card", async () => {
+    const { fake, runtime } = await signedIn({ inviteReporters: true });
+    fake.people = PEOPLE;
+    await renderRoster(runtime);
+    await screen.findByTestId("people-ladder-card-16");
+    expect(screen.queryByText("No login")).toBeNull();
+    await fireEvent.press(screen.getByTestId("people-ladder-card-16-move"));
+    expect(
+      screen.getByTestId(
+        `people-ladder-card-16-move-${ParticipationType.REPORTER}`,
+      ),
+    ).toBeOnTheScreen();
+  });
+
   it("an admin sees the contact fields and Show everyone, which asks for show_all", async () => {
     const { fake, runtime } = await signedIn({ admin: true });
     fake.people = PEOPLE;

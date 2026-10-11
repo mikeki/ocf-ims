@@ -76,6 +76,24 @@ describe("fakeIms — ListPersonnel modes and field gating", () => {
     expect(byId(people, 42)?.email).toBe("dee@example.org");
   });
 
+  it("tells has_password to an admin only, and to no typeahead hit", async () => {
+    const asAdmin = await clientFor(fixtureFake({ admin: true }));
+    const row = byId(
+      (await asAdmin.listPersonnel({ eventId: 1, all: true })).people,
+      8,
+    );
+    expect(row?.hasPassword).toBe(true);
+    const hits = await asAdmin.listPersonnel({ eventId: 1, query: "rue" });
+    expect(hits.people[0]?.hasPassword).toBe(false);
+
+    const asInviter = await clientFor(fixtureFake({ inviteReporters: true }));
+    const seen = byId(
+      (await asInviter.listPersonnel({ eventId: 1, all: true })).people,
+      8,
+    );
+    expect(seen?.hasPassword).toBe(false);
+  });
+
   it("keeps the global listing and show_all admin-only", async () => {
     const client = await clientFor(fixtureFake({ inviteReporters: true }));
     await expect(client.listPersonnel({ all: true })).rejects.toMatchObject({

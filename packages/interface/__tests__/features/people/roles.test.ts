@@ -5,12 +5,10 @@ import { ParticipationType } from "@ocf-ims/protocol-buffers/ocf/ims/resources/v
 import { AccessForEventSchema } from "@ocf-ims/protocol-buffers/ocf/ims/service/rpc/v1/auth_pb";
 import {
   mayRemove,
-  orderFor,
   type RosterAccess,
   rosterAccessFrom,
   rungLabel,
   rungsFor,
-  sectionsFor,
 } from "@/features/people/roles";
 import { makePerson } from "@/test/fixtures";
 
@@ -64,10 +62,15 @@ describe("rungsFor — the ceiling per access", () => {
     );
   });
 
-  it("offers a no-login person Volunteer / Public only", () => {
+  it("offers the admin a no-login person Volunteer / Public only", () => {
     const person = makePerson({ hasPassword: false, participationType: V });
     expect(rungsFor(admin, person)).toEqual([V, P]);
-    expect(rungsFor(inviter, person)).toEqual([V, P]);
+  });
+
+  it("offers an inviter Reporter on a card the admin sees as No login (has_password is withheld from them)", () => {
+    const person = makePerson({ hasPassword: false, participationType: V });
+    expect(rungsFor(admin, person)).not.toContain(R);
+    expect(rungsFor(inviter, person)).toEqual([R, V, P]);
   });
 
   it("offers nothing to someone who is neither", () => {
@@ -102,25 +105,7 @@ describe("rosterAccessFrom", () => {
   });
 });
 
-describe("sectionsFor — the section order", () => {
-  it("groups by rung in the fixed order, then No login, dropping empties", () => {
-    const people = [
-      makePerson({ personId: 1, participationType: P }),
-      makePerson({ personId: 2, participationType: W }),
-      makePerson({ personId: 3, hasPassword: false, participationType: R }),
-      makePerson({ personId: 4, participationType: L }),
-      makePerson({ personId: 5, participationType: V }),
-    ];
-    expect(sectionsFor(people).map((s) => s.label)).toEqual([
-      "FC/BUM",
-      "Crew leaders",
-      "Volunteers",
-      "Public",
-      "No login",
-    ]);
-    expect(orderFor(people)).toEqual([2, 4, 5, 1, 3]);
-  });
-
+describe("rungLabel", () => {
   it("labels the rungs with templ's words", () => {
     expect(rungLabel(W)).toBe("FC/BUM");
     expect(rungLabel(R)).toBe("Reporter");

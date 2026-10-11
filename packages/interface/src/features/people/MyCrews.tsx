@@ -18,6 +18,7 @@ import { TextButton } from "@/design/primitives/TextButton";
 import { useTheme } from "@/design/theme";
 import { PersonPicker } from "@/features/compose/PersonPicker";
 import { Avatar } from "@/features/people/Avatar";
+import { displayName } from "@/features/people/peopleQuery";
 import type { Roster } from "@/features/people/useRoster";
 import { EmptyState } from "@/features/shell/EmptyState";
 
@@ -132,12 +133,6 @@ function MemberRow(props: {
   const { member, crewSlug, person, roster } = props;
   const theme = useTheme();
   const personId = member.person?.personId;
-  const label =
-    person?.name ||
-    person?.handle ||
-    member.person?.name ||
-    member.person?.handle ||
-    (personId !== undefined ? `Person #${personId}` : "Unknown");
   const avatarPerson =
     person ??
     create(PersonSchema, {
@@ -149,6 +144,10 @@ function MemberRow(props: {
       participationType: ParticipationType.UNSPECIFIED,
       crews: [],
     });
+  const label =
+    personId === undefined && !avatarPerson.name && !avatarPerson.handle
+      ? "Unknown"
+      : displayName(avatarPerson);
   const [confirming, setConfirming] = useState(false);
   const pending = personId !== undefined && roster.pendingFor(personId);
   const error = personId !== undefined ? roster.errorFor(personId) : undefined;

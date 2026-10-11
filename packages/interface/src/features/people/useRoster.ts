@@ -15,7 +15,7 @@ import {
 import type { ListPersonnelResponse } from "@ocf-ims/protocol-buffers/ocf/ims/service/rpc/v1/person_pb";
 import { ImsService } from "@ocf-ims/protocol-buffers/ocf/ims/service/v1/service_pb";
 import { useQueryClient } from "@tanstack/react-query";
-import { useCallback, useState } from "react";
+import { useCallback, useMemo, useState } from "react";
 import { type AppError, toAppError } from "@/api/errors";
 
 // The roster's one hook (docs/plans/09aa-roster-design.md § One field, one
@@ -24,9 +24,11 @@ import { type AppError, toAppError } from "@/api/errors";
 // mode) and `ListMyCrews` invalidated on settle. The ceiling (`rungsFor`,
 // `mayRemove`) is `roles.ts`'s.
 //
-// `remove` is a `SetPersonParticipation` write to Not present / Ejected, never
-// `RemovePersonFromEvent` (which carries no rung); it is the same write as
-// `setRole`.
+// A removal is a `setRole` to Not present / Ejected, never
+// `RemovePersonFromEvent` (which carries no rung). The proto's `wristband` is
+// a plain string, so an empty one CLEARS the wristband: `setRole` therefore
+// never writes a row it has not read, and `enrol` (a person the roster does
+// not hold yet) is the only write that sends none.
 
 export interface CreatePersonForm {
   handle?: string;
@@ -46,8 +48,8 @@ interface RowStatus {
 
 export interface Roster {
   setRole(personId: number, rung: ParticipationType): Promise<void>;
-  remove(personId: number, rung: ParticipationType): Promise<void>;
-  enrol(personId: number, rung?: ParticipationType): Promise<void>;
+  /** Resolves true when the write landed, false when it was refused (the error is at `errorFor`). */
+  enrol(personId: number, rung?: ParticipationType): Promise<boolean>;
   create(form: CreatePersonForm): Promise<Person | undefined>;
   addToCrew(slug: string, personId: number): Promise<void>;
   removeFromCrew(slug: string, personId: number): Promise<void>;
@@ -57,30 +59,49 @@ export interface Roster {
   pendingFor(personId: number): boolean;
 }
 
-export function useRoster(eventId: number): Roster {
+export function useRoster(
+  eventId: number,
+  options: { showAll?: boolean } = {},
+): Roster {
+  const showAll = options.showAll === true;
   const transport = useTransport();
   const queryClient = useQueryClient();
   const [rows, setRows] = useState<Record<number, RowStatus>>({});
   const [createError, setCreateError] = useState<AppError | undefined>();
 
   // The roster's own list (the optimistic patch lands here) ...
-  const listKey = createConnectQueryKey({
-    schema: ImsService.method.listPersonnel,
-    transport,
-    input: { eventId, all: true },
-    cardinality: "finite",
-  });
+  // (keyed on the mode the screen is in, so "Show everyone" patches its own).
+  const listKey = useMemo(
+    () =>
+      createConnectQueryKey({
+        schema: ImsService.method.listPersonnel,
+        transport,
+        input: showAll
+          ? { eventId, all: true, showAll: true }
+          : { eventId, all: true },
+        cardinality: "finite",
+      }),
+    [transport, eventId, showAll],
+  );
   // ... and the schema-wide keys, so every mode and every ListMyCrews goes stale.
-  const allPersonnelKey = createConnectQueryKey({
-    schema: ImsService.method.listPersonnel,
-    transport,
-    cardinality: "finite",
-  });
-  const crewsKey = createConnectQueryKey({
-    schema: ImsService.method.listMyCrews,
-    transport,
-    cardinality: "finite",
-  });
+  const allPersonnelKey = useMemo(
+    () =>
+      createConnectQueryKey({
+        schema: ImsService.method.listPersonnel,
+        transport,
+        cardinality: "finite",
+      }),
+    [transport],
+  );
+  const crewsKey = useMemo(
+    () =>
+      createConnectQueryKey({
+        schema: ImsService.method.listMyCrews,
+        transport,
+        cardinality: "finite",
+      }),
+    [transport],
+  );
 
   const mark = useCallback((personId: number, status: RowStatus) => {
     setRows((all) => ({ ...all, [personId]: status }));
@@ -122,10 +143,24 @@ export function useRoster(eventId: number): Roster {
   const setMembership = useMutation(ImsService.method.setMyCrewMembership);
 
   const writeRole = useCallback(
-    async (personId: number, rung: ParticipationType) => {
+    async (
+      personId: number,
+      rung: ParticipationType,
+      mayBeNew = false,
+    ): Promise<boolean> => {
       await queryClient.cancelQueries({ queryKey: listKey });
       const previous = queryClient.getQueryData<ListPersonnelResponse>(listKey);
       const before = previous?.people.find((p) => p.personId === personId);
+      if (!before && !mayBeNew) {
+        // An empty wristband would clear the one we have not read.
+        mark(personId, {
+          pending: false,
+          error: toAppError(
+            new Error("This person is not on the roster yet; reload it."),
+          ),
+        });
+        return false;
+      }
       mark(personId, { pending: true });
       patchPerson(personId, (p) =>
         create(PersonSchema, { ...p, participationType: rung }),
@@ -138,12 +173,14 @@ export function useRoster(eventId: number): Roster {
           participationType: rung,
         });
         mark(personId, { pending: false });
+        return true;
       } catch (e) {
         if (before) {
           patchPerson(personId, () => before);
         }
         mark(personId, { pending: false, error: toAppError(e) });
         // The error lives on the row (errorFor); the menus fire and forget.
+        return false;
       } finally {
         await settle();
       }
@@ -159,14 +196,16 @@ export function useRoster(eventId: number): Roster {
     ],
   );
 
-  const remove = useCallback(
-    (personId: number, rung: ParticipationType) => writeRole(personId, rung),
+  const setRole = useCallback(
+    async (personId: number, rung: ParticipationType) => {
+      await writeRole(personId, rung);
+    },
     [writeRole],
   );
 
   const enrol = useCallback(
     (personId: number, rung: ParticipationType = ParticipationType.REPORTER) =>
-      writeRole(personId, rung),
+      writeRole(personId, rung, true),
     [writeRole],
   );
 
@@ -242,15 +281,25 @@ export function useRoster(eventId: number): Roster {
     [setMembership.mutateAsync, eventId, mark, settle],
   );
 
-  return {
-    setRole: writeRole,
-    remove,
-    enrol,
-    create: createPerson,
-    createError,
-    addToCrew,
-    removeFromCrew,
-    errorFor: (personId: number) => rows[personId]?.error,
-    pendingFor: (personId: number) => rows[personId]?.pending === true,
-  };
+  return useMemo(
+    () => ({
+      setRole,
+      enrol,
+      create: createPerson,
+      createError,
+      addToCrew,
+      removeFromCrew,
+      errorFor: (personId: number) => rows[personId]?.error,
+      pendingFor: (personId: number) => rows[personId]?.pending === true,
+    }),
+    [
+      setRole,
+      enrol,
+      createPerson,
+      createError,
+      addToCrew,
+      removeFromCrew,
+      rows,
+    ],
+  );
 }

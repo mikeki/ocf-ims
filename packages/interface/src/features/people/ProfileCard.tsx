@@ -10,6 +10,7 @@ import { Text } from "@/design/primitives/Text";
 import { TextButton } from "@/design/primitives/TextButton";
 import { useTheme } from "@/design/theme";
 import { Avatar } from "@/features/people/Avatar";
+import { displayName } from "@/features/people/peopleQuery";
 import { RoleMenu } from "@/features/people/RoleMenu";
 import {
   mayRemove,
@@ -43,12 +44,11 @@ export function ProfileCard(props: ProfileCardProps) {
   const removable = mayRemove(access, person);
   const pending = roster.pendingFor(person.personId);
   const error = roster.errorFor(person.personId);
-  const displayName =
-    person.name || person.handle || `Person #${person.personId}`;
+  const label = displayName(person);
 
   const doRemove = (rung: ParticipationType) => {
     setConfirmingRemove(false);
-    void roster.remove(person.personId, rung);
+    void roster.setRole(person.personId, rung);
   };
 
   return (
@@ -64,7 +64,7 @@ export function ProfileCard(props: ProfileCardProps) {
         <View style={{ gap: theme.spacing.xs, flexShrink: 1 }}>
           <View style={[styles.row, { gap: theme.spacing.sm }]}>
             <Text variant="title" numberOfLines={1}>
-              {displayName}
+              {label}
             </Text>
             {person.isAdmin ? <Badge label="Admin" tone="restricted" /> : null}
           </View>
@@ -73,7 +73,7 @@ export function ProfileCard(props: ProfileCardProps) {
               {person.handle}
             </Text>
           ) : null}
-          {!person.hasPassword ? (
+          {access.admin && !person.hasPassword ? (
             <Text variant="caption" color="textMuted">
               No login
             </Text>
@@ -131,7 +131,7 @@ export function ProfileCard(props: ProfileCardProps) {
           {confirmingRemove ? (
             <View style={{ gap: theme.spacing.sm }}>
               <Text variant="label" color="textMuted">
-                Remove {displayName} from this event?
+                Remove {label} from this event?
               </Text>
               <View style={[styles.row, { gap: theme.spacing.md }]}>
                 <TextButton

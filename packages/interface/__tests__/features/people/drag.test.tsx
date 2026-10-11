@@ -9,6 +9,7 @@ import {
   layoutColumns,
   renderRoster,
   setRect,
+  shiftColumns,
   signedIn,
 } from "@/test/rosterLayout";
 
@@ -131,6 +132,25 @@ describe("the Ladder drag", () => {
     await fireEvent.press(screen.getByTestId("people-ladder-card-14"));
     expect(screen.queryByTestId("people-hovercard-14")).toBeNull();
     await screen.findByText("Public · 1");
+  });
+
+  it("a drop after a sideways scroll of the Ladder lands on the column under the pointer", async () => {
+    const fake = await setup({ admin: true });
+    shiftColumns(-200);
+    const mid = columnX(ParticipationType.VOLUNTEER);
+    await pickUp(14, { x: mid - 200, y: 60 });
+    // Scrolled again while the ghost is up: the scroll re-measures.
+    shiftColumns(-400);
+    await fireEvent.scroll(screen.getByTestId("people-ladder"), {
+      nativeEvent: { contentOffset: { x: 400, y: 0 } },
+    });
+    // Public now spans [400, 600): a pointer at 500 is over it.
+    await dragTo(500, 100);
+    await waitFor(() => expect(fake.setParticipationRequests).toHaveLength(1));
+    expect(fake.setParticipationRequests[0]).toMatchObject({
+      personId: 14,
+      participationType: ParticipationType.PUBLIC,
+    });
   });
 
   it("a drop on a dimmed column calls nothing and springs the ghost home", async () => {

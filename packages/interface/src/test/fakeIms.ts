@@ -630,7 +630,13 @@ export function createFakeIms(options: FakeImsOptions = {}): FakeIms {
                     (p.handle ?? "").toLowerCase().includes(q) ||
                     (p.name ?? "").toLowerCase().includes(q),
                 )
-                .map((p) => shapePerson(p, view)),
+                // The typeahead rows carry no has_password (personnel.go).
+                .map((p) =>
+                  create(PersonSchema, {
+                    ...shapePerson(p, view),
+                    hasPassword: false,
+                  }),
+                ),
             });
           }
           if (req.personIds.length > 0) {
@@ -1784,7 +1790,7 @@ export function createFakeIms(options: FakeImsOptions = {}): FakeIms {
     );
   }
 
-  /** The wire's field gating: email / phone for an admin viewer or the caller's own row, is_admin admin-only, the event columns only with event_id. */
+  /** The wire's field gating: email / phone for an admin viewer or the caller's own row, is_admin and has_password admin-only, the event columns only with event_id. */
   function shapePerson(
     person: Person,
     view: { viewerId: number; admin: boolean; eventScoped: boolean },
@@ -1795,6 +1801,8 @@ export function createFakeIms(options: FakeImsOptions = {}): FakeIms {
       email: view.admin || own ? person.email : undefined,
       phone: view.admin || own ? person.phone : undefined,
       isAdmin: view.admin ? person.isAdmin : false,
+      // has_password, like is_admin, is populated for a personnel admin only.
+      hasPassword: view.admin ? person.hasPassword : false,
       wristband: view.eventScoped ? person.wristband : undefined,
       participationType: view.eventScoped
         ? person.participationType
