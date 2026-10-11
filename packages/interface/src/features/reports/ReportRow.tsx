@@ -22,7 +22,7 @@ export function rowHeight(lineHeight: number, pad: number): number {
 
 export interface ReportRowProps {
   view: Row;
-  columns: Column[];
+  columns: readonly Column[];
   selected: boolean;
   height: number;
   onPress: (number: number) => void;

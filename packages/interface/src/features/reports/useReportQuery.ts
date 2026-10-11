@@ -16,6 +16,7 @@ import {
   serializeQuery,
   toRows,
 } from "@/features/reports/reportQuery";
+import { flatParams } from "@/lib/params";
 
 // The report table's URL state and its actions, shaped as
 // src/features/dispatch/useDispatchQuery.ts: no stored preference (the
@@ -40,10 +41,6 @@ export interface ReportQuery {
   submitSearch: () => void;
 }
 
-function first(value: string | string[] | undefined): string | undefined {
-  return Array.isArray(value) ? value[0] : value;
-}
-
 export function useReportQuery(
   reports: ReportView[],
   /** Have the reports loaded at least once? Default true for callers that don't poll. */
@@ -54,13 +51,7 @@ export function useReportQuery(
   const searchRef = useRef<TextInput>(null);
   const listRef = useRef<FlatList<Row>>(null);
 
-  const flat = useMemo(() => {
-    const out: Params = {};
-    for (const [k, v] of Object.entries(params)) {
-      out[k] = first(v);
-    }
-    return out;
-  }, [params]);
+  const flat = useMemo(() => flatParams(params) as Params, [params]);
 
   const query = useMemo(() => parseQuery(flat), [flat]);
   const visible = useMemo(() => applyQuery(reports, query), [reports, query]);

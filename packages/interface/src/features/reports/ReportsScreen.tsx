@@ -6,6 +6,7 @@ import { StyleSheet, View } from "react-native";
 import { toAppError } from "@/api/errors";
 import type { ReportScreenHandle } from "@/features/board/ReportScreen";
 import { HelpSheet } from "@/features/dispatch/HelpSheet";
+import { useKeyboardMap } from "@/features/dispatch/useKeyboardMap";
 import { useEventAccess } from "@/features/events/hooks";
 import { useLiveEvent } from "@/features/live/useLiveEvent";
 import { useReportRows } from "@/features/reports/hooks";
@@ -14,7 +15,6 @@ import { ReportFilterBar } from "@/features/reports/ReportFilterBar";
 import { ReportTable } from "@/features/reports/ReportTable";
 import { reportHelpRows } from "@/features/reports/reportHelp";
 import { serializeQuery } from "@/features/reports/reportQuery";
-import { useReportKeyboardMap } from "@/features/reports/useReportKeyboardMap";
 import { useReportQuery } from "@/features/reports/useReportQuery";
 import { EmptyState } from "@/features/shell/EmptyState";
 import { ErrorState } from "@/features/shell/ErrorState";
@@ -38,7 +38,7 @@ export function ReportsScreen(props: ReportsScreenProps) {
   const rowsQuery = useReportRows(eventId);
   useLiveEvent(eventId);
   const reports = rowsQuery.data?.reports ?? [];
-  const q = useReportQuery(reports, !rowsQuery.isLoading);
+  const q = useReportQuery(reports, rowsQuery.data !== undefined);
   const [help, setHelp] = useState(false);
   const handle = useRef<ReportScreenHandle>(null);
 
@@ -64,7 +64,7 @@ export function ReportsScreen(props: ReportsScreenProps) {
     ? () => router.push(`/events/${eventId}/reports/new`)
     : undefined;
 
-  useReportKeyboardMap({
+  useKeyboardMap({
     query: q.query,
     visible: q.visible,
     help,
@@ -75,7 +75,7 @@ export function ReportsScreen(props: ReportsScreenProps) {
     close: q.close,
     move: q.move,
     onFull,
-    onNewReport,
+    onNew: onNewReport,
     searchRef: q.searchRef,
     handle,
   });

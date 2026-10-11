@@ -34,14 +34,7 @@ export const COLUMNS: readonly Column[] = [
 export const ROW_PADDING = 2 * spacing.lg;
 export const CELL_GAP = spacing.md;
 
-/**
- * Every column, always: the report table only ever renders at the drawer's
- * or the page's width (the phone keeps the Board, § The table), both wide
- * enough for every fixed column plus `width.summaryMin` — unlike the
- * incident table, this has no hide order to earn. `columnsFor` keeps the
- * incident table's signature shape (a width in) so a caller measuring its
- * own container, not the window, still has somewhere to pass it.
- */
-export function columnsFor(_tableWidth: number): Column[] {
-  return [...COLUMNS];
-}
+// Every column, always: the report table only ever renders at the drawer's
+// or the page's width (the phone keeps the Board, § The table), both wide
+// enough for every fixed column plus `width.summaryMin` — unlike the incident
+// table, this has no hide order to earn, so there is no `columnsFor(width)`.

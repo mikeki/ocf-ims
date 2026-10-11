@@ -223,6 +223,16 @@ describe("the Ledger pane", () => {
     expect(onOpenIncident).not.toHaveBeenCalled();
   });
 
+  it("treats an incident the viewer lacks the read bit for (403) the same as a private one", async () => {
+    const fake = createFakeIms({ user: { writeReports: true } });
+    populate(fake, { incident: 214 });
+    fake.behaviour.getIncident = "forbidden";
+    const onOpenIncident = jest.fn();
+    await renderPane(fake, { onOpenIncident });
+    expect(await screen.findByText("Not visible to you")).toBeTruthy();
+    expect(screen.queryByTestId("ledger-incident-open")).toBeNull();
+  });
+
   it("opens a readable incident and says nothing of visibility", async () => {
     const fake = createFakeIms();
     populate(fake, { incident: 214 });

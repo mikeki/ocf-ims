@@ -4,8 +4,8 @@ import { render } from "@testing-library/react-native";
 import { Platform } from "react-native";
 import {
   type KeyboardMapDeps,
-  useReportKeyboardMap,
-} from "@/features/reports/useReportKeyboardMap";
+  useKeyboardMap,
+} from "@/features/dispatch/useKeyboardMap";
 
 // The reports table's keys (plan 09z criterion 7), driven through a stub
 // `window` since Jest runs in a node environment: web only, suppressed in an
@@ -16,7 +16,7 @@ jest.mock("expo-router", () => require("@/test/fakeRouter"));
 type Listener = (e: unknown) => void;
 
 function Harness(props: { deps: KeyboardMapDeps }) {
-  useReportKeyboardMap(props.deps);
+  useKeyboardMap(props.deps);
   return null;
 }
 
@@ -41,7 +41,7 @@ function setup(overrides: Partial<KeyboardMapDeps> = {}) {
     close: jest.fn(),
     move: jest.fn(),
     onFull: jest.fn(),
-    onNewReport: jest.fn(),
+    onNew: jest.fn(),
     searchRef: { current: { focus: jest.fn() } } as never,
     handle: {
       current: { focusComposer: jest.fn(), toggleSystemEntries: jest.fn() },
@@ -58,7 +58,7 @@ afterEach(() => {
   (globalThis as unknown as { window?: unknown }).window = undefined;
 });
 
-describe("useReportKeyboardMap", () => {
+describe("useKeyboardMap", () => {
   it("j and k move, / focuses the search, ? toggles help, n starts a report", async () => {
     const { deps, press } = setup();
     await render(<Harness deps={deps} />);
@@ -71,7 +71,7 @@ describe("useReportKeyboardMap", () => {
     expect(deps.move).toHaveBeenNthCalledWith(2, -1);
     expect(deps.searchRef?.current?.focus).toHaveBeenCalled();
     expect(deps.setHelp).toHaveBeenCalledWith(true);
-    expect(deps.onNewReport).toHaveBeenCalled();
+    expect(deps.onNew).toHaveBeenCalled();
   });
 
   it("Enter opens the selected row, then the full page once open", async () => {

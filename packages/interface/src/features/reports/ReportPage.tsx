@@ -11,6 +11,7 @@ import {
   type ReportScreenHandle,
 } from "@/features/board/ReportScreen";
 import { HelpSheet } from "@/features/dispatch/HelpSheet";
+import { useKeyboardMap } from "@/features/dispatch/useKeyboardMap";
 import { useEventAccess } from "@/features/events/hooks";
 import { useReportRows } from "@/features/reports/hooks";
 import { neighboursOf } from "@/features/reports/neighbours";
@@ -20,8 +21,8 @@ import {
   type Params,
   parseQuery,
 } from "@/features/reports/reportQuery";
-import { useReportKeyboardMap } from "@/features/reports/useReportKeyboardMap";
 import { ScreenHeader } from "@/features/shell/ScreenHeader";
+import { flatParams } from "@/lib/params";
 
 // The full report page (plan 09z criterion 9), shaped as
 // src/features/dispatch/IncidentPage.tsx: reached from a second Enter in the
@@ -32,10 +33,6 @@ import { ScreenHeader } from "@/features/shell/ScreenHeader";
 // history, Esc goes back.
 
 const QUERY_KEYS = ["link", "q", "sort", "sel", "open"] as const;
-
-function first(value: string | string[] | undefined): string | undefined {
-  return Array.isArray(value) ? value[0] : value;
-}
 
 export interface ReportPageProps {
   eventId: number;
@@ -50,13 +47,7 @@ export function ReportPage(props: ReportPageProps) {
   const access = useEventAccess(eventId);
   const rowsQuery = useReportRows(eventId);
 
-  const flat = useMemo(() => {
-    const out: Params = {};
-    for (const [k, v] of Object.entries(params)) {
-      out[k] = first(v);
-    }
-    return out;
-  }, [params]);
+  const flat = useMemo(() => flatParams(params) as Params, [params]);
   // `from=table` marks a push from the table even when its query is the bare
   // default and so carries no other key.
   const carried =
@@ -90,7 +81,7 @@ export function ReportPage(props: ReportPageProps) {
 
   const [help, setHelp] = useState(false);
   const handle = useRef<ReportScreenHandle>(null);
-  useReportKeyboardMap({
+  useKeyboardMap({
     query: { open: number, sel: undefined, q: "" },
     visible,
     help,

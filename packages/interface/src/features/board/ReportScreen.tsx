@@ -256,7 +256,6 @@ function Ledger(props: LedgerProps) {
                 onOpenIncident={onOpenIncident}
               />
             }
-            testID="ledger-incident-value"
           />
           <LedgerRow
             label="Created"
@@ -360,7 +359,7 @@ interface IncidentValueProps {
 
 /**
  * The Incident row's value. The number opens the incident, unless the viewer
- * cannot read it (a private incident answers 404): then it is plain text with
+ * cannot read it (a private incident answers 404, a missing read bit 403): then it is plain text with
  * "Not visible to you" where the incident would render, never its content.
  * Link… / Detach are the words beside it, for `writeReports` only.
  */
@@ -375,10 +374,13 @@ function IncidentValue(props: IncidentValueProps) {
     { eventId, incidentNumber: incident },
     { enabled: linked, retry: false },
   );
+  // A private incident answers 404; a viewer without the incident read bit
+  // gets 403. Both are "cannot read": the number stays, nothing else leaks.
+  const hiddenKinds = new Set(["notFound", "forbidden"]);
   const hidden =
     linked &&
     readable.error !== null &&
-    toAppError(readable.error).kind === "notFound";
+    hiddenKinds.has(toAppError(readable.error).kind);
 
   const submitLink = async () => {
     const trimmed = linkText.trim();

@@ -56,7 +56,12 @@ export function DispatchScreen(props: DispatchScreenProps) {
     [typesQuery.data, areasQuery.data],
   );
 
-  const d = useDispatchQuery(rows, lookups, me, !incidentsQuery.isLoading);
+  const d = useDispatchQuery(
+    rows,
+    lookups,
+    me,
+    incidentsQuery.data !== undefined,
+  );
   const [help, setHelp] = useState(false);
   const handle = useRef<IncidentScreenHandle>(null);
 
@@ -101,7 +106,7 @@ export function DispatchScreen(props: DispatchScreenProps) {
     close: d.close,
     move: d.move,
     onFull,
-    onNewIncident,
+    onNew: onNewIncident,
     searchRef: d.searchRef,
     handle,
   });

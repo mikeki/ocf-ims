@@ -62,7 +62,7 @@ export function ReportDrawer(props: ReportDrawerProps) {
           title={`R-${number}`}
           back={{ label: "Reports", onPress: q.close }}
           right={
-            <View style={styles.nav}>
+            <View style={[styles.nav, { gap: theme.spacing.sm }]}>
               {prev !== undefined ? (
                 <TextButton
                   label="‹ Prev"
@@ -112,5 +112,5 @@ const styles = StyleSheet.create({
     bottom: 0,
     borderLeftWidth: StyleSheet.hairlineWidth,
   },
-  nav: { flexDirection: "row", alignItems: "center", gap: 6 },
+  nav: { flexDirection: "row", alignItems: "center" },
 });

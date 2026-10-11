@@ -43,10 +43,12 @@ import { useSession } from "@/session/provider";
 // from the list responses; a server filter is a noted follow-up (09i §8). A
 // writer gets the docked filing bar (09r).
 
-type SegmentKey = "all" | "mine" | "reports";
+export type SegmentKey = "all" | "mine" | "reports";
 
 export interface BoardScreenProps {
   eventId: number;
+  /** The segment to open on; the `/reports` route opens on Reports (3c.3). */
+  initialSegment?: SegmentKey;
   onBack: () => void;
   onOpenIncident: (number: number) => void;
   onOpenReport: (number: number) => void;
@@ -67,7 +69,9 @@ export function BoardScreen(props: BoardScreenProps) {
     onFile,
     onFileReport,
   } = props;
-  const [segment, setSegment] = useState<SegmentKey>("mine");
+  const [segment, setSegment] = useState<SegmentKey>(
+    props.initialSegment ?? "mine",
+  );
 
   const { state } = useSession();
   const me = state.status === "signedIn" ? state.auth.personId : 0;

@@ -1,19 +1,13 @@
 // SPDX-License-Identifier: Apache-2.0
 
-import { useEffect, useMemo, useRef, useState } from "react";
-import {
-  FlatList,
-  Pressable,
-  StyleSheet,
-  useWindowDimensions,
-  View,
-} from "react-native";
+import { useEffect, useRef } from "react";
+import { FlatList, Pressable, StyleSheet, View } from "react-native";
 import { PressFeedback } from "@/design/motion";
 import { Text } from "@/design/primitives/Text";
 import { useTheme } from "@/design/theme";
 import { pressRetentionOffset } from "@/design/tokens";
 import { ReportRow, rowHeight } from "@/features/reports/ReportRow";
-import { type Column, columnsFor } from "@/features/reports/reportColumns";
+import { COLUMNS, type Column } from "@/features/reports/reportColumns";
 import {
   clearFilters,
   defaultDir,
@@ -37,9 +31,7 @@ export interface ReportTableProps {
 export function ReportTable(props: ReportTableProps) {
   const { q, onRowPress } = props;
   const theme = useTheme();
-  const { width: windowWidth } = useWindowDimensions();
-  const [width, setWidth] = useState(windowWidth);
-  const columns = useMemo(() => columnsFor(width), [width]);
+  const columns = COLUMNS;
   const height = rowHeight(theme.type.body.lineHeight ?? 0, theme.spacing.md);
   const scroll = useRef({ y: 0, height: 0 });
   const { sel } = q.query;
@@ -104,10 +96,7 @@ export function ReportTable(props: ReportTableProps) {
   );
 
   return (
-    <View
-      style={styles.fill}
-      onLayout={(e) => setWidth(e.nativeEvent.layout.width)}
-    >
+    <View style={styles.fill}>
       <Header columns={columns} q={q} onSort={onSort} />
       <FlatList
         ref={q.listRef}
@@ -148,7 +137,7 @@ export function ReportTable(props: ReportTableProps) {
 }
 
 interface HeaderProps {
-  columns: Column[];
+  columns: readonly Column[];
   q: ReportQuery;
   onSort: (key: SortKey) => void;
 }

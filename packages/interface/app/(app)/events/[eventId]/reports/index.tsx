@@ -31,6 +31,7 @@ export default function ReportsRoute() {
   return (
     <BoardScreen
       eventId={eventId}
+      initialSegment="reports"
       onBack={() => {
         router.dismissTo("/events");
       }}
