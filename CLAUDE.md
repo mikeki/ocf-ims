@@ -100,39 +100,34 @@ writing a design brief or judging a direction.
 
 ## Model roster (who does what)
 
-One tier per session or `Agent` call; a task takes the lowest tier that can own it.
+The tiers, the rules and the brief template are the `maybloom-stack-delegate` skill
+of the `maybloom-stack` plugin; its rules 1–6 are the ones 09i §7 cites by number.
+Builder and mechanic are the plugin's agents (`subagent_type: maybloom-stack:builder`
+and `maybloom-stack:mechanic`); the architect is the interactive session. This repo
+pins the models and adds one tier above them:
 
-| Tier | Model | Owns |
+| Tier | Model | Owns here |
 |---|---|---|
 | **Design** | Claude Design, or an in-code picker round (`prototype`) run by the maintainer | Design system, screen prototypes, flows and states, brand assets; the handoff bundle. Decided one slice ahead of implementation (09i §6). |
-| **Architect** | Opus 5; Fable 5.1 for auth / session / privacy review and the slice briefs | Plan and slice briefs; the foundations (transport, session, data layer, stream client, error model); **every server slice**; anything touching authn / authz / privacy; `/code-review` of every builder PR; the §7 findings; the 3c.6 "what people rely on" list with the maintainer. |
-| **Builder** | Sonnet 5 | Screen and feature slices against a fixed brief (acceptance criteria, hooks, invalidations, design refs, files to touch) and their Jest / Playwright specs. |
+| **Architect** | Opus 5; Fable 5.1 for auth / session / privacy review and the slice briefs | The foundations, every server slice, authn / authz / privacy, `/code-review` of builder PRs; the §7 findings; the 3c.6 "what people rely on" list with the maintainer. |
+| **Builder** | Sonnet 5 | Screen and feature slices of `packages/interface` and their Jest / Playwright specs. |
 | **Mechanic** | Haiku 4.5 | CI / Docker / compose / Caddy, `app.json` / `eas.json`, biome / tsconfig, dependency bumps, lint fixes, rename sweeps, inventories, README and changelog chores. |
 
-Rules (numbered as 09i §7 cites them):
+## Delegation (the `maybloom-stack-delegate` skill has the roster and rules)
 
-1. **A brief precedes a builder.** A builder that finds the brief wrong stops and reports.
-2. **Contract gaps stop the builder.** File the gap in the slice notes and continue with
-   what exists; the architect fixes the proto in a server slice. Never work around it.
-3. **Security code is architect-only, no subagents:** `internal/auth`, `lib/push`, and the
-   client's `src/api/transport.ts`, `src/api/blobs.ts`, `src/api/stream.ts`,
-   `src/session/*`, `src/push/*`, `src/lib/permissions.ts`, `src/lib/returnPath.ts`.
-4. **Review climbs a tier.** Builder PR → architect `/code-review medium` → the maintainer;
-   architect PR → a second architect review (`/code-review high`) → the maintainer;
-   mechanic PR → architect skim. `high` fans out to ~20 agents; it is for foundations
-   and security, not for a screen slice.
-5. **In Claude Code:** an architect session writes the brief and lands foundations itself.
-   Builder work is **a fresh Sonnet session per slice**; `Agent` with
-   `subagent_type: builder` only for a slice the plan marks under ~500 lines, the brief
-   as the whole prompt. Mechanic tasks are `Agent` with `subagent_type: mechanic`. The
-   agents (`.claude/agents/`) carry the standing rules, the tool set and the budget, so
-   a brief states only the slice. Parallel builders only where the plan marks slices
-   independent; a multi-agent `Workflow` only when the maintainer opts in.
-6. **Every subagent has a budget** and stops at it: the builder at 120 tool calls or
-   ~150K context, the mechanic at 60 or ~100K. A subagent cannot compact and nobody
-   watches its meter; a slice that outgrows the budget is a session, not a longer
-   `Agent` call. Splitting a slice in halves does not make it `Agent`-sized: each
-   half of 3c.1 ran 250 calls at 340K+ context and paid the long-context rate.
+- **Protected paths** (architect-only, no subagents): `go/internal/auth`, `go/lib/push`,
+  and in `packages/interface`: `src/api/transport.ts`, `src/api/blobs.ts`,
+  `src/api/stream.ts`, `src/session/*`, `src/push/*`, `src/lib/permissions.ts`,
+  `src/lib/returnPath.ts`.
+- **Commands run from:** Go from `go/`; pnpm, buf, Playwright and `docker compose` from
+  the repo root.
+- **Builder checks:** `pnpm -F @ocf-ims/interface typecheck`, `pnpm lint`,
+  `pnpm -F @ocf-ims/interface test` (`pnpm generate` first if the proto TypeScript is
+  missing).
+- **Mechanic checks:** `gofmt -l` and `golangci-lint` for Go, `pnpm lint` for the
+  workspace, or the CI job the chore touches.
+- **Orient with:** `grep -n '<row>' docs/plans/09i-expo-client.md` and the 09x criteria
+  section the brief names; never read a whole plan doc.
 
 ## Session hygiene (keep the context small)
 
