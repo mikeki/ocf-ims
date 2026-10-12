@@ -82,6 +82,7 @@ import {
   ListReportsResponseSchema,
   type ReportView,
   ReportViewSchema,
+  UpdateReportJournalEntryResponseSchema,
   type UpdateReportRequest,
   UpdateReportResponseSchema,
 } from "@ocf-ims/protocol-buffers/ocf/ims/service/rpc/v1/report_pb";
@@ -108,6 +109,11 @@ import { makeOutcome } from "@/test/fixtures";
 export type Behaviour = "ok" | "unauthenticated" | "unavailable";
 /** For the read RPCs that a screen can also see PermissionDenied from. */
 export type ListBehaviour = "ok" | "forbidden" | "unavailable";
+
+export type ReportWriteShape = "summary" | "incident" | "entry";
+export type ReportWriteBehaviour =
+  | ListBehaviour
+  | Partial<Record<ReportWriteShape, ListBehaviour>>;
 
 export interface FakeUser {
   email: string;
@@ -173,7 +179,8 @@ export interface FakeIms {
     proposeIncidentType: ListBehaviour;
     createArea: ListBehaviour;
     createReport: ListBehaviour;
-    updateReport: ListBehaviour;
+    /** One behaviour for every shape, or one per shape: summary, incident link, journal entry. */
+    updateReport: ReportWriteBehaviour;
     requestReport: ListBehaviour;
     listNotifications: ListBehaviour;
     markNotificationRead: ListBehaviour;
@@ -936,7 +943,20 @@ export function createFakeIms(options: FakeImsOptions = {}): FakeIms {
         },
         updateReport(req, ctx) {
           record("UpdateReport", ctx);
-          guard(fake.behaviour.updateReport, ctx);
+          const write = req.report;
+          const shapes: ReportWriteShape[] = [];
+          if (write?.summary !== undefined) {
+            shapes.push("summary");
+          }
+          if (write?.incident !== undefined) {
+            shapes.push("incident");
+          }
+          if (write && write.journalEntries.length > 0) {
+            shapes.push("entry");
+          }
+          for (const shape of shapes.length > 0 ? shapes : ["entry" as const]) {
+            guard(reportBehaviourOf(shape), ctx);
+          }
           requireReportWriter();
           fake.updateReportRequests.push(req);
           const view = fake.reports.find(
@@ -945,13 +965,46 @@ export function createFakeIms(options: FakeImsOptions = {}): FakeIms {
           if (!view?.report) {
             throw new ConnectError("report not found", Code.NotFound);
           }
-          const write = req.report;
           if (!write) {
             throw new ConnectError("report is required", Code.InvalidArgument);
           }
-          const linked = linkedIncident(req.eventId, write.incident);
-          const now = timestampFromDate(new Date(clock()));
           const report = view.report;
+          // Editing the summary is the creator's or an admin's.
+          if (
+            write.summary !== undefined &&
+            !fake.user.admin &&
+            report.createdBy?.personId !== fake.user.personId
+          ) {
+            throw new ConnectError(
+              "only the report's creator or an admin may edit its summary",
+              Code.PermissionDenied,
+            );
+          }
+          const now = timestampFromDate(new Date(clock()));
+          // Presence semantics: absent leaves the field; > 0 links, <= 0 detaches.
+          let nextIncident = report.incident;
+          const appended: ReturnType<typeof reportEntriesOf> = [];
+          let linkChanged = false;
+          if (write.incident !== undefined) {
+            const linked = linkedIncident(req.eventId, write.incident);
+            nextIncident = linked?.incident?.number;
+            linkChanged = nextIncident !== report.incident;
+            if (linkChanged) {
+              systemEntryId += 1;
+              appended.push(
+                create(JournalEntrySchema, {
+                  id: systemEntryId,
+                  created: now,
+                  author: fake.user.handle,
+                  systemEntry: true,
+                  text:
+                    nextIncident !== undefined
+                      ? `Linked to incident #${nextIncident}`
+                      : `Unlinked from incident #${report.incident}`,
+                }),
+              );
+            }
+          }
           const next = create(ReportViewSchema, {
             ...view,
             report: create(ReportSchema, {
@@ -959,20 +1012,82 @@ export function createFakeIms(options: FakeImsOptions = {}): FakeIms {
               ...(write.summary !== undefined
                 ? { summary: write.summary }
                 : {}),
-              ...(write.incident !== undefined
-                ? { incident: write.incident > 0 ? write.incident : undefined }
-                : {}),
+              incident: nextIncident,
               journalEntries: [
                 ...report.journalEntries,
+                ...appended,
                 ...reportEntriesOf(write, now),
               ],
             }),
           });
           fake.reports = fake.reports.map((v) => (v === view ? next : v));
-          if (linked) {
-            markDelivered(linked, req.reportNumber);
+          if (linkChanged) {
+            if (report.incident !== undefined) {
+              fake.incidents = fake.incidents.map((v) => {
+                const inc = v.incident;
+                return inc && inc.number === report.incident
+                  ? create(IncidentViewSchema, {
+                      ...v,
+                      incident: create(IncidentSchema, {
+                        ...inc,
+                        reports: inc.reports.filter(
+                          (n) => n !== req.reportNumber,
+                        ),
+                      }),
+                    })
+                  : v;
+              });
+            }
+            if (nextIncident !== undefined) {
+              const target = linkedIncident(req.eventId, nextIncident);
+              if (target) {
+                markDelivered(target, req.reportNumber);
+              }
+            }
           }
           return create(UpdateReportResponseSchema);
+        },
+        updateReportJournalEntry(req, ctx) {
+          record("UpdateReportJournalEntry", ctx);
+          guard(reportBehaviourOf("entry"), ctx);
+          requireReportWriter();
+          const view = fake.reports.find(
+            (v) => v.report?.number === req.reportNumber,
+          );
+          if (!view?.report) {
+            throw new ConnectError("report not found", Code.NotFound);
+          }
+          const entry = view.report.journalEntries.find(
+            (e) => e.id === req.journalEntryId,
+          );
+          if (!entry) {
+            throw new ConnectError("journal entry not found", Code.NotFound);
+          }
+          // A reporter may strike only their own entries; a writer or admin any.
+          if (
+            !fake.user.admin &&
+            !fake.user.writeIncidents &&
+            entry.author !== fake.user.handle
+          ) {
+            throw new ConnectError(
+              "only the entry's author or a writer may strike it",
+              Code.PermissionDenied,
+            );
+          }
+          const stricken = req.entry?.stricken === true;
+          const next = create(ReportViewSchema, {
+            ...view,
+            report: create(ReportSchema, {
+              ...view.report,
+              journalEntries: view.report.journalEntries.map((e) =>
+                e.id === req.journalEntryId
+                  ? create(JournalEntrySchema, { ...e, stricken })
+                  : e,
+              ),
+            }),
+          });
+          fake.reports = fake.reports.map((v) => (v === view ? next : v));
+          return create(UpdateReportJournalEntryResponseSchema);
         },
         requestReport(req, ctx) {
           record("RequestReport", ctx);
@@ -1115,6 +1230,13 @@ export function createFakeIms(options: FakeImsOptions = {}): FakeIms {
       });
     },
   };
+
+  let systemEntryId = 8000;
+
+  function reportBehaviourOf(shape: ReportWriteShape): ListBehaviour {
+    const b = fake.behaviour.updateReport;
+    return typeof b === "string" ? b : (b[shape] ?? "ok");
+  }
 
   function requireReportWriter(): void {
     if (

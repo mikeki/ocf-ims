@@ -113,10 +113,14 @@ function populate(fake: FakeIms) {
   ];
 }
 
-function renderBoard(runtime: ReturnType<typeof createTestRuntime>) {
+function renderBoard(
+  runtime: ReturnType<typeof createTestRuntime>,
+  initialSegment?: "all" | "mine" | "reports",
+) {
   return renderWithProviders(
     <BoardScreen
       eventId={1}
+      initialSegment={initialSegment}
       onBack={() => {}}
       onOpenIncident={() => {}}
       onOpenReport={() => {}}
@@ -141,6 +145,19 @@ describe("BoardScreen", () => {
     expect(screen.getByTestId("incident-row-198")).toBeTruthy();
     // Not mine by any rule, and the newest, so the filter and not the order hid it.
     expect(screen.queryByTestId("incident-row-221")).toBeNull();
+  });
+
+  it("opens on the segment the route asks for (the /reports route opens on Reports)", async () => {
+    const fake = createFakeIms();
+    populate(fake);
+    const runtime = await signedInRuntime(fake);
+    await renderBoard(runtime, "reports");
+    await waitFor(() => {
+      expect(
+        screen.getByTestId("board-segment-reports").props.accessibilityState,
+      ).toEqual({ selected: true });
+    });
+    expect(screen.queryByTestId("incident-row-214")).toBeNull();
   });
 
   it("shows the whole event under All, and marks which rows are the viewer's", async () => {

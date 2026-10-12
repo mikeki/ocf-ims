@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 
-import type { Row } from "@/prototypes/reports/reportQuery";
+import type { Row } from "@/features/reports/reportQuery";
 
 /** The open report's neighbours in the table's current order (plan 09x's pattern). */
 export function neighboursOf(

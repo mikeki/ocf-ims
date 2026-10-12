@@ -6,7 +6,7 @@ import { StyleSheet, View } from "react-native";
 import { TextButton } from "@/design/primitives/TextButton";
 import { useTheme } from "@/design/theme";
 import { pageMaxWidth } from "@/design/tokens";
-import { HelpSheet } from "@/features/dispatch/HelpSheet";
+import { dispatchHelpRows, HelpSheet } from "@/features/dispatch/HelpSheet";
 import { neighboursOf } from "@/features/dispatch/neighbours";
 import {
   applyQuery,
@@ -27,6 +27,7 @@ import {
   type IncidentScreenHandle,
 } from "@/features/incidents/IncidentScreen";
 import { ScreenHeader } from "@/features/shell/ScreenHeader";
+import { flatParams } from "@/lib/params";
 import { useSession } from "@/session/provider";
 
 // The full incident page (plan 09x criterion 9): reached from a second Enter
@@ -54,10 +55,6 @@ const QUERY_KEYS = [
   "open",
 ] as const;
 
-function first(value: string | string[] | undefined): string | undefined {
-  return Array.isArray(value) ? value[0] : value;
-}
-
 export interface IncidentPageProps {
   eventId: number;
   number: number;
@@ -75,13 +72,7 @@ export function IncidentPage(props: IncidentPageProps) {
   const typesQuery = useIncidentTypes();
   const areasQuery = useAreas(eventId, access.readAreas);
 
-  const flat = useMemo(() => {
-    const out: Params = {};
-    for (const [k, v] of Object.entries(params)) {
-      out[k] = first(v);
-    }
-    return out;
-  }, [params]);
+  const flat = useMemo(() => flatParams(params) as Params, [params]);
   // A bare deep link carries none of the table's keys — show no prev/next
   // rather than guess a query the visitor never chose. `from=table` (finding
   // 4) is the sentinel `onFull` always adds, so a push from the table with
@@ -200,7 +191,7 @@ export function IncidentPage(props: IncidentPageProps) {
       <HelpSheet
         open={help}
         onClose={() => setHelp(false)}
-        writeIncidents={false}
+        rows={dispatchHelpRows(false)}
       />
     </View>
   );

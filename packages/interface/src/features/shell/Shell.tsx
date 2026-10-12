@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 
-import { useRouter } from "expo-router";
+import { usePathname, useRouter } from "expo-router";
 import type { ReactNode } from "react";
 import { Pressable, StyleSheet, View } from "react-native";
 import { PressFeedback } from "@/design/motion";
@@ -15,12 +15,11 @@ import { useLiveEvent } from "@/features/live/useLiveEvent";
 import { useSession } from "@/session/provider";
 
 // The wide-window shell (plan 09x criterion 2), promoted from
-// src/prototypes/dispatch/Shell.tsx: a top bar carrying the event, Incidents
-// (the only built destination this slice — Reports, Roster and Dashboard are
-// 3c.3-3c.5's, one item each, and a wide window having no reports list yet is
-// accepted), Alerts, the client's first visible stream-state word, the
-// signed-in identity and Sign out, and New incident when the caller may
-// write. The sidebar path from the D2 round survives ("the pick", 09x) so a
+// src/prototypes/dispatch/Shell.tsx: a top bar carrying the event, Incidents,
+// Reports (plan 09z criterion 11; Roster and Dashboard are 3c.4-3c.5's, one
+// item each), Alerts, the client's first visible stream-state word, the
+// signed-in identity and Sign out, and New incident / New report when the
+// caller may write. The sidebar path from the D2 round survives ("the pick", 09x) so a
 // later setting is a line item rather than a rewrite, but nothing sets it.
 
 export type ShellMode = "sidebar" | "topbar";
@@ -42,6 +41,7 @@ export function Shell(props: ShellProps) {
   const eventName = useEventName(eventId) || `Event ${eventId}`;
   const access = useEventAccess(eventId);
   const alerts = useAlerts();
+  const onReports = /\/reports(\/|$)/.test(usePathname());
   const live = useLiveEvent(eventId);
   const unread = Number(alerts.data?.unread ?? 0);
   // "Signed in as …" elsewhere in the app treats this string as the identity
@@ -55,7 +55,26 @@ export function Shell(props: ShellProps) {
         { gap: theme.spacing.xs },
       ]}
     >
-      <NavItem label="Incidents" active horizontal={mode === "topbar"} />
+      <NavItem
+        label="Incidents"
+        active={!onReports}
+        horizontal={mode === "topbar"}
+        onPress={
+          onReports
+            ? () => router.push(`/events/${eventId}/incidents`)
+            : undefined
+        }
+      />
+      <NavItem
+        label="Reports"
+        active={onReports}
+        horizontal={mode === "topbar"}
+        onPress={
+          onReports
+            ? undefined
+            : () => router.push(`/events/${eventId}/reports`)
+        }
+      />
       <NavItem
         label="Alerts"
         count={unread}
@@ -72,6 +91,19 @@ export function Shell(props: ShellProps) {
       onPress={() => router.push(`/events/${eventId}/incidents/new`)}
     />
   ) : null;
+  const newReport = access.writeReports ? (
+    <Button
+      label="New report"
+      variant="secondary"
+      onPress={() => router.push(`/events/${eventId}/reports/new`)}
+    />
+  ) : null;
+  const actions = (
+    <>
+      {newIncident}
+      {newReport}
+    </>
+  );
 
   // The first visible stream state (criterion 2): nothing while live, so the
   // common case is silent.
@@ -130,7 +162,7 @@ export function Shell(props: ShellProps) {
           {nav}
           <View style={styles.spacer} />
           {stream}
-          {newIncident}
+          {actions}
           {who}
         </View>
         <View style={styles.fill}>{children}</View>
@@ -163,9 +195,14 @@ export function Shell(props: ShellProps) {
         {stream ? (
           <View style={{ paddingHorizontal: theme.spacing.sm }}>{stream}</View>
         ) : null}
-        {newIncident ? (
-          <View style={{ paddingHorizontal: theme.spacing.sm }}>
-            {newIncident}
+        {newIncident || newReport ? (
+          <View
+            style={{
+              paddingHorizontal: theme.spacing.sm,
+              gap: theme.spacing.sm,
+            }}
+          >
+            {actions}
           </View>
         ) : null}
         <View style={styles.spacer} />
@@ -246,7 +283,7 @@ function NavItem(props: {
       ) : null}
     </View>
   );
-  // The current page (Incidents, this slice) has nowhere to navigate to: a
+  // The current page has nowhere to navigate to: a
   // plain marker, not a dead pressable.
   if (!onPress) {
     return (

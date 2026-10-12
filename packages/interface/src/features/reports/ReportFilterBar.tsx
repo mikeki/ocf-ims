@@ -11,10 +11,10 @@ import {
   clearFilters,
   isFiltered,
   type LinkFilter,
-} from "@/prototypes/reports/reportQuery";
-import type { ReportQuery } from "@/prototypes/reports/useReportQuery";
+} from "@/features/reports/reportQuery";
+import type { ReportQuery } from "@/features/reports/useReportQuery";
 
-// The report table's filter bar, a retyped copy of
+// The report table's filter bar, shaped as
 // src/features/dispatch/FilterBar.tsx: the search field, the Unlinked ·
 // Linked · All chips in place of Open · Closed · All, and Clear. No
 // priority / type / area / people menus (§ The table) — a report carries

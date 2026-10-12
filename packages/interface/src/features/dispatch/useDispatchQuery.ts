@@ -23,6 +23,7 @@ import {
   saveStatePreference,
 } from "@/features/dispatch/statePreference";
 import { useMinuteClock } from "@/features/dispatch/useMinuteClock";
+import { flatParams } from "@/lib/params";
 
 // The table's URL state and its actions (plan 09x criteria 6-7), promoted
 // from src/prototypes/dispatch/useDispatch.ts: the pokes, the notices and the
@@ -59,10 +60,6 @@ export interface DispatchQuery {
   submitSearch: () => void;
 }
 
-function first(value: string | string[] | undefined): string | undefined {
-  return Array.isArray(value) ? value[0] : value;
-}
-
 export function useDispatchQuery(
   rows: IncidentView[],
   lookups: Lookups,
@@ -96,13 +93,7 @@ export function useDispatchQuery(
     };
   }, []);
 
-  const flat = useMemo(() => {
-    const out: Params = {};
-    for (const [k, v] of Object.entries(params)) {
-      out[k] = first(v);
-    }
-    return out;
-  }, [params]);
+  const flat = useMemo(() => flatParams(params) as Params, [params]);
 
   const fallbackState: StateFilter =
     stateLoaded && storedState ? storedState : "open";

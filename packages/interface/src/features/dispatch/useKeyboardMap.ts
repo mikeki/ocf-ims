@@ -4,8 +4,6 @@ import { useFocusEffect } from "expo-router";
 import type { RefObject } from "react";
 import { useCallback, useEffect, useRef } from "react";
 import { Platform, type TextInput } from "react-native";
-import type { Query, Row } from "@/features/dispatch/query";
-import type { IncidentScreenHandle } from "@/features/incidents/IncidentScreen";
 
 // The dispatch keyboard map (plan 09x criterion 11), promoted from
 // src/prototypes/dispatch/useDispatch.ts: web only, and gated on
@@ -13,7 +11,8 @@ import type { IncidentScreenHandle } from "@/features/incidents/IncidentScreen";
 // screen leaves it mounted beneath, and two ungated listeners fight over the
 // URL). Suppressed while an input has focus, except Esc, which blurs it.
 //
-// One hook, two callers (criterion 9): the dispatch table passes every field;
+// One hook, four callers (criterion 9; the reports table and page since 3c.3,
+// over `Row`s of either kind): the dispatch table passes every field;
 // `IncidentPage` (criterion 9) passes a narrower set — no search field, no
 // "new incident", `close` is its "back" — so `setQuery`/`select`/`open`/
 // `onFull`/`onNewIncident`/`searchRef` are optional. `query.open` is what
@@ -23,11 +22,13 @@ import type { IncidentScreenHandle } from "@/features/incidents/IncidentScreen";
 // yet, 09x); `p`/`P` die with the surface.
 
 export interface KeyboardMapDeps {
-  query: Pick<Query, "open" | "sel" | "q">;
-  visible: Row[];
+  /** The URL state the keys read: the dispatch `Query` or the reports one. */
+  query: { open?: number; sel?: number; q?: string };
+  /** The rows in table order; only their count and numbers matter here. */
+  visible: readonly unknown[];
   help: boolean;
   setHelp: (on: boolean) => void;
-  setQuery?: (patch: Partial<Query>) => void;
+  setQuery?: (patch: { q?: string; open?: number; sel?: number }) => void;
   select?: (number: number | undefined) => void;
   open?: (number: number) => void;
   /** Closes the drawer (the table) or goes back (the page). */
@@ -35,12 +36,18 @@ export interface KeyboardMapDeps {
   move: (delta: 1 | -1) => void;
   /** Drawer open, Enter again: the full page. Absent on the page — there is nowhere further to go. */
   onFull?: () => void;
-  /** Absent when the caller may not write incidents, or on the page (not bound there). */
-  onNewIncident?: () => void;
+  /** `n`: absent when the caller may not write (incidents or reports), or on the page (not bound there). */
+  onNew?: () => void;
   /** Absent on the page: no search field there. */
   searchRef?: RefObject<TextInput | null>;
-  /** The open incident's composer / system-entries controls (criteria 8, 9); bound while `query.open` is set. */
-  handle?: RefObject<IncidentScreenHandle | null>;
+  /** The open incident's or report's composer / history controls (criteria 8, 9); bound while `query.open` is set. */
+  handle?: RefObject<KeyboardScreenHandle | null>;
+}
+
+/** What `a` and `h` reach on the open screen; `IncidentScreenHandle` and `ReportScreenHandle` both satisfy it. */
+export interface KeyboardScreenHandle {
+  focusComposer(): void;
+  toggleSystemEntries(): void;
 }
 
 export function useKeyboardMap(deps: KeyboardMapDeps): void {
@@ -116,7 +123,7 @@ export function useKeyboardMap(deps: KeyboardMapDeps): void {
           }
           break;
         case "n":
-          d.onNewIncident?.();
+          d.onNew?.();
           break;
         case "a":
           if (d.query.open !== undefined) {
