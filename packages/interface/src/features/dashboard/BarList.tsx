@@ -18,7 +18,8 @@ import { type ColorRoles, chart, type Tone } from "@/design/tokens";
 // (`barWidth` = `chart.barThickness`, one `spacing.xl` slot per row). The
 // library's horizontal mode rotates its labels into a barWidth-wide strip, so
 // the label and count columns stay ours, row-aligned beside the chart: the
-// label wraps and never truncates, the count is plain text.
+// label is one line at the bar pitch (its full text on the accessibility
+// label; a wrapped row would drift off its bar), the count is plain text.
 
 export interface BarListItem {
   key: string;
@@ -83,9 +84,18 @@ export function BarList(props: BarListProps) {
           {visible.map((item) => (
             <View
               key={item.key}
-              style={{ minHeight: rowHeight, justifyContent: "center" }}
+              style={{ height: rowHeight, justifyContent: "center" }}
             >
-              <Text variant="label">{item.label}</Text>
+              {/* One line, fixed to the bar pitch: the chart draws every bar
+                  at `rowHeight`, so a wrapping label would drift off its
+                  bar. The full label stays readable to assistive tech. */}
+              <Text
+                variant="label"
+                numberOfLines={1}
+                accessibilityLabel={item.label}
+              >
+                {item.label}
+              </Text>
             </View>
           ))}
         </View>

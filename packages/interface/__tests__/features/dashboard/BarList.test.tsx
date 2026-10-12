@@ -55,7 +55,7 @@ describe("BarList", () => {
     expect(screen.queryByText("2 more")).toBeNull();
   });
 
-  it("never truncates a label", async () => {
+  it("keeps a long label on one line, the full text on the accessibility label", async () => {
     await render(
       list({
         items: [
@@ -70,7 +70,11 @@ describe("BarList", () => {
     const label = screen.getByText(
       "Main Stage — Back of House, behind the loading dock",
     );
-    expect(label.props.numberOfLines).toBeUndefined();
+    // One line at the bar pitch, the full label on the accessibility tree.
+    expect(label.props.numberOfLines).toBe(1);
+    expect(label.props.accessibilityLabel).toBe(
+      "Main Stage — Back of House, behind the loading dock",
+    );
   });
 
   it("derives the Top N caption from the limit, and drops it once expanded", async () => {

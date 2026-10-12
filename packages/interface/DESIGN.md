@@ -119,7 +119,9 @@ list's `barWidth`, one `spacing.xl` slot per row, rounded 4 px on its data end
 only; `columnWidth` (20) is the day chart's `barWidth`, centred in an equal slot
 of the measured card, with `plotHeight` (160) as its `height`, standing on a
 hairline `border` x-axis, no y-axis text and no rules. The bar list keeps its own
-label and count columns beside the chart (the library rotates horizontal labels).
+label and count columns beside the chart (the library rotates horizontal labels);
+a label is one line at the bar pitch, its full text on the accessibility label,
+since a wrapped row would drift off its bar.
 Every chart is an addition to a table: each mark prints its label and count, and
 each chart has its own table. A mark is one colour from the theme; switching a
 chart to its table, expanding "N more" and the changed dot are hard cuts.
