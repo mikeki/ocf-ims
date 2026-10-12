@@ -5,14 +5,18 @@ import type { Metrics } from "@ocf-ims/protocol-buffers/ocf/ims/resources/v1/met
 import { ImsService } from "@ocf-ims/protocol-buffers/ocf/ims/service/v1/service_pb";
 import { keepPreviousData } from "@tanstack/react-query";
 import { useEffect, useRef, useState } from "react";
-import { toAppError } from "@/api/errors";
+import { type AppError, toAppError } from "@/api/errors";
 
-// The promotable dashboard read (docs/plans/09ab-dashboard-design.md § One
-// read): one GetMetrics, polled at the caller's auto-refresh interval
-// (useAutoRefresh.ts), keeping the previous frame on every refetch (§ The
-// refresh model: "a refetch keeps the frame — the previous numbers stay,
-// nothing blanks") and tracking which cards moved since the last successful
-// answer for the changed mark (§ What changed).
+// The dashboard read (docs/plans/09ab-dashboard-design.md § One read): one
+// GetMetrics, polled at the caller's auto-refresh interval (useAutoRefresh.ts),
+// keeping the previous frame on every refetch (§ The refresh model: "a refetch
+// keeps the frame — the previous numbers stay, nothing blanks") and tracking
+// which cards moved since the last successful answer for the changed mark
+// (§ What changed). The live hub's pokes never reach it: the server caches the
+// aggregate for a minute anyway.
+
+/** `useAutoRefresh()`'s `intervalMs`: a period in milliseconds, or `false` for never. */
+export type MetricsInterval = number | false;
 
 export type ChangedKey =
   | "total"
@@ -114,16 +118,18 @@ export interface UseMetricsResult {
   metrics: Metrics | undefined;
   isLoading: boolean;
   isRefreshing: boolean;
-  lastError: string | undefined;
-  /** The card keys that moved since the last successful refresh, or in the last 60 s. */
+  /** The failure of a first load, when there is no data to keep showing. */
+  error: AppError | undefined;
+  /** The last refetch's failure while the previous answer is still held; cleared by the next success. */
+  lastError: AppError | undefined;
+  /** The card keys that moved between the last two successful answers, until the next success or 60 s. */
   changedKeys: ReadonlySet<ChangedKey>;
   refresh: () => void;
 }
 
-/** `intervalMs` is `useAutoRefresh()`'s own `intervalMs` — `false` polls never. */
 export function useMetrics(
   eventId: number,
-  intervalMs: number | false,
+  intervalMs: MetricsInterval,
 ): UseMetricsResult {
   const query = useQuery(
     ImsService.method.getMetrics,
@@ -136,7 +142,10 @@ export function useMetrics(
   );
 
   const metrics = query.data?.metrics;
-  const previousRef = useRef<Metrics | undefined>(undefined);
+  const held = metrics !== undefined;
+  const previousRef = useRef<{ eventId: number; metrics: Metrics } | undefined>(
+    undefined,
+  );
   const [changedKeys, setChangedKeys] = useState<ReadonlySet<ChangedKey>>(
     new Set(),
   );
@@ -144,39 +153,43 @@ export function useMetrics(
     undefined,
   );
 
-  // Recomputed fresh on every successful answer, so the marks from a stale
-  // refresh never survive into the next one (cleared "on the next successful
-  // refresh", per the brief, even when that refresh changed nothing itself).
+  // Recomputed on every successful answer (keyed on dataUpdatedAt, so an
+  // answer identical to the last still clears the old marks), never on the
+  // previous event's frame shown as a placeholder.
   useEffect(() => {
-    if (!metrics) {
+    if (!metrics || query.isPlaceholderData || query.dataUpdatedAt === 0) {
       return;
     }
     const previous = previousRef.current;
-    previousRef.current = metrics;
-    if (!previous || previous === metrics) {
+    previousRef.current = { eventId, metrics };
+    clearTimeout(clearTimer.current);
+    if (!previous || previous.eventId !== eventId) {
+      setChangedKeys(new Set());
       return;
     }
-    const next = diff(previous, metrics);
+    const next = diff(previous.metrics, metrics);
     setChangedKeys(next);
-    clearTimeout(clearTimer.current);
     if (next.size > 0) {
       clearTimer.current = setTimeout(
         () => setChangedKeys(new Set()),
         CHANGED_TTL_MS,
       );
     }
-  }, [metrics]);
+  }, [metrics, eventId, query.isPlaceholderData, query.dataUpdatedAt]);
 
   useEffect(() => () => clearTimeout(clearTimer.current), []);
 
+  const failure = query.isError ? toAppError(query.error) : undefined;
+  const { refetch } = query;
   return {
     metrics,
     isLoading: query.isLoading,
     isRefreshing: query.isFetching,
-    lastError: query.isError ? toAppError(query.error).message : undefined,
+    error: held ? undefined : failure,
+    lastError: held ? failure : undefined,
     changedKeys,
     refresh: () => {
-      void query.refetch();
+      void refetch();
     },
   };
 }

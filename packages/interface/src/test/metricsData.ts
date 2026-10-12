@@ -12,13 +12,16 @@ import {
   MetricsSchema,
 } from "@ocf-ims/protocol-buffers/ocf/ims/resources/v1/metrics_pb";
 
-// The 3c.5 round's fixture (docs/plans/09ab-dashboard-design.md § The
-// prototype round, the fixture paragraph): one event with ~180 incidents
-// over 8 days, and one empty event. Built with `create(MetricsSchema, …)`
-// rather than JSON, so the shapes stay exactly what the wire promises.
+// The dashboard's fixture (docs/plans/09ab-dashboard-design.md § The prototype
+// round, the fixture paragraph): one event with 180 incidents over 8 days, and
+// the empty aggregate. Built with `create(MetricsSchema, …)` rather than JSON,
+// so the shapes stay exactly what the wire promises. Fixed dates, so a spec
+// can name them.
 
 export const FAIR_EVENT = { id: 1, name: "Fair 2026" };
-export const EMPTY_EVENT = { id: 2, name: "Empty event" };
+/** The last day of `by_day`, and the fixture's `generated_at` (noon that day, UTC). */
+const LAST_DAY = "2026-07-10";
+const GENERATED_AT = new Date(`${LAST_DAY}T12:00:00Z`);
 
 const TOTAL = 180;
 const OPEN = 31;
@@ -44,15 +47,15 @@ function counts(
   );
 }
 
-// --- by_day: 8 days ending today, the busiest (~40) four days in. ---
+// --- by_day: 8 days ending LAST_DAY, the busiest (~40) four days in. ---
 
 const DAY_COUNTS = [15, 22, 18, 40, 28, 24, 20, 13]; // sums to TOTAL (180)
 
 function buildDays(): MetricDay[] {
-  const today = new Date();
+  const last = new Date(`${LAST_DAY}T00:00:00Z`);
   return DAY_COUNTS.map((count, i) => {
-    const d = new Date(today);
-    d.setDate(d.getDate() - (DAY_COUNTS.length - 1 - i));
+    const d = new Date(last);
+    d.setUTCDate(d.getUTCDate() - (DAY_COUNTS.length - 1 - i));
     return create(MetricDaySchema, {
       date: d.toISOString().slice(0, 10),
       count: BigInt(count),
@@ -217,15 +220,15 @@ export function buildFairMetrics(): Metrics {
     openFollowUps: buildFollowUps(),
     avgTimeToCloseSeconds: AVG_TIME_TO_CLOSE_SECONDS,
     closedCount: BigInt(CLOSED),
-    generatedAt: timestampFromDate(new Date()),
+    generatedAt: timestampFromDate(GENERATED_AT),
   });
 }
 
 /** The empty event: every tile "—" or 0, no avg, no bars, no follow-ups. */
-export function buildEmptyMetrics(): Metrics {
+export function buildEmptyMetrics(eventId = 0, event = ""): Metrics {
   return create(MetricsSchema, {
-    event: EMPTY_EVENT.name,
-    eventId: EMPTY_EVENT.id,
+    event,
+    eventId,
     total: 0n,
     open: 0n,
     closed: 0n,
@@ -239,32 +242,6 @@ export function buildEmptyMetrics(): Metrics {
     openFollowUps: [],
     avgTimeToCloseSeconds: undefined,
     closedCount: 0n,
-    generatedAt: timestampFromDate(new Date()),
-  });
-}
-
-/**
- * "A refresh that changes three numbers" (the fixture paragraph): a copy of
- * `base` with open +1, one area +1 and today's by_day +1 — deliberately NOT
- * also bumping total/closed, so exactly those three fields (and nothing
- * else) land in `useMetrics`' `changedKeys` for the round to show the mark
- * on. Always derived from the fixed base, so toggling the band's switch
- * twice shows the same bumped numbers rather than drifting further.
- */
-export function changed(base: Metrics): Metrics {
-  const byArea = base.byArea.map((a, i) =>
-    i === 0 ? create(MetricCountSchema, { ...a, count: a.count + 1n }) : a,
-  );
-  const byDay = base.byDay.map((d, i) =>
-    i === base.byDay.length - 1
-      ? create(MetricDaySchema, { ...d, count: d.count + 1n })
-      : d,
-  );
-  return create(MetricsSchema, {
-    ...base,
-    open: base.open + 1n,
-    byArea,
-    byDay,
-    generatedAt: timestampFromDate(new Date()),
+    generatedAt: timestampFromDate(GENERATED_AT),
   });
 }

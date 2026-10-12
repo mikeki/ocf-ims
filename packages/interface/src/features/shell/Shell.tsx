@@ -18,7 +18,7 @@ import { useSession } from "@/session/provider";
 // The wide-window shell (plan 09x criterion 2), promoted from
 // src/prototypes/dispatch/Shell.tsx: a top bar carrying the event, Incidents,
 // Reports (plan 09z criterion 11), People (3c.4; an admin or an inviter
-// only; Dashboard is 3c.5's), Alerts, the client's first visible stream-state word, the
+// only), Dashboard (3c.5; a writer only), Alerts, the client's first visible stream-state word, the
 // signed-in identity and Sign out, and New incident / New report when the
 // caller may write. The sidebar path from the D2 round survives ("the pick", 09x) so a
 // later setting is a line item rather than a rewrite, but nothing sets it.
@@ -45,6 +45,7 @@ export function Shell(props: ShellProps) {
   const pathname = usePathname();
   const onReports = /\/reports(\/|$)/.test(pathname);
   const onPeople = /\/people(\/|$)/.test(pathname);
+  const onDashboard = /\/dashboard(\/|$)/.test(pathname);
   const rosterAccess = useRosterAccess(eventId);
   const showPeople = rosterAccess.admin || rosterAccess.inviteReporters;
   const live = useLiveEvent(eventId);
@@ -62,10 +63,10 @@ export function Shell(props: ShellProps) {
     >
       <NavItem
         label="Incidents"
-        active={!onReports && !onPeople}
+        active={!onReports && !onPeople && !onDashboard}
         horizontal={mode === "topbar"}
         onPress={
-          onReports || onPeople
+          onReports || onPeople || onDashboard
             ? () => router.push(`/events/${eventId}/incidents`)
             : undefined
         }
@@ -89,6 +90,18 @@ export function Shell(props: ShellProps) {
             onPeople
               ? undefined
               : () => router.push(`/events/${eventId}/people`)
+          }
+        />
+      ) : null}
+      {access.writeIncidents ? (
+        <NavItem
+          label="Dashboard"
+          active={onDashboard}
+          horizontal={mode === "topbar"}
+          onPress={
+            onDashboard
+              ? undefined
+              : () => router.push(`/events/${eventId}/dashboard`)
           }
         />
       ) : null}

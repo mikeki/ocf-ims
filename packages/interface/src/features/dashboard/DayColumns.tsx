@@ -6,7 +6,7 @@ import { PressFeedback } from "@/design/motion";
 import { Text } from "@/design/primitives/Text";
 import { TextButton } from "@/design/primitives/TextButton";
 import { useTheme } from "@/design/theme";
-import type { ColorRoles } from "@/design/tokens";
+import { type ColorRoles, chart } from "@/design/tokens";
 
 // `by_day` (docs/plans/09ab-dashboard-design.md § The forms): one column per
 // day, the latest and busiest labelled above their own columns, the rest
@@ -14,9 +14,10 @@ import type { ColorRoles } from "@/design/tokens";
 // the chart (§ What to build 6). The "Table" word is a hard cut to a
 // date · count list, per every chart's own table (§ The forms).
 //
-// Each day gets an equal-width slot so 8+ days never crowd a wide card, but
-// the column drawn inside it is capped (`COLUMN_WIDTH`) and centred, so it
-// reads as a thin mark rather than a saturated block touching its neighbour.
+// Each day gets an equal-width slot so 8+ days never crowd a wide card; the
+// column drawn inside it is `chart.columnWidth` wide and centred, standing in
+// a plot `chart.plotHeight` tall. The tick band (the day-of-month under the
+// baseline) is part of the container, never a scroller of its own.
 
 export interface DayColumnsItem {
   date: string;
@@ -28,9 +29,6 @@ export interface DayColumnsProps {
   color?: keyof ColorRoles;
   testID?: string;
 }
-
-/** The chart's own height, a multiple of a spacing token rather than a literal. */
-const CHART_HEIGHT_STEPS = 8;
 
 function shortDate(date: string): string {
   const d = new Date(`${date}T00:00:00`);
@@ -68,8 +66,8 @@ export function DayColumns(props: DayColumnsProps) {
     days.find((d) => d.date === shownDate) ??
     days.find((d) => d.date === latestDate);
   const max = Math.max(1, ...days.map((d) => d.count));
-  const chartHeight = theme.spacing.xl * CHART_HEIGHT_STEPS;
-  const columnWidth = theme.spacing.xl;
+  const chartHeight = chart.plotHeight;
+  const columnWidth = chart.columnWidth;
 
   return (
     <View style={{ gap: theme.spacing.sm }} testID={testID}>
@@ -112,6 +110,7 @@ export function DayColumns(props: DayColumnsProps) {
                   key={d.date}
                   accessibilityRole="button"
                   accessibilityLabel={`${shortDate(d.date)}, ${d.count} incidents`}
+                  testID={testID ? `${testID}-day-${d.date}` : undefined}
                   onPress={() => setShownDate(d.date)}
                   onHoverIn={() => setShownDate(d.date)}
                   style={{ flex: 1, alignItems: "center" }}
@@ -130,6 +129,9 @@ export function DayColumns(props: DayColumnsProps) {
                         {isLatest || isBusiest ? shortDate(d.date) : ""}
                       </Text>
                       <View
+                        testID={
+                          testID ? `${testID}-column-${d.date}` : undefined
+                        }
                         style={{
                           width: columnWidth,
                           height,

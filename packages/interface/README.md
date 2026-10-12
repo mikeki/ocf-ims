@@ -49,6 +49,17 @@ Against the **staging instance** — the deployed testing server, plan
 EXPO_PUBLIC_API_URL=https://ims-staging.example.org pnpm -F @ocf-ims/interface start
 ```
 
+With **no server at all** — the app on the Jest fake (`src/session/fakeRuntime.ts`),
+for a look at a screen on fixture data; development only, never bundled in an export:
+
+```bash
+EXPO_PUBLIC_FAKE_IMS=1 pnpm -F @ocf-ims/interface start --clear
+```
+
+Sign in as the fake's user (`dee@example.org` / `correct horse`); the one event
+carries the dashboard fixture's metrics. A reload signs out (the token store is
+memory).
+
 Sign in as a seeded demo user (`miguel@example.com` / `Miguel`). The iOS / Android
 build proves the whole session there (body-carried refresh token). A browser on
 `localhost` is cross-site to staging and the refresh cookie is `SameSite=Strict`, so

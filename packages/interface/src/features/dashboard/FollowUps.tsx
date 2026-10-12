@@ -6,10 +6,8 @@ import { Text } from "@/design/primitives/Text";
 import { useTheme } from "@/design/theme";
 
 // `open_follow_ups` (docs/plans/09ab-dashboard-design.md § The forms): a list
-// of incident rows, the number a fixed tabular column, that open the
-// incident. Where that opens is an open decision (§ Decisions the round must
-// also take 4) — the round only judges placement, so `onOpen` here is
-// whatever the harness wired (a console log).
+// of incident rows, the number a fixed tabular column, press to open the
+// incident (`onOpen`, wired by the screen).
 
 export interface FollowUpItem {
   incidentNumber: number;
