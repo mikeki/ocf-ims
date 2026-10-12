@@ -17,15 +17,29 @@ export interface StatTileProps {
   value: string;
   caption?: string;
   changed?: boolean;
+  /** A phone: two tiles to a row. */
+  narrow?: boolean;
   testID?: string;
 }
 
 export function StatTile(props: StatTileProps) {
-  const { label, value, caption, changed = false, testID } = props;
+  const {
+    label,
+    value,
+    caption,
+    changed = false,
+    narrow = false,
+    testID,
+  } = props;
   const theme = useTheme();
   return (
     <View
-      style={{ flexGrow: 1, flexBasis: 0, gap: theme.spacing.xs }}
+      style={{
+        flexGrow: 1,
+        // Wide: four across. Narrow: a 2x2 grid (the gap is absorbed by grow).
+        flexBasis: narrow ? "40%" : 0,
+        gap: theme.spacing.xs,
+      }}
       testID={testID}
     >
       <View

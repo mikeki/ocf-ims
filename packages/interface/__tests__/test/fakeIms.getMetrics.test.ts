@@ -79,3 +79,16 @@ describe("fakeIms — GetMetrics", () => {
     expect(fake.getMetricsRequests).toHaveLength(2);
   });
 });
+
+describe("makeMetrics", () => {
+  it("converts a plain openFollowUps override into messages", () => {
+    const metrics = makeMetrics({
+      openFollowUps: [{ incidentNumber: 7, summary: "Lost child" }],
+    });
+    expect(metrics.openFollowUps).toHaveLength(1);
+    expect(metrics.openFollowUps[0]?.$typeName).toBe(
+      "ocf.ims.resources.v1.MetricIncidentRef",
+    );
+    expect(metrics.openFollowUps[0]?.incidentNumber).toBe(7);
+  });
+});

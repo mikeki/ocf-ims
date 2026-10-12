@@ -1,8 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import type { ReactNode } from "react";
-import { useEffect, useRef, useState } from "react";
-import { Platform, ScrollView, View } from "react-native";
+import { useState } from "react";
+import { ScrollView, View } from "react-native";
 import { Text } from "@/design/primitives/Text";
 import { useTheme } from "@/design/theme";
 import { BarList } from "@/features/dashboard/BarList";
@@ -22,6 +22,7 @@ import { HelpSheet } from "@/features/dispatch/HelpSheet";
 import { EmptyState } from "@/features/shell/EmptyState";
 import { LoadingState } from "@/features/shell/LoadingState";
 import { useLayoutMode } from "@/features/shell/layoutMode";
+import { useWebKeydown } from "@/lib/useWebKeydown";
 
 // The dashboard (docs/plans/09ab-dashboard-design.md § The pick, criteria
 // 8-13), promoted from the Board surface: the toolbar, the KPI row, then a
@@ -64,7 +65,7 @@ function DashboardBody(props: DashboardScreenProps) {
   useDashboardKeys({ refresh, help, setHelp });
 
   if (!metrics) {
-    if (error === undefined || isLoading) {
+    if (error === undefined || isLoading || isRefreshing) {
       return <LoadingState />;
     }
     if (error.kind === "forbidden" || error.kind === "notFound") {
@@ -108,39 +109,21 @@ function DashboardBody(props: DashboardScreenProps) {
   );
 }
 
-/** `r` refreshes, `?` toggles help, Esc closes it; web only, never while an input has focus. */
+/** `r` refreshes, `?` toggles help, Esc closes it; web only, focus-gated, never while an input has focus. */
 function useDashboardKeys(deps: {
   refresh: () => void;
   help: boolean;
   setHelp: (on: boolean) => void;
 }) {
-  const latest = useRef(deps);
-  latest.current = deps;
-  useEffect(() => {
-    if (Platform.OS !== "web" || typeof window === "undefined") {
-      return undefined;
+  useWebKeydown((e) => {
+    if (e.key === "r") {
+      deps.refresh();
+    } else if (e.key === "?") {
+      deps.setHelp(!deps.help);
+    } else if (e.key === "Escape" && deps.help) {
+      deps.setHelp(false);
     }
-    const onKey = (e: KeyboardEvent) => {
-      const d = latest.current;
-      const target = e.target as HTMLElement | null;
-      const inInput =
-        target !== null &&
-        (/^(INPUT|TEXTAREA|SELECT)$/.test(target.tagName) ||
-          target.isContentEditable);
-      if (inInput || e.metaKey || e.ctrlKey || e.altKey) {
-        return;
-      }
-      if (e.key === "r") {
-        d.refresh();
-      } else if (e.key === "?") {
-        d.setHelp(!d.help);
-      } else if (e.key === "Escape" && d.help) {
-        d.setHelp(false);
-      }
-    };
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, []);
+  });
 }
 
 function Cards(props: {
@@ -167,24 +150,28 @@ function Cards(props: {
         }}
       >
         <StatTile
+          narrow={narrow}
           testID="dashboard-total"
           label="Total"
           value={String(metrics.total)}
           changed={changed.has("total")}
         />
         <StatTile
+          narrow={narrow}
           testID="dashboard-open"
           label="Open"
           value={String(metrics.open)}
           changed={changed.has("open")}
         />
         <StatTile
+          narrow={narrow}
           testID="dashboard-closed"
           label="Closed"
           value={String(metrics.closed)}
           changed={changed.has("closed")}
         />
         <StatTile
+          narrow={narrow}
           testID="dashboard-avg"
           label="Avg. time to close"
           value={avgCloseValue(metrics.avgTimeToCloseSeconds)}
@@ -259,7 +246,6 @@ function Cards(props: {
             testID="dashboard-area"
             sorted
             limit={10}
-            caption="Top 10 areas"
             items={metrics.byArea.map((a) => ({
               key: a.key,
               label: a.label,
@@ -296,6 +282,7 @@ function Cards(props: {
           <BarList
             testID="dashboard-roles"
             caption="People, not incidents"
+            emptyLabel="No roles yet"
             items={metrics.byRole.map((r) => ({
               key: r.key,
               label: r.label,

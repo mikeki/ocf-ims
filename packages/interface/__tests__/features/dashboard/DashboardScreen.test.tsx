@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import { act, fireEvent, screen, waitFor } from "@testing-library/react-native";
-import { Dimensions, Platform } from "react-native";
+import { Dimensions, Platform, StyleSheet } from "react-native";
 import DashboardRoute from "@/../app/(app)/events/[eventId]/dashboard";
 import { DashboardScreen } from "@/features/dashboard/DashboardScreen";
 import * as metricsHook from "@/features/dashboard/useMetrics";
@@ -14,10 +14,22 @@ import { createMemoryRefreshTokenStore } from "@/test/storage";
 // The dashboard screen and its route (plan 09ab criteria 8-15).
 
 const dismissed: string[] = [];
+// A screen another route has been pushed over: its focus effects are cleaned up.
+const mockBlurs: (() => void)[] = [];
 jest.mock("expo-router", () => {
   const router = require("@/test/fakeRouter");
+  const { useEffect } = require("react");
   return {
     ...router,
+    useFocusEffect: (effect: () => undefined | (() => void)) => {
+      useEffect(() => {
+        const cleanup = effect();
+        if (cleanup) {
+          mockBlurs.push(cleanup);
+        }
+        return cleanup;
+      }, []);
+    },
     useRouter: () => ({
       ...router.useRouter(),
       dismissTo: (href: string) => {
@@ -57,6 +69,7 @@ function wide() {
 beforeEach(() => {
   resetFakeRouter({ eventId: "1" });
   dismissed.length = 0;
+  mockBlurs.length = 0;
 });
 
 let platform: { restore: () => void } | undefined;
@@ -101,7 +114,9 @@ describe("DashboardScreen", () => {
     ]) {
       expect(screen.getByText(title)).toBeTruthy();
     }
-    expect(screen.getByText("Top 10 areas")).toBeTruthy();
+    // Type and Area each fold their tail behind "Top 10".
+    expect(screen.getAllByText("Top 10").length).toBeGreaterThan(0);
+    expect(screen.queryByText("Top 10 areas")).toBeNull();
     expect(screen.getByText("People, not incidents")).toBeTruthy();
   });
 
@@ -126,6 +141,41 @@ describe("DashboardScreen", () => {
     fake.behaviour.getMetrics = "ok";
     await fireEvent.press(screen.getByText("Retry"));
     expect(await screen.findByTestId("dashboard-total")).toBeTruthy();
+  });
+
+  it("shows the loading state while a Retry after a failed first load is in flight", async () => {
+    jest.spyOn(metricsHook, "useMetrics").mockReturnValue({
+      metrics: undefined,
+      isLoading: false,
+      isRefreshing: true,
+      error: { kind: "unavailable", message: "redeploying" } as never,
+      lastError: undefined,
+      changedKeys: new Set(),
+      refresh: () => undefined,
+    });
+    await renderScreen(writer());
+    expect(screen.getByLabelText("Loading")).toBeTruthy();
+    expect(screen.queryByText("Couldn't load")).toBeNull();
+  });
+
+  it("says No roles yet, not No incidents yet, on an empty Roles card", async () => {
+    await renderScreen(createFakeIms({ user: { writeIncidents: true } }));
+    expect(await screen.findByText("No roles yet")).toBeTruthy();
+  });
+
+  it("wraps the KPI tiles two to a row on a phone, four across when wide", async () => {
+    await renderScreen(writer());
+    const phone = StyleSheet.flatten(
+      (await screen.findByTestId("dashboard-total")).props.style,
+    );
+    expect(phone.flexBasis).toBe("40%");
+    await screen.unmount();
+    wide();
+    await renderScreen(writer());
+    const desk = StyleSheet.flatten(
+      (await screen.findByTestId("dashboard-total")).props.style,
+    );
+    expect(desk.flexBasis).toBe(0);
   });
 
   it("marks what moved after a second answer", async () => {
@@ -195,6 +245,30 @@ describe("DashboardScreen", () => {
     });
     expect(await screen.findByText("Refresh the numbers")).toBeTruthy();
   });
+
+  it("does not refetch on r while another route is pushed over it (web)", async () => {
+    type Listener = (e: unknown) => void;
+    let listener: Listener | undefined;
+    (globalThis as unknown as { window?: unknown }).window = {
+      addEventListener: (type: string, l: Listener) => {
+        if (type === "keydown") {
+          listener = l;
+        }
+      },
+      removeEventListener: () => undefined,
+    };
+    platform = jest.replaceProperty(Platform, "OS", "web");
+    const fake = writer();
+    await renderScreen(fake);
+    await screen.findByTestId("dashboard-total");
+    for (const blur of mockBlurs) {
+      blur();
+    }
+    await act(async () => {
+      listener?.({ key: "r", target: { tagName: "DIV" } });
+    });
+    expect(fake.getMetricsRequests).toHaveLength(1);
+  });
 });
 
 async function renderRoute(fake: FakeIms) {
@@ -227,7 +301,17 @@ describe("the dashboard route", () => {
     expect(screen.queryByTestId("shell-nav-dashboard")).toBeNull();
   });
 
-  it("opens a follow-up in the incident drawer's URL", async () => {
+  it("opens a follow-up on its own page on a phone", async () => {
+    await renderRoute(writer());
+    const first = makeMetrics().openFollowUps[0];
+    await fireEvent.press(
+      await screen.findByText(new RegExp(`${first?.summary.slice(0, 20)}`)),
+    );
+    expect(pushed).toContain(`/events/1/incidents/${first?.incidentNumber}`);
+  });
+
+  it("opens a follow-up in the incident drawer's URL when wide", async () => {
+    wide();
     await renderRoute(writer());
     const first = makeMetrics().openFollowUps[0];
     await fireEvent.press(

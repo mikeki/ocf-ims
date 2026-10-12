@@ -30,6 +30,18 @@ describe("StatTile", () => {
     expect(style.fontVariant ?? []).not.toContain("tabular-nums");
   });
 
+  it("takes half the row on a phone, and shares it four ways when wide", async () => {
+    await render(tile({ narrow: true }));
+    expect(
+      StyleSheet.flatten(screen.getByTestId("tile").props.style).flexBasis,
+    ).toBe("40%");
+    await screen.unmount();
+    await render(tile());
+    expect(
+      StyleSheet.flatten(screen.getByTestId("tile").props.style).flexBasis,
+    ).toBe(0);
+  });
+
   it("shows — for an unset value", async () => {
     await render(tile({ label: "Avg to close", value: "—" }));
     expect(screen.getByText("—")).toBeTruthy();

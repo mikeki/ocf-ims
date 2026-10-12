@@ -198,11 +198,16 @@ export function makeRoster(n: number): Person[] {
 export function makeMetrics(
   overrides: MessageInitShape<typeof MetricsSchema> = {},
 ): Metrics {
-  // The fair is already built messages; overrides may be plain init shapes.
-  return create(MetricsSchema, {
-    ...buildFairMetrics(),
+  // Spreading a message would carry `$typeName`, and `create` then returns the
+  // plain spread without converting nested plain-init overrides. Build the fair
+  // as an init shape (nested values stay messages, which `create` accepts) and
+  // create once with the overrides merged field by field.
+  const { $typeName: _typeName, ...fair } = buildFairMetrics();
+  const init: MessageInitShape<typeof MetricsSchema> = {
+    ...fair,
     ...overrides,
-  } as MessageInitShape<typeof MetricsSchema>);
+  };
+  return create(MetricsSchema, init);
 }
 
 export function makeEmptyMetrics(eventId = 0, event = ""): Metrics {

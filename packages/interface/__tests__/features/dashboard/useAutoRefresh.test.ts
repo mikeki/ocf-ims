@@ -33,16 +33,18 @@ describe("auto-refresh preference", () => {
     expect(intervalMsFor("5m")).toBe(300_000);
   });
 
-  it("persists a choice under dashboard.autoRefresh and reads it back", async () => {
+  it("persists a choice under ocf-ims/dashboard/autoRefresh and reads it back", async () => {
     const first = await renderHook(() => useAutoRefresh());
     await act(async () => {
       first.result.current.setPreference("1m");
     });
     expect(first.result.current.intervalMs).toBe(60_000);
     await waitFor(async () =>
-      expect(await AsyncStorage.getItem("dashboard.autoRefresh")).toBe("1m"),
+      expect(await AsyncStorage.getItem("ocf-ims/dashboard/autoRefresh")).toBe(
+        "1m",
+      ),
     );
-    expect(AUTO_REFRESH_KEY).toBe("dashboard.autoRefresh");
+    expect(AUTO_REFRESH_KEY).toBe("ocf-ims/dashboard/autoRefresh");
 
     const second = await renderHook(() => useAutoRefresh());
     await waitFor(() => expect(second.result.current.preference).toBe("1m"));
@@ -52,6 +54,23 @@ describe("auto-refresh preference", () => {
     const storage = createMemoryAsyncStorage();
     storage.items.set(AUTO_REFRESH_KEY, "sideways");
     expect(await loadAutoRefresh(storage)).toBe("off");
+  });
+
+  it("keeps a choice made before the stored preference has loaded", async () => {
+    let release: (v: string | null) => void = () => undefined;
+    jest.spyOn(AsyncStorage, "getItem").mockReturnValue(
+      new Promise<string | null>((resolve) => {
+        release = resolve;
+      }),
+    );
+    const { result } = await renderHook(() => useAutoRefresh());
+    await act(async () => {
+      result.current.setPreference("30s");
+    });
+    await act(async () => {
+      release("5m");
+    });
+    expect(result.current.preference).toBe("30s");
   });
 
   it("survives storage that throws on read and on write", async () => {

@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import AsyncStorage from "@react-native-async-storage/async-storage";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import type { AsyncStorageLike } from "@/api/persist";
 
 // The dashboard's auto-refresh preference (docs/plans/09ab-dashboard-design.md
@@ -12,7 +12,7 @@ import type { AsyncStorageLike } from "@/api/persist";
 
 export type AutoRefresh = "off" | "30s" | "1m" | "5m";
 
-export const AUTO_REFRESH_KEY = "dashboard.autoRefresh";
+export const AUTO_REFRESH_KEY = "ocf-ims/dashboard/autoRefresh";
 
 export const AUTO_REFRESH_OPTIONS: { key: AutoRefresh; label: string }[] = [
   { key: "off", label: "Off" },
@@ -66,10 +66,13 @@ export interface UseAutoRefreshResult {
 export function useAutoRefresh(): UseAutoRefreshResult {
   const [preference, setPreferenceState] = useState<AutoRefresh>("off");
 
+  // Set by `setPreference`: a choice made before the stored one has loaded wins.
+  const touched = useRef(false);
+
   useEffect(() => {
     let cancelled = false;
     void loadAutoRefresh(AsyncStorage).then((value) => {
-      if (!cancelled) {
+      if (!cancelled && !touched.current) {
         setPreferenceState(value);
       }
     });
@@ -79,6 +82,7 @@ export function useAutoRefresh(): UseAutoRefreshResult {
   }, []);
 
   const setPreference = useCallback((value: AutoRefresh) => {
+    touched.current = true;
     setPreferenceState(value);
     void saveAutoRefresh(AsyncStorage, value);
   }, []);

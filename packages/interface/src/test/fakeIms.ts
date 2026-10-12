@@ -1417,10 +1417,12 @@ export function createFakeIms(options: FakeImsOptions = {}): FakeIms {
               fake.events.find((e) => e.id === req.eventId)?.name,
             );
           // The server stamps each answer with the moment it computed it.
-          const metrics = create(MetricsSchema, {
-            ...base,
+          const { $typeName: _typeName, ...held_ } = base;
+          const init: MessageInitShape<typeof MetricsSchema> = {
+            ...held_,
             generatedAt: timestampFromDate(new Date(clock())),
-          });
+          };
+          const metrics = create(MetricsSchema, init);
           return create(GetMetricsResponseSchema, { metrics });
         },
         listNotifications(_req, ctx) {

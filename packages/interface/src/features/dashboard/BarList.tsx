@@ -33,6 +33,8 @@ export interface BarListProps {
   /** Top N, with the rest behind an "N more" `TextButton`. */
   limit?: number;
   caption?: string;
+  /** The empty line; Roles counts people, not incidents. */
+  emptyLabel?: string;
   testID?: string;
 }
 
@@ -42,7 +44,8 @@ export function BarList(props: BarListProps) {
     color = "primary",
     sorted = false,
     limit,
-    caption,
+    caption: callerCaption,
+    emptyLabel = "No incidents yet",
     testID,
   } = props;
   const theme = useTheme();
@@ -51,7 +54,7 @@ export function BarList(props: BarListProps) {
   if (items.length === 0) {
     return (
       <Text variant="body" color="textMuted" testID={testID}>
-        No incidents yet
+        {emptyLabel}
       </Text>
     );
   }
@@ -59,6 +62,11 @@ export function BarList(props: BarListProps) {
   const ordered = sorted ? [...items].sort((a, b) => b.count - a.count) : items;
   const visible = limit && !expanded ? ordered.slice(0, limit) : ordered;
   const hiddenCount = limit ? Math.max(0, ordered.length - limit) : 0;
+  // A limited list names its cut while collapsed ("Top 10") and drops it once
+  // expanded (or when nothing is cut); a caller's own caption wins.
+  const caption =
+    callerCaption ??
+    (limit && !expanded && hiddenCount > 0 ? `Top ${limit}` : undefined);
   const max = Math.max(1, ...ordered.map((i) => i.count));
   const countColumnWidth = theme.spacing.xxl * 2;
 

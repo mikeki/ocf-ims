@@ -23,13 +23,18 @@ export default function DashboardRoute() {
     return <EmptyState title="Not found" />;
   }
 
-  // A follow-up opens the incident table with the incident in the drawer
-  // (09x's `?open=` URL state).
+  // A follow-up opens the incident: in the table's drawer on a wide window
+  // (09x's `?open=` URL state), on its own page on a phone, whose incidents
+  // route is the Board and never reads `open`.
   const screen = (
     <DashboardScreen
       eventId={eventId}
       onOpenFollowUp={(number) =>
-        router.push(`/events/${eventId}/incidents?open=${number}`)
+        router.push(
+          mode === "wide"
+            ? `/events/${eventId}/incidents?open=${number}`
+            : `/events/${eventId}/incidents/${number}`,
+        )
       }
     />
   );

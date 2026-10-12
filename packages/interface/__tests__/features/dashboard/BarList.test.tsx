@@ -83,6 +83,24 @@ describe("BarList", () => {
     expect(label.props.numberOfLines).toBeUndefined();
   });
 
+  it("derives the Top N caption from the limit, and drops it once expanded", async () => {
+    const many = Array.from({ length: 5 }, (_, i) => ({
+      key: `k${i}`,
+      label: `Item ${i}`,
+      count: 10 - i,
+    }));
+    await render(list({ items: many, limit: 3 }));
+    expect(screen.getByText("Top 3")).toBeTruthy();
+    await fireEvent.press(screen.getByText("2 more"));
+    expect(screen.queryByText("Top 3")).toBeNull();
+  });
+
+  it("takes an empty label from the caller", async () => {
+    await render(list({ items: [], emptyLabel: "No roles yet" }));
+    expect(screen.getByText("No roles yet")).toBeTruthy();
+    expect(screen.queryByText("No incidents yet")).toBeNull();
+  });
+
   it("prints a caption, and a quiet line when empty", async () => {
     await render(list({ caption: "Top areas" }));
     expect(screen.getByText("Top areas")).toBeTruthy();

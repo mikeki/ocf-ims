@@ -1,6 +1,5 @@
 // SPDX-License-Identifier: Apache-2.0
 
-import { useEffect, useState } from "react";
 import { Pressable, View } from "react-native";
 import type { AppError } from "@/api/errors";
 import { PressFeedback } from "@/design/motion";
@@ -11,24 +10,14 @@ import {
   AUTO_REFRESH_OPTIONS,
   type AutoRefresh,
 } from "@/features/dashboard/useAutoRefresh";
+import { useMinuteClock } from "@/features/dispatch/useMinuteClock";
 
 // The refresh model's toolbar (docs/plans/09ab-dashboard-design.md § The
-// refresh model): Refresh, "Updated n min ago" (its own 30 s clock — the
-// brief's own number, distinct from the rest of the app's one-minute clock),
+// refresh model): Refresh, "Updated n min ago" (the app's one-minute clock;
+// the label floors to minutes anyway),
 // the auto-refresh chips, and a failed refetch's "Couldn't refresh — Retry"
 // in place of the freshness line. The numbers on the page never blank for
 // this — `useMetrics` keeps the previous frame itself.
-
-const CLOCK_TICK_MS = 30_000;
-
-function useNow(): number {
-  const [now, setNow] = useState(() => Date.now());
-  useEffect(() => {
-    const id = setInterval(() => setNow(Date.now()), CLOCK_TICK_MS);
-    return () => clearInterval(id);
-  }, []);
-  return now;
-}
 
 function updatedLabel(generatedAtMs: number | undefined, now: number): string {
   if (generatedAtMs === undefined) {
@@ -59,7 +48,7 @@ export function Toolbar(props: ToolbarProps) {
     testID,
   } = props;
   const theme = useTheme();
-  const now = useNow();
+  const now = useMinuteClock();
 
   return (
     <View
