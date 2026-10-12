@@ -88,7 +88,10 @@ direction, the state/priority colour language and the motion budget (press feedb
 only: a 0.97 press-in scale over 120 ms, nothing enters with an animation on a list,
 reduced motion honoured) are in `packages/interface/DESIGN.md` — **read it before
 changing a token or adding an animation.** The whole motion budget is
-`src/design/motion.tsx` (Reanimated CSS transitions, no worklets). Anything pressable
+`src/design/motion.tsx` (Reanimated CSS transitions, no worklets), plus the one
+exception DESIGN.md names under "One drag.": the roster's Ladder drag in
+`src/features/people/PeopleScreen.tsx` (a worklet spring for the snap-back, its
+timing the `motion.snapBack` token). Anything pressable
 gets press feedback (`TextButton` for a pressable word, never `onPress` on a `Text`).
 `border` is decorative and below 3:1; `borderStrong` is the perceivable boundary.
 Brand assets come from `node scripts/brand-assets.mjs`; don't hand-edit the PNGs.

@@ -1432,7 +1432,11 @@ const styles = StyleSheet.create({
   search: { width: rosterTokens.searchWidth, borderWidth: 1, outlineWidth: 0 },
   spacer: { flex: 1 },
   stageWrap: { flex: 1 },
-  stage: { flexDirection: "row", alignItems: "flex-start" },
+  // The content container is at least the viewport wide, so the `flex: 1`
+  // columns share a wide window instead of sitting at MIN_COLUMN_WIDTH with
+  // the rest empty; below five minimum widths it grows past the viewport and
+  // the ScrollView scrolls sideways (09aa finding 8).
+  stage: { flexDirection: "row", alignItems: "flex-start", minWidth: "100%" },
   column: {
     flex: 1,
     minWidth: 0,
