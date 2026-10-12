@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { View } from "react-native";
+import { BarChart } from "react-native-gifted-charts";
 import { Text } from "@/design/primitives/Text";
 import { TextButton } from "@/design/primitives/TextButton";
 import { useTheme } from "@/design/theme";
@@ -13,8 +14,11 @@ import { type ColorRoles, chart, type Tone } from "@/design/tokens";
 // count-desc (a breakdown) over the given order (`by_role`'s ladder); `limit`
 // folds the tail into an in-place "N more" (a hard cut, no animation). A
 // `tone` per item is priority's own colour language; everything else takes one
-// colour from `color`. The bar is `chart.barThickness` tall, centred in a
-// `spacing.xl` row; the label column wraps and never truncates.
+// colour from `color`. The bars are one gifted-charts horizontal `BarChart`
+// (`barWidth` = `chart.barThickness`, one `spacing.xl` slot per row). The
+// library's horizontal mode rotates its labels into a barWidth-wide strip, so
+// the label and count columns stay ours, row-aligned beside the chart: the
+// label wraps and never truncates, the count is plain text.
 
 export interface BarListItem {
   key: string;
@@ -50,6 +54,7 @@ export function BarList(props: BarListProps) {
   } = props;
   const theme = useTheme();
   const [expanded, setExpanded] = useState(false);
+  const [plotWidth, setPlotWidth] = useState(0);
 
   if (items.length === 0) {
     return (
@@ -68,63 +73,71 @@ export function BarList(props: BarListProps) {
     callerCaption ??
     (limit && !expanded && hiddenCount > 0 ? `Top ${limit}` : undefined);
   const max = Math.max(1, ...ordered.map((i) => i.count));
-  const countColumnWidth = theme.spacing.xxl * 2;
+  const rowHeight = theme.spacing.xl;
+  const labelWidth = "34%";
 
   return (
     <View style={{ gap: theme.spacing.xs }} testID={testID}>
-      {visible.map((item) => {
-        const barColor = item.tone
-          ? theme.tones[item.tone].ink
-          : theme.colors[color];
-        return (
-          <View
-            key={item.key}
-            style={{
-              flexDirection: "row",
-              alignItems: "center",
-              gap: theme.spacing.sm,
-            }}
-          >
-            <Text variant="label" style={{ flexBasis: "34%", flexShrink: 1 }}>
-              {item.label}
-            </Text>
+      <View style={{ flexDirection: "row", gap: theme.spacing.sm }}>
+        <View style={{ flexBasis: labelWidth, flexShrink: 1 }}>
+          {visible.map((item) => (
             <View
-              style={{
-                flex: 1,
-                flexDirection: "row",
-                alignItems: "center",
-                gap: theme.spacing.sm,
-              }}
+              key={item.key}
+              style={{ minHeight: rowHeight, justifyContent: "center" }}
             >
-              <View
-                style={{
-                  flex: 1,
-                  height: theme.spacing.xl,
-                  justifyContent: "center",
-                }}
-              >
-                <View
-                  testID={testID ? `${testID}-bar-${item.key}` : undefined}
-                  style={{
-                    width: `${Math.max(2, (item.count / max) * 100)}%`,
-                    height: chart.barThickness,
-                    backgroundColor: barColor,
-                    borderTopRightRadius: theme.radii.sm,
-                    borderBottomRightRadius: theme.radii.sm,
-                  }}
-                />
-              </View>
+              <Text variant="label">{item.label}</Text>
+            </View>
+          ))}
+        </View>
+        <View
+          style={{ flex: 1, height: rowHeight * visible.length }}
+          onLayout={(e) => setPlotWidth(e.nativeEvent.layout.width)}
+        >
+          {plotWidth > 0 ? (
+            <BarChart
+              horizontal
+              data={visible.map((item) => ({
+                value: item.count,
+                frontColor: item.tone
+                  ? theme.tones[item.tone].ink
+                  : theme.colors[color],
+              }))}
+              width={plotWidth}
+              height={rowHeight * visible.length}
+              barWidth={chart.barThickness}
+              spacing={rowHeight - chart.barThickness}
+              initialSpacing={(rowHeight - chart.barThickness) / 2}
+              endSpacing={(rowHeight - chart.barThickness) / 2}
+              maxValue={max}
+              noOfSections={1}
+              barBorderTopRightRadius={theme.radii.sm}
+              barBorderBottomRightRadius={theme.radii.sm}
+              hideRules
+              hideYAxisText
+              yAxisThickness={0}
+              xAxisThickness={0}
+              disableScroll
+              disablePress
+            />
+          ) : null}
+        </View>
+        <View style={{ alignItems: "flex-end" }}>
+          {visible.map((item) => (
+            <View
+              key={item.key}
+              style={{ height: rowHeight, justifyContent: "center" }}
+            >
               <Text
                 variant="caption"
                 color="textMuted"
-                style={{ minWidth: countColumnWidth, textAlign: "right" }}
+                style={{ minWidth: theme.spacing.xxl, textAlign: "right" }}
               >
                 {item.count}
               </Text>
             </View>
-          </View>
-        );
-      })}
+          ))}
+        </View>
+      </View>
       {hiddenCount > 0 && !expanded ? (
         <TextButton
           label={`${hiddenCount} more`}

@@ -1,8 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import { useState } from "react";
-import { Pressable, StyleSheet, View } from "react-native";
-import { PressFeedback } from "@/design/motion";
+import { StyleSheet, View } from "react-native";
+import { BarChart } from "react-native-gifted-charts";
 import { Text } from "@/design/primitives/Text";
 import { TextButton } from "@/design/primitives/TextButton";
 import { useTheme } from "@/design/theme";
@@ -10,14 +10,16 @@ import { type ColorRoles, chart } from "@/design/tokens";
 
 // `by_day` (docs/plans/09ab-dashboard-design.md § The forms): one column per
 // day, the latest and busiest labelled above their own columns, the rest
-// reachable by press (native) / hover (web) into a single readout line above
-// the chart (§ What to build 6). The "Table" word is a hard cut to a
+// reachable by press into a single readout line above
+// the chart (§ What to build 6; the library exposes no hover, so web is press
+// only). The "Table" word is a hard cut to a
 // date · count list, per every chart's own table (§ The forms).
 //
-// Each day gets an equal-width slot so 8+ days never crowd a wide card; the
-// column drawn inside it is `chart.columnWidth` wide and centred, standing in
-// a plot `chart.plotHeight` tall. The tick band (the day-of-month under the
-// baseline) is part of the container, never a scroller of its own.
+// One gifted-charts `BarChart`: `barWidth` = `chart.columnWidth`, `height` =
+// `chart.plotHeight`. The card is measured (`onLayout`) so each day gets an
+// equal-width slot and its column is centred in it; the day-of-month under the
+// baseline is the library's `label`, the short date above a column its
+// `topLabelComponent`. No scroller, no animation.
 
 export interface DayColumnsItem {
   date: string;
@@ -43,6 +45,7 @@ export function DayColumns(props: DayColumnsProps) {
   const { days, color = "primary", testID } = props;
   const theme = useTheme();
   const [showTable, setShowTable] = useState(false);
+  const [plotWidth, setPlotWidth] = useState(0);
   const [shownDate, setShownDate] = useState<string | undefined>(undefined);
 
   if (days.length === 0) {
@@ -68,6 +71,7 @@ export function DayColumns(props: DayColumnsProps) {
   const max = Math.max(1, ...days.map((d) => d.count));
   const chartHeight = chart.plotHeight;
   const columnWidth = chart.columnWidth;
+  const slot = plotWidth / days.length;
 
   return (
     <View style={{ gap: theme.spacing.sm }} testID={testID}>
@@ -89,78 +93,57 @@ export function DayColumns(props: DayColumnsProps) {
           ))}
         </View>
       ) : (
-        <View style={{ gap: theme.spacing.xs }}>
-          <View
-            style={{
-              flexDirection: "row",
-              alignItems: "flex-end",
-              gap: theme.spacing.xs,
-              height: chartHeight + theme.spacing.lg,
-            }}
-          >
-            {days.map((d) => {
-              const isLatest = d.date === latestDate;
-              const isBusiest = d.date === busiestDate;
-              const height = Math.max(
-                theme.spacing.xs,
-                Math.round((d.count / max) * chartHeight),
-              );
-              return (
-                <Pressable
-                  key={d.date}
-                  accessibilityRole="button"
-                  accessibilityLabel={`${shortDate(d.date)}, ${d.count} incidents`}
-                  testID={testID ? `${testID}-day-${d.date}` : undefined}
-                  onPress={() => setShownDate(d.date)}
-                  onHoverIn={() => setShownDate(d.date)}
-                  style={{ flex: 1, alignItems: "center" }}
-                >
-                  {({ pressed }) => (
-                    <PressFeedback
-                      pressed={pressed}
-                      style={{ alignItems: "center" }}
-                    >
-                      <Text
-                        variant="caption"
-                        color="textMuted"
-                        numberOfLines={1}
-                        style={{ height: theme.spacing.lg }}
-                      >
-                        {isLatest || isBusiest ? shortDate(d.date) : ""}
-                      </Text>
-                      <View
-                        testID={
-                          testID ? `${testID}-column-${d.date}` : undefined
-                        }
-                        style={{
-                          width: columnWidth,
-                          height,
-                          backgroundColor: theme.colors[color],
-                          borderTopLeftRadius: theme.radii.sm,
-                          borderTopRightRadius: theme.radii.sm,
-                        }}
-                      />
-                    </PressFeedback>
-                  )}
-                </Pressable>
-              );
-            })}
-          </View>
-          <View
-            style={{
-              height: StyleSheet.hairlineWidth,
-              backgroundColor: theme.colors.border,
-            }}
-          />
-          <View style={{ flexDirection: "row", gap: theme.spacing.xs }}>
-            {days.map((d) => (
-              <View key={d.date} style={{ flex: 1, alignItems: "center" }}>
-                <Text variant="caption" color="textMuted">
-                  {dayOfMonth(d.date)}
-                </Text>
-              </View>
-            ))}
-          </View>
+        <View
+          style={{ paddingTop: theme.spacing.lg }}
+          onLayout={(e) => setPlotWidth(e.nativeEvent.layout.width)}
+        >
+          {plotWidth > 0 ? (
+            <BarChart
+              data={days.map((d) => ({
+                value: d.count,
+                label: dayOfMonth(d.date),
+                frontColor: theme.colors[color],
+                topLabelComponent:
+                  d.date === latestDate || d.date === busiestDate
+                    ? () => (
+                        <Text
+                          variant="caption"
+                          color="textMuted"
+                          numberOfLines={1}
+                          style={{ width: slot, textAlign: "center" }}
+                        >
+                          {shortDate(d.date)}
+                        </Text>
+                      )
+                    : undefined,
+              }))}
+              onPress={(item: { value?: number }, index: number) => {
+                const day = days[index];
+                if (day && item) setShownDate(day.date);
+              }}
+              width={plotWidth}
+              height={chartHeight}
+              barWidth={columnWidth}
+              spacing={Math.max(theme.spacing.xs, slot - columnWidth)}
+              initialSpacing={Math.max(0, (slot - columnWidth) / 2)}
+              endSpacing={Math.max(0, (slot - columnWidth) / 2)}
+              maxValue={max}
+              noOfSections={1}
+              barBorderTopLeftRadius={theme.radii.sm}
+              barBorderTopRightRadius={theme.radii.sm}
+              xAxisThickness={StyleSheet.hairlineWidth}
+              xAxisColor={theme.colors.border}
+              xAxisLabelTextStyle={[
+                theme.type.caption,
+                { color: theme.colors.textMuted },
+              ]}
+              yAxisThickness={0}
+              yAxisLabelWidth={0}
+              hideYAxisText
+              hideRules
+              disableScroll
+            />
+          ) : null}
         </View>
       )}
       <TextButton
