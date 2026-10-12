@@ -32,18 +32,28 @@ export function createAppRuntime(): AppRuntime {
   const persister = createAppPersister(AsyncStorage);
   const buster = cacheBuster(Constants.expoConfig?.version);
   const runtime = createRuntime({
-    makeTransport: createConnectTransportFactory({
-      baseUrl: apiBaseUrl(),
-      useBinaryFormat: binaryWireFormat(),
-      // React Native's fetch cannot stream a response body; Expo's can (09v).
-      fetch:
-        Platform.OS === "web"
-          ? undefined
-          : (expoFetch as unknown as typeof globalThis.fetch),
-    }),
-    store: refreshTokenStore,
+    // Development only: EXPO_PUBLIC_FAKE_IMS=1 runs the app on the Jest fake
+    // (src/session/fakeRuntime.ts), no server needed. The `__DEV__` guard is
+    // what keeps the fake out of a production bundle: Metro folds it to false
+    // there and drops the require with the dead branch.
+    ...(__DEV__ && process.env.EXPO_PUBLIC_FAKE_IMS === "1"
+      ? (
+          require("@/session/fakeRuntime") as typeof import("@/session/fakeRuntime")
+        ).createFakeRuntimeDeps()
+      : {
+          makeTransport: createConnectTransportFactory({
+            baseUrl: apiBaseUrl(),
+            useBinaryFormat: binaryWireFormat(),
+            // React Native's fetch cannot stream a response body; Expo's can (09v).
+            fetch:
+              Platform.OS === "web"
+                ? undefined
+                : (expoFetch as unknown as typeof globalThis.fetch),
+          }),
+          store: refreshTokenStore,
+          makeBlobs: (deps) => createBlobs({ baseUrl: apiBaseUrl(), ...deps }),
+        }),
     platform: Platform.OS === "web" ? "web" : "native",
-    makeBlobs: (deps) => createBlobs({ baseUrl: apiBaseUrl(), ...deps }),
     beforeSignOut: (client) => unregisterStored(client, AsyncStorage),
     onSignedOut: async () => {
       queryClient.clear();
