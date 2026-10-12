@@ -13,15 +13,12 @@ import {
   PersonCrewSchema,
   PersonSchema,
 } from "@ocf-ims/protocol-buffers/ocf/ims/resources/v1/person_pb";
-import type { Viewer } from "@/prototypes/people/types";
 
-// Fixture data for the 3c.4 round (docs/plans/09aa-roster-design.md § The
-// prototype round): ~60 product-shaped people, no lorem ipsum, deterministic
+// Fixture data for the roster (docs/plans/09aa-roster-design.md § The
+// prototype round), promoted from the surface's data.ts: ~60 product-shaped people, no lorem ipsum, deterministic
 // (every reload is the same roster). Three crews, one leader across two of
 // them; ten reporters on a crew as plain members; eight people with no
 // login, half known only by a fair name, half only by a legal name.
-
-export const EVENT = { id: 1, name: "OCF 2026" } as const;
 
 // Fixture content, not a style (a `1x1` PNG used to render as a solid
 // circle — 09aa fix): a small inline head-and-shoulders silhouette, a few
@@ -330,59 +327,3 @@ export const CREWS: Crew[] = CREWS_META.map((meta) => {
   });
   return create(CrewSchema, { slug: meta.slug, name: meta.name, members });
 });
-
-export interface Identity {
-  personId: number;
-  handle: string;
-  admin: boolean;
-  /** AccessForEvent.invite_reporters (53a) — the fake has no such FakeUser bit; fake.ts wraps it in. */
-  canInvite: boolean;
-  writeIncidents: boolean;
-  writeReports: boolean;
-}
-
-export function identityFor(viewer: Viewer): Identity {
-  switch (viewer) {
-    case "admin":
-      return {
-        personId: ADMIN_ID,
-        handle: "ash",
-        admin: true,
-        canInvite: false,
-        writeIncidents: true,
-        writeReports: true,
-      };
-    case "inviter":
-      return {
-        personId: INVITER_ID,
-        handle: "sam",
-        admin: false,
-        canInvite: true,
-        writeIncidents: false,
-        writeReports: false,
-      };
-    case "writerInviter":
-      return {
-        personId: WRITER_INVITER_ID,
-        handle: "wren",
-        admin: false,
-        canInvite: true,
-        writeIncidents: true,
-        writeReports: true,
-      };
-  }
-}
-
-/** The FakeUser overrides createFakeIms() takes for this viewer (Harness.tsx). */
-export function userOverridesFor(viewer: Viewer) {
-  const id = identityFor(viewer);
-  return {
-    personId: id.personId,
-    handle: id.handle,
-    admin: id.admin,
-    writeIncidents: id.writeIncidents,
-    writeReports: id.writeReports,
-    readAreas: true,
-    attachFiles: true,
-  };
-}

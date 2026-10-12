@@ -22,12 +22,18 @@ import {
 } from "@ocf-ims/protocol-buffers/ocf/ims/resources/v1/notification_pb";
 import type { Outcome } from "@ocf-ims/protocol-buffers/ocf/ims/resources/v1/outcome_pb";
 import { OutcomeSchema } from "@ocf-ims/protocol-buffers/ocf/ims/resources/v1/outcome_pb";
+import type { Person } from "@ocf-ims/protocol-buffers/ocf/ims/resources/v1/person_pb";
+import {
+  ParticipationType,
+  PersonSchema,
+} from "@ocf-ims/protocol-buffers/ocf/ims/resources/v1/person_pb";
 import type { Report } from "@ocf-ims/protocol-buffers/ocf/ims/resources/v1/report_pb";
 import { ReportSchema } from "@ocf-ims/protocol-buffers/ocf/ims/resources/v1/report_pb";
 import type { IncidentView } from "@ocf-ims/protocol-buffers/ocf/ims/service/rpc/v1/incident_pb";
 import { IncidentViewSchema } from "@ocf-ims/protocol-buffers/ocf/ims/service/rpc/v1/incident_pb";
 import type { ReportView } from "@ocf-ims/protocol-buffers/ocf/ims/service/rpc/v1/report_pb";
 import { ReportViewSchema } from "@ocf-ims/protocol-buffers/ocf/ims/service/rpc/v1/report_pb";
+import { PEOPLE as ROSTER_PEOPLE } from "@/test/rosterData";
 
 // Fixture builders for the incidents feature's tests (plan 09n T12):
 // create(...Schema, …) over sensible defaults, so a test states only the
@@ -143,4 +149,39 @@ export function makeReportView(
     mayAddJournalEntry: false,
     ...overrides,
   });
+}
+
+// The roster's people (09aa): makePerson states only the field a test cares
+// about; makeRoster(n) is the first n of rosterData.ts's deterministic fair
+// (writers, crew leaders, reporters, volunteers, public, then the name-only
+// people), cycled past its length with fresh ids so n is never capped.
+
+export function makePerson(
+  overrides: MessageInitShape<typeof PersonSchema> = {},
+): Person {
+  return create(PersonSchema, {
+    personId: 1,
+    handle: "pat",
+    name: "Pat Doe",
+    hasPassword: true,
+    participationType: ParticipationType.REPORTER,
+    ...overrides,
+  });
+}
+
+export function makeRoster(n: number): Person[] {
+  const out: Person[] = [];
+  for (let i = 0; i < n; i++) {
+    const base = ROSTER_PEOPLE[i % ROSTER_PEOPLE.length] as Person;
+    out.push(
+      i < ROSTER_PEOPLE.length
+        ? base
+        : create(PersonSchema, {
+            ...base,
+            personId: 1000 + i,
+            handle: base.handle ? `${base.handle}${i}` : undefined,
+          }),
+    );
+  }
+  return out;
 }

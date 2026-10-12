@@ -250,6 +250,8 @@ export const motion = {
   stateFade: 200,
   /** Strong ease-out. The only curve; never ease-in. */
   easeOut: [0.23, 1, 0.32, 1],
+  /** A refused drag springing back to its column (the roster's Ladder). */
+  snapBack: { duration: 400, dampingRatio: 0.8 },
 } as const;
 
 /** A drifting finger must not cancel a press. */
@@ -311,6 +313,12 @@ export const reportColumn = {
   created: 84,
   createdBy: 140,
   summaryMin: 200,
+} as const;
+
+/** The roster's fixed widths: the search field and the role / crew menus' floor. */
+export const roster = {
+  searchWidth: 220,
+  menuMinWidth: 160,
 } as const;
 
 /** The drawer's share of the content width (plan 09x criterion 7). */

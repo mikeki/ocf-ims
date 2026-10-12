@@ -43,8 +43,9 @@ export function serializeQuery(query: Query): Params {
   };
 }
 
-function displayName(person: Person): string {
-  return person.handle || person.name || `Person #${person.personId}`;
+/** The one display order everywhere: name, then handle, then the id. */
+export function displayName(person: Person): string {
+  return person.name || person.handle || `Person #${person.personId}`;
 }
 
 export function matches(person: Person, q: string): boolean {

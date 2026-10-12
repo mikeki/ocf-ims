@@ -10,16 +10,17 @@ import {
   ParticipationType,
   PersonSchema,
 } from "@ocf-ims/protocol-buffers/ocf/ims/resources/v1/person_pb";
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
 import { ScrollView, StyleSheet, View } from "react-native";
 import { Badge } from "@/design/primitives/Badge";
 import { Text } from "@/design/primitives/Text";
 import { TextButton } from "@/design/primitives/TextButton";
 import { useTheme } from "@/design/theme";
 import { PersonPicker } from "@/features/compose/PersonPicker";
+import { Avatar } from "@/features/people/Avatar";
+import { displayName } from "@/features/people/peopleQuery";
+import type { Roster } from "@/features/people/useRoster";
 import { EmptyState } from "@/features/shell/EmptyState";
-import { Avatar } from "@/prototypes/people/Avatar";
-import type { Roster } from "@/prototypes/people/useRoster";
 
 // My crews (docs/plans/09aa-roster-design.md § What is fixed, § What to
 // build 4): `crews` arrives already filtered to what this viewer leads
@@ -132,12 +133,6 @@ function MemberRow(props: {
   const { member, crewSlug, person, roster } = props;
   const theme = useTheme();
   const personId = member.person?.personId;
-  const label =
-    person?.name ||
-    person?.handle ||
-    member.person?.name ||
-    member.person?.handle ||
-    (personId !== undefined ? `Person #${personId}` : "Unknown");
   const avatarPerson =
     person ??
     create(PersonSchema, {
@@ -149,6 +144,11 @@ function MemberRow(props: {
       participationType: ParticipationType.UNSPECIFIED,
       crews: [],
     });
+  const label =
+    personId === undefined && !avatarPerson.name && !avatarPerson.handle
+      ? "Unknown"
+      : displayName(avatarPerson);
+  const [confirming, setConfirming] = useState(false);
   const pending = personId !== undefined && roster.pendingFor(personId);
   const error = personId !== undefined ? roster.errorFor(personId) : undefined;
 
@@ -157,6 +157,7 @@ function MemberRow(props: {
       style={[
         styles.row,
         {
+          flexWrap: "wrap",
           gap: theme.spacing.md,
           paddingVertical: theme.spacing.sm,
           borderBottomColor: theme.colors.border,
@@ -175,12 +176,32 @@ function MemberRow(props: {
           label={pending ? "Removing…" : "Remove"}
           onPress={() => {
             if (!pending) {
-              void roster.removeFromCrew(crewSlug, personId);
+              setConfirming(true);
             }
           }}
           testID={`my-crews-${crewSlug}-remove-${personId}`}
         />
       )}
+      {confirming && personId !== undefined ? (
+        <View style={[styles.row, { gap: theme.spacing.sm }]}>
+          <Text variant="caption" color="textMuted">
+            {`Remove ${label} from ${crewSlug}?`}
+          </Text>
+          <TextButton
+            label="Confirm"
+            onPress={() => {
+              setConfirming(false);
+              void roster.removeFromCrew(crewSlug, personId);
+            }}
+            testID={`my-crews-${crewSlug}-confirm-${personId}`}
+          />
+          <TextButton
+            label="Cancel"
+            onPress={() => setConfirming(false)}
+            testID={`my-crews-${crewSlug}-cancel-${personId}`}
+          />
+        </View>
+      ) : null}
       {error ? (
         <Text variant="caption" color="danger">
           {error.message}

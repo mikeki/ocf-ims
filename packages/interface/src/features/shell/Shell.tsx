@@ -12,12 +12,13 @@ import { pressRetentionOffset, touchTarget } from "@/design/tokens";
 import { useAlerts } from "@/features/alerts/hooks";
 import { useEventAccess, useEventName } from "@/features/events/hooks";
 import { useLiveEvent } from "@/features/live/useLiveEvent";
+import { useRosterAccess } from "@/features/people/roles";
 import { useSession } from "@/session/provider";
 
 // The wide-window shell (plan 09x criterion 2), promoted from
 // src/prototypes/dispatch/Shell.tsx: a top bar carrying the event, Incidents,
-// Reports (plan 09z criterion 11; Roster and Dashboard are 3c.4-3c.5's, one
-// item each), Alerts, the client's first visible stream-state word, the
+// Reports (plan 09z criterion 11), People (3c.4; an admin or an inviter
+// only; Dashboard is 3c.5's), Alerts, the client's first visible stream-state word, the
 // signed-in identity and Sign out, and New incident / New report when the
 // caller may write. The sidebar path from the D2 round survives ("the pick", 09x) so a
 // later setting is a line item rather than a rewrite, but nothing sets it.
@@ -41,7 +42,11 @@ export function Shell(props: ShellProps) {
   const eventName = useEventName(eventId) || `Event ${eventId}`;
   const access = useEventAccess(eventId);
   const alerts = useAlerts();
-  const onReports = /\/reports(\/|$)/.test(usePathname());
+  const pathname = usePathname();
+  const onReports = /\/reports(\/|$)/.test(pathname);
+  const onPeople = /\/people(\/|$)/.test(pathname);
+  const rosterAccess = useRosterAccess(eventId);
+  const showPeople = rosterAccess.admin || rosterAccess.inviteReporters;
   const live = useLiveEvent(eventId);
   const unread = Number(alerts.data?.unread ?? 0);
   // "Signed in as …" elsewhere in the app treats this string as the identity
@@ -57,10 +62,10 @@ export function Shell(props: ShellProps) {
     >
       <NavItem
         label="Incidents"
-        active={!onReports}
+        active={!onReports && !onPeople}
         horizontal={mode === "topbar"}
         onPress={
-          onReports
+          onReports || onPeople
             ? () => router.push(`/events/${eventId}/incidents`)
             : undefined
         }
@@ -75,6 +80,18 @@ export function Shell(props: ShellProps) {
             : () => router.push(`/events/${eventId}/reports`)
         }
       />
+      {showPeople ? (
+        <NavItem
+          label="People"
+          active={onPeople}
+          horizontal={mode === "topbar"}
+          onPress={
+            onPeople
+              ? undefined
+              : () => router.push(`/events/${eventId}/people`)
+          }
+        />
+      ) : null}
       <NavItem
         label="Alerts"
         count={unread}

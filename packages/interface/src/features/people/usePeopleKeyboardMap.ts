@@ -4,9 +4,9 @@ import { useFocusEffect } from "expo-router";
 import type { RefObject } from "react";
 import { useCallback, useEffect, useRef } from "react";
 import { Platform, type TextInput } from "react-native";
-import type { Query } from "@/prototypes/people/peopleQuery";
+import type { Query } from "@/features/people/peopleQuery";
 
-// The roster's keyboard map, a retyped copy of reports' useKeyboardMap.ts:
+// The roster's keyboard map, a copy of reports' useReportKeyboardMap.ts:
 // web only, gated on useFocusEffect (09x finding 2), suppressed while an
 // input has focus except Esc. `order` is the person ids in THIS variant's
 // own display order (a section, a column, the alphabet — decision 4), so
@@ -23,6 +23,9 @@ export interface PeopleKeyboardMapDeps {
   close: () => void;
   onAddPerson?: () => void;
   searchRef?: RefObject<TextInput | null>;
+  /** A side panel (Add person, My crews) is open: it owns Esc, and no other key acts. */
+  panel?: boolean;
+  closePanel?: () => void;
 }
 
 export function usePeopleKeyboardMap(deps: PeopleKeyboardMapDeps): void {
@@ -57,7 +60,11 @@ export function usePeopleKeyboardMap(deps: PeopleKeyboardMapDeps): void {
         return;
       }
       if (e.key === "Escape") {
-        if (inInput) {
+        if (d.panel) {
+          // The overlay stack (09aa finding 6): panel, then hovercard, then
+          // selection, then search.
+          d.closePanel?.();
+        } else if (inInput) {
           target?.blur();
         } else if (d.help) {
           d.setHelp(false);
@@ -70,7 +77,7 @@ export function usePeopleKeyboardMap(deps: PeopleKeyboardMapDeps): void {
         }
         return;
       }
-      if (inInput) {
+      if (inInput || d.panel) {
         return;
       }
       const move = (delta: 1 | -1) => {

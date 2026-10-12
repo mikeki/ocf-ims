@@ -9,45 +9,46 @@ import { Badge } from "@/design/primitives/Badge";
 import { Text } from "@/design/primitives/Text";
 import { TextButton } from "@/design/primitives/TextButton";
 import { useTheme } from "@/design/theme";
-import { Avatar } from "@/prototypes/people/Avatar";
-import { RoleMenu } from "@/prototypes/people/RoleMenu";
-import { rungLabel } from "@/prototypes/people/roles";
-import type { Viewer } from "@/prototypes/people/types";
+import { Avatar } from "@/features/people/Avatar";
+import { displayName } from "@/features/people/peopleQuery";
+import { RoleMenu } from "@/features/people/RoleMenu";
 import {
   mayRemove,
-  type Roster,
+  type RosterAccess,
+  rungLabel,
   rungsFor,
-} from "@/prototypes/people/useRoster";
+} from "@/features/people/roles";
+import type { Roster } from "@/features/people/useRoster";
 
 // The profile card (docs/plans/09aa-roster-design.md § What is fixed):
 // picture (larger here than a row's 32px), name, handle, this event's role,
 // crews (a led one marked), wristband; email/phone rows ONLY when the
 // server sent them, the admin shield ONLY when is_admin came — nothing
-// implies a withheld field exists (§ Privacy). The role menu is the
+// implies a withheld field exists (§ Privacy). Ejected is offered to an
+// admin only: an inviter's ceiling stops at Not present. The role menu is the
 // roster's one edit; Remove from event sits behind a confirm with its two
 // forms, Not present / Ejected (never a silent write, unlike a role change
 // within the ceiling).
 
 export interface ProfileCardProps {
   person: Person;
-  viewer: Viewer;
+  access: RosterAccess;
   roster: Roster;
 }
 
 export function ProfileCard(props: ProfileCardProps) {
-  const { person, viewer, roster } = props;
+  const { person, access, roster } = props;
   const theme = useTheme();
   const [confirmingRemove, setConfirmingRemove] = useState(false);
-  const rungs = rungsFor(viewer, person);
-  const removable = mayRemove(viewer, person);
+  const rungs = rungsFor(access, person);
+  const removable = mayRemove(access, person);
   const pending = roster.pendingFor(person.personId);
   const error = roster.errorFor(person.personId);
-  const displayName =
-    person.name || person.handle || `Person #${person.personId}`;
+  const label = displayName(person);
 
   const doRemove = (rung: ParticipationType) => {
     setConfirmingRemove(false);
-    void roster.remove(person.personId, rung);
+    void roster.setRole(person.personId, rung);
   };
 
   return (
@@ -63,7 +64,7 @@ export function ProfileCard(props: ProfileCardProps) {
         <View style={{ gap: theme.spacing.xs, flexShrink: 1 }}>
           <View style={[styles.row, { gap: theme.spacing.sm }]}>
             <Text variant="title" numberOfLines={1}>
-              {displayName}
+              {label}
             </Text>
             {person.isAdmin ? <Badge label="Admin" tone="restricted" /> : null}
           </View>
@@ -72,7 +73,7 @@ export function ProfileCard(props: ProfileCardProps) {
               {person.handle}
             </Text>
           ) : null}
-          {!person.hasPassword ? (
+          {access.admin && !person.hasPassword ? (
             <Text variant="caption" color="textMuted">
               No login
             </Text>
@@ -130,7 +131,7 @@ export function ProfileCard(props: ProfileCardProps) {
           {confirmingRemove ? (
             <View style={{ gap: theme.spacing.sm }}>
               <Text variant="label" color="textMuted">
-                Remove {displayName} from this event?
+                Remove {label} from this event?
               </Text>
               <View style={[styles.row, { gap: theme.spacing.md }]}>
                 <TextButton
@@ -138,11 +139,13 @@ export function ProfileCard(props: ProfileCardProps) {
                   onPress={() => doRemove(ParticipationType.NOT_PRESENT)}
                   testID="profile-remove-not-present"
                 />
-                <TextButton
-                  label={rungLabel(ParticipationType.EJECTED)}
-                  onPress={() => doRemove(ParticipationType.EJECTED)}
-                  testID="profile-remove-ejected"
-                />
+                {access.admin ? (
+                  <TextButton
+                    label={rungLabel(ParticipationType.EJECTED)}
+                    onPress={() => doRemove(ParticipationType.EJECTED)}
+                    testID="profile-remove-ejected"
+                  />
+                ) : null}
                 <TextButton
                   label="Cancel"
                   onPress={() => setConfirmingRemove(false)}

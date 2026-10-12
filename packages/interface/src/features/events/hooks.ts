@@ -30,13 +30,14 @@ export function useEventName(eventId: number): string {
 }
 
 /**
- * The caller's access to one event (plan 09n T7); all-false until
- * GetAuthStatus has answered. GetAuthStatus tolerates an anonymous caller
- * (`authenticated: false`, no error), so such an answer is never trusted for
- * the five minutes — it goes stale at once and the next mount asks again.
+ * The one GetAuthStatus observer policy (plan 09n T7): a per-event answer is
+ * trusted for five minutes, but GetAuthStatus tolerates an anonymous caller
+ * (`authenticated: false`, no error), so such an answer is never trusted: it
+ * goes stale at once and the next mount asks again. Every reader of the
+ * query (`useEventAccess`, `useRosterAccess`) goes through this.
  */
-export function useEventAccess(eventId: number): AccessForEvent {
-  const { data } = useQuery(
+export function useAuthStatus(eventId: number) {
+  return useQuery(
     ImsService.method.getAuthStatus,
     { eventId },
     {
@@ -44,6 +45,11 @@ export function useEventAccess(eventId: number): AccessForEvent {
         query.state.data?.authenticated ? EVENT_ACCESS_STALE_MS : 0,
     },
   );
+}
+
+/** The caller's access to one event (plan 09n T7); all-false until GetAuthStatus has answered. */
+export function useEventAccess(eventId: number): AccessForEvent {
+  const { data } = useAuthStatus(eventId);
   return eventAccess(data, eventId);
 }
 

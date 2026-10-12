@@ -10,7 +10,7 @@ import {
   parseQuery,
   type Query,
   visiblePeople,
-} from "@/prototypes/people/peopleQuery";
+} from "@/features/people/peopleQuery";
 
 // The roster's URL state and its actions, a retyped copy of
 // useReportQuery.ts: no `move` here (§ Keyboard) — a person's display order
