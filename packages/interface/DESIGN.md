@@ -112,16 +112,11 @@ The incident editor, the Ledger (plan 09y, 3c.2):
 
 ## Charts
 
-The dashboard's marks are react-native-gifted-charts `BarChart`s, never animated
-(no `isAnimated`), with no tooltips or pointer. Three tokens in `tokens.ts`
-(`chart`) are the whole mark spec: `barThickness` (10) is the horizontal bar
-list's `barWidth`, one `spacing.xl` slot per row, rounded 4 px on its data end
-only; `columnWidth` (20) is the day chart's `barWidth`, centred in an equal slot
-of the measured card, with `plotHeight` (160) as its `height`, standing on a
-hairline `border` x-axis, no y-axis text and no rules. The bar list keeps its own
-label and count columns beside the chart (the library rotates horizontal labels);
-a label is one line at the bar pitch, its full text on the accessibility label,
-since a wrapped row would drift off its bar.
+The dashboard draws bars and columns as plain Views; there is no chart library.
+Three tokens in `tokens.ts` (`chart`) are the whole mark spec: a bar is
+`barThickness` (10) tall, centred in a `spacing.xl` row and rounded 4 px on its
+data end only; a day column is `columnWidth` (20) wide, centred in an equal slot
+of a plot `plotHeight` (160) tall, standing on a hairline `border` baseline.
 Every chart is an addition to a table: each mark prints its label and count, and
 each chart has its own table. A mark is one colour from the theme; switching a
 chart to its table, expanding "N more" and the changed dot are hard cuts.

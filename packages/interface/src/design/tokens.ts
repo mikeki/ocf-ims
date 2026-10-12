@@ -322,10 +322,10 @@ export const roster = {
 } as const;
 
 /**
- * The dashboard's chart marks (plan 09ab). Both are react-native-gifted-charts
- * `BarChart`s: `barThickness` is the horizontal chart's `barWidth`,
- * `columnWidth` the vertical chart's `barWidth`, and `plotHeight` its `height`.
- * DESIGN.md § Charts.
+ * The dashboard's chart marks (plan 09ab, builder 1). Bars and columns are
+ * plain Views, no chart library: a bar is `barThickness` tall, a column is
+ * `columnWidth` wide, and the day chart's plot is `plotHeight` tall. DESIGN.md
+ * § Charts.
  */
 export const chart = {
   barThickness: 10,

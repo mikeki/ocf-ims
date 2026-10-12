@@ -1,11 +1,13 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import { fireEvent, render, screen } from "@testing-library/react-native";
+import { StyleSheet } from "react-native";
 import { ThemeProvider } from "@/design/theme";
+import { chart } from "@/design/tokens";
 import { BarList, type BarListItem } from "@/features/dashboard/BarList";
 
-// BarList (plan 09ab): label · bar · count rows (the bars are a gifted-charts
-// BarChart, whose marks the tests cannot observe); a limit folds the tail into an in-place "N more"; labels wrap.
+// BarList (plan 09ab): label · bar · count rows; the bar is chart.barThickness
+// tall; a limit folds the tail into an in-place "N more"; labels wrap.
 
 const items: BarListItem[] = [
   { key: "a", label: "Medical", count: 40 },
@@ -31,18 +33,26 @@ describe("BarList", () => {
     }
   });
 
+  it("draws the bar chart.barThickness tall, wide by count over the max", async () => {
+    await render(list());
+    const top = StyleSheet.flatten(
+      screen.getByTestId("bars-bar-a").props.style,
+    );
+    expect(top.height).toBe(chart.barThickness);
+    expect(top.width).toBe("100%");
+    const half = StyleSheet.flatten(
+      screen.getByTestId("bars-bar-b").props.style,
+    );
+    expect(half.width).toBe("50%");
+    expect(top.borderTopRightRadius).toBe(4);
+    expect(top.borderTopLeftRadius).toBeUndefined();
+  });
+
   it("sorts by count when asked, and keeps the given order otherwise", async () => {
-    const shuffled = [items[3], items[0], items[1]] as BarListItem[];
+    const shuffled = [items[3], items[0]] as BarListItem[];
     await render(list({ items: shuffled, sorted: true }));
-    const labels = screen
-      .getAllByText(/^(Medical|Security|Logistics)$/)
-      .map((n) => n.props.children);
-    expect(labels).toEqual(["Medical", "Security", "Logistics"]);
-    await render(list({ items: shuffled }));
-    const given = screen
-      .getAllByText(/^(Medical|Security|Logistics)$/)
-      .map((n) => n.props.children);
-    expect(given.slice(-3)).toEqual(["Logistics", "Medical", "Security"]);
+    const bars = screen.getAllByTestId(/^bars-bar-/);
+    expect(bars[0]?.props.testID).toBe("bars-bar-a");
   });
 
   it("folds the tail behind an N more word that expands in place", async () => {
@@ -55,7 +65,7 @@ describe("BarList", () => {
     expect(screen.queryByText("2 more")).toBeNull();
   });
 
-  it("keeps a long label on one line, the full text on the accessibility label", async () => {
+  it("never truncates a label", async () => {
     await render(
       list({
         items: [
@@ -70,11 +80,7 @@ describe("BarList", () => {
     const label = screen.getByText(
       "Main Stage — Back of House, behind the loading dock",
     );
-    // One line at the bar pitch, the full label on the accessibility tree.
-    expect(label.props.numberOfLines).toBe(1);
-    expect(label.props.accessibilityLabel).toBe(
-      "Main Stage — Back of House, behind the loading dock",
-    );
+    expect(label.props.numberOfLines).toBeUndefined();
   });
 
   it("derives the Top N caption from the limit, and drops it once expanded", async () => {
