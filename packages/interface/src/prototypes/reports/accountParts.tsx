@@ -107,13 +107,12 @@ export function AddPhotoStub() {
 
 function ReportAttachmentThumbnail(props: {
   eventName: string;
-  incidentNumber: number;
+  reportNumber: number;
   entry: JournalEntry;
 }) {
   const theme = useTheme();
   const source = useAttachmentSource(
-    props.eventName,
-    props.incidentNumber,
+    { eventName: props.eventName, kind: "report", number: props.reportNumber },
     props.entry.id,
   );
   if (!source) {
@@ -139,20 +138,17 @@ function AccountEntry(props: {
   entry: JournalEntry;
   first: boolean;
   eventName: string;
-  incidentNumber: number | undefined;
+  reportNumber: number;
   canStrike: boolean;
   onStrike: () => void;
 }) {
-  const { entry, first, eventName, incidentNumber, canStrike, onStrike } =
-    props;
+  const { entry, first, eventName, reportNumber, canStrike, onStrike } = props;
   const theme = useTheme();
   const [hovered, setHovered] = useState(false);
   const muted = entry.systemEntry || entry.stricken === true;
   const showStrike =
     canStrike && (Platform.OS !== "web" || hovered) && !entry.systemEntry;
-  const isImage =
-    incidentNumber !== undefined &&
-    entry.attachment?.mediaType?.startsWith("image/") === true;
+  const isImage = entry.attachment?.mediaType?.startsWith("image/") === true;
 
   return (
     <Pressable
@@ -192,10 +188,10 @@ function AccountEntry(props: {
       >
         {entry.text}
       </Text>
-      {entry.attachment && isImage && incidentNumber !== undefined ? (
+      {entry.attachment && isImage ? (
         <ReportAttachmentThumbnail
           eventName={eventName}
-          incidentNumber={incidentNumber}
+          reportNumber={reportNumber}
           entry={entry}
         />
       ) : entry.attachment ? (
@@ -401,7 +397,7 @@ export function AccountBody(props: ReportPaneProps) {
                 entry={entry}
                 first={idx === 0}
                 eventName={eventName}
-                incidentNumber={report.incident}
+                reportNumber={report.number}
                 canStrike={canStrike(entry, mayAppend, viewer, own)}
                 onStrike={() => {
                   void edit.strike(entry.id, !entry.stricken).catch(() => {});

@@ -9,7 +9,10 @@ import { Text } from "@/design/primitives/Text";
 import { TextButton } from "@/design/primitives/TextButton";
 import { useTheme } from "@/design/theme";
 import { pressRetentionOffset } from "@/design/tokens";
-import { useAttachmentSource } from "@/features/incidents/useAttachmentSource";
+import {
+  type AttachmentOn,
+  useAttachmentSource,
+} from "@/features/incidents/useAttachmentSource";
 import { formatTimestamp, personLabel } from "@/lib/format";
 
 // One entry in an incident's journal (plan 09n): author + timestamp, the
@@ -29,10 +32,12 @@ import { formatTimestamp, personLabel } from "@/lib/format";
 // for a writer on the incident's own non-system entries — the row keeps one
 // shape whether or not the caller lights those.
 
+export type { AttachmentOn };
+
 export interface JournalEntryRowProps {
   entry: JournalEntry;
-  /** Where the entry lives, for the attachment route; absent = no images (a report). */
-  attachmentOn?: { eventName: string; incidentNumber: number };
+  /** Where the entry lives, for the attachment route; absent = no images. */
+  attachmentOn?: AttachmentOn;
   onOpenAttachment?: (entryId: number) => void;
   /** Set when the entry came from an attached report, not this incident. */
   report?: number;
@@ -95,8 +100,7 @@ export function JournalEntryRow(props: JournalEntryRowProps) {
       </Text>
       {entry.attachment && isImage && attachmentOn ? (
         <AttachedImage
-          eventName={attachmentOn.eventName}
-          incidentNumber={attachmentOn.incidentNumber}
+          on={attachmentOn}
           entryId={entry.id}
           name={entry.attachment.id}
           onPress={
@@ -125,18 +129,13 @@ export function JournalEntryRow(props: JournalEntryRowProps) {
 }
 
 function AttachedImage(props: {
-  eventName: string;
-  incidentNumber: number;
+  on: AttachmentOn;
   entryId: number;
   name: string;
   onPress?: () => void;
 }) {
   const theme = useTheme();
-  const source = useAttachmentSource(
-    props.eventName,
-    props.incidentNumber,
-    props.entryId,
-  );
+  const source = useAttachmentSource(props.on, props.entryId);
   const image = (
     <Image
       testID={`attachment-image-${props.entryId}`}

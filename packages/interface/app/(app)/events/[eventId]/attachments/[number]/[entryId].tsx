@@ -33,8 +33,7 @@ export default function AttachmentRoute() {
       <Stack.Screen options={{ presentation: "modal" }} />
       {eventName ? (
         <AttachmentScreen
-          eventName={eventName}
-          incidentNumber={number}
+          on={{ eventName, kind: "incident", number }}
           entryId={entryId}
           onClose={() => {
             router.dismissTo(`/events/${eventId}/incidents/${number}`);

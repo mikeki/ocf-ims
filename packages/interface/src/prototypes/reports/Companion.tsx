@@ -300,7 +300,11 @@ function IncidentExcerpt(props: {
           <JournalEntryRow
             key={entry.id}
             entry={entry}
-            attachmentOn={{ eventName, incidentNumber: incident.number }}
+            attachmentOn={{
+              eventName,
+              kind: "incident",
+              number: incident.number,
+            }}
           />
         ))
       )}

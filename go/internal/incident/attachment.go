@@ -301,10 +301,12 @@ func (action GetReportAttachment) getReportAttachment(
 	if errHTTP != nil {
 		return nil, "", errHTTP.From("[server.GetEventPermissions]")
 	}
-	if eventPermissions&(authz.EventReadAllReports|authz.EventReadOwnReports) == 0 {
+	// The same gate as GetReport (connect.go): any of the three read bits opens the
+	// event, and a caller without the "all" bit sees a report's files exactly when
+	// they may see the report — own or, for a crew leader, the crew's.
+	if eventPermissions&(authz.EventReadAllReports|authz.EventReadOwnReports|authz.EventReadCrewReports) == 0 {
 		return nil, "", herr.Forbidden("The requestor does not have permission to read Reports on this Event", nil)
 	}
-	// i.e. the user has EventReadOwnReports, but not EventReadAllReports
 	limitedAccess := eventPermissions&authz.EventReadAllReports == 0
 
 	ctx := req.Context()
@@ -318,13 +320,19 @@ func (action GetReportAttachment) getReportAttachment(
 		return nil, "", herr.BadRequest("Failed to parse attachment number", err).From("[ParseInt32]")
 	}
 
-	_, journalEntries, errHTTP := fetchReport(ctx, action.ImsDBQ, event.ID, reportNumber, action.AttachmentsStore.Type != conf.AttachmentsStoreNone)
+	report, journalEntries, errHTTP := fetchReport(ctx, action.ImsDBQ, event.ID, reportNumber, action.AttachmentsStore.Type != conf.AttachmentsStoreNone)
 	if errHTTP != nil {
 		return nil, "", errHTTP.From("[fetchReport]")
 	}
 
 	if limitedAccess {
-		if !containsAuthor(journalEntries, jwtCtx.Claims.PersonHandle()) {
+		visible, errHTTP := mayReadLimitedReport(ctx, action.ImsDBQ, event.ID, reportNumber,
+			imsdb.ReportsRow(report).Report, journalEntries, eventPermissions,
+			jwtCtx.Claims.PersonID(), jwtCtx.Claims.PersonHandle())
+		if errHTTP != nil {
+			return nil, "", errHTTP.From("[mayReadLimitedReport]")
+		}
+		if !visible {
 			return nil, "", herr.Forbidden("The requestor does not have permission to read this particular Report", nil)
 		}
 	}
@@ -578,8 +586,10 @@ func (action AttachToReport) attachToReport(req *http.Request) (int32, *herr.HTT
 	if errHTTP != nil {
 		return 0, errHTTP.From("[fetchReport]")
 	}
+	// The ownership floor is the edit path's (creator or previous author, ownsReport),
+	// so the creator of a bare report may put its first photo on it.
 	if limitedAccess {
-		if !containsAuthor(entries, jwtCtx.Claims.PersonHandle()) {
+		if !ownsReport(imsdb.ReportsRow(report).Report, entries, jwtCtx.Claims.PersonID(), jwtCtx.Claims.PersonHandle()) {
 			return 0, herr.Forbidden("The requestor does not have permission to read this particular Report", nil)
 		}
 	}

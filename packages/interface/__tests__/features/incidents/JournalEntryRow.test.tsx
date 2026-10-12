@@ -8,9 +8,10 @@ import { createTestRuntime, renderWithProviders } from "@/test/harness";
 
 // An attachment on a journal entry (plan 09s): an image renders inline,
 // addressed by the entry id with the session's headers, and opens on a tap;
-// anything else is a file row.
+// anything else is a file row. The owner picks the route (09z criterion 0):
+// a report's entry is addressed through the report route, never the incident's.
 
-const on = { eventName: "Fair 2026", incidentNumber: 214 };
+const on = { eventName: "Fair 2026", kind: "incident", number: 214 } as const;
 
 describe("JournalEntryRow attachments", () => {
   it("renders an image attachment inline and opens it on a tap", async () => {
@@ -33,7 +34,7 @@ describe("JournalEntryRow attachments", () => {
     await waitFor(() =>
       expect(image.props.source).toEqual([
         {
-          uri: blobs.attachmentUrl("Fair 2026", 214, 7),
+          uri: blobs.attachmentUrl("Fair 2026", on, 7),
           headers: { Authorization: "Bearer fake" },
         },
       ]),
@@ -60,7 +61,39 @@ describe("JournalEntryRow attachments", () => {
     expect(screen.queryByTestId("attachment-image-8")).toBeNull();
   });
 
-  it("never renders an image where there is no attachment route (a report)", async () => {
+  it("addresses a report's entry through the report route", async () => {
+    const blobs = createFakeBlobs();
+    const runtime = createTestRuntime({ blobs });
+    await renderWithProviders(
+      <JournalEntryRow
+        entry={makeJournalEntry({
+          id: 11,
+          attachment: { id: "sign.png", mediaType: "image/png" },
+        })}
+        attachmentOn={{ eventName: "Fair 2026", kind: "report", number: 3 }}
+      />,
+      runtime,
+    );
+    const image = await waitFor(() =>
+      screen.getByTestId("attachment-image-11"),
+    );
+    await waitFor(() =>
+      expect(image.props.source).toEqual([
+        {
+          uri: blobs.attachmentUrl(
+            "Fair 2026",
+            { kind: "report", number: 3 },
+            11,
+          ),
+          headers: { Authorization: "Bearer fake" },
+        },
+      ]),
+    );
+    expect(image.props.source[0].uri).toContain("/reports/3/attachments/11");
+    expect(screen.queryByTestId("attachment-open-11")).toBeNull();
+  });
+
+  it("never renders an image where there is no attachment route", async () => {
     const runtime = createTestRuntime({ blobs: createFakeBlobs() });
     await renderWithProviders(
       <JournalEntryRow
